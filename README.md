@@ -9,24 +9,9 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 
 ---
 
-<!-- Placeholder for Showcase Screenshot / GIF -->
-```
-+---------------------------------------------------------------------------------------------------+
-|  ⚡ QtIndustrialWidgets — Test Bench & SCADA Showcase Gallery                                     |
-|  [● SIMULATION ACTIVE (50 Hz / Smooth 60+ FPS)]   [FPS: 50.0]   [⏹ Stop Sim]   [🌙 Dark Theme]     |
-+---------------------------------------------------------------------------------------------------+
-|  [ Powertrain & Dynamics (Radial Gauges) ]                                                        |
-|     ( ( 4820 RPM ) )       ( ( 1.85 bar ) )        ( ( 5.2 bar ) )       ( ( +15 DEG ) )          |
-|      Engine RPM              Turbo Boost            Oil Pressure           Steering Angle         |
-|                                                                                                   |
-|  [ Thermal & Fluids (Linear) ]                    [ High-Speed Telemetry (7-Segment Displays) ]   |
-|   |=====|    |=====|                               SPEED [km/h]:     [  1 4 2 . 6  ] (Cyan)       |
-|   |  92 |    |  65 |                               VOLTAGE [V]:      [    1 3 . 8  ] (Green)      |
-|   |=====|    |=====|                               TEST TIME [s]:    [  0 4 5 . 2 8] (Amber)      |
-|   (Bulb)     (Panel)       [===== Hydr. 180 bar =====]                                            |
-|   Coolant     Fuel         Hydraulic Line Pressure                                                |
-+---------------------------------------------------------------------------------------------------+
-```
+<p align="center">
+  <img src="screenshot.jpg" alt="QtIndustrialWidgets Showcase Gallery" width="95%">
+</p>
 
 ---
 
