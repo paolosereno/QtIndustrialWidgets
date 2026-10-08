@@ -1,0 +1,44 @@
+# CMake build artifacts
+build/
+bin/
+lib/
+CMakeUserPresets.json
+
+# Qt generated files
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.moc
+*.qrc.depends
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# IDE & Editor specific files
+.vscode/
+.idea/
+*.swp
+*~
+*.user
+*.user.*
+CMakeLists.txt.user
+.DS_Store

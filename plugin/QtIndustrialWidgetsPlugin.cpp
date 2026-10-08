@@ -1,0 +1,302 @@
+#include "QtIndustrialWidgetsPlugin.h"
+
+#include <QtIndustrialWidgets/QRadialGauge.h>
+#include <QtIndustrialWidgets/QLinearGauge.h>
+#include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
+
+#include <QtGui/QPainter>
+#include <QtGui/QPainterPath>
+#include <QtGui/QPixmap>
+
+// ============================================================================
+// QRadialGaugePlugin
+// ============================================================================
+
+QRadialGaugePlugin::QRadialGaugePlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QRadialGaugePlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QRadialGaugePlugin::createWidget(QWidget *parent)
+{
+    return new QRadialGauge(parent);
+}
+
+QString QRadialGaugePlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QRadialGaugePlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QRadialGauge.h");
+}
+
+QString QRadialGaugePlugin::name() const
+{
+    return QStringLiteral("QRadialGauge");
+}
+
+QString QRadialGaugePlugin::toolTip() const
+{
+    return QStringLiteral("Industrial circular dial gauge with cached scale and vector needle");
+}
+
+QString QRadialGaugePlugin::whatsThis() const
+{
+    return QStringLiteral("A circular gauge supporting custom angles, threshold bands, major/minor ticks and Hi-DPI caching.");
+}
+
+QString QRadialGaugePlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QRadialGauge\" name=\"radialGauge\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>220</width>\n"
+        "   <height>220</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QRadialGaugePlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Outer circle
+    p.setPen(QPen(QColor(60, 68, 80), 2.0));
+    p.setBrush(QColor(25, 30, 40));
+    p.drawEllipse(2, 2, 28, 28);
+
+    // Arc
+    p.setPen(QPen(QColor(46, 204, 113), 2.5));
+    p.drawArc(6, 6, 20, 20, -30 * 16, 240 * 16);
+
+    // Needle
+    p.setPen(QPen(QColor(235, 59, 90), 2.0));
+    p.drawLine(16, 16, 22, 9);
+
+    // Center hub
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(220, 225, 230));
+    p.drawEllipse(14, 14, 4, 4);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
+// QLinearGaugePlugin
+// ============================================================================
+
+QLinearGaugePlugin::QLinearGaugePlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QLinearGaugePlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QLinearGaugePlugin::createWidget(QWidget *parent)
+{
+    return new QLinearGauge(parent);
+}
+
+QString QLinearGaugePlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QLinearGaugePlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QLinearGauge.h");
+}
+
+QString QLinearGaugePlugin::name() const
+{
+    return QStringLiteral("QLinearGauge");
+}
+
+QString QLinearGaugePlugin::toolTip() const
+{
+    return QStringLiteral("Industrial linear column gauge and thermometer");
+}
+
+QString QLinearGaugePlugin::whatsThis() const
+{
+    return QStringLiteral("Linear gauge supporting both vertical and horizontal layouts, thermometer bulb mode, and dynamic fluid color.");
+}
+
+QString QLinearGaugePlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QLinearGauge\" name=\"linearGauge\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>100</width>\n"
+        "   <height>260</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QLinearGaugePlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Tube background
+    p.setPen(QPen(QColor(60, 68, 80), 1.5));
+    p.setBrush(QColor(25, 30, 40));
+    p.drawRoundedRect(10, 3, 12, 22, 3, 3);
+
+    // Bulb
+    p.drawEllipse(7, 19, 18, 11);
+
+    // Fill fluid
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(235, 59, 90));
+    p.drawEllipse(9, 20, 14, 9);
+    p.drawRect(12, 10, 8, 12);
+
+    // Tick lines
+    p.setPen(QPen(QColor(200, 205, 215), 1.2));
+    p.drawLine(24, 7, 28, 7);
+    p.drawLine(24, 13, 27, 13);
+    p.drawLine(24, 18, 28, 18);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
+// QSevenSegmentDisplayPlugin
+// ============================================================================
+
+QSevenSegmentDisplayPlugin::QSevenSegmentDisplayPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QSevenSegmentDisplayPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QSevenSegmentDisplayPlugin::createWidget(QWidget *parent)
+{
+    return new QSevenSegmentDisplay(parent);
+}
+
+QString QSevenSegmentDisplayPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QSevenSegmentDisplayPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QSevenSegmentDisplay.h");
+}
+
+QString QSevenSegmentDisplayPlugin::name() const
+{
+    return QStringLiteral("QSevenSegmentDisplay");
+}
+
+QString QSevenSegmentDisplayPlugin::toolTip() const
+{
+    return QStringLiteral("Industrial vector 7-segment LED/LCD display");
+}
+
+QString QSevenSegmentDisplayPlugin::whatsThis() const
+{
+    return QStringLiteral("Scalable vector 7-segment display with italic slant, decimal point, and customizable LED colors.");
+}
+
+QString QSevenSegmentDisplayPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QSevenSegmentDisplay\" name=\"sevenSegmentDisplay\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>220</width>\n"
+        "   <height>70</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QSevenSegmentDisplayPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Bezel
+    p.setPen(QPen(QColor(55, 65, 75), 1.5));
+    p.setBrush(QColor(16, 20, 28));
+    p.drawRoundedRect(2, 6, 28, 20, 3, 3);
+
+    // Digits in cyan
+    p.setPen(QPen(QColor(0, 229, 255), 1.8, Qt::SolidLine, Qt::RoundCap));
+    // Draw '8'
+    p.drawLine(8, 10, 14, 10);
+    p.drawLine(8, 16, 14, 16);
+    p.drawLine(8, 22, 14, 22);
+    p.drawLine(8, 10, 8, 16);
+    p.drawLine(14, 10, 14, 16);
+    p.drawLine(8, 16, 8, 22);
+    p.drawLine(14, 16, 14, 22);
+
+    // Draw '8'
+    p.drawLine(18, 10, 24, 10);
+    p.drawLine(18, 16, 24, 16);
+    p.drawLine(18, 22, 24, 22);
+    p.drawLine(18, 10, 18, 16);
+    p.drawLine(24, 10, 24, 16);
+    p.drawLine(18, 16, 18, 22);
+    p.drawLine(24, 16, 24, 22);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
+// QtIndustrialWidgetsPlugin Collection
+// ============================================================================
+
+QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
+    : QObject(parent)
+{
+    m_widgets.append(new QRadialGaugePlugin(this));
+    m_widgets.append(new QLinearGaugePlugin(this));
+    m_widgets.append(new QSevenSegmentDisplayPlugin(this));
+}
+
+QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const
+{
+    return m_widgets;
+}
