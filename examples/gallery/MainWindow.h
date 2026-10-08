@@ -7,6 +7,7 @@
 class QRadialGauge;
 class QLinearGauge;
 class QSevenSegmentDisplay;
+class QLedIndicator;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -41,6 +42,12 @@ private:
     QSevenSegmentDisplay *m_speedDisplay{nullptr};
     QSevenSegmentDisplay *m_voltageDisplay{nullptr};
     QSevenSegmentDisplay *m_timerDisplay{nullptr};
+
+    // LED Indicators
+    QLedIndicator *m_runLed{nullptr};
+    QLedIndicator *m_alarmLed{nullptr};
+    QLedIndicator *m_warnLed{nullptr};
+    QLedIndicator *m_pumpLed{nullptr};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};

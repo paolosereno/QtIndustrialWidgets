@@ -3,6 +3,7 @@
 #include <QtIndustrialWidgets/QRadialGauge.h>
 #include <QtIndustrialWidgets/QLinearGauge.h>
 #include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
+#include <QtIndustrialWidgets/QLedIndicator.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -285,6 +286,95 @@ QIcon QSevenSegmentDisplayPlugin::icon() const
 }
 
 // ============================================================================
+// QLedIndicatorPlugin
+// ============================================================================
+
+QLedIndicatorPlugin::QLedIndicatorPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QLedIndicatorPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QLedIndicatorPlugin::createWidget(QWidget *parent)
+{
+    return new QLedIndicator(parent);
+}
+
+QString QLedIndicatorPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QLedIndicatorPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QLedIndicator.h");
+}
+
+QString QLedIndicatorPlugin::name() const
+{
+    return QStringLiteral("QLedIndicator");
+}
+
+QString QLedIndicatorPlugin::toolTip() const
+{
+    return QStringLiteral("Industrial LED panel indicator with 3D lens and blinking");
+}
+
+QString QLedIndicatorPlugin::whatsThis() const
+{
+    return QStringLiteral("A customizable LED indicator supporting circular or rectangular shapes, metallic bezel, customizable colors, and blinking.");
+}
+
+QString QLedIndicatorPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QLedIndicator\" name=\"ledIndicator\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>32</width>\n"
+        "   <height>32</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QLedIndicatorPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Bezel
+    p.setPen(QPen(QColor(60, 70, 85), 2.0));
+    p.setBrush(QColor(30, 35, 45));
+    p.drawEllipse(3, 3, 26, 26);
+
+    // Green lens
+    QRadialGradient grad(QPointF(14, 14), 10);
+    grad.setColorAt(0.0, QColor(70, 240, 140));
+    grad.setColorAt(0.7, QColor(46, 204, 113));
+    grad.setColorAt(1.0, QColor(30, 140, 75));
+    p.setPen(Qt::NoPen);
+    p.setBrush(grad);
+    p.drawEllipse(6, 6, 20, 20);
+
+    // Specular highlight
+    p.setBrush(QColor(255, 255, 255, 180));
+    p.drawEllipse(10, 8, 8, 4);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -294,6 +384,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QRadialGaugePlugin(this));
     m_widgets.append(new QLinearGaugePlugin(this));
     m_widgets.append(new QSevenSegmentDisplayPlugin(this));
+    m_widgets.append(new QLedIndicatorPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

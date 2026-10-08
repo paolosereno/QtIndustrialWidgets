@@ -3,6 +3,7 @@
 #include <QtIndustrialWidgets/QRadialGauge.h>
 #include <QtIndustrialWidgets/QLinearGauge.h>
 #include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
+#include <QtIndustrialWidgets/QLedIndicator.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -63,6 +64,25 @@ void MainWindow::setupUi()
     m_fpsLabel = new QLabel(QStringLiteral("FPS: -- (0 ms)"), this);
     m_fpsLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace;"));
 
+    // Annunciator Status LEDs
+    m_runLed = new QLedIndicator(QColor(46, 204, 113), topBar);
+    m_runLed->setLabelText(QStringLiteral("RUN"));
+    m_runLed->setOn(false);
+
+    m_warnLed = new QLedIndicator(QColor(254, 211, 48), topBar);
+    m_warnLed->setLabelText(QStringLiteral("WARN"));
+    m_warnLed->setOn(false);
+
+    m_alarmLed = new QLedIndicator(QColor(235, 59, 90), topBar);
+    m_alarmLed->setLabelText(QStringLiteral("FAULT"));
+    m_alarmLed->setOn(false);
+    m_alarmLed->setBlinkRateMs(180);
+
+    m_pumpLed = new QLedIndicator(QColor(0, 229, 255), topBar);
+    m_pumpLed->setLabelText(QStringLiteral("AUX PUMP"));
+    m_pumpLed->setShape(QLedIndicator::LedShape::Rectangular);
+    m_pumpLed->setOn(false);
+
     m_simButton = new QPushButton(QStringLiteral("▶ Start Simulation (50 Hz)"), this);
     m_simButton->setCursor(Qt::PointingHandCursor);
     m_simButton->setMinimumHeight(32);
@@ -74,8 +94,14 @@ void MainWindow::setupUi()
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
 
     topLayout->addWidget(titleLabel);
-    topLayout->addSpacing(10);
-    topLayout->addWidget(m_statusLabel);
+    topLayout->addSpacing(12);
+    topLayout->addWidget(m_runLed);
+    topLayout->addSpacing(8);
+    topLayout->addWidget(m_warnLed);
+    topLayout->addSpacing(8);
+    topLayout->addWidget(m_alarmLed);
+    topLayout->addSpacing(8);
+    topLayout->addWidget(m_pumpLed);
     topLayout->addStretch();
     topLayout->addWidget(m_fpsLabel);
     topLayout->addWidget(m_simButton);
@@ -319,6 +345,40 @@ void MainWindow::setupUi()
     addSliderControl(QStringLiteral("Hydraulic Line (0 - 250 bar):"), 0, 250, 140, 1.0,
                      [this](double v) { m_hydraulicGauge->setValue(v); }, m_hydraulicSlider);
 
+    // Interactive LED testing group
+    auto *ledBox = new QGroupBox(QStringLiteral("Interactive QLedIndicator Showcase (Click on LEDs to Toggle)"), controlsTab);
+    auto *ledLayout = new QHBoxLayout(ledBox);
+    ledLayout->setSpacing(20);
+
+    auto *testLed1 = new QLedIndicator(QColor(46, 204, 113), ledBox);
+    testLed1->setLabelText(QStringLiteral("Green (Click Me)"));
+    testLed1->setClickable(true);
+
+    auto *testLed2 = new QLedIndicator(QColor(235, 59, 90), ledBox);
+    testLed2->setLabelText(QStringLiteral("Red Blinking (2 Hz)"));
+    testLed2->setBlinking(true);
+    testLed2->setBlinkRateMs(250);
+    testLed2->setClickable(true);
+
+    auto *testLed3 = new QLedIndicator(QColor(254, 211, 48), ledBox);
+    testLed3->setLabelText(QStringLiteral("Amber Rectangular"));
+    testLed3->setShape(QLedIndicator::LedShape::Rectangular);
+    testLed3->setClickable(true);
+
+    auto *testLed4 = new QLedIndicator(QColor(0, 229, 255), ledBox);
+    testLed4->setLabelText(QStringLiteral("Cyan Rectangular"));
+    testLed4->setShape(QLedIndicator::LedShape::Rectangular);
+    testLed4->setClickable(true);
+
+    ledLayout->addWidget(testLed1);
+    ledLayout->addWidget(testLed2);
+    ledLayout->addWidget(testLed3);
+    ledLayout->addWidget(testLed4);
+    ledLayout->addStretch();
+
+    controlsLayout->addWidget(ledBox, row, 0, 1, 3);
+    row++;
+
     controlsLayout->setRowStretch(row, 1);
     tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Sliders & Diagnostics"));
 
@@ -331,9 +391,13 @@ void MainWindow::toggleSimulation()
         m_simTimer.stop();
         m_isSimulating = false;
         m_simButton->setText(QStringLiteral("▶ Start Simulation (50 Hz)"));
-        m_statusLabel->setText(QStringLiteral("● Standby (Manual Mode)"));
-        m_statusLabel->setStyleSheet(QStringLiteral("color: #7f8c8d; font-weight: bold;"));
         m_fpsLabel->setText(QStringLiteral("FPS: --"));
+
+        m_runLed->setOn(false);
+        m_warnLed->setOn(false);
+        m_alarmLed->setOn(false);
+        m_alarmLed->setBlinking(false);
+        m_pumpLed->setOn(false);
     } else {
         m_simTime = 0.0;
         m_frameCount = 0;
@@ -342,8 +406,9 @@ void MainWindow::toggleSimulation()
         m_simTimer.start(20); // 50 Hz (20 ms interval)
         m_isSimulating = true;
         m_simButton->setText(QStringLiteral("⏹ Stop Simulation"));
-        m_statusLabel->setText(QStringLiteral("● SIMULATION ACTIVE (50 Hz / Smooth 60+ FPS)"));
-        m_statusLabel->setStyleSheet(QStringLiteral("color: #2ecc71; font-weight: bold;"));
+
+        m_runLed->setOn(true);
+        m_pumpLed->setOn(true);
     }
 }
 
@@ -392,6 +457,14 @@ void MainWindow::onSimulationTick()
     // Hydraulic fluctuation
     double hydraulic = 150.0 + 40.0 * std::sin(m_simTime * 2.5) + 10.0 * std::cos(m_simTime * 7.0);
     m_hydraulicGauge->setValue(hydraulic);
+
+    // Dynamic Annunciator LEDs
+    bool isWarning = (currentRpm >= 6000.0 || coolantTemp >= 94.0 || boostBase >= 2.2);
+    m_warnLed->setOn(isWarning);
+
+    bool isAlarm = (currentRpm >= 7200.0 || coolantTemp >= 105.0 || boostBase >= 2.6);
+    m_alarmLed->setOn(isAlarm);
+    m_alarmLed->setBlinking(isAlarm);
 
     // Speed display based on gear and RPM
     double simulatedSpeed = (currentRpm / 8000.0) * 260.0;

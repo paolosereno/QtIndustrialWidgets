@@ -56,6 +56,13 @@ Scalable vector digital display for instrumentation readouts.
 - **Authentic LED/LCD Feel**: Configurable active and inactive segment colors with transparency for realistic ghost segments.
 - **Alphanumeric & Decimals**: Supports numbers, minus signs, decimal points, and status codes (`ERR`, `READY`, etc.).
 
+### 4. `QLedIndicator`
+Industrial LED panel indicator with 3D lens refraction and blinking.
+- **Shapes & Bezels**: Circular or rectangular shapes with machined aluminum/metal bezel ring.
+- **Realistic 3D Optics**: Spherical convex lens gradient, specular dome highlights, and soft glow halo.
+- **States & Blinking**: Discrete On/Off states with configurable blinking frequency (in milliseconds or Hz) via efficient internal timer.
+- **Interactive**: Optional clickable mode with `clicked()` signal for interactive control boards.
+
 ---
 
 ## 🛠️ Build and Installation
