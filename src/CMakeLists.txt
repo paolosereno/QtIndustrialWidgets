@@ -7,6 +7,7 @@ add_library(QtIndustrialWidgets SHARED
     QStripChart.cpp
     QIndustrialSwitch.cpp
     QLevelMeter.cpp
+    QAnnunciatorPanel.cpp
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QRadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLinearGauge.h
@@ -16,6 +17,7 @@ add_library(QtIndustrialWidgets SHARED
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QStripChart.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialSwitch.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLevelMeter.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QAnnunciatorPanel.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

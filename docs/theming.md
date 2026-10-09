@@ -33,6 +33,14 @@ Each widget exposes fine-grained styling properties that can be set in C++, via 
 - `errorColor`: Overload / peak level color (default Red: `#eb3b5a`).
 - `backgroundColor`: Recessed track / chassis color.
 
+### Annunciators (`QAnnunciatorPanel`)
+- `frameColor`: Heavy chassis outer bezel frame color.
+- `gridColor`: Internal window matrix divider bar color.
+- `criticalColor`: High-priority / emergency alarm illumination color (Crimson Red: `#eb3b5a`).
+- `warningColor`: Medium-priority warning illumination color (Amber Gold: `#fed330`).
+- `advisoryColor`: Low-priority advisory illumination color (Cyan: `#00e5ff`).
+- `textColor`: Tile engraved legend lettering color (`#f0f4fa`).
+
 ---
 
 ## 🌙 Dark vs Light Theme Example

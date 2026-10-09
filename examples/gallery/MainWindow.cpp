@@ -8,6 +8,7 @@
 #include <QtIndustrialWidgets/QStripChart.h>
 #include <QtIndustrialWidgets/QIndustrialSwitch.h>
 #include <QtIndustrialWidgets/QLevelMeter.h>
+#include <QtIndustrialWidgets/QAnnunciatorPanel.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -18,6 +19,7 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QStyleFactory>
@@ -618,6 +620,200 @@ void MainWindow::setupUi()
     controlsLayout->setRowStretch(row, 1);
     tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
 
+    // ------------------------------------------------------------------------
+    // TAB 3: Alarm Annunciator Matrix (ANSI/ISA-18.1)
+    // ------------------------------------------------------------------------
+    auto *annunciatorTab = new QWidget(tabWidget);
+    auto *annLayout = new QVBoxLayout(annunciatorTab);
+    annLayout->setContentsMargins(16, 16, 16, 16);
+    annLayout->setSpacing(14);
+
+    // Annunciator Header Bar: Status, Horn Indicator, Counts
+    auto *annHeaderBox = new QFrame(annunciatorTab);
+    annHeaderBox->setFrameShape(QFrame::StyledPanel);
+    auto *annHeaderLayout = new QHBoxLayout(annHeaderBox);
+    annHeaderLayout->setContentsMargins(14, 10, 14, 10);
+    annHeaderLayout->setSpacing(16);
+
+    auto *annTitleLbl = new QLabel(QStringLiteral("🚨 <b>ANSI/ISA-18.1 Alarm Annunciator Window Matrix</b>"), annHeaderBox);
+    annTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
+
+    m_annunciatorHornLabel = new QLabel(QStringLiteral("🔇 HORN: SILENT"), annHeaderBox);
+    m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;"));
+
+    m_annunciatorStatusLabel = new QLabel(QStringLiteral("Active: 0 | Unack: 0 | Normal: 12"), annHeaderBox);
+    m_annunciatorStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #00e5ff;"));
+
+    annHeaderLayout->addWidget(annTitleLbl);
+    annHeaderLayout->addStretch();
+    annHeaderLayout->addWidget(m_annunciatorHornLabel);
+    annHeaderLayout->addWidget(m_annunciatorStatusLabel);
+    annLayout->addWidget(annHeaderBox);
+
+    // The Central Matrix Panel (3 rows x 4 columns = 12 windows)
+    m_annunciatorPanel = new QAnnunciatorPanel(3, 4, annunciatorTab);
+    m_annunciatorPanel->setMinimumHeight(320);
+
+    const struct {
+        int row;
+        int col;
+        const char *text;
+        QAnnunciatorPanel::Severity severity;
+    } tileConfigs[] = {
+        {0, 0, "TURBINE 1\nOVERSPEED TRIP", QAnnunciatorPanel::Severity::Critical},
+        {0, 1, "MAIN STEAM\nPRESS HIGH", QAnnunciatorPanel::Severity::Critical},
+        {0, 2, "BEARING OIL\nPRESS LOW", QAnnunciatorPanel::Severity::Critical},
+        {0, 3, "GENERATOR\nLOCKOUT TRIP", QAnnunciatorPanel::Severity::Critical},
+
+        {1, 0, "FEEDWATER PUMP\nTRIP FAULT", QAnnunciatorPanel::Severity::Warning},
+        {1, 1, "CONDENSER\nVACUUM LOW", QAnnunciatorPanel::Severity::Warning},
+        {1, 2, "TRANSFORMER\nTEMP HIGH", QAnnunciatorPanel::Severity::Warning},
+        {1, 3, "MAIN STEAM\nTEMP HIGH", QAnnunciatorPanel::Severity::Warning},
+
+        {2, 0, "FIRE SUPPRESSION\nDISCHARGED", QAnnunciatorPanel::Severity::Critical},
+        {2, 1, "AUX DIESEL GEN\nRUNNING", QAnnunciatorPanel::Severity::Advisory},
+        {2, 2, "UPS BATTERY\nON INVERTER", QAnnunciatorPanel::Severity::Advisory},
+        {2, 3, "SCADA TELEMETRY\nLINK OFFLINE", QAnnunciatorPanel::Severity::Warning}
+    };
+
+    for (const auto &cfg : tileConfigs) {
+        m_annunciatorPanel->setTileText(cfg.row, cfg.col, QString::fromLatin1(cfg.text));
+        m_annunciatorPanel->setTileSeverity(cfg.row, cfg.col, cfg.severity);
+    }
+
+    annLayout->addWidget(m_annunciatorPanel, 1);
+
+    // Control and Simulator Controls Panel (2 columns of QGroupBox)
+    auto *annControlsRow = new QHBoxLayout();
+    annControlsRow->setSpacing(14);
+
+    // Operator Pushbuttons (ANSI/ISA-18.1 standard)
+    auto *operatorBox = new QGroupBox(QStringLiteral("Standard Operator Pushbuttons (ANSI/ISA-18.1)"), annunciatorTab);
+    auto *operatorLayout = new QHBoxLayout(operatorBox);
+    operatorLayout->setSpacing(12);
+    operatorLayout->setContentsMargins(14, 16, 14, 14);
+
+    auto *ackBtn = new QPushButton(QStringLiteral("🔔 ACKNOWLEDGE (ACK)"), operatorBox);
+    ackBtn->setCursor(Qt::PointingHandCursor);
+    ackBtn->setStyleSheet(QStringLiteral("background-color: #0984e3; color: white; font-weight: bold; padding: 8px 16px;"));
+    connect(ackBtn, &QPushButton::clicked, m_annunciatorPanel, &QAnnunciatorPanel::acknowledgeAll);
+
+    auto *silenceBtn = new QPushButton(QStringLiteral("🔇 SILENCE"), operatorBox);
+    silenceBtn->setCursor(Qt::PointingHandCursor);
+    silenceBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
+    connect(silenceBtn, &QPushButton::clicked, m_annunciatorPanel, &QAnnunciatorPanel::silence);
+
+    auto *resetBtn = new QPushButton(QStringLiteral("🔄 RESET"), operatorBox);
+    resetBtn->setCursor(Qt::PointingHandCursor);
+    resetBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
+    connect(resetBtn, &QPushButton::clicked, m_annunciatorPanel, &QAnnunciatorPanel::resetAll);
+
+    auto *lampTestBtn = new QPushButton(QStringLiteral("💡 LAMP TEST"), operatorBox);
+    lampTestBtn->setCheckable(true);
+    lampTestBtn->setCursor(Qt::PointingHandCursor);
+    lampTestBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
+    connect(lampTestBtn, &QPushButton::toggled, m_annunciatorPanel, &QAnnunciatorPanel::setLampTest);
+
+    operatorLayout->addWidget(ackBtn);
+    operatorLayout->addWidget(silenceBtn);
+    operatorLayout->addWidget(resetBtn);
+    operatorLayout->addWidget(lampTestBtn);
+    annControlsRow->addWidget(operatorBox, 1);
+
+    // Alarm Trip Simulator & ISA Sequence selector
+    auto *simBox = new QGroupBox(QStringLiteral("Alarm Event Simulator & Configuration"), annunciatorTab);
+    auto *simLayout = new QHBoxLayout(simBox);
+    simLayout->setSpacing(12);
+    simLayout->setContentsMargins(14, 16, 14, 14);
+
+    auto *seqCombo = new QComboBox(simBox);
+    seqCombo->addItem(QStringLiteral("Sequence A (Automatic Reset)"), static_cast<int>(QAnnunciatorPanel::AnnunciatorSequence::SequenceA_AutomaticReset));
+    seqCombo->addItem(QStringLiteral("Sequence M (Manual Reset)"), static_cast<int>(QAnnunciatorPanel::AnnunciatorSequence::SequenceM_ManualReset));
+    connect(seqCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, seqCombo](int index) {
+        auto seq = static_cast<QAnnunciatorPanel::AnnunciatorSequence>(seqCombo->itemData(index).toInt());
+        m_annunciatorPanel->setSequence(seq);
+    });
+
+    auto *tripTurbineBtn = new QPushButton(QStringLiteral("Trip Turbine"), simBox);
+    tripTurbineBtn->setCheckable(true);
+    connect(tripTurbineBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_annunciatorPanel->setAlarmActive(0, 0, on);
+    });
+
+    auto *tripSteamBtn = new QPushButton(QStringLiteral("Trip Steam"), simBox);
+    tripSteamBtn->setCheckable(true);
+    connect(tripSteamBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_annunciatorPanel->setAlarmActive(0, 1, on);
+    });
+
+    auto *tripFireBtn = new QPushButton(QStringLiteral("Trip Fire Sys"), simBox);
+    tripFireBtn->setCheckable(true);
+    connect(tripFireBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_annunciatorPanel->setAlarmActive(2, 0, on);
+    });
+
+    auto *clearAllBtn = new QPushButton(QStringLiteral("Clear Trips"), simBox);
+    connect(clearAllBtn, &QPushButton::clicked, this, [this, tripTurbineBtn, tripSteamBtn, tripFireBtn]() {
+        tripTurbineBtn->setChecked(false);
+        tripSteamBtn->setChecked(false);
+        tripFireBtn->setChecked(false);
+        for (int i = 0; i < m_annunciatorPanel->tileCount(); ++i) {
+            m_annunciatorPanel->setAlarmActive(i, false);
+        }
+    });
+
+    simLayout->addWidget(new QLabel(QStringLiteral("Sequence:"), simBox));
+    simLayout->addWidget(seqCombo);
+    simLayout->addWidget(tripTurbineBtn);
+    simLayout->addWidget(tripSteamBtn);
+    simLayout->addWidget(tripFireBtn);
+    simLayout->addWidget(clearAllBtn);
+    annControlsRow->addWidget(simBox, 1);
+
+    annLayout->addLayout(annControlsRow);
+
+    // Connect Annunciator signals to status bar
+    auto updateStatus = [this]() {
+        int act = m_annunciatorPanel->activeAlarmsCount();
+        int unack = m_annunciatorPanel->unacknowledgedCount();
+        int total = m_annunciatorPanel->tileCount();
+        int norm = total - act;
+        m_annunciatorStatusLabel->setText(
+            QStringLiteral("Active: %1 | Unacknowledged: %2 | Normal: %3")
+                .arg(act).arg(unack).arg(norm));
+    };
+
+    connect(m_annunciatorPanel, &QAnnunciatorPanel::activeAlarmsCountChanged, this, [updateStatus](int) {
+        updateStatus();
+    });
+    connect(m_annunciatorPanel, &QAnnunciatorPanel::unacknowledgedCountChanged, this, [updateStatus](int) {
+        updateStatus();
+    });
+    connect(m_annunciatorPanel, &QAnnunciatorPanel::audibleHornChanged, this, [this](bool horn) {
+        if (horn) {
+            m_annunciatorHornLabel->setText(QStringLiteral("🔊 HORN: SOUNDING (AUDIBLE ALARM)"));
+            m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #eb3b5a; border-radius: 4px; color: #ffffff;"));
+        } else {
+            m_annunciatorHornLabel->setText(QStringLiteral("🔇 HORN: SILENT"));
+            m_annunciatorHornLabel->setStyleSheet(m_isDarkTheme 
+                ? QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;")
+                : QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #e8ecf1; border-radius: 4px; color: #718093;"));
+        }
+    });
+
+    // When an operator clicks a tile directly:
+    connect(m_annunciatorPanel, &QAnnunciatorPanel::tileClicked, this, [this](int idx) {
+        if (m_annunciatorPanel->tileState(idx) == QAnnunciatorPanel::AlarmState::Unacknowledged) {
+            m_annunciatorPanel->acknowledge(idx);
+        } else if (m_annunciatorPanel->tileState(idx) == QAnnunciatorPanel::AlarmState::Ringback) {
+            m_annunciatorPanel->reset(idx);
+        } else if (m_annunciatorPanel->tileState(idx) == QAnnunciatorPanel::AlarmState::Normal) {
+            m_annunciatorPanel->setAlarmActive(idx, !m_annunciatorPanel->isAlarmActive(idx));
+        }
+    });
+
+    tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
+
     rootLayout->addWidget(tabWidget);
 }
 
@@ -738,6 +934,21 @@ void MainWindow::onSimulationTick()
         m_audioVuMeter->setValue(0, db1);
         m_audioVuMeter->setValue(1, db2);
     }
+
+    // Dynamic annunciator alarms based on telemetry trips
+    if (m_annunciatorPanel) {
+        if (currentRpm >= 7200.0 && !m_annunciatorPanel->isAlarmActive(0)) {
+            m_annunciatorPanel->setAlarmActive(0, true);
+        } else if (currentRpm < 6800.0 && m_annunciatorPanel->isAlarmActive(0)) {
+            m_annunciatorPanel->setAlarmActive(0, false);
+        }
+
+        if (boostBase >= 2.4 && !m_annunciatorPanel->isAlarmActive(1)) {
+            m_annunciatorPanel->setAlarmActive(1, true);
+        } else if (boostBase < 2.0 && m_annunciatorPanel->isAlarmActive(1)) {
+            m_annunciatorPanel->setAlarmActive(1, false);
+        }
+    }
 }
 
 void MainWindow::toggleTheme()
@@ -827,6 +1038,18 @@ void MainWindow::applyTheme(bool dark)
             m_stripChart->setBackgroundColor(QColor(14, 18, 25));
             m_stripChart->setGridColor(QColor(42, 54, 70));
             m_stripChart->setBezelColor(QColor(38, 46, 60));
+        }
+
+        if (m_annunciatorPanel) {
+            m_annunciatorPanel->setFrameColor(QColor(30, 36, 46));
+            m_annunciatorPanel->setGridColor(QColor(55, 65, 80));
+            m_annunciatorPanel->setCriticalColor(QColor(235, 59, 90));
+            m_annunciatorPanel->setWarningColor(QColor(254, 211, 48));
+            m_annunciatorPanel->setAdvisoryColor(QColor(0, 229, 255));
+            m_annunciatorPanel->setTextColor(QColor(240, 244, 250));
+        }
+        if (m_annunciatorHornLabel && m_annunciatorPanel && !m_annunciatorPanel->isAudibleHornActive()) {
+            m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;"));
         }
     } else {
         // Modern Clean Light SCADA Theme
@@ -919,6 +1142,18 @@ void MainWindow::applyTheme(bool dark)
             m_stripChart->setBackgroundColor(QColor(242, 246, 252));
             m_stripChart->setGridColor(QColor(208, 218, 230));
             m_stripChart->setBezelColor(QColor(215, 222, 230));
+        }
+
+        if (m_annunciatorPanel) {
+            m_annunciatorPanel->setFrameColor(QColor(215, 222, 230));
+            m_annunciatorPanel->setGridColor(QColor(180, 190, 205));
+            m_annunciatorPanel->setCriticalColor(QColor(235, 59, 90));
+            m_annunciatorPanel->setWarningColor(QColor(243, 156, 18));
+            m_annunciatorPanel->setAdvisoryColor(QColor(9, 132, 227));
+            m_annunciatorPanel->setTextColor(QColor(30, 39, 46));
+        }
+        if (m_annunciatorHornLabel && m_annunciatorPanel && !m_annunciatorPanel->isAudibleHornActive()) {
+            m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #e8ecf1; border-radius: 4px; color: #718093;"));
         }
     }
 }

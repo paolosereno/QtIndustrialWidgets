@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
-[![Tests Defined](https://img.shields.io/badge/tests%20defined-62-blue.svg)](tests/)
-[![Tests Passed](https://img.shields.io/badge/tests%20passed-62%20%2F%2062%20(100%25)-brightgreen.svg)](tests/)
+[![Tests Defined](https://img.shields.io/badge/tests%20defined-71-blue.svg)](tests/)
+[![Tests Passed](https://img.shields.io/badge/tests%20passed-71%20%2F%2071%20(100%25)-brightgreen.svg)](tests/)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](docs/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
@@ -97,6 +97,14 @@ Multi-channel industrial VU and level meter with peak hold.
 - **Tri-Color Zones**: Configurable Normal (green), Warning (amber) and Error / Overload (red) zones with `overloadOccurred(int)` signal.
 - **Dual Orientation & Scale**: Vertical and horizontal mounting with graduated dB or engineering units scale.
 
+### 9. `QAnnunciatorPanel`
+Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 standard.
+- **Configurable Matrix**: Flexible N x M grid of backlit acrylic indicator tiles with engraved multi-line legends.
+- **ANSI/ISA-18.1 Sequences**: Sequence A (Automatic Reset) and Sequence M (Manual Reset) logic handling Normal, Unacknowledged (rapid flash), Acknowledged (steady lit), and Ringback (slow flash) alarm states.
+- **Alarm Classification**: Tri-level priority grading: Critical (Red), Warning (Amber), and Advisory (Cyan).
+- **Control Station Operations**: Dedicated Acknowledge (ACK), Silence (horn mute), Reset, and Lamp Test functionality with `audibleHornChanged(bool)` horn signal.
+- **Interactive Operator Action**: Click directly on individual tiles to acknowledge alarms, with Hi-DPI frame caching for zero-overhead rendering.
+
 ---
 
 ## 🛠️ Build and Installation
@@ -123,7 +131,7 @@ ctest --test-dir build --output-on-failure
 cmake --build build --target docs
 
 # Run the interactive gallery showcase
-./build/examples/gallery/QtIndustrialWidgetsGallery
+./build/bin/QtIndustrialWidgetsGallery
 ```
 
 ---

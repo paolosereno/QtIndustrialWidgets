@@ -8,6 +8,7 @@
 #include <QtIndustrialWidgets/QStripChart.h>
 #include <QtIndustrialWidgets/QIndustrialSwitch.h>
 #include <QtIndustrialWidgets/QLevelMeter.h>
+#include <QtIndustrialWidgets/QAnnunciatorPanel.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -743,6 +744,103 @@ QIcon QLevelMeterPlugin::icon() const
 }
 
 // ============================================================================
+// QAnnunciatorPanelPlugin
+// ============================================================================
+
+QAnnunciatorPanelPlugin::QAnnunciatorPanelPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QAnnunciatorPanelPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QAnnunciatorPanelPlugin::createWidget(QWidget *parent)
+{
+    return new QAnnunciatorPanel(parent);
+}
+
+QString QAnnunciatorPanelPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QAnnunciatorPanelPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QAnnunciatorPanel.h");
+}
+
+QString QAnnunciatorPanelPlugin::name() const
+{
+    return QStringLiteral("QAnnunciatorPanel");
+}
+
+QString QAnnunciatorPanelPlugin::toolTip() const
+{
+    return QStringLiteral("ANSI/ISA-18.1 industrial alarm annunciator window matrix");
+}
+
+QString QAnnunciatorPanelPlugin::whatsThis() const
+{
+    return QStringLiteral("A matrix of backlit alarm indicator windows with standard ISA-18.1 sequence logic and engraved legends.");
+}
+
+QString QAnnunciatorPanelPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QAnnunciatorPanel\" name=\"annunciatorPanel\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>320</width>\n"
+        "   <height>160</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QAnnunciatorPanelPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Dark chassis
+    p.setPen(QPen(QColor(60, 70, 85), 1.2));
+    p.setBrush(QColor(24, 28, 36));
+    p.drawRoundedRect(2, 4, 28, 24, 3, 3);
+
+    // 2x2 grid of annunciator tiles
+    // Tile 1: Red lit
+    p.setPen(QPen(QColor(235, 59, 90), 1.0));
+    p.setBrush(QColor(235, 59, 90));
+    p.drawRoundedRect(5, 7, 10, 8, 1, 1);
+
+    // Tile 2: Amber lit
+    p.setPen(QPen(QColor(254, 211, 48), 1.0));
+    p.setBrush(QColor(254, 211, 48));
+    p.drawRoundedRect(17, 7, 10, 8, 1, 1);
+
+    // Tile 3: Dark unlit
+    p.setPen(QPen(QColor(45, 55, 68), 1.0));
+    p.setBrush(QColor(35, 42, 52));
+    p.drawRoundedRect(5, 17, 10, 8, 1, 1);
+
+    // Tile 4: Cyan lit
+    p.setPen(QPen(QColor(0, 229, 255), 1.0));
+    p.setBrush(QColor(0, 229, 255));
+    p.drawRoundedRect(17, 17, 10, 8, 1, 1);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -757,6 +855,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QStripChartPlugin(this));
     m_widgets.append(new QIndustrialSwitchPlugin(this));
     m_widgets.append(new QLevelMeterPlugin(this));
+    m_widgets.append(new QAnnunciatorPanelPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

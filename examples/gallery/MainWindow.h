@@ -12,6 +12,7 @@ class QIndustrialKnob;
 class QStripChart;
 class QIndustrialSwitch;
 class QLevelMeter;
+class QAnnunciatorPanel;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -81,6 +82,11 @@ private:
     QSlider *m_coolantSlider{nullptr};
     QSlider *m_fuelSlider{nullptr};
     QSlider *m_hydraulicSlider{nullptr};
+
+    // Alarm Annunciator Matrix (ISA-18.1)
+    QAnnunciatorPanel *m_annunciatorPanel{nullptr};
+    QLabel *m_annunciatorHornLabel{nullptr};
+    QLabel *m_annunciatorStatusLabel{nullptr};
 
     // Simulation & UI state
     QPushButton *m_simButton{nullptr};
