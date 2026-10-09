@@ -170,7 +170,7 @@ include(FetchContent)
 
 FetchContent_Declare(
     QtIndustrialWidgets
-    GIT_REPOSITORY https://github.com/paolo/QtIndustrialWidgets.git
+    GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
     GIT_TAG        v1.0.0
 )
 
