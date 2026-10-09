@@ -8,6 +8,7 @@ add_library(QtIndustrialWidgets SHARED
     QIndustrialSwitch.cpp
     QLevelMeter.cpp
     QAnnunciatorPanel.cpp
+    QCompass.cpp
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QRadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLinearGauge.h
@@ -18,6 +19,7 @@ add_library(QtIndustrialWidgets SHARED
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialSwitch.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLevelMeter.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QAnnunciatorPanel.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QCompass.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

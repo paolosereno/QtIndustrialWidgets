@@ -13,6 +13,7 @@ class QStripChart;
 class QIndustrialSwitch;
 class QLevelMeter;
 class QAnnunciatorPanel;
+class QCompass;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -87,6 +88,15 @@ private:
     QAnnunciatorPanel *m_annunciatorPanel{nullptr};
     QLabel *m_annunciatorHornLabel{nullptr};
     QLabel *m_annunciatorStatusLabel{nullptr};
+
+    // Navigation / Directional Gyro (QCompass)
+    QCompass *m_compassHeadingUp{nullptr};
+    QCompass *m_compassNorthUp{nullptr};
+    QSlider *m_headingSlider{nullptr};
+    QSlider *m_targetBugSlider{nullptr};
+    QLabel *m_deviationLabel{nullptr};
+    QPushButton *m_autopilotButton{nullptr};
+    bool m_isAutopilotActive{false};
 
     // Simulation & UI state
     QPushButton *m_simButton{nullptr};

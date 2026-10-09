@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
-[![Tests Defined](https://img.shields.io/badge/tests%20defined-71-blue.svg)](tests/)
-[![Tests Passed](https://img.shields.io/badge/tests%20passed-71%20%2F%2071%20(100%25)-brightgreen.svg)](tests/)
+[![Tests Defined](https://img.shields.io/badge/tests%20defined-80-blue.svg)](tests/)
+[![Tests Passed](https://img.shields.io/badge/tests%20passed-80%20%2F%2080%20(100%25)-brightgreen.svg)](tests/)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
@@ -105,6 +105,13 @@ Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 stand
 - **Control Station Operations**: Dedicated Acknowledge (ACK), Silence (horn mute), Reset, and Lamp Test functionality with `audibleHornChanged(bool)` horn signal.
 - **Interactive Operator Action**: Click directly on individual tiles to acknowledge alarms, with Hi-DPI frame caching for zero-overhead rendering.
 
+### 10. `QCompass`
+Marine gyrocompass and aeronautical directional heading indicator instrument.
+- **Dual Operating Modes**: `HeadingUp` (rotating compass card matching aircraft/marine heading) and `NorthUp` (fixed compass rose with 360° dual-tone magnetic needle).
+- **Course Deviation & Heading Bug**: Adjustable target heading bug with interactive mouse click/drag, displaying real-time angular course deviation (CDI).
+- **Navigation Scales**: Full 360° degree markings, cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) indices, and aviation 3-digit heading numbers.
+- **Lubber Reference & Digital Pod**: Fixed fluorescent lubber line at 12 o'clock and recessed central digital heading angle readout.
+
 ---
 
 ## 🛠️ Build and Installation
@@ -200,7 +207,7 @@ The widgets will automatically appear in the **Industrial Widgets** category in 
 
 > 🌐 **Online Documentation (GitHub Pages)**: [https://paolosereno.github.io/QtIndustrialWidgets/](https://paolosereno.github.io/QtIndustrialWidgets/)
 
-QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 9 widgets, architecture design, and integration tutorials.
+QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 10 widgets, architecture design, and integration tutorials.
 
 ### Prerequisites
 

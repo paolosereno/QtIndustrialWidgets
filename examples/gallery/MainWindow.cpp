@@ -9,6 +9,7 @@
 #include <QtIndustrialWidgets/QIndustrialSwitch.h>
 #include <QtIndustrialWidgets/QLevelMeter.h>
 #include <QtIndustrialWidgets/QAnnunciatorPanel.h>
+#include <QtIndustrialWidgets/QCompass.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -20,6 +21,7 @@
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QStyleFactory>
@@ -814,6 +816,203 @@ void MainWindow::setupUi()
 
     tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
 
+    // ------------------------------------------------------------------------
+    // TAB 4: Navigation & Directional Gyro (QCompass)
+    // ------------------------------------------------------------------------
+    auto *navTab = new QWidget(tabWidget);
+    auto *navLayout = new QVBoxLayout(navTab);
+    navLayout->setContentsMargins(16, 16, 16, 16);
+    navLayout->setSpacing(14);
+
+    // Navigation Header Bar: Mode & Course Deviation
+    auto *navHeaderBox = new QFrame(navTab);
+    navHeaderBox->setFrameShape(QFrame::StyledPanel);
+    auto *navHeaderLayout = new QHBoxLayout(navHeaderBox);
+    navHeaderLayout->setContentsMargins(14, 10, 14, 10);
+    navHeaderLayout->setSpacing(16);
+
+    auto *navTitleLbl = new QLabel(QStringLiteral("🧭 <b>Aeronautical & Marine Directional Navigation Instruments</b>"), navHeaderBox);
+    navTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
+
+    m_deviationLabel = new QLabel(QStringLiteral("CDI: ON COURSE (000°)"), navHeaderBox);
+    m_deviationLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #2ecc71;"));
+
+    auto *autopilotStatusLabel = new QLabel(QStringLiteral("AUTOPILOT: STANDBY"), navHeaderBox);
+    autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #00e5ff;"));
+
+    navHeaderLayout->addWidget(navTitleLbl);
+    navHeaderLayout->addStretch();
+    navHeaderLayout->addWidget(m_deviationLabel);
+    navHeaderLayout->addWidget(autopilotStatusLabel);
+    navLayout->addWidget(navHeaderBox);
+
+    // Center Instruments Row: Heading-Up (left) and North-Up (right)
+    auto *instrumentsRow = new QHBoxLayout();
+    instrumentsRow->setSpacing(16);
+
+    // Group 1: Heading-Up Marine Gyrocompass
+    auto *headingUpGroup = new QGroupBox(QStringLiteral("Heading-Up Gyrocompass (Aircraft / Marine Compass Card)"), navTab);
+    auto *huLayout = new QVBoxLayout(headingUpGroup);
+    huLayout->setContentsMargins(12, 16, 12, 12);
+    m_compassHeadingUp = new QCompass(headingUpGroup);
+    m_compassHeadingUp->setDisplayMode(QCompass::DisplayMode::HeadingUp);
+    m_compassHeadingUp->setHeading(45.0);
+    m_compassHeadingUp->setTargetHeading(90.0);
+    m_compassHeadingUp->setMinimumHeight(280);
+    huLayout->addWidget(m_compassHeadingUp);
+    instrumentsRow->addWidget(headingUpGroup, 1);
+
+    // Group 2: North-Up Directional Indicator
+    auto *northUpGroup = new QGroupBox(QStringLiteral("North-Up Heading Indicator (360° Magnetic Pointer)"), navTab);
+    auto *nuLayout = new QVBoxLayout(northUpGroup);
+    nuLayout->setContentsMargins(12, 16, 12, 12);
+    m_compassNorthUp = new QCompass(northUpGroup);
+    m_compassNorthUp->setDisplayMode(QCompass::DisplayMode::NorthUp);
+    m_compassNorthUp->setHeading(45.0);
+    m_compassNorthUp->setTargetHeading(90.0);
+    m_compassNorthUp->setMinimumHeight(280);
+    nuLayout->addWidget(m_compassNorthUp);
+    instrumentsRow->addWidget(northUpGroup, 1);
+
+    navLayout->addLayout(instrumentsRow, 1);
+
+    // Bottom Controls & Simulation Console
+    auto *navControlsBox = new QGroupBox(QStringLiteral("Navigation Controls & Autopilot Simulation"), navTab);
+    auto *ncLayout = new QGridLayout(navControlsBox);
+    ncLayout->setContentsMargins(16, 16, 16, 14);
+    ncLayout->setSpacing(12);
+
+    // Heading Slider (0 - 359°)
+    auto *hdgLbl = new QLabel(QStringLiteral("Vessel Heading (0° - 359°):"), navControlsBox);
+    hdgLbl->setStyleSheet(QStringLiteral("font-weight: bold;"));
+    m_headingSlider = new QSlider(Qt::Horizontal, navControlsBox);
+    m_headingSlider->setRange(0, 359);
+    m_headingSlider->setValue(45);
+
+    auto *hdgValLbl = new QLabel(QStringLiteral("045°"), navControlsBox);
+    hdgValLbl->setFixedWidth(50);
+    hdgValLbl->setStyleSheet(QStringLiteral("font-family: monospace; font-weight: bold;"));
+
+    // Target Bug Slider (0 - 359°)
+    auto *bugLbl = new QLabel(QStringLiteral("Target Bug Heading (Course):"), navControlsBox);
+    bugLbl->setStyleSheet(QStringLiteral("font-weight: bold;"));
+    m_targetBugSlider = new QSlider(Qt::Horizontal, navControlsBox);
+    m_targetBugSlider->setRange(0, 359);
+    m_targetBugSlider->setValue(90);
+
+    auto *bugValLbl = new QLabel(QStringLiteral("090°"), navControlsBox);
+    bugValLbl->setFixedWidth(50);
+    bugValLbl->setStyleSheet(QStringLiteral("font-family: monospace; font-weight: bold; color: #ff793f;"));
+
+    ncLayout->addWidget(hdgLbl, 0, 0);
+    ncLayout->addWidget(m_headingSlider, 0, 1);
+    ncLayout->addWidget(hdgValLbl, 0, 2);
+
+    ncLayout->addWidget(bugLbl, 1, 0);
+    ncLayout->addWidget(m_targetBugSlider, 1, 1);
+    ncLayout->addWidget(bugValLbl, 1, 2);
+
+    // Quick cardinal buttons and Autopilot button
+    auto *buttonRow = new QHBoxLayout();
+    buttonRow->setSpacing(8);
+
+    auto addCardBtn = [&](const QString &txt, double deg) {
+        auto *btn = new QPushButton(txt, navControlsBox);
+        btn->setCursor(Qt::PointingHandCursor);
+        connect(btn, &QPushButton::clicked, this, [=]() {
+            m_compassHeadingUp->setTargetHeading(deg);
+            m_compassNorthUp->setTargetHeading(deg);
+            m_targetBugSlider->setValue(static_cast<int>(deg));
+        });
+        buttonRow->addWidget(btn);
+    };
+
+    addCardBtn(QStringLiteral("🧭 North (000°)"), 0.0);
+    addCardBtn(QStringLiteral("🧭 East (090°)"), 90.0);
+    addCardBtn(QStringLiteral("🧭 South (180°)"), 180.0);
+    addCardBtn(QStringLiteral("🧭 West (270°)"), 270.0);
+
+    // Align Button
+    auto *alignBtn = new QPushButton(QStringLiteral("⚡ Align Bug to Heading"), navControlsBox);
+    alignBtn->setCursor(Qt::PointingHandCursor);
+    connect(alignBtn, &QPushButton::clicked, this, [=]() {
+        double currentHdg = m_compassHeadingUp->heading();
+        m_compassHeadingUp->setTargetHeading(currentHdg);
+        m_compassNorthUp->setTargetHeading(currentHdg);
+        m_targetBugSlider->setValue(static_cast<int>(currentHdg));
+    });
+    buttonRow->addWidget(alignBtn);
+
+    // Autopilot Button
+    m_autopilotButton = new QPushButton(QStringLiteral("🤖 Engage Autopilot Heading Hold"), navControlsBox);
+    m_autopilotButton->setCheckable(true);
+    m_autopilotButton->setCursor(Qt::PointingHandCursor);
+    m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #242c3d; color: #00e5ff; font-weight: bold; padding: 6px 14px;"));
+    connect(m_autopilotButton, &QPushButton::toggled, this, [this, autopilotStatusLabel](bool checked) {
+        m_isAutopilotActive = checked;
+        if (checked) {
+            m_autopilotButton->setText(QStringLiteral("⏹ Disengage Autopilot"));
+            m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #eb3b5a; color: white; font-weight: bold; padding: 6px 14px;"));
+            autopilotStatusLabel->setText(QStringLiteral("AUTOPILOT: LOCKED (HEADING HOLD)"));
+            autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #2ecc71;"));
+        } else {
+            m_autopilotButton->setText(QStringLiteral("🤖 Engage Autopilot Heading Hold"));
+            m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #242c3d; color: #00e5ff; font-weight: bold; padding: 6px 14px;"));
+            autopilotStatusLabel->setText(QStringLiteral("AUTOPILOT: STANDBY"));
+            autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #a4b3c6;"));
+        }
+    });
+    buttonRow->addWidget(m_autopilotButton);
+
+    ncLayout->addLayout(buttonRow, 2, 0, 1, 3);
+
+    // Synchronize sliders with both compasses
+    auto updateDeviation = [this]() {
+        double dev = m_compassHeadingUp->courseDeviation();
+        int idev = static_cast<int>(std::round(dev));
+        if (std::abs(idev) == 0) {
+            m_deviationLabel->setText(QStringLiteral("CDI: ON COURSE (000°)"));
+            m_deviationLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #2ecc71;"));
+        } else if (idev > 0) {
+            m_deviationLabel->setText(QStringLiteral("CDI: +%1° STBD (RIGHT)").arg(idev, 3, 10, QLatin1Char('0')));
+            m_deviationLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #fed330;"));
+        } else {
+            m_deviationLabel->setText(QStringLiteral("CDI: -%1° PORT (LEFT)").arg(-idev, 3, 10, QLatin1Char('0')));
+            m_deviationLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #ff793f;"));
+        }
+    };
+
+    connect(m_headingSlider, &QSlider::valueChanged, this, [=](int val) {
+        hdgValLbl->setText(QStringLiteral("%1°").arg(val, 3, 10, QLatin1Char('0')));
+        m_compassHeadingUp->setHeading(val);
+        m_compassNorthUp->setHeading(val);
+        updateDeviation();
+    });
+
+    connect(m_targetBugSlider, &QSlider::valueChanged, this, [=](int val) {
+        bugValLbl->setText(QStringLiteral("%1°").arg(val, 3, 10, QLatin1Char('0')));
+        m_compassHeadingUp->setTargetHeading(val);
+        m_compassNorthUp->setTargetHeading(val);
+        updateDeviation();
+    });
+
+    // When user drags bug directly on compass:
+    connect(m_compassHeadingUp, &QCompass::targetHeadingChanged, this, [=](double val) {
+        m_compassNorthUp->setTargetHeading(val);
+        m_targetBugSlider->setValue(static_cast<int>(val));
+        bugValLbl->setText(QStringLiteral("%1°").arg(static_cast<int>(val), 3, 10, QLatin1Char('0')));
+        updateDeviation();
+    });
+    connect(m_compassNorthUp, &QCompass::targetHeadingChanged, this, [=](double val) {
+        m_compassHeadingUp->setTargetHeading(val);
+        m_targetBugSlider->setValue(static_cast<int>(val));
+        bugValLbl->setText(QStringLiteral("%1°").arg(static_cast<int>(val), 3, 10, QLatin1Char('0')));
+        updateDeviation();
+    });
+
+    navLayout->addWidget(navControlsBox);
+    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (QCompass)"));
+
     rootLayout->addWidget(tabWidget);
 }
 
@@ -949,6 +1148,20 @@ void MainWindow::onSimulationTick()
             m_annunciatorPanel->setAlarmActive(1, false);
         }
     }
+
+    // Autopilot Course Correction for QCompass
+    if (m_isAutopilotActive && m_compassHeadingUp && m_compassNorthUp) {
+        double dev = m_compassHeadingUp->courseDeviation();
+        if (std::abs(dev) > 0.4) {
+            double turnRate = std::clamp(dev * 0.08, -1.8, 1.8);
+            double newHdg = QCompass::normalizeDegrees(m_compassHeadingUp->heading() - turnRate);
+            m_compassHeadingUp->setHeading(newHdg);
+            m_compassNorthUp->setHeading(newHdg);
+            if (m_headingSlider) {
+                m_headingSlider->setValue(static_cast<int>(newHdg));
+            }
+        }
+    }
 }
 
 void MainWindow::toggleTheme()
@@ -1050,6 +1263,17 @@ void MainWindow::applyTheme(bool dark)
         }
         if (m_annunciatorHornLabel && m_annunciatorPanel && !m_annunciatorPanel->isAudibleHornActive()) {
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;"));
+        }
+
+        if (m_compassHeadingUp) {
+            m_compassHeadingUp->setDialColor(QColor(20, 24, 32));
+            m_compassHeadingUp->setBezelColor(QColor(48, 56, 70));
+            m_compassHeadingUp->setTextColor(QColor(225, 231, 236));
+        }
+        if (m_compassNorthUp) {
+            m_compassNorthUp->setDialColor(QColor(20, 24, 32));
+            m_compassNorthUp->setBezelColor(QColor(48, 56, 70));
+            m_compassNorthUp->setTextColor(QColor(225, 231, 236));
         }
     } else {
         // Modern Clean Light SCADA Theme
@@ -1154,6 +1378,17 @@ void MainWindow::applyTheme(bool dark)
         }
         if (m_annunciatorHornLabel && m_annunciatorPanel && !m_annunciatorPanel->isAudibleHornActive()) {
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #e8ecf1; border-radius: 4px; color: #718093;"));
+        }
+
+        if (m_compassHeadingUp) {
+            m_compassHeadingUp->setDialColor(QColor(242, 244, 248));
+            m_compassHeadingUp->setBezelColor(QColor(200, 208, 218));
+            m_compassHeadingUp->setTextColor(QColor(30, 39, 46));
+        }
+        if (m_compassNorthUp) {
+            m_compassNorthUp->setDialColor(QColor(242, 244, 248));
+            m_compassNorthUp->setBezelColor(QColor(200, 208, 218));
+            m_compassNorthUp->setTextColor(QColor(30, 39, 46));
         }
     }
 }

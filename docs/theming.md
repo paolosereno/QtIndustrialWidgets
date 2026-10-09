@@ -41,6 +41,16 @@ Each widget exposes fine-grained styling properties that can be set in C++, via 
 - `advisoryColor`: Low-priority advisory illumination color (Cyan: `#00e5ff`).
 - `textColor`: Tile engraved legend lettering color (`#f0f4fa`).
 
+### Compasses (`QCompass`)
+- `dialColor`: Background color of the rotating card or fixed compass face.
+- `bezelColor`: Machined metallic outer rim and inner groove.
+- `textColor`: Degree numbers and graduation ticks.
+- `cardinalColor`: Cardinal directions highlight color (N/E/S/W).
+- `needleColor`: North pointer arrow color (Vivid Red: `#eb3b5a`).
+- `needleTailColor`: South pointer arrow color (Slate: `#a0afc3`).
+- `bugColor`: Target heading bug chevron color (Fluorescent Orange: `#fe8228`).
+- `lubberColor`: 12 o'clock reference lubber line color (Safety Amber: `#fed330`).
+
 ---
 
 ## 🌙 Dark vs Light Theme Example

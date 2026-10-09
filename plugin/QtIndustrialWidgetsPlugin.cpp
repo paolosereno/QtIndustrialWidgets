@@ -9,6 +9,7 @@
 #include <QtIndustrialWidgets/QIndustrialSwitch.h>
 #include <QtIndustrialWidgets/QLevelMeter.h>
 #include <QtIndustrialWidgets/QAnnunciatorPanel.h>
+#include <QtIndustrialWidgets/QCompass.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -841,6 +842,117 @@ QIcon QAnnunciatorPanelPlugin::icon() const
 }
 
 // ============================================================================
+// QCompassPlugin
+// ============================================================================
+
+QCompassPlugin::QCompassPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QCompassPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QCompassPlugin::createWidget(QWidget *parent)
+{
+    return new QCompass(parent);
+}
+
+QString QCompassPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QCompassPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QCompass.h");
+}
+
+QString QCompassPlugin::name() const
+{
+    return QStringLiteral("QCompass");
+}
+
+QString QCompassPlugin::toolTip() const
+{
+    return QStringLiteral("Marine gyrocompass and aeronautical heading indicator");
+}
+
+QString QCompassPlugin::whatsThis() const
+{
+    return QStringLiteral("A 360-degree navigational instrument with HeadingUp and NorthUp modes, target heading bug, and course deviation indicator.");
+}
+
+QString QCompassPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QCompass\" name=\"compass\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>220</width>\n"
+        "   <height>220</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QCompassPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Outer dark bezel ring
+    p.setPen(QPen(QColor(60, 70, 85), 1.5));
+    p.setBrush(QColor(20, 24, 32));
+    p.drawEllipse(QPointF(16, 16), 14, 14);
+
+    // Inner dial ring
+    p.setPen(QPen(QColor(0, 229, 255, 60), 1.0));
+    p.setBrush(QColor(14, 18, 25));
+    p.drawEllipse(QPointF(16, 16), 11, 11);
+
+    // North marker (red arrow)
+    QPainterPath north;
+    north.moveTo(16, 16);
+    north.lineTo(13.5, 16);
+    north.lineTo(16, 5);
+    north.lineTo(18.5, 16);
+    north.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(235, 59, 90));
+    p.drawPath(north);
+
+    // South marker (slate arrow)
+    QPainterPath south;
+    south.moveTo(16, 16);
+    south.lineTo(13.5, 16);
+    south.lineTo(16, 27);
+    south.lineTo(18.5, 16);
+    south.closeSubpath();
+    p.setBrush(QColor(160, 175, 195));
+    p.drawPath(south);
+
+    // Center pivot
+    p.setPen(QPen(QColor(30, 36, 46), 1.0));
+    p.setBrush(QColor(240, 244, 250));
+    p.drawEllipse(QPointF(16, 16), 2.5, 2.5);
+
+    // Heading bug notch at 45 deg (orange)
+    p.setPen(QPen(QColor(254, 130, 40), 2.0));
+    p.drawLine(QPointF(24, 8), QPointF(26, 6));
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -856,6 +968,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QIndustrialSwitchPlugin(this));
     m_widgets.append(new QLevelMeterPlugin(this));
     m_widgets.append(new QAnnunciatorPanelPlugin(this));
+    m_widgets.append(new QCompassPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const
