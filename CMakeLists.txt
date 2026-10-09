@@ -28,6 +28,7 @@ message(STATUS "QtIndustrialWidgets: Using Qt ${QT_VERSION_MAJOR} (version ${Qt$
 option(BUILD_DESIGNER_PLUGIN "Build the Qt Designer plugin" ON)
 option(BUILD_EXAMPLES "Build the gallery showcase application" ON)
 option(BUILD_TESTS "Build the unit test suite" ON)
+option(BUILD_DOCS "Build API documentation using Doxygen" ON)
 
 # Check for Qt Designer module if plugin requested
 if(BUILD_DESIGNER_PLUGIN)
@@ -67,6 +68,17 @@ if(BUILD_TESTS)
     find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Doxygen documentation target
+if(BUILD_DOCS)
+    find_package(Doxygen OPTIONAL_COMPONENTS dot)
+    if(DOXYGEN_FOUND)
+        message(STATUS "QtIndustrialWidgets: Doxygen found, enabling 'docs' target")
+        add_subdirectory(docs)
+    else()
+        message(STATUS "QtIndustrialWidgets: Doxygen not found, 'docs' target disabled (install doxygen and graphviz to build docs)")
+    endif()
 endif()
 
 # CMake package configuration for consumers (find_package(QtIndustrialWidgets))

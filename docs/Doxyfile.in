@@ -1,0 +1,81 @@
+# Doxyfile template for QtIndustrialWidgets
+
+PROJECT_NAME           = "QtIndustrialWidgets"
+PROJECT_NUMBER         = "@PROJECT_VERSION@"
+PROJECT_BRIEF          = "Modern, High-Performance Industrial Instruments & SCADA Widgets for Qt"
+OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@"
+
+# Input files
+INPUT                  = "@PROJECT_SOURCE_DIR@/include/QtIndustrialWidgets" \
+                         "@PROJECT_SOURCE_DIR@/README.md" \
+                         "@PROJECT_SOURCE_DIR@/docs"
+USE_MDFILE_AS_MAINPAGE = "@PROJECT_SOURCE_DIR@/README.md"
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.md
+EXCLUDE_PATTERNS       = */build/* */tests/* */examples/*
+
+# Extraction settings
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_PACKAGE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = YES
+
+# Preprocessor & Qt macros
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = QTINDUSTRIALWIDGETS_EXPORT= \
+                         Q_OBJECT \
+                         Q_PROPERTY(...) \
+                         Q_ENUM(...) \
+                         Q_SIGNALS=signals \
+                         Q_SLOTS=slots \
+                         "signals=public" \
+                         "slots=public"
+
+# Documentation format
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+MULTILINE_CPP_IS_BRIEF = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+SUBGROUPING            = YES
+
+# HTML output options
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+HTML_COLORSTYLE_HUE    = 209
+HTML_COLORSTYLE_SAT    = 160
+HTML_COLORSTYLE_GAMMA  = 80
+GENERATE_TREEVIEW      = YES
+TREEVIEW_WIDTH         = 280
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = YES
+SEARCHENGINE           = YES
+
+# Disable unused outputs
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+GENERATE_XML           = NO
+
+# Graphviz / dot diagrams
+HAVE_DOT               = @DOXYGEN_HAVE_DOT@
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+DOT_TRANSPARENT        = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+GROUP_GRAPHS           = YES
+UML_LOOK               = YES
+TEMPLATE_RELATIONS     = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
