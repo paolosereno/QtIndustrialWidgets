@@ -30,7 +30,7 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 ---
 
 <p align="center">
-  <img src="screenshot.jpg" alt="QtIndustrialWidgets Showcase Gallery" width="95%">
+  <img src="Demo.gif" alt="QtIndustrialWidgets Showcase Gallery" width="95%">
 </p>
 
 ---
