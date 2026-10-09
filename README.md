@@ -1,8 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+
+SPDX-License-Identifier: MIT
+-->
+
 # QtIndustrialWidgets ⚡
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![Qt 6 & 5.15](https://img.shields.io/badge/Qt-6.x%20%7C%205.15-brightgreen.svg)](https://www.qt.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
 [![Tests Defined](https://img.shields.io/badge/tests%20defined-80-blue.svg)](tests/)
@@ -299,6 +306,11 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255)); // Neon Cyan
 
 ---
 
-## 📄 License
+## 📄 License & REUSE Compliance
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE) (SPDX: `MIT`) and is 100% compliant with the [REUSE Specification v3.3](https://reuse.software/) and [SPDX](https://spdx.dev/) standards.
+
+- Full license text: [`LICENSES/MIT.txt`](LICENSES/MIT.txt)
+- Machine-readable copyright & license headers on all project files.
+- REUSE status: [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
+

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Qt Designer Integration Guide {#designer_plugin}
 
 QtIndustrialWidgets provides an integrated plugin module (`QtIndustrialWidgetsPlugin`) that seamlessly registers all 10 widgets inside **Qt Designer** and **Qt Creator**.

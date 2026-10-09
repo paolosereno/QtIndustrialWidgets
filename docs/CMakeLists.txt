@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 if(DOXYGEN_DOT_FOUND)
     set(DOXYGEN_HAVE_DOT "YES")
 else()

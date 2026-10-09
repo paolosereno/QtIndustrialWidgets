@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Theming and Styling Guide {#theming}
 
 QtIndustrialWidgets is designed with modern SCADA and dashboard theming in mind. All widgets render crisply across both **Light** and **Dark** themes.

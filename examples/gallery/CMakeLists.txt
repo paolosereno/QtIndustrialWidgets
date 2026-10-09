@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 add_executable(QtIndustrialWidgetsGallery
     main.cpp
     MainWindow.h

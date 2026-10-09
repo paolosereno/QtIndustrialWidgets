@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/QRadialGauge.h>
 #include <QtGui/QPixmap>

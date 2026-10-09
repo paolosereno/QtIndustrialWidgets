@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
 /**
  * \file qtindustrialwidgets_global.h
  * \brief Library export macros and version definitions for QtIndustrialWidgets.

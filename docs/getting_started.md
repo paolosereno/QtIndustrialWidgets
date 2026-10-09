@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Getting Started with QtIndustrialWidgets {#getting_started}
 
 Welcome to the **QtIndustrialWidgets** documentation! This guide will help you integrate the library into your C++ and Qt applications.

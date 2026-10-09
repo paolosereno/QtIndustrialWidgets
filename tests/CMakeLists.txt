@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 function(add_industrial_widget_test test_name)
     add_executable(${test_name} ${test_name}.cpp)
     target_link_libraries(${test_name}

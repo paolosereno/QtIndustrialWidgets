@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
 #include <QtWidgets/QMainWindow>
