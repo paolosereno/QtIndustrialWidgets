@@ -20,6 +20,15 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 
 ---
 
+## Enterprise & Supply Chain Security
+
+- **REUSE Compliant**: 100% compliant with the REUSE specification (ISO/IEC 5962:2021) for accurate, machine-readable licensing.
+- **Automated SBOM**: An updated Software Bill of Materials (SBOM in SPDX/CycloneDX format) is automatically built and attached as an asset to every official GitHub release.
+- **Zero Third-Party Dependencies**: Self-contained library requiring only official Qt modules, eliminating supply-chain attack vectors and external dependency drift.
+- **Continuous Quality Assurance**: Multi-platform automated CI/CD pipeline covering Linux, Windows, and macOS with 100% passing test coverage.
+
+---
+
 <p align="center">
   <img src="screenshot.jpg" alt="QtIndustrialWidgets Showcase Gallery" width="95%">
 </p>
