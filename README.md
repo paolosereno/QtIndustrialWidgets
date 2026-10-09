@@ -108,8 +108,11 @@ Multi-channel industrial VU and level meter with peak hold.
 # Configure
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# Build library, designer plugin and gallery
+# Build library, designer plugin, gallery and unit tests
 cmake --build build
+
+# Run unit tests (QtTest)
+ctest --test-dir build --output-on-failure
 
 # Run the interactive gallery showcase
 ./build/examples/gallery/QtIndustrialWidgetsGallery

@@ -27,6 +27,7 @@ message(STATUS "QtIndustrialWidgets: Using Qt ${QT_VERSION_MAJOR} (version ${Qt$
 # Options
 option(BUILD_DESIGNER_PLUGIN "Build the Qt Designer plugin" ON)
 option(BUILD_EXAMPLES "Build the gallery showcase application" ON)
+option(BUILD_TESTS "Build the unit test suite" ON)
 
 # Check for Qt Designer module if plugin requested
 if(BUILD_DESIGNER_PLUGIN)
@@ -59,6 +60,13 @@ endif()
 # Showcase Gallery example application
 if(BUILD_EXAMPLES)
     add_subdirectory(examples/gallery)
+endif()
+
+# Unit tests suite
+if(BUILD_TESTS)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 # CMake package configuration for consumers (find_package(QtIndustrialWidgets))
