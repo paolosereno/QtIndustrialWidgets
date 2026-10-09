@@ -7,6 +7,7 @@
 #include <QtIndustrialWidgets/QIndustrialKnob.h>
 #include <QtIndustrialWidgets/QStripChart.h>
 #include <QtIndustrialWidgets/QIndustrialSwitch.h>
+#include <QtIndustrialWidgets/QLevelMeter.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -646,6 +647,102 @@ QIcon QIndustrialSwitchPlugin::icon() const
 }
 
 // ============================================================================
+// QLevelMeterPlugin
+// ============================================================================
+
+QLevelMeterPlugin::QLevelMeterPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QLevelMeterPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QLevelMeterPlugin::createWidget(QWidget *parent)
+{
+    return new QLevelMeter(parent);
+}
+
+QString QLevelMeterPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QLevelMeterPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QLevelMeter.h");
+}
+
+QString QLevelMeterPlugin::name() const
+{
+    return QStringLiteral("QLevelMeter");
+}
+
+QString QLevelMeterPlugin::toolTip() const
+{
+    return QStringLiteral("Multi-channel industrial VU and level meter with peak hold");
+}
+
+QString QLevelMeterPlugin::whatsThis() const
+{
+    return QStringLiteral("A high-performance multi-channel VU and level meter with discrete LED segments, smooth bar, peak hold decay, and customizable thresholds.");
+}
+
+QString QLevelMeterPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QLevelMeter\" name=\"levelMeter\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>75</width>\n"
+        "   <height>220</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QLevelMeterPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Dark chassis
+    p.setPen(QPen(QColor(60, 70, 85), 1.2));
+    p.setBrush(QColor(22, 25, 30));
+    p.drawRoundedRect(4, 2, 24, 28, 3, 3);
+
+    // Two LED bar ladders (L and R)
+    auto drawMiniBar = [&](int x) {
+        // Green segments
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(46, 204, 113));
+        p.drawRect(x, 20, 4, 2);
+        p.drawRect(x, 17, 4, 2);
+        p.drawRect(x, 14, 4, 2);
+        // Yellow segments
+        p.setBrush(QColor(254, 211, 48));
+        p.drawRect(x, 11, 4, 2);
+        p.drawRect(x, 8, 4, 2);
+        // Peak white segment
+        p.setBrush(QColor(255, 255, 255));
+        p.drawRect(x, 5, 4, 1);
+    };
+
+    drawMiniBar(9);
+    drawMiniBar(16);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -659,6 +756,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QIndustrialKnobPlugin(this));
     m_widgets.append(new QStripChartPlugin(this));
     m_widgets.append(new QIndustrialSwitchPlugin(this));
+    m_widgets.append(new QLevelMeterPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

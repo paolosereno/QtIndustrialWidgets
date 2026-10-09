@@ -7,6 +7,7 @@
 #include <QtIndustrialWidgets/QIndustrialKnob.h>
 #include <QtIndustrialWidgets/QStripChart.h>
 #include <QtIndustrialWidgets/QIndustrialSwitch.h>
+#include <QtIndustrialWidgets/QLevelMeter.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -238,8 +239,22 @@ void MainWindow::setupUi()
     combinedLinearLayout->addLayout(vertGaugesLayout, 3);
     combinedLinearLayout->addWidget(m_hydraulicGauge, 1);
 
-    linearLayout->addLayout(combinedLinearLayout);
-    lowerRowLayout->addWidget(linearGroup, 3);
+    // Dynamic Vibration Dual-Channel Meter (QLevelMeter)
+    m_vibrationMeter = new QLevelMeter(linearGroup);
+    m_vibrationMeter->setChannelCount(2);
+    m_vibrationMeter->setChannelLabels({QStringLiteral("X"), QStringLiteral("Y")});
+    m_vibrationMeter->setTitle(QStringLiteral("VIB RMS"));
+    m_vibrationMeter->setUnit(QStringLiteral("g"));
+    m_vibrationMeter->setRange(0.0, 10.0);
+    m_vibrationMeter->setWarningThreshold(6.5);
+    m_vibrationMeter->setErrorThreshold(8.5);
+    m_vibrationMeter->setSegmentCount(22);
+    m_vibrationMeter->setValue(0, 2.4);
+    m_vibrationMeter->setValue(1, 1.8);
+
+    linearLayout->addLayout(combinedLinearLayout, 3);
+    linearLayout->addWidget(m_vibrationMeter, 2);
+    lowerRowLayout->addWidget(linearGroup, 4);
 
     // Group for 7-Segment Digital Readouts
     auto *digitalGroup = new QGroupBox(QStringLiteral("High-Speed Telemetry (7-Segment Displays)"), dashTab);
@@ -546,6 +561,60 @@ void MainWindow::setupUi()
     controlsLayout->addWidget(switchBox, row, 0, 1, 3);
     row++;
 
+    // ------------------------------------------------------------------------
+    // Multi-Channel VU & Level Meter Showcase (QLevelMeter)
+    // ------------------------------------------------------------------------
+    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic & Signal Level Meters (QLevelMeter)"), controlsTab);
+    auto *meterLayout = new QHBoxLayout(meterBox);
+    meterLayout->setSpacing(24);
+    meterLayout->setContentsMargins(18, 18, 18, 14);
+
+    // 1. Classic Studio Stereo VU Meter (-60 dB to +6 dB)
+    m_audioVuMeter = new QLevelMeter(meterBox);
+    m_audioVuMeter->setChannelCount(2);
+    m_audioVuMeter->setTitle(QStringLiteral("MASTER BUS"));
+    m_audioVuMeter->setChannelLabels({QStringLiteral("CH 1"), QStringLiteral("CH 2")});
+    m_audioVuMeter->setRange(-60.0, 6.0);
+    m_audioVuMeter->setWarningThreshold(-6.0);
+    m_audioVuMeter->setErrorThreshold(0.0);
+    m_audioVuMeter->setSegmentCount(28);
+    m_audioVuMeter->setUnit(QStringLiteral("dB"));
+    m_audioVuMeter->setValue(0, -12.0);
+    m_audioVuMeter->setValue(1, -14.0);
+
+    // 2. Continuous Mode Smooth Level Meter (0 - 100%)
+    auto *contMeter = new QLevelMeter(meterBox);
+    contMeter->setChannelCount(1);
+    contMeter->setDisplayMode(QLevelMeter::DisplayMode::Continuous);
+    contMeter->setTitle(QStringLiteral("LINE RMS"));
+    contMeter->setChannelLabels({QStringLiteral("LINE")});
+    contMeter->setRange(0.0, 100.0);
+    contMeter->setWarningThreshold(75.0);
+    contMeter->setErrorThreshold(90.0);
+    contMeter->setUnit(QStringLiteral("%"));
+    contMeter->setValue(62.0);
+
+    // 3. Horizontal Level Meter
+    auto *horizMeter = new QLevelMeter(meterBox);
+    horizMeter->setOrientation(Qt::Horizontal);
+    horizMeter->setChannelCount(2);
+    horizMeter->setTitle(QStringLiteral("TELEMETRY LINK"));
+    horizMeter->setChannelLabels({QStringLiteral("TX"), QStringLiteral("RX")});
+    horizMeter->setRange(0.0, 100.0);
+    horizMeter->setWarningThreshold(70.0);
+    horizMeter->setErrorThreshold(90.0);
+    horizMeter->setUnit(QStringLiteral("%"));
+    horizMeter->setValue(0, 82.0);
+    horizMeter->setValue(1, 74.0);
+
+    meterLayout->addWidget(m_audioVuMeter);
+    meterLayout->addWidget(contMeter);
+    meterLayout->addWidget(horizMeter);
+    meterLayout->addStretch();
+
+    controlsLayout->addWidget(meterBox, row, 0, 1, 3);
+    row++;
+
     controlsLayout->setRowStretch(row, 1);
     tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
 
@@ -650,6 +719,25 @@ void MainWindow::onSimulationTick()
     m_stripChart->addDataPoint(m_chRpm, (currentRpm / 8000.0) * 100.0);
     m_stripChart->addDataPoint(m_chBoost, boostBase * 35.0);
     m_stripChart->addDataPoint(m_chTemp, coolantTemp);
+
+    // Dynamic multi-channel vibration levels (QLevelMeter)
+    if (m_vibrationMeter) {
+        double vibX = 1.5 + (currentRpm / 8000.0) * 5.2 + 1.2 * std::sin(m_simTime * 14.0);
+        double vibY = 1.2 + (boostBase / 3.0) * 4.8 + 1.0 * std::cos(m_simTime * 18.0);
+        if (std::fmod(m_simTime, 4.0) < 0.1) {
+            vibX += 2.2;
+        }
+        m_vibrationMeter->setValue(0, vibX);
+        m_vibrationMeter->setValue(1, vibY);
+    }
+
+    // Dynamic acoustic / bus VU levels (QLevelMeter)
+    if (m_audioVuMeter) {
+        double db1 = -26.0 + (currentRpm / 8000.0) * 24.0 + 3.0 * std::sin(m_simTime * 9.0);
+        double db2 = -28.0 + (boostBase / 3.0) * 26.0 + 2.5 * std::cos(m_simTime * 11.0);
+        m_audioVuMeter->setValue(0, db1);
+        m_audioVuMeter->setValue(1, db2);
+    }
 }
 
 void MainWindow::toggleTheme()

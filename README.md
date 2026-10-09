@@ -85,6 +85,14 @@ Heavy-duty industrial toggle lever and rocker switch with safety guard.
 - **Dual Orientation**: Native support for `Qt::Vertical` and `Qt::Horizontal` mounting.
 - **Tactile Feedback & Animation**: Mechanical snap toggle animation with realistic bounce, LED status indicator, 4-corner mounting screws, keyboard navigation, and mouse drag.
 
+### 8. `QLevelMeter`
+Multi-channel industrial VU and level meter with peak hold.
+- **Multi-Channel & Stereo**: Supports 1, 2 (stereo L/R) or arbitrary N channels with customizable labels.
+- **Peak Hold & Decay**: Floating peak indicator line/segment with configurable hold time (in ms) and smooth exponential/linear decay rate.
+- **Segmented & Continuous Modes**: Classic discrete rectangular LED block ladder with unlit ghost segment opacity, or smooth gradient fill.
+- **Tri-Color Zones**: Configurable Normal (green), Warning (amber) and Error / Overload (red) zones with `overloadOccurred(int)` signal.
+- **Dual Orientation & Scale**: Vertical and horizontal mounting with graduated dB or engineering units scale.
+
 ---
 
 ## 🛠️ Build and Installation

@@ -11,6 +11,7 @@ class QLedIndicator;
 class QIndustrialKnob;
 class QStripChart;
 class QIndustrialSwitch;
+class QLevelMeter;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -68,6 +69,10 @@ private:
     QIndustrialSwitch *m_safetySwitch{nullptr};
     QIndustrialSwitch *m_modeSwitch{nullptr};
     QIndustrialSwitch *m_rockerSwitch{nullptr};
+
+    // Level Meters / VU Meters
+    QLevelMeter *m_vibrationMeter{nullptr};
+    QLevelMeter *m_audioVuMeter{nullptr};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};
