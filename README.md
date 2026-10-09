@@ -205,6 +205,17 @@ target_link_libraries(my_industrial_app
 )
 ```
 
+### Option C: Via Prebuilt Native Packages (.deb / .zip)
+
+Download official packages from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
+- **Debian / Ubuntu**: `sudo dpkg -i qtindustrialwidgets_1.0.0_amd64.deb`
+- **Windows / Linux**: Extract `.zip` / `.tar.gz` and point `CMAKE_PREFIX_PATH` to the extracted directory.
+
+### Option D: Via C++ Package Managers (vcpkg / Conan)
+
+- **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets`
+- **Conan 2.0**: `conan install . --build=missing`
+
 ---
 
 ## 🎨 Qt Designer Integration

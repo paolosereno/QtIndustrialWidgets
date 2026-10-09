@@ -49,3 +49,16 @@ CMakeLists.txt.user
 
 # Local development notes
 nextWork.md
+
+# CPack packaging artifacts
+_CPack_Packages/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+*.deb
+*.rpm
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.dmg
+

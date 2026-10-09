@@ -13,9 +13,13 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Create GitHub Release & Publish SBOM
+  # ============================================================
+  # 1. Package Linux (.deb & .tar.gz) + SPDX SBOM
+  # ============================================================
+  package-linux:
+    name: Package Linux (DEB & TGZ)
     runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,10 +34,105 @@ jobs:
         with:
           args: spdx --creator-person "Paolo Sereno <paolomsereno@gmail.com>" --output QtIndustrialWidgets-${{ github.ref_name }}-SBOM.spdx
 
-      - name: Create GitHub Release
+      - name: Install Qt & Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            libgl1-mesa-dev \
+            libxkbcommon-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DESIGNER_PLUGIN=ON
+
+      - name: Build Library & Plugin
+        run: cmake --build build
+
+      - name: Create CPack Packages (DEB & TGZ)
+        run: cpack --config build/CPackConfig.cmake -G "DEB;TGZ"
+
+      - name: Upload Linux Packages & SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-linux
+          path: |
+            QtIndustrialWidgets-${{ github.ref_name }}-SBOM.spdx
+            *.deb
+            *.tar.gz
+
+  # ============================================================
+  # 2. Package Windows (.zip)
+  # ============================================================
+  package-windows:
+    name: Package Windows (ZIP)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          arch: 'win64_msvc2019_64'
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_DOCS=OFF `
+            -DBUILD_TESTS=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DBUILD_DESIGNER_PLUGIN=OFF
+
+      - name: Build Library
+        run: cmake --build build --config Release
+
+      - name: Create CPack Package (ZIP)
+        run: cpack --config build/CPackConfig.cmake -G ZIP -C Release
+
+      - name: Upload Windows Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-windows
+          path: "*.zip"
+
+  # ============================================================
+  # 3. Publish GitHub Release with All Assets
+  # ============================================================
+  publish-release:
+    name: Publish GitHub Release
+    needs: [package-linux, package-windows]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download Linux Assets & SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-linux
+          path: ./dist
+
+      - name: Download Windows Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-windows
+          path: ./dist
+
+      - name: Create Official GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "Release ${{ github.ref_name }}"
-          files: |
-            QtIndustrialWidgets-${{ github.ref_name }}-SBOM.spdx
+          files: ./dist/*
           generate_release_notes: true

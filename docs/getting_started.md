@@ -68,6 +68,32 @@ target_link_libraries(my_app
 )
 ```
 
+### Method 3: Debian / Ubuntu Native Package (.deb)
+
+Download the official `.deb` package from the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases) page and install:
+
+```bash
+sudo dpkg -i qtindustrialwidgets_1.0.0_amd64.deb
+```
+
+Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists.txt`.
+
+### Method 4: vcpkg C++ Package Manager
+
+Using vcpkg with manifest mode or ports:
+
+```bash
+vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets
+```
+
+### Method 5: Conan 2.0 Package Manager
+
+Using Conan:
+
+```bash
+conan install . --output-folder=build --build=missing
+```
+
 ---
 
 ## 💡 Quick Code Example

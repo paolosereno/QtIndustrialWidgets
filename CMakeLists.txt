@@ -116,3 +116,51 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/QtIndustrialWidgetsConfigVersion.cmake"
     DESTINATION "${CONFIG_INSTALL_DIR}"
 )
+
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES/MIT.txt"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/QtIndustrialWidgets"
+    RENAME "LICENSE"
+)
+
+# ========================================================================
+# CPack Packaging Configuration
+# ========================================================================
+set(CPACK_PACKAGE_NAME "QtIndustrialWidgets")
+set(CPACK_PACKAGE_VENDOR "Paolo Sereno")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Modern, high-performance industrial instruments and SCADA widgets for Qt")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/paolosereno/QtIndustrialWidgets")
+set(CPACK_PACKAGE_CONTACT "Paolo Sereno <paolomsereno@gmail.com>")
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES/MIT.txt")
+
+# Package file naming: e.g. QtIndustrialWidgets-1.0.0-Linux-x86_64
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+
+# Debian (.deb) specific generator settings
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Paolo Sereno <paolomsereno@gmail.com>")
+set(CPACK_DEBIAN_PACKAGE_SECTION "libs")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/paolosereno/QtIndustrialWidgets")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+
+# RPM specific generator settings
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_GROUP "Development/Libraries")
+set(CPACK_RPM_PACKAGE_URL "https://github.com/paolosereno/QtIndustrialWidgets")
+set(CPACK_RPM_PACKAGE_AUTOREQPROV ON)
+
+# Default binary generators per platform
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+elseif(APPLE)
+    set(CPACK_GENERATOR "TGZ;DragNDrop")
+else()
+    set(CPACK_GENERATOR "TGZ;DEB")
+endif()
+
+include(CPack)
+
