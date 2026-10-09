@@ -29,6 +29,9 @@
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QStyleFactory>
+#include <QtWidgets/QGraphicsOpacityEffect>
+#include <QtCore/QPropertyAnimation>
+#include <QtCore/QEasingCurve>
 #include <QtGui/QPalette>
 #include <QtCore/QtMath>
 
@@ -43,6 +46,7 @@ MainWindow::MainWindow(QWidget *parent)
     applyTheme(true);
 
     connect(&m_simTimer, &QTimer::timeout, this, &MainWindow::onSimulationTick);
+    connect(&m_tourTimer, &QTimer::timeout, this, &MainWindow::onTourTick);
 }
 
 void MainWindow::setupUi()
@@ -100,6 +104,13 @@ void MainWindow::setupUi()
     m_simButton->setMinimumHeight(32);
     connect(m_simButton, &QPushButton::clicked, this, &MainWindow::toggleSimulation);
 
+    m_tourButton = new QPushButton(QStringLiteral("🔄 Auto-Tour (Off)"), this);
+    m_tourButton->setCheckable(true);
+    m_tourButton->setCursor(Qt::PointingHandCursor);
+    m_tourButton->setMinimumHeight(32);
+    m_tourButton->setToolTip(QStringLiteral("Cycle automatically between tabs every 3.5 seconds with a smooth transition"));
+    connect(m_tourButton, &QPushButton::clicked, this, &MainWindow::toggleAutoTour);
+
     m_themeButton = new QPushButton(QStringLiteral("☀️ Switch to Light Theme"), this);
     m_themeButton->setCursor(Qt::PointingHandCursor);
     m_themeButton->setMinimumHeight(32);
@@ -117,6 +128,7 @@ void MainWindow::setupUi()
     topLayout->addStretch();
     topLayout->addWidget(m_fpsLabel);
     topLayout->addWidget(m_simButton);
+    topLayout->addWidget(m_tourButton);
     topLayout->addWidget(m_themeButton);
 
     rootLayout->addWidget(topBar);
@@ -124,8 +136,15 @@ void MainWindow::setupUi()
     // ========================================================================
     // Tabs: Dashboard vs Manual Controls
     // ========================================================================
-    auto *tabWidget = new QTabWidget(this);
-    tabWidget->setObjectName(QStringLiteral("mainTabs"));
+    m_tabWidget = new QTabWidget(this);
+    m_tabWidget->setObjectName(QStringLiteral("mainTabs"));
+    auto *tabWidget = m_tabWidget;
+
+    connect(m_tabWidget, &QTabWidget::tabBarClicked, this, [this](int) {
+        if (m_isAutoTourActive) {
+            m_tourTimer.start(3500); // Reset timer on manual tab interaction
+        }
+    });
 
     // ------------------------------------------------------------------------
     // TAB 1: Live Telemetry Dashboard
@@ -1049,6 +1068,80 @@ void MainWindow::toggleSimulation()
     }
 }
 
+void MainWindow::toggleAutoTour()
+{
+    m_isAutoTourActive = !m_isAutoTourActive;
+    if (m_isAutoTourActive) {
+        m_tourButton->setChecked(true);
+        m_tourButton->setText(QStringLiteral("⏸ Auto-Tour (3.5s)"));
+        m_tourButton->setStyleSheet(QStringLiteral(
+            "QPushButton { background-color: #0984e3; border: 1px solid #74b9ff; color: #ffffff; font-weight: bold; padding: 6px 14px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: #0870c2; }"
+        ));
+        m_tourTimer.start(3500);
+    } else {
+        m_tourButton->setChecked(false);
+        m_tourButton->setText(QStringLiteral("🔄 Auto-Tour (Off)"));
+        m_tourButton->setStyleSheet(QString());
+        m_tourTimer.stop();
+        if (m_tabAnimation) {
+            m_tabAnimation->stop();
+            delete m_tabAnimation;
+            m_tabAnimation = nullptr;
+        }
+    }
+}
+
+void MainWindow::onTourTick()
+{
+    if (!m_tabWidget || m_tabWidget->count() == 0) {
+        return;
+    }
+    int nextIndex = (m_tabWidget->currentIndex() + 1) % m_tabWidget->count();
+    switchToTabWithTransition(nextIndex);
+}
+
+void MainWindow::switchToTabWithTransition(int nextIndex)
+{
+    if (!m_tabWidget || nextIndex < 0 || nextIndex >= m_tabWidget->count()) {
+        return;
+    }
+    if (nextIndex == m_tabWidget->currentIndex()) {
+        return;
+    }
+
+    if (m_tabAnimation) {
+        m_tabAnimation->stop();
+        delete m_tabAnimation;
+        m_tabAnimation = nullptr;
+    }
+
+    QWidget *nextWidget = m_tabWidget->widget(nextIndex);
+    if (!nextWidget) {
+        m_tabWidget->setCurrentIndex(nextIndex);
+        return;
+    }
+
+    auto *opacityEffect = new QGraphicsOpacityEffect(nextWidget);
+    opacityEffect->setOpacity(0.0);
+    nextWidget->setGraphicsEffect(opacityEffect);
+
+    m_tabWidget->setCurrentIndex(nextIndex);
+
+    m_tabAnimation = new QPropertyAnimation(opacityEffect, "opacity", this);
+    m_tabAnimation->setDuration(350); // 350 ms smooth fade-in
+    m_tabAnimation->setStartValue(0.0);
+    m_tabAnimation->setEndValue(1.0);
+    m_tabAnimation->setEasingCurve(QEasingCurve::OutCubic);
+
+    connect(m_tabAnimation, &QPropertyAnimation::finished, this, [this, nextWidget]() {
+        nextWidget->setGraphicsEffect(nullptr);
+        m_tabAnimation = nullptr;
+    });
+
+    m_tabAnimation->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
 void MainWindow::onSimulationTick()
 {
     m_simTime += 0.02; // 20 ms
@@ -1178,6 +1271,17 @@ void MainWindow::applyTheme(bool dark)
     m_isDarkTheme = dark;
     m_themeButton->setText(dark ? QStringLiteral("☀️ Switch to Light Theme")
                                 : QStringLiteral("🌙 Switch to Dark Theme"));
+
+    if (m_tourButton) {
+        if (m_isAutoTourActive) {
+            m_tourButton->setStyleSheet(QStringLiteral(
+                "QPushButton { background-color: #0984e3; border: 1px solid #74b9ff; color: #ffffff; font-weight: bold; padding: 6px 14px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: #0870c2; }"
+            ));
+        } else {
+            m_tourButton->setStyleSheet(QString());
+        }
+    }
 
     if (dark) {
         // Modern Industrial Dark SCADA Theme

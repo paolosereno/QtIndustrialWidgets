@@ -23,6 +23,8 @@ class QCompass;
 class QSlider;
 class QLabel;
 class QPushButton;
+class QTabWidget;
+class QPropertyAnimation;
 
 class MainWindow : public QMainWindow
 {
@@ -34,12 +36,15 @@ public:
 
 private Q_SLOTS:
     void toggleSimulation();
+    void toggleAutoTour();
     void toggleTheme();
     void onSimulationTick();
+    void onTourTick();
 
 private:
     void setupUi();
     void applyTheme(bool dark);
+    void switchToTabWithTransition(int nextIndex);
 
     // Gauges
     QRadialGauge *m_rpmGauge{nullptr};
@@ -106,15 +111,20 @@ private:
 
     // Simulation & UI state
     QPushButton *m_simButton{nullptr};
+    QPushButton *m_tourButton{nullptr};
     QPushButton *m_themeButton{nullptr};
     QLabel *m_statusLabel{nullptr};
     QLabel *m_fpsLabel{nullptr};
+    QTabWidget *m_tabWidget{nullptr};
 
     QTimer m_simTimer;
+    QTimer m_tourTimer;
+    QPropertyAnimation *m_tabAnimation{nullptr};
     QElapsedTimer m_elapsedTimer;
     double m_simTime{0.0};
     int m_frameCount{0};
     qint64 m_lastFpsCheck{0};
     bool m_isDarkTheme{true};
     bool m_isSimulating{false};
+    bool m_isAutoTourActive{false};
 };
