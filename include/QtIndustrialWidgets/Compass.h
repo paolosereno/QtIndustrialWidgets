@@ -9,7 +9,11 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
-#include <QtGui/QPixmap>
+#include <memory>
+
+namespace QtIndustrialWidgets {
+
+class CompassPrivate;
 
 /**
  * \class Compass
@@ -30,15 +34,13 @@
  * - Hardware-accelerated Hi-DPI circular card pixmap caching for 60+ FPS rendering.
  *
  * \code
- * auto *compass = new Compass(parent);
- * compass->setDisplayMode(Compass::DisplayMode::HeadingUp);
+ * auto *compass = new qiw::Compass(parent);
+ * compass->setDisplayMode(qiw::Compass::DisplayMode::HeadingUp);
  * compass->setHeading(45.0);        // 045° North-East
  * compass->setTargetHeading(90.0);  // Target East (090°)
  * compass->setHeadingBugVisible(true);
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
 class QTINDUSTRIALWIDGETS_EXPORT Compass : public QWidget
 {
     Q_OBJECT
@@ -74,22 +76,22 @@ public:
      * \param parent Optional parent widget.
      */
     explicit Compass(QWidget *parent = nullptr);
-    ~Compass() override = default;
+    ~Compass() override;
 
     /** \brief Returns the current vessel/aircraft heading in degrees [0.0, 360.0). */
-    [[nodiscard]] double heading() const { return m_heading; }
+    [[nodiscard]] double heading() const;
     /** \brief Returns the target / course heading bug in degrees [0.0, 360.0). */
-    [[nodiscard]] double targetHeading() const { return m_targetHeading; }
+    [[nodiscard]] double targetHeading() const;
     /** \brief Returns the display mode (HeadingUp or NorthUp). */
-    [[nodiscard]] DisplayMode displayMode() const { return m_displayMode; }
+    [[nodiscard]] DisplayMode displayMode() const;
     /** \brief Returns true if the target heading bug chevron is displayed. */
-    [[nodiscard]] bool isHeadingBugVisible() const { return m_bugVisible; }
+    [[nodiscard]] bool isHeadingBugVisible() const;
     /** \brief Returns true if mouse clicks/drags can reposition the heading bug. */
-    [[nodiscard]] bool isHeadingBugInteractive() const { return m_bugInteractive; }
+    [[nodiscard]] bool isHeadingBugInteractive() const;
     /** \brief Returns true if the 12 o'clock lubber reference marker is visible. */
-    [[nodiscard]] bool isLubberLineVisible() const { return m_lubberVisible; }
+    [[nodiscard]] bool isLubberLineVisible() const;
     /** \brief Returns true if the central digital heading readout pod is visible. */
-    [[nodiscard]] bool isDigitalReadoutVisible() const { return m_digitalVisible; }
+    [[nodiscard]] bool isDigitalReadoutVisible() const;
 
     /**
      * \brief Computes the signed course deviation from the target heading in degrees [-180.0, +180.0].
@@ -101,14 +103,14 @@ public:
     [[nodiscard]] static double normalizeDegrees(double deg);
 
     // Styling colors
-    [[nodiscard]] QColor dialColor() const { return m_dialColor; }
-    [[nodiscard]] QColor bezelColor() const { return m_bezelColor; }
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
-    [[nodiscard]] QColor cardinalColor() const { return m_cardinalColor; }
-    [[nodiscard]] QColor needleColor() const { return m_needleColor; }
-    [[nodiscard]] QColor needleTailColor() const { return m_needleTailColor; }
-    [[nodiscard]] QColor bugColor() const { return m_bugColor; }
-    [[nodiscard]] QColor lubberColor() const { return m_lubberColor; }
+    [[nodiscard]] QColor dialColor() const;
+    [[nodiscard]] QColor bezelColor() const;
+    [[nodiscard]] QColor textColor() const;
+    [[nodiscard]] QColor cardinalColor() const;
+    [[nodiscard]] QColor needleColor() const;
+    [[nodiscard]] QColor needleTailColor() const;
+    [[nodiscard]] QColor bugColor() const;
+    [[nodiscard]] QColor lubberColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -161,28 +163,8 @@ private:
     void renderCompassCard(const QSize &size);
     [[nodiscard]] double angleFromPoint(const QPointF &pos) const;
 
-    double m_heading{0.0};
-    double m_targetHeading{0.0};
-    DisplayMode m_displayMode{DisplayMode::HeadingUp};
-    bool m_bugVisible{true};
-    bool m_bugInteractive{true};
-    bool m_lubberVisible{true};
-    bool m_digitalVisible{true};
-    bool m_isDraggingBug{false};
-
-    // Styling colors
-    QColor m_dialColor{QColor(20, 24, 32)};       // Deep naval slate
-    QColor m_bezelColor{QColor(48, 56, 70)};      // Machined metallic rim
-    QColor m_textColor{QColor(225, 231, 236)};    // Crisp readout text
-    QColor m_cardinalColor{QColor(0, 229, 255)};  // Cyan / amber highlights for N/E/S/W
-    QColor m_needleColor{QColor(235, 59, 90)};    // Vivid red North arrow
-    QColor m_needleTailColor{QColor(160, 175, 195)}; // Slate South arrow
-    QColor m_bugColor{QColor(254, 130, 40)};      // High-visibility orange bug
-    QColor m_lubberColor{QColor(254, 211, 48)};   // Safety amber lubber line
-
-    // Card cache pixmap
-    QPixmap m_cardCache;
-    bool m_cacheDirty{true};
+    std::unique_ptr<CompassPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(Compass)
 };
 
 } // namespace QtIndustrialWidgets

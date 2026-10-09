@@ -8,6 +8,7 @@
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
+#include <memory>
 #include <QtGui/QColor>
 #include <QtGui/QPixmap>
 
@@ -32,6 +33,8 @@
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class RadialGaugePrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT RadialGauge : public QWidget
 {
@@ -65,51 +68,51 @@ public:
      * \param parent Optional parent widget.
      */
     explicit RadialGauge(QWidget *parent = nullptr);
-    ~RadialGauge() override = default;
+    ~RadialGauge() override;
 
     /** \brief Returns the minimum scale value. */
-    [[nodiscard]] double minimum() const { return m_minimum; }
+    [[nodiscard]] double minimum() const;
     /** \brief Returns the maximum scale value. */
-    [[nodiscard]] double maximum() const { return m_maximum; }
+    [[nodiscard]] double maximum() const;
     /** \brief Returns the current indicated value. */
-    [[nodiscard]] double value() const { return m_value; }
+    [[nodiscard]] double value() const;
     /** \brief Returns the decimal precision for the digital readout display. */
-    [[nodiscard]] int precision() const { return m_precision; }
+    [[nodiscard]] int precision() const;
     /** \brief Returns the measurement unit label (e.g. "bar", "PSI", "RPM"). */
-    [[nodiscard]] QString unit() const { return m_unit; }
+    [[nodiscard]] QString unit() const;
     /** \brief Returns the starting angle in degrees (default: -135°). */
-    [[nodiscard]] double startAngle() const { return m_startAngle; }
+    [[nodiscard]] double startAngle() const;
     /** \brief Returns the total angular sweep span in degrees (default: 270°). */
-    [[nodiscard]] double spanAngle() const { return m_spanAngle; }
+    [[nodiscard]] double spanAngle() const;
     /** \brief Returns the number of major graduation intervals. */
-    [[nodiscard]] int majorTicks() const { return m_majorTicks; }
+    [[nodiscard]] int majorTicks() const;
     /** \brief Returns the number of minor subdivisions per major tick interval. */
-    [[nodiscard]] int minorTicks() const { return m_minorTicks; }
+    [[nodiscard]] int minorTicks() const;
     /** \brief Returns the warning threshold value. */
-    [[nodiscard]] double warningThreshold() const { return m_warningThreshold; }
+    [[nodiscard]] double warningThreshold() const;
     /** \brief Returns the error threshold value. */
-    [[nodiscard]] double errorThreshold() const { return m_errorThreshold; }
+    [[nodiscard]] double errorThreshold() const;
     /** \brief Returns true if colored arc threshold bands are displayed. */
-    [[nodiscard]] bool thresholdBandsVisible() const { return m_thresholdBandsVisible; }
+    [[nodiscard]] bool thresholdBandsVisible() const;
     /** \brief Returns true if the digital LCD readout pod is displayed. */
-    [[nodiscard]] bool digitalDisplayVisible() const { return m_digitalDisplayVisible; }
+    [[nodiscard]] bool digitalDisplayVisible() const;
 
     /** \brief Returns the needle pointer color. */
-    [[nodiscard]] QColor needleColor() const { return m_needleColor; }
+    [[nodiscard]] QColor needleColor() const;
     /** \brief Returns the normal operating arc band color. */
-    [[nodiscard]] QColor normalColor() const { return m_normalColor; }
+    [[nodiscard]] QColor normalColor() const;
     /** \brief Returns the warning arc band color. */
-    [[nodiscard]] QColor warningColor() const { return m_warningColor; }
+    [[nodiscard]] QColor warningColor() const;
     /** \brief Returns the critical error arc band color. */
-    [[nodiscard]] QColor errorColor() const { return m_errorColor; }
+    [[nodiscard]] QColor errorColor() const;
     /** \brief Returns the dial face background color. */
-    [[nodiscard]] QColor dialColor() const { return m_dialColor; }
+    [[nodiscard]] QColor dialColor() const;
     /** \brief Returns the graduation tick marks color. */
-    [[nodiscard]] QColor scaleColor() const { return m_scaleColor; }
+    [[nodiscard]] QColor scaleColor() const;
     /** \brief Returns the numeric label font color. */
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
+    [[nodiscard]] QColor textColor() const;
     /** \brief Returns the outer rim bezel color. */
-    [[nodiscard]] QColor bezelColor() const { return m_bezelColor; }
+    [[nodiscard]] QColor bezelColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -185,40 +188,8 @@ private:
     void renderStaticScale(const QSize &size);
     double valueToAngle(double val) const;
 
-    double m_minimum{0.0};
-    double m_maximum{100.0};
-    double m_value{0.0};
-    int m_precision{1};
-    QString m_unit{QStringLiteral("bar")};
-
-    // Angles: 0° is 12 o'clock, clockwise. Default: -135° to +135° (270° span)
-    double m_startAngle{-135.0};
-    double m_spanAngle{270.0};
-    int m_majorTicks{10};
-    int m_minorTicks{4};
-
-    double m_warningThreshold{70.0};
-    double m_errorThreshold{85.0};
-    bool m_thresholdBandsVisible{true};
-    bool m_digitalDisplayVisible{true};
-
-    // Colors
-    QColor m_needleColor{QColor(235, 59, 90)};       // Industrial Crimson
-    QColor m_normalColor{QColor(38, 222, 129)};       // Neon Emerald Green
-    QColor m_warningColor{QColor(254, 211, 48)};      // Amber Gold
-    QColor m_errorColor{QColor(235, 59, 90)};         // Danger Red
-    QColor m_dialColor{QColor(24, 28, 36)};           // Slate Black
-    QColor m_scaleColor{QColor(210, 218, 226)};       // Light Silver
-    QColor m_textColor{QColor(245, 246, 250)};        // Crisp White
-    QColor m_bezelColor{QColor(53, 59, 72)};          // Gunmetal Gray
-
-    // High performance static scale cache
-    QPixmap m_cachePixmap;
-    bool m_cacheDirty{true};
-
-    // Threshold state tracking
-    bool m_wasWarning{false};
-    bool m_wasError{false};
+    std::unique_ptr<RadialGaugePrivate> d_ptr;
+    Q_DECLARE_PRIVATE(RadialGauge)
 };
 
 } // namespace QtIndustrialWidgets

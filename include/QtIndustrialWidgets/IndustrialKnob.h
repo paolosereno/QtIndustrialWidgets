@@ -9,7 +9,11 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
-#include <QtGui/QPixmap>
+#include <memory>
+
+namespace QtIndustrialWidgets {
+
+class IndustrialKnobPrivate;
 
 /**
  * \class IndustrialKnob
@@ -28,8 +32,6 @@
  * knob->setUnit("%");
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
 class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
 {
     Q_OBJECT
@@ -67,47 +69,47 @@ public:
      * \param parent Optional parent widget.
      */
     explicit IndustrialKnob(QWidget *parent = nullptr);
-    ~IndustrialKnob() override = default;
+    ~IndustrialKnob() override;
 
     /** \brief Returns the minimum dial value. */
-    [[nodiscard]] double minimum() const { return m_minimum; }
+    [[nodiscard]] double minimum() const;
     /** \brief Returns the maximum dial value. */
-    [[nodiscard]] double maximum() const { return m_maximum; }
+    [[nodiscard]] double maximum() const;
     /** \brief Returns the current rotary value. */
-    [[nodiscard]] double value() const { return m_value; }
+    [[nodiscard]] double value() const;
     /** \brief Returns the increment step size. */
-    [[nodiscard]] double step() const { return m_step; }
+    [[nodiscard]] double step() const;
     /** \brief Returns the decimal display precision. */
-    [[nodiscard]] int precision() const { return m_precision; }
+    [[nodiscard]] int precision() const;
     /** \brief Returns the measurement unit label. */
-    [[nodiscard]] QString unit() const { return m_unit; }
+    [[nodiscard]] QString unit() const;
     /** \brief Returns the start angle in degrees (default: -135°). */
-    [[nodiscard]] double startAngle() const { return m_startAngle; }
+    [[nodiscard]] double startAngle() const;
     /** \brief Returns the sweep span in degrees (default: 270°). */
-    [[nodiscard]] double spanAngle() const { return m_spanAngle; }
+    [[nodiscard]] double spanAngle() const;
     /** \brief Returns the major ticks count. */
-    [[nodiscard]] int majorTicks() const { return m_majorTicks; }
+    [[nodiscard]] int majorTicks() const;
     /** \brief Returns the minor subdivisions count. */
-    [[nodiscard]] int minorTicks() const { return m_minorTicks; }
+    [[nodiscard]] int minorTicks() const;
     /** \brief Returns the operating mode (Continuous or Discrete). */
-    [[nodiscard]] KnobMode mode() const { return m_mode; }
+    [[nodiscard]] KnobMode mode() const;
     /** \brief Returns the number of discrete detent positions. */
-    [[nodiscard]] int discreteSteps() const { return m_discreteSteps; }
+    [[nodiscard]] int discreteSteps() const;
     /** \brief Returns true if the active value arc track is visible. */
-    [[nodiscard]] bool isTrackVisible() const { return m_trackVisible; }
+    [[nodiscard]] bool isTrackVisible() const;
     /** \brief Returns true if the center numeric readout is displayed. */
-    [[nodiscard]] bool isValueDisplayVisible() const { return m_valueDisplayVisible; }
+    [[nodiscard]] bool isValueDisplayVisible() const;
 
     /** \brief Returns the knob cap metal color. */
-    [[nodiscard]] QColor knobColor() const { return m_knobColor; }
+    [[nodiscard]] QColor knobColor() const;
     /** \brief Returns the pointer dot/line indicator color. */
-    [[nodiscard]] QColor pointerColor() const { return m_pointerColor; }
+    [[nodiscard]] QColor pointerColor() const;
     /** \brief Returns the scale ticks color. */
-    [[nodiscard]] QColor scaleColor() const { return m_scaleColor; }
+    [[nodiscard]] QColor scaleColor() const;
     /** \brief Returns the active progress arc track color. */
-    [[nodiscard]] QColor trackColor() const { return m_trackColor; }
+    [[nodiscard]] QColor trackColor() const;
     /** \brief Returns the label and numeric text color. */
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
+    [[nodiscard]] QColor textColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -182,38 +184,8 @@ private:
     [[nodiscard]] double angleToValue(double angle) const;
     void updateValueFromPoint(const QPointF &pos);
 
-    double m_minimum{0.0};
-    double m_maximum{100.0};
-    double m_value{25.0};
-    double m_step{1.0};
-    int m_precision{0};
-    QString m_unit{QStringLiteral("%")};
-
-    // Sweep angles: 0° is 12 o'clock, clockwise. Default: -135° to +135° (270° span)
-    double m_startAngle{-135.0};
-    double m_spanAngle{270.0};
-    int m_majorTicks{10};
-    int m_minorTicks{3};
-
-    KnobMode m_mode{KnobMode::Continuous};
-    int m_discreteSteps{5};
-    bool m_trackVisible{true};
-    bool m_valueDisplayVisible{true};
-
-    // Colors
-    QColor m_knobColor{QColor(42, 48, 60)};           // Machined Gunmetal
-    QColor m_pointerColor{QColor(0, 229, 255)};        // Neon Cyan Indicator
-    QColor m_scaleColor{QColor(190, 200, 215)};        // Graduated Scale Silver
-    QColor m_trackColor{QColor(0, 229, 255)};          // Active Arc Track
-    QColor m_textColor{QColor(240, 244, 250)};         // Readout Text
-
-    // Performance Caching
-    QPixmap m_cachePixmap;
-    bool m_cacheDirty{true};
-
-    // Mouse Interaction
-    bool m_isDragging{false};
-    QPointF m_lastMousePos;
+    std::unique_ptr<IndustrialKnobPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(IndustrialKnob)
 };
 
 } // namespace QtIndustrialWidgets

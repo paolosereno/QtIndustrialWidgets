@@ -11,19 +11,41 @@
 #include <QtGui/QRadialGradient>
 #include <QtGui/QLinearGradient>
 #include <QtGui/QFontMetrics>
+#include <QtCore/QTimer>
 #include <algorithm>
 
 namespace QtIndustrialWidgets {
 
+class LedIndicatorPrivate {
+public:
+    bool m_on{true};
+    bool m_blinking{false};
+    bool m_blinkState{true};
+    int m_blinkRateMs{500};
+
+    QColor m_onColor{QColor(46, 204, 113)};
+    QColor m_offColor{QColor(15, 60, 35)};
+    QColor m_bezelColor{QColor(60, 70, 85)};
+    bool m_bezelVisible{true};
+    bool m_glowEffect{true};
+    LedIndicator::LedShape m_shape{LedIndicator::LedShape::Circular};
+    QString m_labelText;
+    bool m_clickable{false};
+
+    QTimer m_blinkTimer;
+};
+
+
 
 LedIndicator::LedIndicator(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<LedIndicatorPrivate>())
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    m_offColor = calculateDefaultOffColor(m_onColor);
+    d_ptr->m_offColor = calculateDefaultOffColor(d_ptr->m_onColor);
 
-    connect(&m_blinkTimer, &QTimer::timeout, this, &LedIndicator::onBlinkTimeout);
+    connect(&d_ptr->m_blinkTimer, &QTimer::timeout, this, &LedIndicator::onBlinkTimeout);
 }
 
 LedIndicator::LedIndicator(const QColor &onColor, QWidget *parent)
@@ -32,11 +54,27 @@ LedIndicator::LedIndicator(const QColor &onColor, QWidget *parent)
     setOnColor(onColor);
 }
 
+LedIndicator::~LedIndicator() = default;
+
+bool LedIndicator::isOn() const { Q_D(const LedIndicator); return d->m_on; }
+bool LedIndicator::isBlinking() const { Q_D(const LedIndicator); return d->m_blinking; }
+int LedIndicator::blinkRateMs() const { Q_D(const LedIndicator); return d->m_blinkRateMs; }
+QColor LedIndicator::onColor() const { Q_D(const LedIndicator); return d->m_onColor; }
+QColor LedIndicator::offColor() const { Q_D(const LedIndicator); return d->m_offColor; }
+QColor LedIndicator::bezelColor() const { Q_D(const LedIndicator); return d->m_bezelColor; }
+bool LedIndicator::isBezelVisible() const { Q_D(const LedIndicator); return d->m_bezelVisible; }
+bool LedIndicator::hasGlowEffect() const { Q_D(const LedIndicator); return d->m_glowEffect; }
+LedIndicator::LedShape LedIndicator::shape() const { Q_D(const LedIndicator); return d->m_shape; }
+QString LedIndicator::labelText() const { Q_D(const LedIndicator); return d->m_labelText; }
+bool LedIndicator::isClickable() const { Q_D(const LedIndicator); return d->m_clickable; }
+
+
+
 QSize LedIndicator::sizeHint() const
 {
-    if (!m_labelText.isEmpty()) {
+    if (!d_ptr->m_labelText.isEmpty()) {
         QFontMetrics fm(font());
-        int textW = fm.horizontalAdvance(m_labelText);
+        int textW = fm.horizontalAdvance(d_ptr->m_labelText);
         int textH = fm.height();
         return QSize(28 + 8 + textW + 4, std::max(28, textH + 4));
     }
@@ -56,9 +94,9 @@ QColor LedIndicator::calculateDefaultOffColor(const QColor &onCol) const
 
 void LedIndicator::setOn(bool on)
 {
-    if (m_on == on) return;
-    m_on = on;
-    Q_EMIT stateChanged(m_on);
+    if (d_ptr->m_on == on) return;
+    d_ptr->m_on = on;
+    Q_EMIT stateChanged(d_ptr->m_on);
     update();
 }
 
@@ -69,96 +107,96 @@ void LedIndicator::setOff()
 
 void LedIndicator::toggle()
 {
-    setOn(!m_on);
+    setOn(!d_ptr->m_on);
 }
 
 void LedIndicator::setBlinking(bool blinking)
 {
-    if (m_blinking == blinking) return;
-    m_blinking = blinking;
+    if (d_ptr->m_blinking == blinking) return;
+    d_ptr->m_blinking = blinking;
 
-    if (m_blinking) {
-        m_blinkState = true;
-        m_blinkTimer.start(m_blinkRateMs);
+    if (d_ptr->m_blinking) {
+        d_ptr->m_blinkState = true;
+        d_ptr->m_blinkTimer.start(d_ptr->m_blinkRateMs);
     } else {
-        m_blinkTimer.stop();
-        m_blinkState = true;
+        d_ptr->m_blinkTimer.stop();
+        d_ptr->m_blinkState = true;
     }
 
-    Q_EMIT blinkingChanged(m_blinking);
+    Q_EMIT blinkingChanged(d_ptr->m_blinking);
     update();
 }
 
 void LedIndicator::setBlinkRateMs(int rateMs)
 {
     int rate = std::max(50, rateMs);
-    if (m_blinkRateMs == rate) return;
-    m_blinkRateMs = rate;
-    if (m_blinking) {
-        m_blinkTimer.start(m_blinkRateMs);
+    if (d_ptr->m_blinkRateMs == rate) return;
+    d_ptr->m_blinkRateMs = rate;
+    if (d_ptr->m_blinking) {
+        d_ptr->m_blinkTimer.start(d_ptr->m_blinkRateMs);
     }
     Q_EMIT appearanceChanged();
 }
 
 void LedIndicator::onBlinkTimeout()
 {
-    m_blinkState = !m_blinkState;
+    d_ptr->m_blinkState = !d_ptr->m_blinkState;
     update();
 }
 
 void LedIndicator::setOnColor(const QColor &color)
 {
-    if (m_onColor == color) return;
-    m_onColor = color;
-    m_offColor = calculateDefaultOffColor(m_onColor);
+    if (d_ptr->m_onColor == color) return;
+    d_ptr->m_onColor = color;
+    d_ptr->m_offColor = calculateDefaultOffColor(d_ptr->m_onColor);
     Q_EMIT appearanceChanged();
     update();
 }
 
 void LedIndicator::setOffColor(const QColor &color)
 {
-    if (m_offColor == color) return;
-    m_offColor = color;
+    if (d_ptr->m_offColor == color) return;
+    d_ptr->m_offColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void LedIndicator::setBezelColor(const QColor &color)
 {
-    if (m_bezelColor == color) return;
-    m_bezelColor = color;
+    if (d_ptr->m_bezelColor == color) return;
+    d_ptr->m_bezelColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void LedIndicator::setBezelVisible(bool visible)
 {
-    if (m_bezelVisible == visible) return;
-    m_bezelVisible = visible;
+    if (d_ptr->m_bezelVisible == visible) return;
+    d_ptr->m_bezelVisible = visible;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void LedIndicator::setGlowEffect(bool glow)
 {
-    if (m_glowEffect == glow) return;
-    m_glowEffect = glow;
+    if (d_ptr->m_glowEffect == glow) return;
+    d_ptr->m_glowEffect = glow;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void LedIndicator::setShape(LedShape shape)
 {
-    if (m_shape == shape) return;
-    m_shape = shape;
+    if (d_ptr->m_shape == shape) return;
+    d_ptr->m_shape = shape;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void LedIndicator::setLabelText(const QString &text)
 {
-    if (m_labelText == text) return;
-    m_labelText = text;
+    if (d_ptr->m_labelText == text) return;
+    d_ptr->m_labelText = text;
     updateGeometry();
     Q_EMIT appearanceChanged();
     update();
@@ -166,15 +204,15 @@ void LedIndicator::setLabelText(const QString &text)
 
 void LedIndicator::setClickable(bool clickable)
 {
-    if (m_clickable == clickable) return;
-    m_clickable = clickable;
-    setCursor(m_clickable ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    if (d_ptr->m_clickable == clickable) return;
+    d_ptr->m_clickable = clickable;
+    setCursor(d_ptr->m_clickable ? Qt::PointingHandCursor : Qt::ArrowCursor);
     Q_EMIT appearanceChanged();
 }
 
 void LedIndicator::mousePressEvent(QMouseEvent *event)
 {
-    if (m_clickable && event->button() == Qt::LeftButton) {
+    if (d_ptr->m_clickable && event->button() == Qt::LeftButton) {
         toggle();
         Q_EMIT clicked();
         event->accept();
@@ -189,7 +227,7 @@ void LedIndicator::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    const bool isLit = m_on && (!m_blinking || m_blinkState);
+    const bool isLit = d_ptr->m_on && (!d_ptr->m_blinking || d_ptr->m_blinkState);
     const double w = width();
     const double h = height();
 
@@ -197,7 +235,7 @@ void LedIndicator::paintEvent(QPaintEvent *)
     QRectF ledRect;
     QRectF textRect;
 
-    if (!m_labelText.isEmpty()) {
+    if (!d_ptr->m_labelText.isEmpty()) {
         double ledSize = std::min(h - 4.0, 36.0);
         ledRect = QRectF(2.0, (h - ledSize) * 0.5, ledSize, ledSize);
         textRect = QRectF(ledRect.right() + 8.0, 0.0, w - ledRect.right() - 8.0, h);
@@ -214,9 +252,9 @@ void LedIndicator::paintEvent(QPaintEvent *)
     const double radius = ledRect.width() * 0.5;
 
     // 1. Draw Optional Glow Halo (when lit)
-    if (isLit && m_glowEffect) {
+    if (isLit && d_ptr->m_glowEffect) {
         QRadialGradient glowGrad(center, radius * 1.35);
-        QColor glowCol = m_onColor;
+        QColor glowCol = d_ptr->m_onColor;
         glowCol.setAlpha(120);
         glowGrad.setColorAt(0.0, glowCol);
         glowCol.setAlpha(40);
@@ -226,7 +264,7 @@ void LedIndicator::paintEvent(QPaintEvent *)
 
         painter.setPen(Qt::NoPen);
         painter.setBrush(glowGrad);
-        if (m_shape == LedShape::Circular) {
+        if (d_ptr->m_shape == LedShape::Circular) {
             painter.drawEllipse(center, radius * 1.35, radius * 1.35);
         } else {
             painter.drawRoundedRect(ledRect.adjusted(-3.0, -3.0, 3.0, 3.0), 6.0, 6.0);
@@ -237,14 +275,14 @@ void LedIndicator::paintEvent(QPaintEvent *)
     QRectF lensRect = ledRect;
     double lensRadius = radius;
 
-    if (m_bezelVisible) {
-        if (m_shape == LedShape::Circular) {
+    if (d_ptr->m_bezelVisible) {
+        if (d_ptr->m_shape == LedShape::Circular) {
             QRadialGradient bezelGrad(center, radius);
-            bezelGrad.setColorAt(0.0, m_bezelColor.lighter(130));
-            bezelGrad.setColorAt(0.85, m_bezelColor);
-            bezelGrad.setColorAt(1.0, m_bezelColor.darker(160));
+            bezelGrad.setColorAt(0.0, d_ptr->m_bezelColor.lighter(130));
+            bezelGrad.setColorAt(0.85, d_ptr->m_bezelColor);
+            bezelGrad.setColorAt(1.0, d_ptr->m_bezelColor.darker(160));
 
-            painter.setPen(QPen(m_bezelColor.darker(180), 1.0));
+            painter.setPen(QPen(d_ptr->m_bezelColor.darker(180), 1.0));
             painter.setBrush(bezelGrad);
             painter.drawEllipse(center, radius, radius);
 
@@ -260,10 +298,10 @@ void LedIndicator::paintEvent(QPaintEvent *)
         } else {
             // Rectangular Bezel
             QLinearGradient bezelGrad(ledRect.topLeft(), ledRect.bottomRight());
-            bezelGrad.setColorAt(0.0, m_bezelColor.lighter(130));
-            bezelGrad.setColorAt(1.0, m_bezelColor.darker(150));
+            bezelGrad.setColorAt(0.0, d_ptr->m_bezelColor.lighter(130));
+            bezelGrad.setColorAt(1.0, d_ptr->m_bezelColor.darker(150));
 
-            painter.setPen(QPen(m_bezelColor.darker(180), 1.2));
+            painter.setPen(QPen(d_ptr->m_bezelColor.darker(180), 1.2));
             painter.setBrush(bezelGrad);
             painter.drawRoundedRect(ledRect, 4.0, 4.0);
 
@@ -272,22 +310,22 @@ void LedIndicator::paintEvent(QPaintEvent *)
     }
 
     // 3. 3D Lens Core
-    if (m_shape == LedShape::Circular) {
+    if (d_ptr->m_shape == LedShape::Circular) {
         QPointF focalPoint(center.x() - lensRadius * 0.25, center.y() - lensRadius * 0.25);
         QRadialGradient lensGrad(center, lensRadius, focalPoint);
 
         if (isLit) {
-            lensGrad.setColorAt(0.0, m_onColor.lighter(170));
-            lensGrad.setColorAt(0.5, m_onColor);
-            lensGrad.setColorAt(0.9, m_onColor.darker(130));
-            lensGrad.setColorAt(1.0, m_onColor.darker(170));
+            lensGrad.setColorAt(0.0, d_ptr->m_onColor.lighter(170));
+            lensGrad.setColorAt(0.5, d_ptr->m_onColor);
+            lensGrad.setColorAt(0.9, d_ptr->m_onColor.darker(130));
+            lensGrad.setColorAt(1.0, d_ptr->m_onColor.darker(170));
         } else {
-            lensGrad.setColorAt(0.0, m_offColor.lighter(130));
-            lensGrad.setColorAt(0.6, m_offColor);
-            lensGrad.setColorAt(1.0, m_offColor.darker(170));
+            lensGrad.setColorAt(0.0, d_ptr->m_offColor.lighter(130));
+            lensGrad.setColorAt(0.6, d_ptr->m_offColor);
+            lensGrad.setColorAt(1.0, d_ptr->m_offColor.darker(170));
         }
 
-        painter.setPen(QPen(isLit ? m_onColor.darker(140) : m_offColor.darker(180), 0.8));
+        painter.setPen(QPen(isLit ? d_ptr->m_onColor.darker(140) : d_ptr->m_offColor.darker(180), 0.8));
         painter.setBrush(lensGrad);
         painter.drawEllipse(center, lensRadius, lensRadius);
 
@@ -319,15 +357,15 @@ void LedIndicator::paintEvent(QPaintEvent *)
         // Rectangular Lens
         QLinearGradient lensGrad(lensRect.topLeft(), lensRect.bottomRight());
         if (isLit) {
-            lensGrad.setColorAt(0.0, m_onColor.lighter(150));
-            lensGrad.setColorAt(0.5, m_onColor);
-            lensGrad.setColorAt(1.0, m_onColor.darker(140));
+            lensGrad.setColorAt(0.0, d_ptr->m_onColor.lighter(150));
+            lensGrad.setColorAt(0.5, d_ptr->m_onColor);
+            lensGrad.setColorAt(1.0, d_ptr->m_onColor.darker(140));
         } else {
-            lensGrad.setColorAt(0.0, m_offColor.lighter(120));
-            lensGrad.setColorAt(1.0, m_offColor.darker(160));
+            lensGrad.setColorAt(0.0, d_ptr->m_offColor.lighter(120));
+            lensGrad.setColorAt(1.0, d_ptr->m_offColor.darker(160));
         }
 
-        painter.setPen(QPen(isLit ? m_onColor.darker(130) : m_offColor.darker(170), 0.8));
+        painter.setPen(QPen(isLit ? d_ptr->m_onColor.darker(130) : d_ptr->m_offColor.darker(170), 0.8));
         painter.setBrush(lensGrad);
         painter.drawRoundedRect(lensRect, 3.0, 3.0);
 
@@ -343,9 +381,9 @@ void LedIndicator::paintEvent(QPaintEvent *)
     }
 
     // 4. Draw Label Text (if present)
-    if (!m_labelText.isEmpty()) {
+    if (!d_ptr->m_labelText.isEmpty()) {
         painter.setPen(palette().color(QPalette::WindowText));
-        painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, m_labelText);
+        painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, d_ptr->m_labelText);
     }
 }
 

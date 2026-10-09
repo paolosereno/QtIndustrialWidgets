@@ -12,47 +12,84 @@
 
 namespace QtIndustrialWidgets {
 
+class SevenSegmentDisplayPrivate {
+public:
+    double m_value{0.0};
+    QString m_text{QStringLiteral("0.0")};
+    int m_digitCount{5};
+    int m_decimalPlaces{1};
+    bool m_showLeadingZeros{false};
+    bool m_showDecimalPoint{true};
+    double m_skewAngle{8.0};             // Degrees italic skew
+    double m_segmentWidthRatio{0.14};    // Thickness relative to width
+
+    QColor m_activeSegmentColor{QColor(0, 229, 255)};         // Neon Cyan LED
+    QColor m_inactiveSegmentColor{QColor(0, 229, 255, 28)};    // Dim unlit ghost
+    QColor m_backgroundColor{QColor(16, 20, 28)};             // Dark LCD Panel
+    QColor m_bezelColor{QColor(40, 48, 60)};                  // Bezel rim
+    bool m_bezelVisible{true};
+    bool m_isTextExplicit{false};
+};
 
 SevenSegmentDisplay::SevenSegmentDisplay(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<SevenSegmentDisplayPrivate>())
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     updateFormattedText();
 }
 
+SevenSegmentDisplay::~SevenSegmentDisplay() = default;
+
+double SevenSegmentDisplay::value() const { Q_D(const SevenSegmentDisplay); return d->m_value; }
+QString SevenSegmentDisplay::text() const { Q_D(const SevenSegmentDisplay); return d->m_text; }
+int SevenSegmentDisplay::digitCount() const { Q_D(const SevenSegmentDisplay); return d->m_digitCount; }
+int SevenSegmentDisplay::decimalPlaces() const { Q_D(const SevenSegmentDisplay); return d->m_decimalPlaces; }
+bool SevenSegmentDisplay::showLeadingZeros() const { Q_D(const SevenSegmentDisplay); return d->m_showLeadingZeros; }
+bool SevenSegmentDisplay::showDecimalPoint() const { Q_D(const SevenSegmentDisplay); return d->m_showDecimalPoint; }
+double SevenSegmentDisplay::skewAngle() const { Q_D(const SevenSegmentDisplay); return d->m_skewAngle; }
+double SevenSegmentDisplay::segmentWidthRatio() const { Q_D(const SevenSegmentDisplay); return d->m_segmentWidthRatio; }
+QColor SevenSegmentDisplay::activeSegmentColor() const { Q_D(const SevenSegmentDisplay); return d->m_activeSegmentColor; }
+QColor SevenSegmentDisplay::inactiveSegmentColor() const { Q_D(const SevenSegmentDisplay); return d->m_inactiveSegmentColor; }
+QColor SevenSegmentDisplay::backgroundColor() const { Q_D(const SevenSegmentDisplay); return d->m_backgroundColor; }
+QColor SevenSegmentDisplay::bezelColor() const { Q_D(const SevenSegmentDisplay); return d->m_bezelColor; }
+bool SevenSegmentDisplay::isBezelVisible() const { Q_D(const SevenSegmentDisplay); return d->m_bezelVisible; }
+
+
+
 QSize SevenSegmentDisplay::sizeHint() const
 {
-    return QSize(m_digitCount * 45 + 30, 80);
+    return QSize(d_ptr->m_digitCount * 45 + 30, 80);
 }
 
 QSize SevenSegmentDisplay::minimumSizeHint() const
 {
-    return QSize(m_digitCount * 18 + 15, 35);
+    return QSize(d_ptr->m_digitCount * 18 + 15, 35);
 }
 
 void SevenSegmentDisplay::setValue(double val)
 {
-    m_isTextExplicit = false;
-    if (qFuzzyCompare(val, m_value)) return;
-    m_value = val;
+    d_ptr->m_isTextExplicit = false;
+    if (qFuzzyCompare(val, d_ptr->m_value)) return;
+    d_ptr->m_value = val;
     updateFormattedText();
-    Q_EMIT valueChanged(m_value);
+    Q_EMIT valueChanged(d_ptr->m_value);
     update();
 }
 
 void SevenSegmentDisplay::setText(const QString &text)
 {
-    m_isTextExplicit = true;
-    if (m_text == text) return;
-    m_text = text;
+    d_ptr->m_isTextExplicit = true;
+    if (d_ptr->m_text == text) return;
+    d_ptr->m_text = text;
     bool ok = false;
     double parsed = text.toDouble(&ok);
     if (ok) {
-        m_value = parsed;
-        Q_EMIT valueChanged(m_value);
+        d_ptr->m_value = parsed;
+        Q_EMIT valueChanged(d_ptr->m_value);
     }
-    Q_EMIT textChanged(m_text);
+    Q_EMIT textChanged(d_ptr->m_text);
     update();
 }
 
@@ -74,8 +111,8 @@ void SevenSegmentDisplay::display(const QString &text)
 void SevenSegmentDisplay::setDigitCount(int count)
 {
     int c = std::clamp(count, 1, 16);
-    if (m_digitCount == c) return;
-    m_digitCount = c;
+    if (d_ptr->m_digitCount == c) return;
+    d_ptr->m_digitCount = c;
     updateFormattedText();
     updateGeometry();
     Q_EMIT appearanceChanged();
@@ -84,9 +121,9 @@ void SevenSegmentDisplay::setDigitCount(int count)
 
 void SevenSegmentDisplay::setDecimalPlaces(int places)
 {
-    if (m_decimalPlaces == places) return;
-    m_decimalPlaces = places;
-    if (!m_isTextExplicit) {
+    if (d_ptr->m_decimalPlaces == places) return;
+    d_ptr->m_decimalPlaces = places;
+    if (!d_ptr->m_isTextExplicit) {
         updateFormattedText();
     }
     Q_EMIT appearanceChanged();
@@ -95,9 +132,9 @@ void SevenSegmentDisplay::setDecimalPlaces(int places)
 
 void SevenSegmentDisplay::setShowLeadingZeros(bool show)
 {
-    if (m_showLeadingZeros == show) return;
-    m_showLeadingZeros = show;
-    if (!m_isTextExplicit) {
+    if (d_ptr->m_showLeadingZeros == show) return;
+    d_ptr->m_showLeadingZeros = show;
+    if (!d_ptr->m_isTextExplicit) {
         updateFormattedText();
     }
     Q_EMIT appearanceChanged();
@@ -106,82 +143,82 @@ void SevenSegmentDisplay::setShowLeadingZeros(bool show)
 
 void SevenSegmentDisplay::setShowDecimalPoint(bool show)
 {
-    if (m_showDecimalPoint == show) return;
-    m_showDecimalPoint = show;
+    if (d_ptr->m_showDecimalPoint == show) return;
+    d_ptr->m_showDecimalPoint = show;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setSkewAngle(double angle)
 {
-    if (qFuzzyCompare(m_skewAngle, angle)) return;
-    m_skewAngle = std::clamp(angle, -30.0, 30.0);
+    if (qFuzzyCompare(d_ptr->m_skewAngle, angle)) return;
+    d_ptr->m_skewAngle = std::clamp(angle, -30.0, 30.0);
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setSegmentWidthRatio(double ratio)
 {
-    if (qFuzzyCompare(m_segmentWidthRatio, ratio)) return;
-    m_segmentWidthRatio = std::clamp(ratio, 0.08, 0.25);
+    if (qFuzzyCompare(d_ptr->m_segmentWidthRatio, ratio)) return;
+    d_ptr->m_segmentWidthRatio = std::clamp(ratio, 0.08, 0.25);
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setActiveSegmentColor(const QColor &color)
 {
-    if (m_activeSegmentColor == color) return;
-    m_activeSegmentColor = color;
+    if (d_ptr->m_activeSegmentColor == color) return;
+    d_ptr->m_activeSegmentColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setInactiveSegmentColor(const QColor &color)
 {
-    if (m_inactiveSegmentColor == color) return;
-    m_inactiveSegmentColor = color;
+    if (d_ptr->m_inactiveSegmentColor == color) return;
+    d_ptr->m_inactiveSegmentColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setBackgroundColor(const QColor &color)
 {
-    if (m_backgroundColor == color) return;
-    m_backgroundColor = color;
+    if (d_ptr->m_backgroundColor == color) return;
+    d_ptr->m_backgroundColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setBezelColor(const QColor &color)
 {
-    if (m_bezelColor == color) return;
-    m_bezelColor = color;
+    if (d_ptr->m_bezelColor == color) return;
+    d_ptr->m_bezelColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::setBezelVisible(bool visible)
 {
-    if (m_bezelVisible == visible) return;
-    m_bezelVisible = visible;
+    if (d_ptr->m_bezelVisible == visible) return;
+    d_ptr->m_bezelVisible = visible;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void SevenSegmentDisplay::updateFormattedText()
 {
-    if (m_isTextExplicit) return;
+    if (d_ptr->m_isTextExplicit) return;
 
     QString s;
-    if (m_decimalPlaces >= 0) {
-        s = QString::number(m_value, 'f', m_decimalPlaces);
+    if (d_ptr->m_decimalPlaces >= 0) {
+        s = QString::number(d_ptr->m_value, 'f', d_ptr->m_decimalPlaces);
     } else {
-        s = QString::number(m_value);
+        s = QString::number(d_ptr->m_value);
     }
 
-    if (m_showLeadingZeros) {
-        int intDigitsNeeded = m_digitCount - ((m_decimalPlaces > 0) ? (m_decimalPlaces + 1) : 0);
-        if (m_value < 0.0) intDigitsNeeded--;
+    if (d_ptr->m_showLeadingZeros) {
+        int intDigitsNeeded = d_ptr->m_digitCount - ((d_ptr->m_decimalPlaces > 0) ? (d_ptr->m_decimalPlaces + 1) : 0);
+        if (d_ptr->m_value < 0.0) intDigitsNeeded--;
         QStringList parts = s.split(QLatin1Char('.'));
         if (!parts.isEmpty()) {
             QString intPart = parts.first();
@@ -196,8 +233,8 @@ void SevenSegmentDisplay::updateFormattedText()
         }
     }
 
-    m_text = s;
-    Q_EMIT textChanged(m_text);
+    d_ptr->m_text = s;
+    Q_EMIT textChanged(d_ptr->m_text);
 }
 
 quint8 SevenSegmentDisplay::encodeChar(QChar ch)
@@ -247,7 +284,7 @@ void SevenSegmentDisplay::drawDigit(QPainter &painter, const QRectF &rect, quint
 {
     const double w = rect.width();
     const double h = rect.height();
-    const double t = w * m_segmentWidthRatio;
+    const double t = w * d_ptr->m_segmentWidthRatio;
     const double gap = t * 0.18;
     const double yMid = h * 0.5;
 
@@ -370,8 +407,8 @@ void SevenSegmentDisplay::drawDigit(QPainter &painter, const QRectF &rect, quint
     painter.translate(rect.topLeft());
 
     // Apply italic skew if configured
-    if (!qFuzzyIsNull(m_skewAngle)) {
-        double shear = -std::tan(m_skewAngle * M_PI / 180.0);
+    if (!qFuzzyIsNull(d_ptr->m_skewAngle)) {
+        double shear = -std::tan(d_ptr->m_skewAngle * M_PI / 180.0);
         painter.translate(0.0, h);
         painter.shear(shear, 0.0);
         painter.translate(0.0, -h);
@@ -382,15 +419,15 @@ void SevenSegmentDisplay::drawDigit(QPainter &painter, const QRectF &rect, quint
 
     for (int i = 0; i < 7; ++i) {
         bool isActive = (mask & (1 << i)) != 0;
-        painter.setBrush(isActive ? m_activeSegmentColor : m_inactiveSegmentColor);
+        painter.setBrush(isActive ? d_ptr->m_activeSegmentColor : d_ptr->m_inactiveSegmentColor);
         painter.drawPolygon(segments[i]);
     }
 
     // Draw Decimal Point (dp) at bottom-right of digit
-    if (m_showDecimalPoint) {
+    if (d_ptr->m_showDecimalPoint) {
         double dpSize = t * 0.95;
         QRectF dpRect(w + gap * 1.5, h - t - gap, dpSize, dpSize);
-        painter.setBrush(hasDecimalPoint ? m_activeSegmentColor : m_inactiveSegmentColor);
+        painter.setBrush(hasDecimalPoint ? d_ptr->m_activeSegmentColor : d_ptr->m_inactiveSegmentColor);
         painter.drawRoundedRect(dpRect, 1.5, 1.5);
     }
 
@@ -407,16 +444,16 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *)
 
     // 1. Draw Casing & Background
     QRectF panelRect(1.0, 1.0, w - 2.0, h - 2.0);
-    if (m_bezelVisible) {
-        painter.setPen(QPen(m_bezelColor.darker(150), 1.5));
-        painter.setBrush(m_backgroundColor);
+    if (d_ptr->m_bezelVisible) {
+        painter.setPen(QPen(d_ptr->m_bezelColor.darker(150), 1.5));
+        painter.setBrush(d_ptr->m_backgroundColor);
         painter.drawRoundedRect(panelRect, 5.0, 5.0);
 
         // Subtle inner shadow highlight
         painter.setPen(QPen(QColor(0, 0, 0, 90), 1.2));
         painter.drawRoundedRect(panelRect.adjusted(1.5, 1.5, -1.5, -1.5), 4.0, 4.0);
     } else {
-        painter.fillRect(panelRect, m_backgroundColor);
+        painter.fillRect(panelRect, d_ptr->m_backgroundColor);
     }
 
     // 2. Parse text into digit slots with decimal points
@@ -426,8 +463,8 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *)
     };
 
     std::vector<DigitData> parsedDigits;
-    for (int i = 0; i < m_text.length(); ++i) {
-        QChar c = m_text.at(i);
+    for (int i = 0; i < d_ptr->m_text.length(); ++i) {
+        QChar c = d_ptr->m_text.at(i);
         if (c == QLatin1Char('.')) {
             if (!parsedDigits.empty()) {
                 parsedDigits.back().hasDp = true;
@@ -439,12 +476,12 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *)
         }
     }
 
-    // Align into m_digitCount slots (right aligned)
-    std::vector<DigitData> displaySlots(m_digitCount, {QLatin1Char(' '), false});
-    int startIdx = m_digitCount - static_cast<int>(parsedDigits.size());
+    // Align into d_ptr->m_digitCount slots (right aligned)
+    std::vector<DigitData> displaySlots(d_ptr->m_digitCount, {QLatin1Char(' '), false});
+    int startIdx = d_ptr->m_digitCount - static_cast<int>(parsedDigits.size());
     for (size_t i = 0; i < parsedDigits.size(); ++i) {
         int targetSlot = startIdx + static_cast<int>(i);
-        if (targetSlot >= 0 && targetSlot < m_digitCount) {
+        if (targetSlot >= 0 && targetSlot < d_ptr->m_digitCount) {
             displaySlots[targetSlot] = parsedDigits[i];
         }
     }
@@ -461,7 +498,7 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *)
     double targetDigitW = targetDigitH * 0.52;
     double spacing = targetDigitW * 0.35;
 
-    double totalNeededW = m_digitCount * targetDigitW + (m_digitCount - 1) * spacing;
+    double totalNeededW = d_ptr->m_digitCount * targetDigitW + (d_ptr->m_digitCount - 1) * spacing;
     if (totalNeededW > availW) {
         // Scale down to fit width
         double scale = availW / totalNeededW;
@@ -474,7 +511,7 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *)
     double startX = marginX + (availW - totalNeededW) * 0.5;
     double startY = marginY + (availH - targetDigitH) * 0.5;
 
-    for (int i = 0; i < m_digitCount; ++i) {
+    for (int i = 0; i < d_ptr->m_digitCount; ++i) {
         QRectF digitRect(startX + i * (targetDigitW + spacing), startY, targetDigitW, targetDigitH);
         quint8 mask = encodeChar(displaySlots[i].ch);
         drawDigit(painter, digitRect, mask, displaySlots[i].hasDp);

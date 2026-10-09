@@ -9,11 +9,9 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
-#include <QtGui/QPixmap>
 #include <QtCore/QVector>
 #include <QtCore/QStringList>
-
-class QTimer;
+#include <memory>
 
 /**
  * \class LevelMeter
@@ -41,6 +39,8 @@ class QTimer;
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class LevelMeterPrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT LevelMeter : public QWidget
 {
@@ -83,33 +83,33 @@ public:
     ~LevelMeter() override;
 
     /** \brief Returns the number of concurrent channels rendered (default: 1). */
-    [[nodiscard]] int channelCount() const { return m_channelCount; }
+    [[nodiscard]] int channelCount() const;
     /** \brief Returns the minimum scale value. */
-    [[nodiscard]] double minimum() const { return m_minimum; }
+    [[nodiscard]] double minimum() const;
     /** \brief Returns the maximum scale value. */
-    [[nodiscard]] double maximum() const { return m_maximum; }
+    [[nodiscard]] double maximum() const;
     /** \brief Returns the warning threshold value. */
-    [[nodiscard]] double warningThreshold() const { return m_warningThreshold; }
+    [[nodiscard]] double warningThreshold() const;
     /** \brief Returns the critical overload error threshold value. */
-    [[nodiscard]] double errorThreshold() const { return m_errorThreshold; }
+    [[nodiscard]] double errorThreshold() const;
     /** \brief Returns the number of discrete LED segments per channel. */
-    [[nodiscard]] int segmentCount() const { return m_segmentCount; }
+    [[nodiscard]] int segmentCount() const;
     /** \brief Returns the display mode (Segmented or Continuous). */
-    [[nodiscard]] DisplayMode displayMode() const { return m_displayMode; }
+    [[nodiscard]] DisplayMode displayMode() const;
     /** \brief Returns the orientation (Qt::Vertical or Qt::Horizontal). */
-    [[nodiscard]] Qt::Orientation orientation() const { return m_orientation; }
+    [[nodiscard]] Qt::Orientation orientation() const;
     /** \brief Returns true if temporary peak hold lines are enabled. */
-    [[nodiscard]] bool isPeakHoldEnabled() const { return m_peakHoldEnabled; }
+    [[nodiscard]] bool isPeakHoldEnabled() const;
     /** \brief Returns the peak hold stationary dwell duration in milliseconds. */
-    [[nodiscard]] int peakHoldTimeMs() const { return m_peakHoldTimeMs; }
+    [[nodiscard]] int peakHoldTimeMs() const;
     /** \brief Returns the peak fall decay speed per second. */
-    [[nodiscard]] double peakDecayRate() const { return m_peakDecayRate; }
+    [[nodiscard]] double peakDecayRate() const;
     /** \brief Returns true if scale ticks and numeric labels are visible. */
-    [[nodiscard]] bool isScaleVisible() const { return m_scaleVisible; }
+    [[nodiscard]] bool isScaleVisible() const;
     /** \brief Returns the measurement unit label string (e.g. "dB", "VU", "%"). */
-    [[nodiscard]] QString unit() const { return m_unit; }
+    [[nodiscard]] QString unit() const;
     /** \brief Returns the header title caption. */
-    [[nodiscard]] QString title() const { return m_title; }
+    [[nodiscard]] QString title() const;
 
     /** \brief Returns the current value of a channel. */
     [[nodiscard]] double value(int channel = 0) const;
@@ -119,20 +119,20 @@ public:
     [[nodiscard]] QVector<double> values() const;
 
     /** \brief Returns channel identifier labels. */
-    [[nodiscard]] QStringList channelLabels() const { return m_channelLabels; }
+    [[nodiscard]] QStringList channelLabels() const;
 
     /** \brief Returns the normal operating segment color (e.g. green). */
-    [[nodiscard]] QColor normalColor() const { return m_normalColor; }
+    [[nodiscard]] QColor normalColor() const;
     /** \brief Returns the caution warning segment color (e.g. amber). */
-    [[nodiscard]] QColor warningColor() const { return m_warningColor; }
+    [[nodiscard]] QColor warningColor() const;
     /** \brief Returns the critical overload error segment color (e.g. red). */
-    [[nodiscard]] QColor errorColor() const { return m_errorColor; }
+    [[nodiscard]] QColor errorColor() const;
     /** \brief Returns the peak hold indicator bar color. */
-    [[nodiscard]] QColor peakColor() const { return m_peakColor; }
+    [[nodiscard]] QColor peakColor() const;
     /** \brief Returns the recessed channel trough background color. */
-    [[nodiscard]] QColor backgroundColor() const { return m_backgroundColor; }
+    [[nodiscard]] QColor backgroundColor() const;
     /** \brief Returns the scale ticks and font lettering color. */
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
+    [[nodiscard]] QColor textColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -210,13 +210,6 @@ private Q_SLOTS:
     void updatePeakDecay();
 
 private:
-    struct ChannelData {
-        double value = 0.0;
-        double peakValue = 0.0;
-        qint64 lastPeakTime = 0;
-        bool overloadState = false;
-    };
-
     void renderStaticBackground();
     void drawChannelBar(QPainter &painter, int chIndex, const QRectF &barRect);
     void drawSegmentedBar(QPainter &painter, double val, double peakVal, const QRectF &barRect);
@@ -224,37 +217,8 @@ private:
     QColor colorForNormalizedValue(double norm) const;
     QVector<QRectF> calculateBarRects(const QRectF &contentRect) const;
 
-    int m_channelCount = 2; // Default stereo (L / R)
-    double m_minimum = -60.0;
-    double m_maximum = 6.0;
-    double m_warningThreshold = -6.0;
-    double m_errorThreshold = 0.0;
-    int m_segmentCount = 24;
-    DisplayMode m_displayMode = DisplayMode::Segmented;
-    Qt::Orientation m_orientation = Qt::Vertical;
-
-    bool m_peakHoldEnabled = true;
-    int m_peakHoldTimeMs = 1200; // Hold peak for 1.2s before decay
-    double m_peakDecayRate = 25.0; // Units/second decay rate
-    bool m_scaleVisible = true;
-
-    QString m_unit = QStringLiteral("dB");
-    QString m_title;
-    QStringList m_channelLabels = {QStringLiteral("L"), QStringLiteral("R")};
-
-    QColor m_normalColor = QColor(46, 204, 113);   // Green
-    QColor m_warningColor = QColor(254, 211, 48);  // Amber Yellow
-    QColor m_errorColor = QColor(235, 59, 90);     // Red
-    QColor m_peakColor = QColor(255, 255, 255);    // White peak indicator
-    QColor m_backgroundColor = QColor(22, 25, 30); // Deep dark chassis
-    QColor m_textColor = QColor(180, 185, 195);
-
-    QVector<ChannelData> m_channels;
-    QTimer *m_decayTimer = nullptr;
-
-    QPixmap m_cachedBackground;
-    bool m_cacheValid = false;
-    qint64 m_lastDecayTime = 0;
+    std::unique_ptr<LevelMeterPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(LevelMeter)
 };
 
 } // namespace QtIndustrialWidgets

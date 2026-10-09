@@ -18,13 +18,69 @@
 namespace QtIndustrialWidgets {
 
 
+class IndustrialKnobPrivate {
+public:
+    double m_minimum{0.0};
+    double m_maximum{100.0};
+    double m_value{25.0};
+    double m_step{1.0};
+    int m_precision{0};
+    QString m_unit{QStringLiteral("%")};
+
+    double m_startAngle{-135.0};
+    double m_spanAngle{270.0};
+    int m_majorTicks{10};
+    int m_minorTicks{3};
+
+    IndustrialKnob::KnobMode m_mode{IndustrialKnob::KnobMode::Continuous};
+    int m_discreteSteps{5};
+    bool m_trackVisible{true};
+    bool m_valueDisplayVisible{true};
+
+    QColor m_knobColor{QColor(42, 48, 60)};
+    QColor m_pointerColor{QColor(0, 229, 255)};
+    QColor m_scaleColor{QColor(190, 200, 215)};
+    QColor m_trackColor{QColor(0, 229, 255)};
+    QColor m_textColor{QColor(240, 244, 250)};
+
+    QPixmap m_cachePixmap;
+    bool m_cacheDirty{true};
+
+    bool m_isDragging{false};
+    QPointF m_lastMousePos;
+};
+
 IndustrialKnob::IndustrialKnob(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<IndustrialKnobPrivate>())
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setFocusPolicy(Qt::StrongFocus);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
+
+IndustrialKnob::~IndustrialKnob() = default;
+
+double IndustrialKnob::minimum() const { Q_D(const IndustrialKnob); return d->m_minimum; }
+double IndustrialKnob::maximum() const { Q_D(const IndustrialKnob); return d->m_maximum; }
+double IndustrialKnob::value() const { Q_D(const IndustrialKnob); return d->m_value; }
+double IndustrialKnob::step() const { Q_D(const IndustrialKnob); return d->m_step; }
+int IndustrialKnob::precision() const { Q_D(const IndustrialKnob); return d->m_precision; }
+QString IndustrialKnob::unit() const { Q_D(const IndustrialKnob); return d->m_unit; }
+double IndustrialKnob::startAngle() const { Q_D(const IndustrialKnob); return d->m_startAngle; }
+double IndustrialKnob::spanAngle() const { Q_D(const IndustrialKnob); return d->m_spanAngle; }
+int IndustrialKnob::majorTicks() const { Q_D(const IndustrialKnob); return d->m_majorTicks; }
+int IndustrialKnob::minorTicks() const { Q_D(const IndustrialKnob); return d->m_minorTicks; }
+IndustrialKnob::KnobMode IndustrialKnob::mode() const { Q_D(const IndustrialKnob); return d->m_mode; }
+int IndustrialKnob::discreteSteps() const { Q_D(const IndustrialKnob); return d->m_discreteSteps; }
+bool IndustrialKnob::isTrackVisible() const { Q_D(const IndustrialKnob); return d->m_trackVisible; }
+bool IndustrialKnob::isValueDisplayVisible() const { Q_D(const IndustrialKnob); return d->m_valueDisplayVisible; }
+QColor IndustrialKnob::knobColor() const { Q_D(const IndustrialKnob); return d->m_knobColor; }
+QColor IndustrialKnob::pointerColor() const { Q_D(const IndustrialKnob); return d->m_pointerColor; }
+QColor IndustrialKnob::scaleColor() const { Q_D(const IndustrialKnob); return d->m_scaleColor; }
+QColor IndustrialKnob::trackColor() const { Q_D(const IndustrialKnob); return d->m_trackColor; }
+QColor IndustrialKnob::textColor() const { Q_D(const IndustrialKnob); return d->m_textColor; }
+
 
 QSize IndustrialKnob::sizeHint() const
 {
@@ -38,66 +94,66 @@ QSize IndustrialKnob::minimumSizeHint() const
 
 void IndustrialKnob::setValue(double val)
 {
-    double clamped = std::clamp(val, m_minimum, m_maximum);
-    if (m_mode == KnobMode::Discrete && m_discreteSteps > 1) {
-        double stepSize = (m_maximum - m_minimum) / (m_discreteSteps - 1);
-        int nearestIndex = static_cast<int>(std::round((clamped - m_minimum) / stepSize));
-        clamped = m_minimum + nearestIndex * stepSize;
+    double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
+    if (d_ptr->m_mode == KnobMode::Discrete && d_ptr->m_discreteSteps > 1) {
+        double stepSize = (d_ptr->m_maximum - d_ptr->m_minimum) / (d_ptr->m_discreteSteps - 1);
+        int nearestIndex = static_cast<int>(std::round((clamped - d_ptr->m_minimum) / stepSize));
+        clamped = d_ptr->m_minimum + nearestIndex * stepSize;
     }
 
-    if (qFuzzyCompare(clamped, m_value)) {
+    if (qFuzzyCompare(clamped, d_ptr->m_value)) {
         return;
     }
 
-    m_value = clamped;
-    Q_EMIT valueChanged(m_value);
+    d_ptr->m_value = clamped;
+    Q_EMIT valueChanged(d_ptr->m_value);
     update();
 }
 
 void IndustrialKnob::setMinimum(double min)
 {
-    setRange(min, m_maximum);
+    setRange(min, d_ptr->m_maximum);
 }
 
 void IndustrialKnob::setMaximum(double max)
 {
-    setRange(m_minimum, max);
+    setRange(d_ptr->m_minimum, max);
 }
 
 void IndustrialKnob::setRange(double min, double max)
 {
     if (min >= max) return;
-    if (qFuzzyCompare(min, m_minimum) && qFuzzyCompare(max, m_maximum)) return;
+    if (qFuzzyCompare(min, d_ptr->m_minimum) && qFuzzyCompare(max, d_ptr->m_maximum)) return;
 
-    m_minimum = min;
-    m_maximum = max;
-    m_value = std::clamp(m_value, m_minimum, m_maximum);
+    d_ptr->m_minimum = min;
+    d_ptr->m_maximum = max;
+    d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
 
     invalidateCache();
-    Q_EMIT rangeChanged(m_minimum, m_maximum);
-    Q_EMIT valueChanged(m_value);
+    Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    Q_EMIT valueChanged(d_ptr->m_value);
     update();
 }
 
 void IndustrialKnob::setStep(double step)
 {
-    if (step <= 0.0 || qFuzzyCompare(m_step, step)) return;
-    m_step = step;
+    if (step <= 0.0 || qFuzzyCompare(d_ptr->m_step, step)) return;
+    d_ptr->m_step = step;
     Q_EMIT appearanceChanged();
 }
 
 void IndustrialKnob::setPrecision(int precision)
 {
-    if (m_precision == precision) return;
-    m_precision = std::max(0, precision);
+    if (d_ptr->m_precision == precision) return;
+    d_ptr->m_precision = std::max(0, precision);
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialKnob::setUnit(const QString &unit)
 {
-    if (m_unit == unit) return;
-    m_unit = unit;
+    if (d_ptr->m_unit == unit) return;
+    d_ptr->m_unit = unit;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -105,8 +161,8 @@ void IndustrialKnob::setUnit(const QString &unit)
 
 void IndustrialKnob::setStartAngle(double angle)
 {
-    if (qFuzzyCompare(m_startAngle, angle)) return;
-    m_startAngle = angle;
+    if (qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
+    d_ptr->m_startAngle = angle;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -114,8 +170,8 @@ void IndustrialKnob::setStartAngle(double angle)
 
 void IndustrialKnob::setSpanAngle(double span)
 {
-    if (span <= 0.0 || qFuzzyCompare(m_spanAngle, span)) return;
-    m_spanAngle = span;
+    if (span <= 0.0 || qFuzzyCompare(d_ptr->m_spanAngle, span)) return;
+    d_ptr->m_spanAngle = span;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -123,8 +179,8 @@ void IndustrialKnob::setSpanAngle(double span)
 
 void IndustrialKnob::setMajorTicks(int count)
 {
-    if (m_majorTicks == count || count < 1) return;
-    m_majorTicks = count;
+    if (d_ptr->m_majorTicks == count || count < 1) return;
+    d_ptr->m_majorTicks = count;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -132,8 +188,8 @@ void IndustrialKnob::setMajorTicks(int count)
 
 void IndustrialKnob::setMinorTicks(int count)
 {
-    if (m_minorTicks == count || count < 0) return;
-    m_minorTicks = count;
+    if (d_ptr->m_minorTicks == count || count < 0) return;
+    d_ptr->m_minorTicks = count;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -141,11 +197,11 @@ void IndustrialKnob::setMinorTicks(int count)
 
 void IndustrialKnob::setMode(KnobMode mode)
 {
-    if (m_mode == mode) return;
-    m_mode = mode;
+    if (d_ptr->m_mode == mode) return;
+    d_ptr->m_mode = mode;
     invalidateCache();
-    setValue(m_value); // Re-clamp if discrete
-    Q_EMIT modeChanged(m_mode);
+    setValue(d_ptr->m_value); // Re-clamp if discrete
+    Q_EMIT modeChanged(d_ptr->m_mode);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -153,11 +209,11 @@ void IndustrialKnob::setMode(KnobMode mode)
 void IndustrialKnob::setDiscreteSteps(int steps)
 {
     int s = std::max(2, steps);
-    if (m_discreteSteps == s) return;
-    m_discreteSteps = s;
+    if (d_ptr->m_discreteSteps == s) return;
+    d_ptr->m_discreteSteps = s;
     invalidateCache();
-    if (m_mode == KnobMode::Discrete) {
-        setValue(m_value);
+    if (d_ptr->m_mode == KnobMode::Discrete) {
+        setValue(d_ptr->m_value);
     }
     Q_EMIT appearanceChanged();
     update();
@@ -165,16 +221,16 @@ void IndustrialKnob::setDiscreteSteps(int steps)
 
 void IndustrialKnob::setTrackVisible(bool visible)
 {
-    if (m_trackVisible == visible) return;
-    m_trackVisible = visible;
+    if (d_ptr->m_trackVisible == visible) return;
+    d_ptr->m_trackVisible = visible;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialKnob::setValueDisplayVisible(bool visible)
 {
-    if (m_valueDisplayVisible == visible) return;
-    m_valueDisplayVisible = visible;
+    if (d_ptr->m_valueDisplayVisible == visible) return;
+    d_ptr->m_valueDisplayVisible = visible;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -182,24 +238,24 @@ void IndustrialKnob::setValueDisplayVisible(bool visible)
 
 void IndustrialKnob::setKnobColor(const QColor &color)
 {
-    if (m_knobColor == color) return;
-    m_knobColor = color;
+    if (d_ptr->m_knobColor == color) return;
+    d_ptr->m_knobColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialKnob::setPointerColor(const QColor &color)
 {
-    if (m_pointerColor == color) return;
-    m_pointerColor = color;
+    if (d_ptr->m_pointerColor == color) return;
+    d_ptr->m_pointerColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialKnob::setScaleColor(const QColor &color)
 {
-    if (m_scaleColor == color) return;
-    m_scaleColor = color;
+    if (d_ptr->m_scaleColor == color) return;
+    d_ptr->m_scaleColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -207,16 +263,16 @@ void IndustrialKnob::setScaleColor(const QColor &color)
 
 void IndustrialKnob::setTrackColor(const QColor &color)
 {
-    if (m_trackColor == color) return;
-    m_trackColor = color;
+    if (d_ptr->m_trackColor == color) return;
+    d_ptr->m_trackColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialKnob::setTextColor(const QColor &color)
 {
-    if (m_textColor == color) return;
-    m_textColor = color;
+    if (d_ptr->m_textColor == color) return;
+    d_ptr->m_textColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -224,7 +280,7 @@ void IndustrialKnob::setTextColor(const QColor &color)
 
 void IndustrialKnob::invalidateCache()
 {
-    m_cacheDirty = true;
+    d_ptr->m_cacheDirty = true;
 }
 
 void IndustrialKnob::resizeEvent(QResizeEvent *event)
@@ -244,22 +300,22 @@ void IndustrialKnob::changeEvent(QEvent *event)
 
 double IndustrialKnob::valueToAngle(double val) const
 {
-    if (m_maximum <= m_minimum) return m_startAngle;
-    double factor = (val - m_minimum) / (m_maximum - m_minimum);
+    if (d_ptr->m_maximum <= d_ptr->m_minimum) return d_ptr->m_startAngle;
+    double factor = (val - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
     factor = std::clamp(factor, 0.0, 1.0);
-    return m_startAngle + factor * m_spanAngle;
+    return d_ptr->m_startAngle + factor * d_ptr->m_spanAngle;
 }
 
 double IndustrialKnob::angleToValue(double angle) const
 {
-    if (m_spanAngle <= 0.0) return m_minimum;
-    double normAngle = angle - m_startAngle;
+    if (d_ptr->m_spanAngle <= 0.0) return d_ptr->m_minimum;
+    double normAngle = angle - d_ptr->m_startAngle;
     while (normAngle < 0.0) normAngle += 360.0;
     while (normAngle > 360.0) normAngle -= 360.0;
 
-    double factor = normAngle / m_spanAngle;
+    double factor = normAngle / d_ptr->m_spanAngle;
     factor = std::clamp(factor, 0.0, 1.0);
-    return m_minimum + factor * (m_maximum - m_minimum);
+    return d_ptr->m_minimum + factor * (d_ptr->m_maximum - d_ptr->m_minimum);
 }
 
 void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
@@ -277,22 +333,22 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
     double deg = rad * 180.0 / M_PI;
 
     // Convert into our [startAngle, startAngle + spanAngle] range
-    double relativeAngle = deg - m_startAngle;
+    double relativeAngle = deg - d_ptr->m_startAngle;
     while (relativeAngle < -180.0) relativeAngle += 360.0;
     while (relativeAngle > 180.0) relativeAngle -= 360.0;
 
     if (relativeAngle < 0.0) {
         // Closer to start or beyond?
-        if (relativeAngle < -m_spanAngle * 0.5) {
-            setValue(m_maximum);
+        if (relativeAngle < -d_ptr->m_spanAngle * 0.5) {
+            setValue(d_ptr->m_maximum);
         } else {
-            setValue(m_minimum);
+            setValue(d_ptr->m_minimum);
         }
-    } else if (relativeAngle > m_spanAngle) {
-        setValue(m_maximum);
+    } else if (relativeAngle > d_ptr->m_spanAngle) {
+        setValue(d_ptr->m_maximum);
     } else {
-        double factor = relativeAngle / m_spanAngle;
-        double newVal = m_minimum + factor * (m_maximum - m_minimum);
+        double factor = relativeAngle / d_ptr->m_spanAngle;
+        double newVal = d_ptr->m_minimum + factor * (d_ptr->m_maximum - d_ptr->m_minimum);
         setValue(newVal);
     }
 }
@@ -300,8 +356,8 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        m_isDragging = true;
-        m_lastMousePos = event->position();
+        d_ptr->m_isDragging = true;
+        d_ptr->m_lastMousePos = event->position();
         updateValueFromPoint(event->position());
         event->accept();
         return;
@@ -311,7 +367,7 @@ void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 
 void IndustrialKnob::mouseMoveEvent(QMouseEvent *event)
 {
-    if (m_isDragging && (event->buttons() & Qt::LeftButton)) {
+    if (d_ptr->m_isDragging && (event->buttons() & Qt::LeftButton)) {
         updateValueFromPoint(event->position());
         event->accept();
         return;
@@ -322,7 +378,7 @@ void IndustrialKnob::mouseMoveEvent(QMouseEvent *event)
 void IndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        m_isDragging = false;
+        d_ptr->m_isDragging = false;
         event->accept();
         return;
     }
@@ -332,8 +388,8 @@ void IndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
 void IndustrialKnob::wheelEvent(QWheelEvent *event)
 {
     double numSteps = event->angleDelta().y() / 120.0;
-    double delta = numSteps * m_step;
-    setValue(m_value + delta);
+    double delta = numSteps * d_ptr->m_step;
+    setValue(d_ptr->m_value + delta);
     event->accept();
 }
 
@@ -342,28 +398,28 @@ void IndustrialKnob::keyPressEvent(QKeyEvent *event)
     switch (event->key()) {
         case Qt::Key_Left:
         case Qt::Key_Down:
-            setValue(m_value - m_step);
+            setValue(d_ptr->m_value - d_ptr->m_step);
             event->accept();
             return;
         case Qt::Key_Right:
         case Qt::Key_Up:
-            setValue(m_value + m_step);
+            setValue(d_ptr->m_value + d_ptr->m_step);
             event->accept();
             return;
         case Qt::Key_PageDown:
-            setValue(m_value - m_step * 5.0);
+            setValue(d_ptr->m_value - d_ptr->m_step * 5.0);
             event->accept();
             return;
         case Qt::Key_PageUp:
-            setValue(m_value + m_step * 5.0);
+            setValue(d_ptr->m_value + d_ptr->m_step * 5.0);
             event->accept();
             return;
         case Qt::Key_Home:
-            setValue(m_minimum);
+            setValue(d_ptr->m_minimum);
             event->accept();
             return;
         case Qt::Key_End:
-            setValue(m_maximum);
+            setValue(d_ptr->m_maximum);
             event->accept();
             return;
         default:
@@ -377,11 +433,11 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     QSize pixmapSize = (QSizeF(targetSize) * dpr).toSize();
     if (pixmapSize.isEmpty()) return;
 
-    m_cachePixmap = QPixmap(pixmapSize);
-    m_cachePixmap.setDevicePixelRatio(dpr);
-    m_cachePixmap.fill(Qt::transparent);
+    d_ptr->m_cachePixmap = QPixmap(pixmapSize);
+    d_ptr->m_cachePixmap.setDevicePixelRatio(dpr);
+    d_ptr->m_cachePixmap.fill(Qt::transparent);
 
-    QPainter painter(&m_cachePixmap);
+    QPainter painter(&d_ptr->m_cachePixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
@@ -392,7 +448,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     const double radius = (side * 0.5) - 4.0;
 
     if (radius <= 10.0) {
-        m_cacheDirty = false;
+        d_ptr->m_cacheDirty = false;
         return;
     }
 
@@ -402,19 +458,19 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     const double minorTickLen = tickLen * 0.55;
     const double labelRadius = scaleRadius + radius * 0.12;
 
-    int totalTicks = (m_mode == KnobMode::Discrete) ? (m_discreteSteps - 1) : m_majorTicks;
+    int totalTicks = (d_ptr->m_mode == KnobMode::Discrete) ? (d_ptr->m_discreteSteps - 1) : d_ptr->m_majorTicks;
     totalTicks = std::max(1, totalTicks);
-    int totalMinor = (m_mode == KnobMode::Discrete) ? 0 : m_minorTicks;
+    int totalMinor = (d_ptr->m_mode == KnobMode::Discrete) ? 0 : d_ptr->m_minorTicks;
     int totalDivisions = totalTicks * (totalMinor + 1);
-    double valRange = m_maximum - m_minimum;
+    double valRange = d_ptr->m_maximum - d_ptr->m_minimum;
 
     // Draw Minor Ticks
     if (totalMinor > 0) {
-        painter.setPen(QPen(m_scaleColor.darker(130), 1.0));
+        painter.setPen(QPen(d_ptr->m_scaleColor.darker(130), 1.0));
         for (int i = 0; i <= totalDivisions; ++i) {
             if (i % (totalMinor + 1) == 0) continue;
             double frac = static_cast<double>(i) / totalDivisions;
-            double val = m_minimum + frac * valRange;
+            double val = d_ptr->m_minimum + frac * valRange;
             double angle = valueToAngle(val);
             double rad = (angle - 90.0) * M_PI / 180.0;
             double cosR = std::cos(rad);
@@ -433,11 +489,11 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     font.setBold(true);
     painter.setFont(font);
 
-    QPen majorPen(m_scaleColor, 1.6, Qt::SolidLine, Qt::RoundCap);
+    QPen majorPen(d_ptr->m_scaleColor, 1.6, Qt::SolidLine, Qt::RoundCap);
 
     for (int i = 0; i <= totalTicks; ++i) {
         double frac = static_cast<double>(i) / totalTicks;
-        double val = m_minimum + frac * valRange;
+        double val = d_ptr->m_minimum + frac * valRange;
         double angle = valueToAngle(val);
         double rad = (angle - 90.0) * M_PI / 180.0;
         double cosR = std::cos(rad);
@@ -451,10 +507,10 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
         // Numeric Label
         QString labelStr;
-        if (m_mode == KnobMode::Discrete) {
+        if (d_ptr->m_mode == KnobMode::Discrete) {
             labelStr = QString::number(i + 1);
         } else {
-            labelStr = (m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
+            labelStr = (d_ptr->m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
                                           : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1);
         }
 
@@ -465,27 +521,27 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
                        textCenter.y() - textRect.height() * 0.5,
                        textRect.width(), textRect.height());
 
-        painter.setPen(m_textColor);
+        painter.setPen(d_ptr->m_textColor);
         painter.drawText(drawRect, Qt::AlignCenter, labelStr);
     }
 
     // Static Digital Pod at bottom (if enabled)
-    if (m_valueDisplayVisible) {
+    if (d_ptr->m_valueDisplayVisible) {
         double podW = std::clamp(w * 0.65, 50.0, 110.0);
         double podH = 22.0;
         QRectF podRect((w - podW) * 0.5, h - podH - 2.0, podW, podH);
 
-        painter.setPen(QPen(m_knobColor.darker(160), 1.0));
+        painter.setPen(QPen(d_ptr->m_knobColor.darker(160), 1.0));
         painter.setBrush(QColor(16, 20, 26, 220));
         painter.drawRoundedRect(podRect, 3.0, 3.0);
     }
 
-    m_cacheDirty = false;
+    d_ptr->m_cacheDirty = false;
 }
 
 void IndustrialKnob::paintEvent(QPaintEvent *)
 {
-    if (m_cacheDirty || m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
+    if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
         renderStaticScale(size());
     }
 
@@ -495,7 +551,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
     // 1. Fast Blit of Cached Scale & Frame
-    painter.drawPixmap(0, 0, m_cachePixmap);
+    painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
     const double w = width();
     const double h = height();
@@ -507,10 +563,10 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     if (knobRadius <= 5.0) return;
 
     // 2. Active Illuminated Track Arc
-    if (m_trackVisible) {
+    if (d_ptr->m_trackVisible) {
         double trackRadius = radius * 0.84;
-        double aStart = m_startAngle;
-        double aEnd = valueToAngle(m_value);
+        double aStart = d_ptr->m_startAngle;
+        double aEnd = valueToAngle(d_ptr->m_value);
         int steps = std::max(6, static_cast<int>(std::abs(aEnd - aStart) * 0.6));
 
         QPainterPath trackPath;
@@ -523,7 +579,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
             else trackPath.lineTo(px, py);
         }
 
-        QPen trackPen(m_trackColor, std::max(2.5, radius * 0.04), Qt::SolidLine, Qt::RoundCap);
+        QPen trackPen(d_ptr->m_trackColor, std::max(2.5, radius * 0.04), Qt::SolidLine, Qt::RoundCap);
         painter.strokePath(trackPath, trackPen);
     }
 
@@ -537,22 +593,22 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     // 4. Outer Knurled Grip Texture (CNC Serrations / Knurling effect)
     painter.save();
     painter.translate(center);
-    painter.rotate(valueToAngle(m_value));
+    painter.rotate(valueToAngle(d_ptr->m_value));
 
     // Outer Knurling Base Ring
     QRadialGradient knurlGrad(QPointF(0, 0), knobRadius);
-    knurlGrad.setColorAt(0.0, m_knobColor.lighter(130));
-    knurlGrad.setColorAt(0.85, m_knobColor);
-    knurlGrad.setColorAt(1.0, m_knobColor.darker(150));
+    knurlGrad.setColorAt(0.0, d_ptr->m_knobColor.lighter(130));
+    knurlGrad.setColorAt(0.85, d_ptr->m_knobColor);
+    knurlGrad.setColorAt(1.0, d_ptr->m_knobColor.darker(150));
 
-    painter.setPen(QPen(m_knobColor.darker(180), 1.2));
+    painter.setPen(QPen(d_ptr->m_knobColor.darker(180), 1.2));
     painter.setBrush(knurlGrad);
     painter.drawEllipse(QPointF(0, 0), knobRadius, knobRadius);
 
     // Serration teeth (32 teeth)
     const int teethCount = 32;
     const double toothLen = knobRadius * 0.09;
-    QPen toothPen(m_knobColor.darker(170), 1.2);
+    QPen toothPen(d_ptr->m_knobColor.darker(170), 1.2);
     painter.setPen(toothPen);
 
     for (int i = 0; i < teethCount; ++i) {
@@ -567,20 +623,20 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     // 5. Beveled Face Rim & Brushed Metallic Face
     const double faceRadius = knobRadius * 0.84;
     QLinearGradient faceGrad(QPointF(-faceRadius, -faceRadius), QPointF(faceRadius, faceRadius));
-    faceGrad.setColorAt(0.0, m_knobColor.lighter(140));
-    faceGrad.setColorAt(0.5, m_knobColor.lighter(105));
-    faceGrad.setColorAt(1.0, m_knobColor.darker(140));
+    faceGrad.setColorAt(0.0, d_ptr->m_knobColor.lighter(140));
+    faceGrad.setColorAt(0.5, d_ptr->m_knobColor.lighter(105));
+    faceGrad.setColorAt(1.0, d_ptr->m_knobColor.darker(140));
 
-    painter.setPen(QPen(m_knobColor.darker(180), 1.0));
+    painter.setPen(QPen(d_ptr->m_knobColor.darker(180), 1.0));
     painter.setBrush(faceGrad);
     painter.drawEllipse(QPointF(0, 0), faceRadius, faceRadius);
 
     // Inner Specular Glare Ring
     const double innerFace = faceRadius * 0.90;
     QRadialGradient innerGrad(QPointF(-innerFace * 0.3, -innerFace * 0.3), innerFace * 1.2);
-    innerGrad.setColorAt(0.0, m_knobColor.lighter(150));
-    innerGrad.setColorAt(0.4, m_knobColor);
-    innerGrad.setColorAt(1.0, m_knobColor.darker(160));
+    innerGrad.setColorAt(0.0, d_ptr->m_knobColor.lighter(150));
+    innerGrad.setColorAt(0.4, d_ptr->m_knobColor);
+    innerGrad.setColorAt(1.0, d_ptr->m_knobColor.darker(160));
 
     painter.setPen(Qt::NoPen);
     painter.setBrush(innerGrad);
@@ -599,8 +655,8 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
             << QPointF(ptrWidth * 0.5, -ptrOuter + 2.0)
             << QPointF(ptrWidth * 0.5, -ptrInner);
 
-    painter.setPen(QPen(m_pointerColor.darker(150), 0.8));
-    painter.setBrush(m_pointerColor);
+    painter.setPen(QPen(d_ptr->m_pointerColor.darker(150), 0.8));
+    painter.setBrush(d_ptr->m_pointerColor);
     painter.drawPolygon(ptrPoly);
 
     // Specular center dot
@@ -611,24 +667,24 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     painter.restore();
 
     // 7. Dynamic Digital Value Readout (Bottom Pod)
-    if (m_valueDisplayVisible) {
+    if (d_ptr->m_valueDisplayVisible) {
         double podW = std::clamp(w * 0.65, 50.0, 110.0);
         double podH = 22.0;
         QRectF podRect((w - podW) * 0.5, h - podH - 2.0, podW, podH);
 
         QString valStr;
-        if (m_mode == KnobMode::Discrete) {
-            int stepIdx = static_cast<int>(std::round((m_value - m_minimum) / ((m_maximum - m_minimum) / (m_discreteSteps - 1))));
+        if (d_ptr->m_mode == KnobMode::Discrete) {
+            int stepIdx = static_cast<int>(std::round((d_ptr->m_value - d_ptr->m_minimum) / ((d_ptr->m_maximum - d_ptr->m_minimum) / (d_ptr->m_discreteSteps - 1))));
             valStr = QStringLiteral("POS %1").arg(stepIdx + 1);
         } else {
-            valStr = QStringLiteral("%1 %2").arg(QString::number(m_value, 'f', m_precision), m_unit).trimmed();
+            valStr = QStringLiteral("%1 %2").arg(QString::number(d_ptr->m_value, 'f', d_ptr->m_precision), d_ptr->m_unit).trimmed();
         }
 
         QFont valFont = font();
         valFont.setPixelSize(11);
         valFont.setBold(true);
         painter.setFont(valFont);
-        painter.setPen(m_pointerColor);
+        painter.setPen(d_ptr->m_pointerColor);
         painter.drawText(podRect, Qt::AlignCenter, valStr);
     }
 }

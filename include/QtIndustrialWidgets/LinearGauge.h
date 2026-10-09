@@ -8,6 +8,7 @@
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
+#include <memory>
 #include <QtGui/QColor>
 #include <QtGui/QPixmap>
 
@@ -31,6 +32,8 @@
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class LinearGaugePrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT LinearGauge : public QWidget
 {
@@ -66,55 +69,55 @@ public:
      * \param parent Optional parent widget.
      */
     explicit LinearGauge(QWidget *parent = nullptr);
-    ~LinearGauge() override = default;
+    ~LinearGauge() override;
 
     /** \brief Returns the orientation (Qt::Vertical or Qt::Horizontal). */
-    [[nodiscard]] Qt::Orientation orientation() const { return m_orientation; }
+    [[nodiscard]] Qt::Orientation orientation() const;
     /** \brief Returns true if operating in bulb thermometer mode, false if flat panel bar. */
-    [[nodiscard]] bool isThermometerMode() const { return m_thermometerMode; }
+    [[nodiscard]] bool isThermometerMode() const;
     /** \brief Returns the minimum scale value. */
-    [[nodiscard]] double minimum() const { return m_minimum; }
+    [[nodiscard]] double minimum() const;
     /** \brief Returns the maximum scale value. */
-    [[nodiscard]] double maximum() const { return m_maximum; }
+    [[nodiscard]] double maximum() const;
     /** \brief Returns the current indicated value. */
-    [[nodiscard]] double value() const { return m_value; }
+    [[nodiscard]] double value() const;
     /** \brief Returns the decimal precision for the digital readout. */
-    [[nodiscard]] int precision() const { return m_precision; }
+    [[nodiscard]] int precision() const;
     /** \brief Returns the measurement unit label (e.g. "°C", "mm"). */
-    [[nodiscard]] QString unit() const { return m_unit; }
+    [[nodiscard]] QString unit() const;
     /** \brief Returns the number of major graduation intervals. */
-    [[nodiscard]] int majorTicks() const { return m_majorTicks; }
+    [[nodiscard]] int majorTicks() const;
     /** \brief Returns the number of minor subdivisions between major intervals. */
-    [[nodiscard]] int minorTicks() const { return m_minorTicks; }
+    [[nodiscard]] int minorTicks() const;
     /** \brief Returns the warning threshold value. */
-    [[nodiscard]] double warningThreshold() const { return m_warningThreshold; }
+    [[nodiscard]] double warningThreshold() const;
     /** \brief Returns the critical error threshold value. */
-    [[nodiscard]] double errorThreshold() const { return m_errorThreshold; }
+    [[nodiscard]] double errorThreshold() const;
     /** \brief Returns true if liquid fill shifts color based on thresholds. */
-    [[nodiscard]] bool isDynamicLiquidColor() const { return m_dynamicLiquidColor; }
+    [[nodiscard]] bool isDynamicLiquidColor() const;
     /** \brief Returns true if liquid fill uses a multi-color gradient. */
-    [[nodiscard]] bool isGradientLiquid() const { return m_gradientLiquid; }
+    [[nodiscard]] bool isGradientLiquid() const;
     /** \brief Returns true if the digital LCD readout pod is displayed. */
-    [[nodiscard]] bool digitalDisplayVisible() const { return m_digitalDisplayVisible; }
+    [[nodiscard]] bool digitalDisplayVisible() const;
     /** \brief Returns true if graduation scale marks and numeric labels are visible. */
-    [[nodiscard]] bool scaleVisible() const { return m_scaleVisible; }
+    [[nodiscard]] bool scaleVisible() const;
 
     /** \brief Returns the liquid column fill color. */
-    [[nodiscard]] QColor liquidColor() const { return m_liquidColor; }
+    [[nodiscard]] QColor liquidColor() const;
     /** \brief Returns the normal operating zone color. */
-    [[nodiscard]] QColor normalColor() const { return m_normalColor; }
+    [[nodiscard]] QColor normalColor() const;
     /** \brief Returns the warning zone color. */
-    [[nodiscard]] QColor warningColor() const { return m_warningColor; }
+    [[nodiscard]] QColor warningColor() const;
     /** \brief Returns the critical error zone color. */
-    [[nodiscard]] QColor errorColor() const { return m_errorColor; }
+    [[nodiscard]] QColor errorColor() const;
     /** \brief Returns the recessed glass trough background color. */
-    [[nodiscard]] QColor troughColor() const { return m_troughColor; }
+    [[nodiscard]] QColor troughColor() const;
     /** \brief Returns the graduation tick marks color. */
-    [[nodiscard]] QColor scaleColor() const { return m_scaleColor; }
+    [[nodiscard]] QColor scaleColor() const;
     /** \brief Returns the numeric label font color. */
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
+    [[nodiscard]] QColor textColor() const;
     /** \brief Returns the outer rim bezel frame color. */
-    [[nodiscard]] QColor bezelColor() const { return m_bezelColor; }
+    [[nodiscard]] QColor bezelColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -190,43 +193,8 @@ private:
     void renderStaticScale(const QSize &size);
     [[nodiscard]] QColor determineActiveLiquidColor() const;
 
-    Qt::Orientation m_orientation{Qt::Vertical};
-    bool m_thermometerMode{true};
-
-    double m_minimum{0.0};
-    double m_maximum{100.0};
-    double m_value{0.0};
-    int m_precision{1};
-    QString m_unit{QStringLiteral("°C")};
-
-    int m_majorTicks{10};
-    int m_minorTicks{4};
-
-    double m_warningThreshold{70.0};
-    double m_errorThreshold{90.0};
-    bool m_dynamicLiquidColor{true};
-    bool m_gradientLiquid{false};
-    bool m_digitalDisplayVisible{true};
-    bool m_scaleVisible{true};
-
-    // Colors
-    QColor m_liquidColor{QColor(235, 59, 90)};        // Default Mercury Crimson / Liquid
-    QColor m_normalColor{QColor(46, 204, 113)};       // Emerald Green
-    QColor m_warningColor{QColor(241, 196, 15)};      // Warning Amber
-    QColor m_errorColor{QColor(231, 76, 60)};         // Danger Red
-    QColor m_troughColor{QColor(30, 36, 45)};         // Dark Glass Tube Interior
-    QColor m_scaleColor{QColor(200, 208, 218)};       // Scale ticks
-    QColor m_textColor{QColor(240, 244, 248)};        // Readout text
-    QColor m_bezelColor{QColor(44, 53, 64)};          // Bezel outer
-
-    // Static scale cache
-    QPixmap m_cachePixmap;
-    bool m_cacheDirty{true};
-
-    // Cached geometry computed during scale render
-    QRectF m_tubeRect;
-    QPointF m_bulbCenter;
-    double m_bulbRadius{0.0};
+    std::unique_ptr<LinearGaugePrivate> d_ptr;
+    Q_DECLARE_PRIVATE(LinearGauge)
 };
 
 } // namespace QtIndustrialWidgets

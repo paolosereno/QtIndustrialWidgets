@@ -14,13 +14,80 @@
 
 namespace QtIndustrialWidgets {
 
+class RadialGaugePrivate {
+public:
+    double m_minimum{0.0};
+    double m_maximum{100.0};
+    double m_value{0.0};
+    int m_precision{1};
+    QString m_unit{QStringLiteral("bar")};
+
+    // Angles: 0° is 12 o'clock, clockwise. Default: -135° to +135° (270° span)
+    double m_startAngle{-135.0};
+    double m_spanAngle{270.0};
+    int m_majorTicks{10};
+    int m_minorTicks{4};
+
+    double m_warningThreshold{70.0};
+    double m_errorThreshold{85.0};
+    bool m_thresholdBandsVisible{true};
+    bool m_digitalDisplayVisible{true};
+
+    // Colors
+    QColor m_needleColor{QColor(235, 59, 90)};       // Industrial Crimson
+    QColor m_normalColor{QColor(38, 222, 129)};       // Neon Emerald Green
+    QColor m_warningColor{QColor(254, 211, 48)};      // Amber Gold
+    QColor m_errorColor{QColor(235, 59, 90)};         // Danger Red
+    QColor m_dialColor{QColor(24, 28, 36)};           // Slate Black
+    QColor m_scaleColor{QColor(210, 218, 226)};       // Light Silver
+    QColor m_textColor{QColor(245, 246, 250)};        // Crisp White
+    QColor m_bezelColor{QColor(53, 59, 72)};          // Gunmetal Gray
+
+    // High performance static scale cache
+    QPixmap m_cachePixmap;
+    bool m_cacheDirty{true};
+
+    // Threshold state tracking
+    bool m_wasWarning{false};
+    bool m_wasError{false};
+};
+
+
 
 RadialGauge::RadialGauge(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<RadialGaugePrivate>())
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
+
+RadialGauge::~RadialGauge() = default;
+
+double RadialGauge::minimum() const { Q_D(const RadialGauge); return d->m_minimum; }
+double RadialGauge::maximum() const { Q_D(const RadialGauge); return d->m_maximum; }
+double RadialGauge::value() const { Q_D(const RadialGauge); return d->m_value; }
+int RadialGauge::precision() const { Q_D(const RadialGauge); return d->m_precision; }
+QString RadialGauge::unit() const { Q_D(const RadialGauge); return d->m_unit; }
+double RadialGauge::startAngle() const { Q_D(const RadialGauge); return d->m_startAngle; }
+double RadialGauge::spanAngle() const { Q_D(const RadialGauge); return d->m_spanAngle; }
+int RadialGauge::majorTicks() const { Q_D(const RadialGauge); return d->m_majorTicks; }
+int RadialGauge::minorTicks() const { Q_D(const RadialGauge); return d->m_minorTicks; }
+double RadialGauge::warningThreshold() const { Q_D(const RadialGauge); return d->m_warningThreshold; }
+double RadialGauge::errorThreshold() const { Q_D(const RadialGauge); return d->m_errorThreshold; }
+bool RadialGauge::thresholdBandsVisible() const { Q_D(const RadialGauge); return d->m_thresholdBandsVisible; }
+bool RadialGauge::digitalDisplayVisible() const { Q_D(const RadialGauge); return d->m_digitalDisplayVisible; }
+
+QColor RadialGauge::needleColor() const { Q_D(const RadialGauge); return d->m_needleColor; }
+QColor RadialGauge::normalColor() const { Q_D(const RadialGauge); return d->m_normalColor; }
+QColor RadialGauge::warningColor() const { Q_D(const RadialGauge); return d->m_warningColor; }
+QColor RadialGauge::errorColor() const { Q_D(const RadialGauge); return d->m_errorColor; }
+QColor RadialGauge::dialColor() const { Q_D(const RadialGauge); return d->m_dialColor; }
+QColor RadialGauge::scaleColor() const { Q_D(const RadialGauge); return d->m_scaleColor; }
+QColor RadialGauge::textColor() const { Q_D(const RadialGauge); return d->m_textColor; }
+QColor RadialGauge::bezelColor() const { Q_D(const RadialGauge); return d->m_bezelColor; }
+
+
 
 QSize RadialGauge::sizeHint() const
 {
@@ -34,23 +101,23 @@ QSize RadialGauge::minimumSizeHint() const
 
 void RadialGauge::setValue(double val)
 {
-    double clamped = std::clamp(val, m_minimum, m_maximum);
-    if (qFuzzyCompare(clamped, m_value)) {
+    double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
+    if (qFuzzyCompare(clamped, d_ptr->m_value)) {
         return;
     }
 
-    m_value = clamped;
-    Q_EMIT valueChanged(m_value);
+    d_ptr->m_value = clamped;
+    Q_EMIT valueChanged(d_ptr->m_value);
 
-    bool isWarning = (m_value >= m_warningThreshold && m_value < m_errorThreshold);
-    bool isError = (m_value >= m_errorThreshold);
+    bool isWarning = (d_ptr->m_value >= d_ptr->m_warningThreshold && d_ptr->m_value < d_ptr->m_errorThreshold);
+    bool isError = (d_ptr->m_value >= d_ptr->m_errorThreshold);
 
-    if (isWarning != m_wasWarning) {
-        m_wasWarning = isWarning;
+    if (isWarning != d_ptr->m_wasWarning) {
+        d_ptr->m_wasWarning = isWarning;
         Q_EMIT warningExceeded(isWarning);
     }
-    if (isError != m_wasError) {
-        m_wasError = isError;
+    if (isError != d_ptr->m_wasError) {
+        d_ptr->m_wasError = isError;
         Q_EMIT errorExceeded(isError);
     }
 
@@ -59,12 +126,12 @@ void RadialGauge::setValue(double val)
 
 void RadialGauge::setMinimum(double min)
 {
-    setRange(min, m_maximum);
+    setRange(min, d_ptr->m_maximum);
 }
 
 void RadialGauge::setMaximum(double max)
 {
-    setRange(m_minimum, max);
+    setRange(d_ptr->m_minimum, max);
 }
 
 void RadialGauge::setRange(double min, double max)
@@ -72,24 +139,24 @@ void RadialGauge::setRange(double min, double max)
     if (min >= max) {
         return;
     }
-    if (qFuzzyCompare(min, m_minimum) && qFuzzyCompare(max, m_maximum)) {
+    if (qFuzzyCompare(min, d_ptr->m_minimum) && qFuzzyCompare(max, d_ptr->m_maximum)) {
         return;
     }
 
-    m_minimum = min;
-    m_maximum = max;
-    m_value = std::clamp(m_value, m_minimum, m_maximum);
+    d_ptr->m_minimum = min;
+    d_ptr->m_maximum = max;
+    d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
 
     invalidateCache();
-    Q_EMIT rangeChanged(m_minimum, m_maximum);
-    Q_EMIT valueChanged(m_value);
+    Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    Q_EMIT valueChanged(d_ptr->m_value);
     update();
 }
 
 void RadialGauge::setPrecision(int precision)
 {
-    if (m_precision == precision) return;
-    m_precision = std::max(0, precision);
+    if (d_ptr->m_precision == precision) return;
+    d_ptr->m_precision = std::max(0, precision);
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -97,8 +164,8 @@ void RadialGauge::setPrecision(int precision)
 
 void RadialGauge::setUnit(const QString &unit)
 {
-    if (m_unit == unit) return;
-    m_unit = unit;
+    if (d_ptr->m_unit == unit) return;
+    d_ptr->m_unit = unit;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -106,8 +173,8 @@ void RadialGauge::setUnit(const QString &unit)
 
 void RadialGauge::setStartAngle(double angle)
 {
-    if (qFuzzyCompare(m_startAngle, angle)) return;
-    m_startAngle = angle;
+    if (qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
+    d_ptr->m_startAngle = angle;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -115,8 +182,8 @@ void RadialGauge::setStartAngle(double angle)
 
 void RadialGauge::setSpanAngle(double span)
 {
-    if (qFuzzyCompare(m_spanAngle, span) || span <= 0.0) return;
-    m_spanAngle = span;
+    if (qFuzzyCompare(d_ptr->m_spanAngle, span) || span <= 0.0) return;
+    d_ptr->m_spanAngle = span;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -124,8 +191,8 @@ void RadialGauge::setSpanAngle(double span)
 
 void RadialGauge::setMajorTicks(int count)
 {
-    if (m_majorTicks == count || count < 1) return;
-    m_majorTicks = count;
+    if (d_ptr->m_majorTicks == count || count < 1) return;
+    d_ptr->m_majorTicks = count;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -133,8 +200,8 @@ void RadialGauge::setMajorTicks(int count)
 
 void RadialGauge::setMinorTicks(int count)
 {
-    if (m_minorTicks == count || count < 0) return;
-    m_minorTicks = count;
+    if (d_ptr->m_minorTicks == count || count < 0) return;
+    d_ptr->m_minorTicks = count;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -142,28 +209,28 @@ void RadialGauge::setMinorTicks(int count)
 
 void RadialGauge::setWarningThreshold(double threshold)
 {
-    if (qFuzzyCompare(m_warningThreshold, threshold)) return;
-    m_warningThreshold = threshold;
+    if (qFuzzyCompare(d_ptr->m_warningThreshold, threshold)) return;
+    d_ptr->m_warningThreshold = threshold;
     invalidateCache();
-    Q_EMIT thresholdChanged(m_warningThreshold, m_errorThreshold);
+    Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
     Q_EMIT appearanceChanged();
     update();
 }
 
 void RadialGauge::setErrorThreshold(double threshold)
 {
-    if (qFuzzyCompare(m_errorThreshold, threshold)) return;
-    m_errorThreshold = threshold;
+    if (qFuzzyCompare(d_ptr->m_errorThreshold, threshold)) return;
+    d_ptr->m_errorThreshold = threshold;
     invalidateCache();
-    Q_EMIT thresholdChanged(m_warningThreshold, m_errorThreshold);
+    Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
     Q_EMIT appearanceChanged();
     update();
 }
 
 void RadialGauge::setThresholdBandsVisible(bool visible)
 {
-    if (m_thresholdBandsVisible == visible) return;
-    m_thresholdBandsVisible = visible;
+    if (d_ptr->m_thresholdBandsVisible == visible) return;
+    d_ptr->m_thresholdBandsVisible = visible;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -171,8 +238,8 @@ void RadialGauge::setThresholdBandsVisible(bool visible)
 
 void RadialGauge::setDigitalDisplayVisible(bool visible)
 {
-    if (m_digitalDisplayVisible == visible) return;
-    m_digitalDisplayVisible = visible;
+    if (d_ptr->m_digitalDisplayVisible == visible) return;
+    d_ptr->m_digitalDisplayVisible = visible;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -180,16 +247,16 @@ void RadialGauge::setDigitalDisplayVisible(bool visible)
 
 void RadialGauge::setNeedleColor(const QColor &color)
 {
-    if (m_needleColor == color) return;
-    m_needleColor = color;
+    if (d_ptr->m_needleColor == color) return;
+    d_ptr->m_needleColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void RadialGauge::setNormalColor(const QColor &color)
 {
-    if (m_normalColor == color) return;
-    m_normalColor = color;
+    if (d_ptr->m_normalColor == color) return;
+    d_ptr->m_normalColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -197,8 +264,8 @@ void RadialGauge::setNormalColor(const QColor &color)
 
 void RadialGauge::setWarningColor(const QColor &color)
 {
-    if (m_warningColor == color) return;
-    m_warningColor = color;
+    if (d_ptr->m_warningColor == color) return;
+    d_ptr->m_warningColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -206,8 +273,8 @@ void RadialGauge::setWarningColor(const QColor &color)
 
 void RadialGauge::setErrorColor(const QColor &color)
 {
-    if (m_errorColor == color) return;
-    m_errorColor = color;
+    if (d_ptr->m_errorColor == color) return;
+    d_ptr->m_errorColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -215,8 +282,8 @@ void RadialGauge::setErrorColor(const QColor &color)
 
 void RadialGauge::setDialColor(const QColor &color)
 {
-    if (m_dialColor == color) return;
-    m_dialColor = color;
+    if (d_ptr->m_dialColor == color) return;
+    d_ptr->m_dialColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -224,8 +291,8 @@ void RadialGauge::setDialColor(const QColor &color)
 
 void RadialGauge::setScaleColor(const QColor &color)
 {
-    if (m_scaleColor == color) return;
-    m_scaleColor = color;
+    if (d_ptr->m_scaleColor == color) return;
+    d_ptr->m_scaleColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -233,8 +300,8 @@ void RadialGauge::setScaleColor(const QColor &color)
 
 void RadialGauge::setTextColor(const QColor &color)
 {
-    if (m_textColor == color) return;
-    m_textColor = color;
+    if (d_ptr->m_textColor == color) return;
+    d_ptr->m_textColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -242,8 +309,8 @@ void RadialGauge::setTextColor(const QColor &color)
 
 void RadialGauge::setBezelColor(const QColor &color)
 {
-    if (m_bezelColor == color) return;
-    m_bezelColor = color;
+    if (d_ptr->m_bezelColor == color) return;
+    d_ptr->m_bezelColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -251,7 +318,7 @@ void RadialGauge::setBezelColor(const QColor &color)
 
 void RadialGauge::invalidateCache()
 {
-    m_cacheDirty = true;
+    d_ptr->m_cacheDirty = true;
 }
 
 void RadialGauge::resizeEvent(QResizeEvent *event)
@@ -271,12 +338,12 @@ void RadialGauge::changeEvent(QEvent *event)
 
 double RadialGauge::valueToAngle(double val) const
 {
-    if (m_maximum <= m_minimum) {
-        return m_startAngle;
+    if (d_ptr->m_maximum <= d_ptr->m_minimum) {
+        return d_ptr->m_startAngle;
     }
-    double factor = (val - m_minimum) / (m_maximum - m_minimum);
+    double factor = (val - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
     factor = std::clamp(factor, 0.0, 1.0);
-    return m_startAngle + factor * m_spanAngle;
+    return d_ptr->m_startAngle + factor * d_ptr->m_spanAngle;
 }
 
 void RadialGauge::renderStaticScale(const QSize &targetSize)
@@ -287,11 +354,11 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         return;
     }
 
-    m_cachePixmap = QPixmap(pixmapSize);
-    m_cachePixmap.setDevicePixelRatio(dpr);
-    m_cachePixmap.fill(Qt::transparent);
+    d_ptr->m_cachePixmap = QPixmap(pixmapSize);
+    d_ptr->m_cachePixmap.setDevicePixelRatio(dpr);
+    d_ptr->m_cachePixmap.fill(Qt::transparent);
 
-    QPainter painter(&m_cachePixmap);
+    QPainter painter(&d_ptr->m_cachePixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
@@ -302,29 +369,29 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     const double radius = (side * 0.5) - 4.0;
 
     if (radius <= 5.0) {
-        m_cacheDirty = false;
+        d_ptr->m_cacheDirty = false;
         return;
     }
 
     // 1. Outer Bezel Ring (Machined metal / industrial casing effect)
     QRadialGradient bezelGrad(center, radius);
-    bezelGrad.setColorAt(0.0, m_dialColor.lighter(110));
-    bezelGrad.setColorAt(0.85, m_dialColor);
-    bezelGrad.setColorAt(0.96, m_bezelColor.lighter(130));
-    bezelGrad.setColorAt(1.0, m_bezelColor.darker(140));
+    bezelGrad.setColorAt(0.0, d_ptr->m_dialColor.lighter(110));
+    bezelGrad.setColorAt(0.85, d_ptr->m_dialColor);
+    bezelGrad.setColorAt(0.96, d_ptr->m_bezelColor.lighter(130));
+    bezelGrad.setColorAt(1.0, d_ptr->m_bezelColor.darker(140));
 
-    painter.setPen(QPen(m_bezelColor.darker(160), 1.5));
+    painter.setPen(QPen(d_ptr->m_bezelColor.darker(160), 1.5));
     painter.setBrush(bezelGrad);
     painter.drawEllipse(center, radius, radius);
 
     // Subtle inner shadow ring
     const double innerRadius = radius * 0.95;
     QRadialGradient dialGrad(center, innerRadius);
-    dialGrad.setColorAt(0.0, m_dialColor.lighter(105));
-    dialGrad.setColorAt(0.7, m_dialColor);
-    dialGrad.setColorAt(1.0, m_dialColor.darker(125));
+    dialGrad.setColorAt(0.0, d_ptr->m_dialColor.lighter(105));
+    dialGrad.setColorAt(0.7, d_ptr->m_dialColor);
+    dialGrad.setColorAt(1.0, d_ptr->m_dialColor.darker(125));
 
-    painter.setPen(QPen(m_dialColor.darker(150), 1.0));
+    painter.setPen(QPen(d_ptr->m_dialColor.darker(150), 1.0));
     painter.setBrush(dialGrad);
     painter.drawEllipse(center, innerRadius, innerRadius);
 
@@ -355,18 +422,18 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     };
 
     // 2. Colored Threshold Bands
-    if (m_thresholdBandsVisible) {
-        double vNormEnd = std::min(m_warningThreshold, m_maximum);
-        double vWarnEnd = std::min(m_errorThreshold, m_maximum);
+    if (d_ptr->m_thresholdBandsVisible) {
+        double vNormEnd = std::min(d_ptr->m_warningThreshold, d_ptr->m_maximum);
+        double vWarnEnd = std::min(d_ptr->m_errorThreshold, d_ptr->m_maximum);
 
-        if (m_warningThreshold > m_minimum) {
-            drawArcSegment(m_minimum, vNormEnd, m_normalColor);
+        if (d_ptr->m_warningThreshold > d_ptr->m_minimum) {
+            drawArcSegment(d_ptr->m_minimum, vNormEnd, d_ptr->m_normalColor);
         }
-        if (m_errorThreshold > m_warningThreshold && m_warningThreshold < m_maximum) {
-            drawArcSegment(m_warningThreshold, vWarnEnd, m_warningColor);
+        if (d_ptr->m_errorThreshold > d_ptr->m_warningThreshold && d_ptr->m_warningThreshold < d_ptr->m_maximum) {
+            drawArcSegment(d_ptr->m_warningThreshold, vWarnEnd, d_ptr->m_warningColor);
         }
-        if (m_errorThreshold < m_maximum) {
-            drawArcSegment(m_errorThreshold, m_maximum, m_errorColor);
+        if (d_ptr->m_errorThreshold < d_ptr->m_maximum) {
+            drawArcSegment(d_ptr->m_errorThreshold, d_ptr->m_maximum, d_ptr->m_errorColor);
         }
     }
 
@@ -376,18 +443,18 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     const double minorTickInner = tickOuter - (radius * 0.045);
     const double labelRadius = majorTickInner - (radius * 0.12);
 
-    int totalMinorDivisions = m_majorTicks * (m_minorTicks + 1);
-    double valueRange = m_maximum - m_minimum;
+    int totalMinorDivisions = d_ptr->m_majorTicks * (d_ptr->m_minorTicks + 1);
+    double valueRange = d_ptr->m_maximum - d_ptr->m_minimum;
 
     // Minor ticks
-    if (m_minorTicks > 0) {
-        QPen minorPen(m_scaleColor.darker(120), std::max(1.0, radius * 0.012), Qt::SolidLine, Qt::RoundCap);
+    if (d_ptr->m_minorTicks > 0) {
+        QPen minorPen(d_ptr->m_scaleColor.darker(120), std::max(1.0, radius * 0.012), Qt::SolidLine, Qt::RoundCap);
         painter.setPen(minorPen);
 
         for (int i = 0; i <= totalMinorDivisions; ++i) {
-            if (i % (m_minorTicks + 1) == 0) continue; // Skip major ticks
+            if (i % (d_ptr->m_minorTicks + 1) == 0) continue; // Skip major ticks
             double frac = static_cast<double>(i) / totalMinorDivisions;
-            double val = m_minimum + frac * valueRange;
+            double val = d_ptr->m_minimum + frac * valueRange;
             double angle = valueToAngle(val);
             double rad = (angle - 90.0) * M_PI / 180.0;
             double cosR = std::cos(rad);
@@ -406,11 +473,11 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     font.setBold(true);
     painter.setFont(font);
 
-    QPen majorPen(m_scaleColor, std::max(1.8, radius * 0.022), Qt::SolidLine, Qt::RoundCap);
+    QPen majorPen(d_ptr->m_scaleColor, std::max(1.8, radius * 0.022), Qt::SolidLine, Qt::RoundCap);
 
-    for (int i = 0; i <= m_majorTicks; ++i) {
-        double frac = static_cast<double>(i) / m_majorTicks;
-        double val = m_minimum + frac * valueRange;
+    for (int i = 0; i <= d_ptr->m_majorTicks; ++i) {
+        double frac = static_cast<double>(i) / d_ptr->m_majorTicks;
+        double val = d_ptr->m_minimum + frac * valueRange;
         double angle = valueToAngle(val);
         double rad = (angle - 90.0) * M_PI / 180.0;
         double cosR = std::cos(rad);
@@ -423,7 +490,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         painter.drawLine(p1, p2);
 
         // Label text
-        QString labelStr = (m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
+        QString labelStr = (d_ptr->m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
                                               : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1);
 
         QFontMetricsF fm(font);
@@ -433,12 +500,12 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
                        labelCenter.y() - textRect.height() * 0.5,
                        textRect.width(), textRect.height());
 
-        painter.setPen(m_textColor);
+        painter.setPen(d_ptr->m_textColor);
         painter.drawText(drawRect, Qt::AlignCenter, labelStr);
     }
 
     // 4. Digital Display Background & Unit (Recessed pod below pivot)
-    if (m_digitalDisplayVisible) {
+    if (d_ptr->m_digitalDisplayVisible) {
         double podWidth = radius * 0.68;
         double podHeight = radius * 0.28;
         QRectF podRect(center.x() - podWidth * 0.5,
@@ -450,12 +517,12 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         podGrad.setColorAt(0.0, QColor(10, 12, 16, 220));
         podGrad.setColorAt(1.0, QColor(22, 26, 34, 220));
 
-        painter.setPen(QPen(m_bezelColor.darker(120), 1.2));
+        painter.setPen(QPen(d_ptr->m_bezelColor.darker(120), 1.2));
         painter.setBrush(podGrad);
         painter.drawRoundedRect(podRect, 4.0, 4.0);
 
         // Static unit text on the dial
-        if (!m_unit.isEmpty()) {
+        if (!d_ptr->m_unit.isEmpty()) {
             int unitFontSize = std::max(7, static_cast<int>(radius * 0.07));
             QFont unitFont = font;
             unitFont.setPixelSize(unitFontSize);
@@ -463,17 +530,17 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
             painter.setFont(unitFont);
 
             QRectF unitRect(podRect.left(), podRect.top() - radius * 0.14, podWidth, radius * 0.14);
-            painter.setPen(m_scaleColor.darker(110));
-            painter.drawText(unitRect, Qt::AlignCenter, m_unit);
+            painter.setPen(d_ptr->m_scaleColor.darker(110));
+            painter.drawText(unitRect, Qt::AlignCenter, d_ptr->m_unit);
         }
     }
 
-    m_cacheDirty = false;
+    d_ptr->m_cacheDirty = false;
 }
 
 void RadialGauge::paintEvent(QPaintEvent *)
 {
-    if (m_cacheDirty || m_cachePixmap.size() != (size() * devicePixelRatioF())) {
+    if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (size() * devicePixelRatioF())) {
         renderStaticScale(size());
     }
 
@@ -483,7 +550,7 @@ void RadialGauge::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
     // 1. Fast blit of cached static dial face
-    painter.drawPixmap(0, 0, m_cachePixmap);
+    painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
     const double w = width();
     const double h = height();
@@ -494,25 +561,25 @@ void RadialGauge::paintEvent(QPaintEvent *)
     if (radius <= 5.0) return;
 
     // 2. Dynamic Digital Readout
-    if (m_digitalDisplayVisible) {
+    if (d_ptr->m_digitalDisplayVisible) {
         double podWidth = radius * 0.68;
         double podHeight = radius * 0.28;
         QRectF podRect(center.x() - podWidth * 0.5,
                        center.y() + radius * 0.28,
                        podWidth, podHeight);
 
-        QString valStr = QString::number(m_value, 'f', m_precision);
+        QString valStr = QString::number(d_ptr->m_value, 'f', d_ptr->m_precision);
         int valFontSize = std::max(8, static_cast<int>(radius * 0.15));
         QFont valFont = font();
         valFont.setPixelSize(valFontSize);
         valFont.setBold(true);
         painter.setFont(valFont);
 
-        QColor displayColor = m_textColor;
-        if (m_value >= m_errorThreshold) {
-            displayColor = m_errorColor;
-        } else if (m_value >= m_warningThreshold) {
-            displayColor = m_warningColor;
+        QColor displayColor = d_ptr->m_textColor;
+        if (d_ptr->m_value >= d_ptr->m_errorThreshold) {
+            displayColor = d_ptr->m_errorColor;
+        } else if (d_ptr->m_value >= d_ptr->m_warningThreshold) {
+            displayColor = d_ptr->m_warningColor;
         }
 
         painter.setPen(displayColor);
@@ -520,7 +587,7 @@ void RadialGauge::paintEvent(QPaintEvent *)
     }
 
     // 3. Dynamic Vector Needle
-    double needleAngle = valueToAngle(m_value);
+    double needleAngle = valueToAngle(d_ptr->m_value);
     const double needleLen = radius * 0.76;
     const double needleTail = radius * 0.18;
     const double needleBaseW = std::max(2.5, radius * 0.042);
@@ -538,7 +605,7 @@ void RadialGauge::paintEvent(QPaintEvent *)
                 << QPointF(0.0, -needleLen);
 
     painter.setPen(Qt::NoPen);
-    painter.setBrush(m_needleColor.lighter(125));
+    painter.setBrush(d_ptr->m_needleColor.lighter(125));
     painter.drawPolygon(leftPolygon);
 
     // Right half (shaded metallic facet)
@@ -549,7 +616,7 @@ void RadialGauge::paintEvent(QPaintEvent *)
                  << QPointF(needleBaseW, 0.0)
                  << QPointF(0.0, -needleLen);
 
-    painter.setBrush(m_needleColor.darker(120));
+    painter.setBrush(d_ptr->m_needleColor.darker(120));
     painter.drawPolygon(rightPolygon);
 
     // Sharp central ridge line for 3D needle look
@@ -563,11 +630,11 @@ void RadialGauge::paintEvent(QPaintEvent *)
 
     // Outer rim
     QRadialGradient pivotGrad(center, pivotRadius);
-    pivotGrad.setColorAt(0.0, m_bezelColor.lighter(150));
-    pivotGrad.setColorAt(0.7, m_bezelColor.darker(110));
-    pivotGrad.setColorAt(1.0, m_bezelColor.darker(180));
+    pivotGrad.setColorAt(0.0, d_ptr->m_bezelColor.lighter(150));
+    pivotGrad.setColorAt(0.7, d_ptr->m_bezelColor.darker(110));
+    pivotGrad.setColorAt(1.0, d_ptr->m_bezelColor.darker(180));
 
-    painter.setPen(QPen(m_dialColor.darker(180), 1.2));
+    painter.setPen(QPen(d_ptr->m_dialColor.darker(180), 1.2));
     painter.setBrush(pivotGrad);
     painter.drawEllipse(center, pivotRadius, pivotRadius);
 
@@ -575,8 +642,8 @@ void RadialGauge::paintEvent(QPaintEvent *)
     const double innerPivot = pivotRadius * 0.65;
     QRadialGradient capGrad(center, innerPivot);
     capGrad.setColorAt(0.0, QColor(220, 225, 230));
-    capGrad.setColorAt(0.5, m_dialColor.lighter(130));
-    capGrad.setColorAt(1.0, m_dialColor);
+    capGrad.setColorAt(0.5, d_ptr->m_dialColor.lighter(130));
+    capGrad.setColorAt(1.0, d_ptr->m_dialColor);
 
     painter.setPen(Qt::NoPen);
     painter.setBrush(capGrad);

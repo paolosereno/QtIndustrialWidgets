@@ -14,13 +14,62 @@
 
 namespace QtIndustrialWidgets {
 
+class CompassPrivate {
+public:
+    double m_heading{0.0};
+    double m_targetHeading{0.0};
+    Compass::DisplayMode m_displayMode{Compass::DisplayMode::HeadingUp};
+    bool m_bugVisible{true};
+    bool m_bugInteractive{true};
+    bool m_lubberVisible{true};
+    bool m_digitalVisible{true};
+    bool m_isDraggingBug{false};
+
+    // Styling colors
+    QColor m_dialColor{QColor(20, 24, 32)};       // Deep naval slate
+    QColor m_bezelColor{QColor(48, 56, 70)};      // Machined metallic rim
+    QColor m_textColor{QColor(225, 231, 236)};    // Crisp readout text
+    QColor m_cardinalColor{QColor(0, 229, 255)};  // Cyan / amber highlights for N/E/S/W
+    QColor m_needleColor{QColor(235, 59, 90)};    // Vivid red North arrow
+    QColor m_needleTailColor{QColor(160, 175, 195)}; // Slate South arrow
+    QColor m_bugColor{QColor(254, 130, 40)};      // High-visibility orange bug
+    QColor m_lubberColor{QColor(254, 211, 48)};   // Safety amber lubber line
+
+    // Card cache pixmap
+    QPixmap m_cardCache;
+    bool m_cacheDirty{true};
+};
+
+
 
 Compass::Compass(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<CompassPrivate>())
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMinimumSize(minimumSizeHint());
 }
+
+Compass::~Compass() = default;
+
+double Compass::heading() const { Q_D(const Compass); return d->m_heading; }
+double Compass::targetHeading() const { Q_D(const Compass); return d->m_targetHeading; }
+Compass::DisplayMode Compass::displayMode() const { Q_D(const Compass); return d->m_displayMode; }
+bool Compass::isHeadingBugVisible() const { Q_D(const Compass); return d->m_bugVisible; }
+bool Compass::isHeadingBugInteractive() const { Q_D(const Compass); return d->m_bugInteractive; }
+bool Compass::isLubberLineVisible() const { Q_D(const Compass); return d->m_lubberVisible; }
+bool Compass::isDigitalReadoutVisible() const { Q_D(const Compass); return d->m_digitalVisible; }
+
+QColor Compass::dialColor() const { Q_D(const Compass); return d->m_dialColor; }
+QColor Compass::bezelColor() const { Q_D(const Compass); return d->m_bezelColor; }
+QColor Compass::textColor() const { Q_D(const Compass); return d->m_textColor; }
+QColor Compass::cardinalColor() const { Q_D(const Compass); return d->m_cardinalColor; }
+QColor Compass::needleColor() const { Q_D(const Compass); return d->m_needleColor; }
+QColor Compass::needleTailColor() const { Q_D(const Compass); return d->m_needleTailColor; }
+QColor Compass::bugColor() const { Q_D(const Compass); return d->m_bugColor; }
+QColor Compass::lubberColor() const { Q_D(const Compass); return d->m_lubberColor; }
+
+
 
 QSize Compass::sizeHint() const
 {
@@ -43,16 +92,16 @@ double Compass::normalizeDegrees(double deg)
 
 double Compass::courseDeviation() const
 {
-    double diff = std::fmod(m_heading - m_targetHeading + 540.0, 360.0) - 180.0;
+    double diff = std::fmod(d_ptr->m_heading - d_ptr->m_targetHeading + 540.0, 360.0) - 180.0;
     return diff;
 }
 
 void Compass::setHeading(double heading)
 {
     double norm = normalizeDegrees(heading);
-    if (std::abs(m_heading - norm) > 0.001) {
-        m_heading = norm;
-        Q_EMIT headingChanged(m_heading);
+    if (std::abs(d_ptr->m_heading - norm) > 0.001) {
+        d_ptr->m_heading = norm;
+        Q_EMIT headingChanged(d_ptr->m_heading);
         update();
     }
 }
@@ -60,27 +109,27 @@ void Compass::setHeading(double heading)
 void Compass::setTargetHeading(double target)
 {
     double norm = normalizeDegrees(target);
-    if (std::abs(m_targetHeading - norm) > 0.001) {
-        m_targetHeading = norm;
-        Q_EMIT targetHeadingChanged(m_targetHeading);
+    if (std::abs(d_ptr->m_targetHeading - norm) > 0.001) {
+        d_ptr->m_targetHeading = norm;
+        Q_EMIT targetHeadingChanged(d_ptr->m_targetHeading);
         update();
     }
 }
 
 void Compass::setDisplayMode(DisplayMode mode)
 {
-    if (m_displayMode != mode) {
-        m_displayMode = mode;
+    if (d_ptr->m_displayMode != mode) {
+        d_ptr->m_displayMode = mode;
         invalidateCache();
-        Q_EMIT displayModeChanged(m_displayMode);
+        Q_EMIT displayModeChanged(d_ptr->m_displayMode);
         update();
     }
 }
 
 void Compass::setHeadingBugVisible(bool visible)
 {
-    if (m_bugVisible != visible) {
-        m_bugVisible = visible;
+    if (d_ptr->m_bugVisible != visible) {
+        d_ptr->m_bugVisible = visible;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -88,16 +137,16 @@ void Compass::setHeadingBugVisible(bool visible)
 
 void Compass::setHeadingBugInteractive(bool interactive)
 {
-    if (m_bugInteractive != interactive) {
-        m_bugInteractive = interactive;
+    if (d_ptr->m_bugInteractive != interactive) {
+        d_ptr->m_bugInteractive = interactive;
         Q_EMIT appearanceChanged();
     }
 }
 
 void Compass::setLubberLineVisible(bool visible)
 {
-    if (m_lubberVisible != visible) {
-        m_lubberVisible = visible;
+    if (d_ptr->m_lubberVisible != visible) {
+        d_ptr->m_lubberVisible = visible;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -105,8 +154,8 @@ void Compass::setLubberLineVisible(bool visible)
 
 void Compass::setDigitalReadoutVisible(bool visible)
 {
-    if (m_digitalVisible != visible) {
-        m_digitalVisible = visible;
+    if (d_ptr->m_digitalVisible != visible) {
+        d_ptr->m_digitalVisible = visible;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -114,8 +163,8 @@ void Compass::setDigitalReadoutVisible(bool visible)
 
 void Compass::setDialColor(const QColor &color)
 {
-    if (m_dialColor != color) {
-        m_dialColor = color;
+    if (d_ptr->m_dialColor != color) {
+        d_ptr->m_dialColor = color;
         invalidateCache();
         Q_EMIT appearanceChanged();
         update();
@@ -124,8 +173,8 @@ void Compass::setDialColor(const QColor &color)
 
 void Compass::setBezelColor(const QColor &color)
 {
-    if (m_bezelColor != color) {
-        m_bezelColor = color;
+    if (d_ptr->m_bezelColor != color) {
+        d_ptr->m_bezelColor = color;
         invalidateCache();
         Q_EMIT appearanceChanged();
         update();
@@ -134,8 +183,8 @@ void Compass::setBezelColor(const QColor &color)
 
 void Compass::setTextColor(const QColor &color)
 {
-    if (m_textColor != color) {
-        m_textColor = color;
+    if (d_ptr->m_textColor != color) {
+        d_ptr->m_textColor = color;
         invalidateCache();
         Q_EMIT appearanceChanged();
         update();
@@ -144,8 +193,8 @@ void Compass::setTextColor(const QColor &color)
 
 void Compass::setCardinalColor(const QColor &color)
 {
-    if (m_cardinalColor != color) {
-        m_cardinalColor = color;
+    if (d_ptr->m_cardinalColor != color) {
+        d_ptr->m_cardinalColor = color;
         invalidateCache();
         Q_EMIT appearanceChanged();
         update();
@@ -154,8 +203,8 @@ void Compass::setCardinalColor(const QColor &color)
 
 void Compass::setNeedleColor(const QColor &color)
 {
-    if (m_needleColor != color) {
-        m_needleColor = color;
+    if (d_ptr->m_needleColor != color) {
+        d_ptr->m_needleColor = color;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -163,8 +212,8 @@ void Compass::setNeedleColor(const QColor &color)
 
 void Compass::setNeedleTailColor(const QColor &color)
 {
-    if (m_needleTailColor != color) {
-        m_needleTailColor = color;
+    if (d_ptr->m_needleTailColor != color) {
+        d_ptr->m_needleTailColor = color;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -172,8 +221,8 @@ void Compass::setNeedleTailColor(const QColor &color)
 
 void Compass::setBugColor(const QColor &color)
 {
-    if (m_bugColor != color) {
-        m_bugColor = color;
+    if (d_ptr->m_bugColor != color) {
+        d_ptr->m_bugColor = color;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -181,8 +230,8 @@ void Compass::setBugColor(const QColor &color)
 
 void Compass::setLubberColor(const QColor &color)
 {
-    if (m_lubberColor != color) {
-        m_lubberColor = color;
+    if (d_ptr->m_lubberColor != color) {
+        d_ptr->m_lubberColor = color;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -190,7 +239,7 @@ void Compass::setLubberColor(const QColor &color)
 
 void Compass::invalidateCache()
 {
-    m_cacheDirty = true;
+    d_ptr->m_cacheDirty = true;
 }
 
 void Compass::resizeEvent(QResizeEvent *event)
@@ -224,16 +273,16 @@ double Compass::angleFromPoint(const QPointF &pos) const
 
 void Compass::mousePressEvent(QMouseEvent *event)
 {
-    if (m_bugInteractive && event->button() == Qt::LeftButton) {
+    if (d_ptr->m_bugInteractive && event->button() == Qt::LeftButton) {
         double r = std::min(width(), height()) / 2.0;
         QPointF center = rect().center();
         double dist = std::hypot(event->position().x() - center.x(), event->position().y() - center.y());
         if (dist > r * 0.35 && dist <= r * 1.1) {
-            m_isDraggingBug = true;
+            d_ptr->m_isDraggingBug = true;
             double angle = angleFromPoint(event->position());
-            if (m_displayMode == DisplayMode::HeadingUp) {
-                // In HeadingUp mode, dial is rotated by -m_heading, so cursor angle corresponds to:
-                setTargetHeading(normalizeDegrees(angle + m_heading));
+            if (d_ptr->m_displayMode == DisplayMode::HeadingUp) {
+                // In HeadingUp mode, dial is rotated by -d_ptr->m_heading, so cursor angle corresponds to:
+                setTargetHeading(normalizeDegrees(angle + d_ptr->m_heading));
             } else {
                 setTargetHeading(angle);
             }
@@ -245,10 +294,10 @@ void Compass::mousePressEvent(QMouseEvent *event)
 
 void Compass::mouseMoveEvent(QMouseEvent *event)
 {
-    if (m_isDraggingBug && (event->buttons() & Qt::LeftButton)) {
+    if (d_ptr->m_isDraggingBug && (event->buttons() & Qt::LeftButton)) {
         double angle = angleFromPoint(event->position());
-        if (m_displayMode == DisplayMode::HeadingUp) {
-            setTargetHeading(normalizeDegrees(angle + m_heading));
+        if (d_ptr->m_displayMode == DisplayMode::HeadingUp) {
+            setTargetHeading(normalizeDegrees(angle + d_ptr->m_heading));
         } else {
             setTargetHeading(angle);
         }
@@ -259,8 +308,8 @@ void Compass::mouseMoveEvent(QMouseEvent *event)
 
 void Compass::mouseReleaseEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton && m_isDraggingBug) {
-        m_isDraggingBug = false;
+    if (event->button() == Qt::LeftButton && d_ptr->m_isDraggingBug) {
+        d_ptr->m_isDraggingBug = false;
         return;
     }
     QWidget::mouseReleaseEvent(event);
@@ -269,11 +318,11 @@ void Compass::mouseReleaseEvent(QMouseEvent *event)
 void Compass::renderCompassCard(const QSize &size)
 {
     const qreal dpr = devicePixelRatioF();
-    m_cardCache = QPixmap(size * dpr);
-    m_cardCache.setDevicePixelRatio(dpr);
-    m_cardCache.fill(Qt::transparent);
+    d_ptr->m_cardCache = QPixmap(size * dpr);
+    d_ptr->m_cardCache.setDevicePixelRatio(dpr);
+    d_ptr->m_cardCache.fill(Qt::transparent);
 
-    QPainter p(&m_cardCache);
+    QPainter p(&d_ptr->m_cardCache);
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setRenderHint(QPainter::TextAntialiasing, true);
 
@@ -282,17 +331,17 @@ void Compass::renderCompassCard(const QSize &size)
     const double radius = (side / 2.0) - 6.0;
 
     if (radius <= 10.0) {
-        m_cacheDirty = false;
+        d_ptr->m_cacheDirty = false;
         return;
     }
 
     // 1. Outer Bezel Ring (Machined metal chamfer)
     QRadialGradient bezelGrad(center, radius + 5.0, center - QPointF(radius * 0.3, radius * 0.3));
-    bezelGrad.setColorAt(0.0, m_bezelColor.lighter(140));
-    bezelGrad.setColorAt(0.7, m_bezelColor);
-    bezelGrad.setColorAt(1.0, m_bezelColor.darker(170));
+    bezelGrad.setColorAt(0.0, d_ptr->m_bezelColor.lighter(140));
+    bezelGrad.setColorAt(0.7, d_ptr->m_bezelColor);
+    bezelGrad.setColorAt(1.0, d_ptr->m_bezelColor.darker(170));
 
-    p.setPen(QPen(m_bezelColor.darker(200), 1.5));
+    p.setPen(QPen(d_ptr->m_bezelColor.darker(200), 1.5));
     p.setBrush(bezelGrad);
     p.drawEllipse(center, radius + 5.0, radius + 5.0);
 
@@ -303,9 +352,9 @@ void Compass::renderCompassCard(const QSize &size)
 
     // 2. Dial Face Background
     QRadialGradient dialGrad(center, radius, center - QPointF(0.0, radius * 0.25));
-    dialGrad.setColorAt(0.0, m_dialColor.lighter(125));
-    dialGrad.setColorAt(0.8, m_dialColor);
-    dialGrad.setColorAt(1.0, m_dialColor.darker(140));
+    dialGrad.setColorAt(0.0, d_ptr->m_dialColor.lighter(125));
+    dialGrad.setColorAt(0.8, d_ptr->m_dialColor);
+    dialGrad.setColorAt(1.0, d_ptr->m_dialColor.darker(140));
 
     p.setPen(Qt::NoPen);
     p.setBrush(dialGrad);
@@ -331,7 +380,7 @@ void Compass::renderCompassCard(const QSize &size)
         darkHalf.lineTo(-starRadius * 0.25, -starRadius * 0.3);
         darkHalf.closeSubpath();
 
-        QColor baseC = (pt % 2 == 0) ? m_cardinalColor : m_textColor;
+        QColor baseC = (pt % 2 == 0) ? d_ptr->m_cardinalColor : d_ptr->m_textColor;
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(baseC.red(), baseC.green(), baseC.blue(), 38));
         p.drawPath(lightHalf);
@@ -366,7 +415,7 @@ void Compass::renderCompassCard(const QSize &size)
     numberFont.setPointSizeF(std::clamp(radius * 0.07, 6.0, 12.0));
 
     // Outer track circle line
-    p.setPen(QPen(QColor(m_textColor.red(), m_textColor.green(), m_textColor.blue(), 60), 1.0));
+    p.setPen(QPen(QColor(d_ptr->m_textColor.red(), d_ptr->m_textColor.green(), d_ptr->m_textColor.blue(), 60), 1.0));
     p.drawEllipse(QPointF(0.0, 0.0), outerTickR, outerTickR);
     p.drawEllipse(QPointF(0.0, 0.0), majorTickR, majorTickR);
 
@@ -378,15 +427,15 @@ void Compass::renderCompassCard(const QSize &size)
 
         if (deg % 30 == 0) {
             // Major tick mark (every 30°)
-            p.setPen(QPen(m_textColor, 1.8));
+            p.setPen(QPen(d_ptr->m_textColor, 1.8));
             p.drawLine(QPointF(0.0, -outerTickR), QPointF(0.0, -majorTickR));
         } else if (deg % 10 == 0) {
             // Medium tick mark (every 10°)
-            p.setPen(QPen(QColor(m_textColor.red(), m_textColor.green(), m_textColor.blue(), 180), 1.2));
+            p.setPen(QPen(QColor(d_ptr->m_textColor.red(), d_ptr->m_textColor.green(), d_ptr->m_textColor.blue(), 180), 1.2));
             p.drawLine(QPointF(0.0, -outerTickR), QPointF(0.0, -medTickR));
         } else {
             // Minor tick mark (every 5°)
-            p.setPen(QPen(QColor(m_textColor.red(), m_textColor.green(), m_textColor.blue(), 100), 0.8));
+            p.setPen(QPen(QColor(d_ptr->m_textColor.red(), d_ptr->m_textColor.green(), d_ptr->m_textColor.blue(), 100), 0.8));
             p.drawLine(QPointF(0.0, -outerTickR), QPointF(0.0, -minorTickR));
         }
 
@@ -394,48 +443,48 @@ void Compass::renderCompassCard(const QSize &size)
         if (deg == 0) {
             // North Cardinal
             p.setFont(cardinalFont);
-            p.setPen(m_needleColor);
+            p.setPen(d_ptr->m_needleColor);
             QRectF textRect(-24.0, -textR - 12.0, 48.0, 24.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("N"));
         } else if (deg == 90) {
             p.setFont(cardinalFont);
-            p.setPen(m_cardinalColor);
+            p.setPen(d_ptr->m_cardinalColor);
             QRectF textRect(-24.0, -textR - 12.0, 48.0, 24.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("E"));
         } else if (deg == 180) {
             p.setFont(cardinalFont);
-            p.setPen(m_cardinalColor);
+            p.setPen(d_ptr->m_cardinalColor);
             QRectF textRect(-24.0, -textR - 12.0, 48.0, 24.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("S"));
         } else if (deg == 270) {
             p.setFont(cardinalFont);
-            p.setPen(m_cardinalColor);
+            p.setPen(d_ptr->m_cardinalColor);
             QRectF textRect(-24.0, -textR - 12.0, 48.0, 24.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("W"));
         } else if (deg == 45) {
             p.setFont(intercardinalFont);
-            p.setPen(m_textColor);
+            p.setPen(d_ptr->m_textColor);
             QRectF textRect(-20.0, -textR - 10.0, 40.0, 20.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("NE"));
         } else if (deg == 135) {
             p.setFont(intercardinalFont);
-            p.setPen(m_textColor);
+            p.setPen(d_ptr->m_textColor);
             QRectF textRect(-20.0, -textR - 10.0, 40.0, 20.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("SE"));
         } else if (deg == 225) {
             p.setFont(intercardinalFont);
-            p.setPen(m_textColor);
+            p.setPen(d_ptr->m_textColor);
             QRectF textRect(-20.0, -textR - 10.0, 40.0, 20.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("SW"));
         } else if (deg == 315) {
             p.setFont(intercardinalFont);
-            p.setPen(m_textColor);
+            p.setPen(d_ptr->m_textColor);
             QRectF textRect(-20.0, -textR - 10.0, 40.0, 20.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("NW"));
         } else if (deg % 30 == 0) {
             // Multiples of 30°: 3-digit aeronautical/marine format: 030, 060, 120, etc.
             p.setFont(numberFont);
-            p.setPen(m_textColor);
+            p.setPen(d_ptr->m_textColor);
             QRectF textRect(-22.0, -textR - 9.0, 44.0, 18.0);
             p.drawText(textRect, Qt::AlignCenter, QStringLiteral("%1").arg(deg, 3, 10, QLatin1Char('0')));
         }
@@ -444,7 +493,7 @@ void Compass::renderCompassCard(const QSize &size)
     }
     p.restore();
 
-    m_cacheDirty = false;
+    d_ptr->m_cacheDirty = false;
 }
 
 void Compass::paintEvent(QPaintEvent *)
@@ -452,7 +501,7 @@ void Compass::paintEvent(QPaintEvent *)
     const int side = std::min(width(), height());
     if (side <= 10) return;
 
-    if (m_cacheDirty || m_cardCache.isNull() || m_cardCache.size() != size() * devicePixelRatioF()) {
+    if (d_ptr->m_cacheDirty || d_ptr->m_cardCache.isNull() || d_ptr->m_cardCache.size() != size() * devicePixelRatioF()) {
         renderCompassCard(size());
     }
 
@@ -465,17 +514,17 @@ void Compass::paintEvent(QPaintEvent *)
     const double radius = (side / 2.0) - 6.0;
 
     // 1. Draw Compass Card
-    if (m_displayMode == DisplayMode::HeadingUp) {
-        // HeadingUp: Card rotates by -m_heading around center
+    if (d_ptr->m_displayMode == DisplayMode::HeadingUp) {
+        // HeadingUp: Card rotates by -d_ptr->m_heading around center
         painter.save();
         painter.translate(center);
-        painter.rotate(-m_heading);
-        painter.drawPixmap(-width() / 2, -height() / 2, m_cardCache);
+        painter.rotate(-d_ptr->m_heading);
+        painter.drawPixmap(-width() / 2, -height() / 2, d_ptr->m_cardCache);
 
         // Draw Target Heading Bug rotated on the moving card:
-        if (m_bugVisible) {
+        if (d_ptr->m_bugVisible) {
             painter.save();
-            painter.rotate(m_targetHeading);
+            painter.rotate(d_ptr->m_targetHeading);
             // Draw Heading Bug Chevron at top
             QPainterPath bug;
             const double bugR = radius - 2.0;
@@ -490,8 +539,8 @@ void Compass::paintEvent(QPaintEvent *)
             bug.lineTo(0.0, -bugR - 2.0);
             bug.closeSubpath();
 
-            painter.setPen(QPen(m_bugColor.darker(140), 1.2));
-            painter.setBrush(m_bugColor);
+            painter.setPen(QPen(d_ptr->m_bugColor.darker(140), 1.2));
+            painter.setBrush(d_ptr->m_bugColor);
             painter.drawPath(bug);
             painter.restore();
         }
@@ -499,7 +548,7 @@ void Compass::paintEvent(QPaintEvent *)
         painter.restore();
 
         // 2. Static Lubber Line at 12 o'clock (Fixed vessel bow reference)
-        if (m_lubberVisible) {
+        if (d_ptr->m_lubberVisible) {
             painter.save();
             painter.translate(center);
 
@@ -514,11 +563,11 @@ void Compass::paintEvent(QPaintEvent *)
             lubber.closeSubpath();
 
             painter.setPen(QPen(QColor(20, 20, 20), 1.0));
-            painter.setBrush(m_lubberColor);
+            painter.setBrush(d_ptr->m_lubberColor);
             painter.drawPath(lubber);
 
             // Center lubber vertical pointer line
-            painter.setPen(QPen(m_lubberColor, 2.0));
+            painter.setPen(QPen(d_ptr->m_lubberColor, 2.0));
             painter.drawLine(QPointF(0.0, -lubberR), QPointF(0.0, -lubberR + radius * 0.16));
 
             painter.restore();
@@ -527,12 +576,12 @@ void Compass::paintEvent(QPaintEvent *)
         // NorthUp: Card is static (North at top)
         painter.save();
         painter.translate(center);
-        painter.drawPixmap(-width() / 2, -height() / 2, m_cardCache);
+        painter.drawPixmap(-width() / 2, -height() / 2, d_ptr->m_cardCache);
 
         // Draw Target Heading Bug rotated to targetHeading
-        if (m_bugVisible) {
+        if (d_ptr->m_bugVisible) {
             painter.save();
-            painter.rotate(m_targetHeading);
+            painter.rotate(d_ptr->m_targetHeading);
             const double bugR = radius - 2.0;
             const double bugW = std::clamp(radius * 0.12, 8.0, 18.0);
             const double bugH = std::clamp(radius * 0.10, 6.0, 15.0);
@@ -546,15 +595,15 @@ void Compass::paintEvent(QPaintEvent *)
             bug.lineTo(0.0, -bugR - 2.0);
             bug.closeSubpath();
 
-            painter.setPen(QPen(m_bugColor.darker(140), 1.2));
-            painter.setBrush(m_bugColor);
+            painter.setPen(QPen(d_ptr->m_bugColor.darker(140), 1.2));
+            painter.setBrush(d_ptr->m_bugColor);
             painter.drawPath(bug);
             painter.restore();
         }
 
-        // Draw Rotating Magnetic Needle pointing to m_heading
+        // Draw Rotating Magnetic Needle pointing to d_ptr->m_heading
         painter.save();
-        painter.rotate(m_heading);
+        painter.rotate(d_ptr->m_heading);
 
         const double needleLen = radius * 0.68;
         const double needleW = std::clamp(radius * 0.08, 6.0, 16.0);
@@ -573,9 +622,9 @@ void Compass::paintEvent(QPaintEvent *)
         northHalfDark.closeSubpath();
 
         painter.setPen(Qt::NoPen);
-        painter.setBrush(m_needleColor);
+        painter.setBrush(d_ptr->m_needleColor);
         painter.drawPath(northHalfLight);
-        painter.setBrush(m_needleColor.darker(140));
+        painter.setBrush(d_ptr->m_needleColor.darker(140));
         painter.drawPath(northHalfDark);
 
         // South half (Slate / silver tail arrow)
@@ -591,15 +640,15 @@ void Compass::paintEvent(QPaintEvent *)
         southHalfDark.lineTo(-needleW / 2.0, needleLen * 0.2);
         southHalfDark.closeSubpath();
 
-        painter.setBrush(m_needleTailColor);
+        painter.setBrush(d_ptr->m_needleTailColor);
         painter.drawPath(southHalfLight);
-        painter.setBrush(m_needleTailColor.darker(140));
+        painter.setBrush(d_ptr->m_needleTailColor.darker(140));
         painter.drawPath(southHalfDark);
 
         painter.restore();
 
         // Lubber reference line at 12 o'clock
-        if (m_lubberVisible) {
+        if (d_ptr->m_lubberVisible) {
             painter.save();
             painter.translate(center);
             const double lubberR = radius + 2.0;
@@ -613,7 +662,7 @@ void Compass::paintEvent(QPaintEvent *)
             lubber.closeSubpath();
 
             painter.setPen(QPen(QColor(20, 20, 20), 1.0));
-            painter.setBrush(m_lubberColor);
+            painter.setBrush(d_ptr->m_lubberColor);
             painter.drawPath(lubber);
             painter.restore();
         }
@@ -622,7 +671,7 @@ void Compass::paintEvent(QPaintEvent *)
     }
 
     // 3. Central Digital Readout Pod
-    if (m_digitalVisible) {
+    if (d_ptr->m_digitalVisible) {
         painter.save();
         painter.translate(center);
 
@@ -635,7 +684,7 @@ void Compass::paintEvent(QPaintEvent *)
         podGrad.setColorAt(0.0, QColor(14, 18, 24));
         podGrad.setColorAt(1.0, QColor(24, 30, 40));
 
-        painter.setPen(QPen(m_bezelColor.darker(150), 1.5));
+        painter.setPen(QPen(d_ptr->m_bezelColor.darker(150), 1.5));
         painter.setBrush(podGrad);
         painter.drawRoundedRect(podRect, 4.0, 4.0);
 
@@ -644,9 +693,9 @@ void Compass::paintEvent(QPaintEvent *)
         podFont.setBold(true);
         podFont.setPointSizeF(std::clamp(podH * 0.48, 8.0, 20.0));
         painter.setFont(podFont);
-        painter.setPen(m_textColor);
+        painter.setPen(d_ptr->m_textColor);
 
-        int intHdg = static_cast<int>(std::round(m_heading)) % 360;
+        int intHdg = static_cast<int>(std::round(d_ptr->m_heading)) % 360;
         QString text = QStringLiteral("%1°").arg(intHdg, 3, 10, QLatin1Char('0'));
         painter.drawText(podRect, Qt::AlignCenter, text);
 

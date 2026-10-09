@@ -8,6 +8,7 @@
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
+#include <memory>
 #include <QtGui/QColor>
 
 /**
@@ -30,6 +31,8 @@
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class SevenSegmentDisplayPrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT SevenSegmentDisplay : public QWidget
 {
@@ -55,35 +58,35 @@ public:
      * \param parent Optional parent widget.
      */
     explicit SevenSegmentDisplay(QWidget *parent = nullptr);
-    ~SevenSegmentDisplay() override = default;
+    ~SevenSegmentDisplay() override;
 
     /** \brief Returns the currently displayed numeric value. */
-    [[nodiscard]] double value() const { return m_value; }
+    [[nodiscard]] double value() const;
     /** \brief Returns the currently formatted display text string. */
-    [[nodiscard]] QString text() const { return m_text; }
+    [[nodiscard]] QString text() const;
     /** \brief Returns the total number of digits displayed. */
-    [[nodiscard]] int digitCount() const { return m_digitCount; }
+    [[nodiscard]] int digitCount() const;
     /** \brief Returns the number of decimal digits after the decimal point. */
-    [[nodiscard]] int decimalPlaces() const { return m_decimalPlaces; }
+    [[nodiscard]] int decimalPlaces() const;
     /** \brief Returns true if leading zeros are displayed instead of blanked. */
-    [[nodiscard]] bool showLeadingZeros() const { return m_showLeadingZeros; }
+    [[nodiscard]] bool showLeadingZeros() const;
     /** \brief Returns true if the decimal point separator is shown. */
-    [[nodiscard]] bool showDecimalPoint() const { return m_showDecimalPoint; }
+    [[nodiscard]] bool showDecimalPoint() const;
     /** \brief Returns the italic forward skew slant angle in degrees. */
-    [[nodiscard]] double skewAngle() const { return m_skewAngle; }
+    [[nodiscard]] double skewAngle() const;
     /** \brief Returns the segment stroke thickness ratio relative to digit width. */
-    [[nodiscard]] double segmentWidthRatio() const { return m_segmentWidthRatio; }
+    [[nodiscard]] double segmentWidthRatio() const;
 
     /** \brief Returns the illuminated active segment color. */
-    [[nodiscard]] QColor activeSegmentColor() const { return m_activeSegmentColor; }
+    [[nodiscard]] QColor activeSegmentColor() const;
     /** \brief Returns the unlit ghost segment shadow color. */
-    [[nodiscard]] QColor inactiveSegmentColor() const { return m_inactiveSegmentColor; }
+    [[nodiscard]] QColor inactiveSegmentColor() const;
     /** \brief Returns the display panel background color. */
-    [[nodiscard]] QColor backgroundColor() const { return m_backgroundColor; }
+    [[nodiscard]] QColor backgroundColor() const;
     /** \brief Returns the outer rim bezel frame color. */
-    [[nodiscard]] QColor bezelColor() const { return m_bezelColor; }
+    [[nodiscard]] QColor bezelColor() const;
     /** \brief Returns true if the outer bezel frame is visible. */
-    [[nodiscard]] bool isBezelVisible() const { return m_bezelVisible; }
+    [[nodiscard]] bool isBezelVisible() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -140,21 +143,8 @@ private:
     static quint8 encodeChar(QChar ch);
     void drawDigit(QPainter &painter, const QRectF &rect, quint8 mask, bool hasDecimalPoint) const;
 
-    double m_value{0.0};
-    QString m_text{QStringLiteral("0.0")};
-    int m_digitCount{5};
-    int m_decimalPlaces{1};
-    bool m_showLeadingZeros{false};
-    bool m_showDecimalPoint{true};
-    double m_skewAngle{8.0};             // Degrees italic skew
-    double m_segmentWidthRatio{0.14};    // Thickness relative to width
-
-    QColor m_activeSegmentColor{QColor(0, 229, 255)};         // Neon Cyan LED
-    QColor m_inactiveSegmentColor{QColor(0, 229, 255, 28)};    // Dim unlit ghost
-    QColor m_backgroundColor{QColor(16, 20, 28)};             // Dark LCD Panel
-    QColor m_bezelColor{QColor(40, 48, 60)};                  // Bezel rim
-    bool m_bezelVisible{true};
-    bool m_isTextExplicit{false};
+    std::unique_ptr<SevenSegmentDisplayPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(SevenSegmentDisplay)
 };
 
 } // namespace QtIndustrialWidgets

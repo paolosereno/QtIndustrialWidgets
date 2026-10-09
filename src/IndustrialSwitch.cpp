@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtCore/QVariantAnimation>
 #include <QtCore/QEasingCurve>
+#include <QtGui/QPixmap>
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QMouseEvent>
@@ -18,35 +19,89 @@
 namespace QtIndustrialWidgets {
 
 
+class IndustrialSwitchPrivate {
+public:
+    IndustrialSwitch::SwitchType m_switchType = IndustrialSwitch::SwitchType::ToggleLever;
+    int m_positionCount = 2; // 2 or 3
+    int m_position = 0;      // 0, 1 (or 2 if 3-pos)
+    double m_currentPos = 0.0; // for animation: 0.0 to 1.0 (or 2.0)
+    Qt::Orientation m_orientation = Qt::Vertical;
+
+    bool m_hasSafetyGuard = false;
+    bool m_isGuardOpen = false;
+    double m_guardOpenFactor = 0.0; // 0.0 = closed, 1.0 = fully open
+    bool m_animated = true;
+    bool m_hasLed = true;
+
+    QString m_label;
+    QString m_labelOff = QStringLiteral("OFF");
+    QString m_labelOn = QStringLiteral("ON");
+    QString m_labelCenter = QStringLiteral("AUTO");
+
+    QColor m_plateColor = QColor(42, 45, 52);
+    QColor m_leverColor = QColor(220, 225, 230);
+    QColor m_ledColor = QColor(46, 204, 113);
+    QColor m_textColor = QColor(200, 205, 215);
+    QColor m_guardColor = QColor(220, 53, 69); // Industrial crimson safety red
+
+    QVariantAnimation *m_switchAnim = nullptr;
+    QVariantAnimation *m_guardAnim = nullptr;
+
+    QPixmap m_cachedBackground;
+    bool m_cacheValid = false;
+    bool m_isDragging = false;
+};
+
 IndustrialSwitch::IndustrialSwitch(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<IndustrialSwitchPrivate>())
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_Hover, true);
 
-    m_switchAnim = new QVariantAnimation(this);
-    m_switchAnim->setDuration(130);
-    m_switchAnim->setEasingCurve(QEasingCurve::OutBack);
-    connect(m_switchAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
-        m_currentPos = val.toDouble();
+    d_ptr->m_switchAnim = new QVariantAnimation(this);
+    d_ptr->m_switchAnim->setDuration(130);
+    d_ptr->m_switchAnim->setEasingCurve(QEasingCurve::OutBack);
+    connect(d_ptr->m_switchAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
+        d_ptr->m_currentPos = val.toDouble();
         update();
     });
 
-    m_guardAnim = new QVariantAnimation(this);
-    m_guardAnim->setDuration(180);
-    m_guardAnim->setEasingCurve(QEasingCurve::OutCubic);
-    connect(m_guardAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
-        m_guardOpenFactor = val.toDouble();
+    d_ptr->m_guardAnim = new QVariantAnimation(this);
+    d_ptr->m_guardAnim->setDuration(180);
+    d_ptr->m_guardAnim->setEasingCurve(QEasingCurve::OutCubic);
+    connect(d_ptr->m_guardAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &val) {
+        d_ptr->m_guardOpenFactor = val.toDouble();
         update();
     });
 }
 
 IndustrialSwitch::~IndustrialSwitch() = default;
 
+IndustrialSwitch::SwitchType IndustrialSwitch::switchType() const { Q_D(const IndustrialSwitch); return d->m_switchType; }
+int IndustrialSwitch::positionCount() const { Q_D(const IndustrialSwitch); return d->m_positionCount; }
+int IndustrialSwitch::position() const { Q_D(const IndustrialSwitch); return d->m_position; }
+bool IndustrialSwitch::isChecked() const { Q_D(const IndustrialSwitch); return d->m_position == (d->m_positionCount - 1); }
+Qt::Orientation IndustrialSwitch::orientation() const { Q_D(const IndustrialSwitch); return d->m_orientation; }
+bool IndustrialSwitch::hasSafetyGuard() const { Q_D(const IndustrialSwitch); return d->m_hasSafetyGuard; }
+bool IndustrialSwitch::isGuardOpen() const { Q_D(const IndustrialSwitch); return d->m_isGuardOpen; }
+bool IndustrialSwitch::isAnimated() const { Q_D(const IndustrialSwitch); return d->m_animated; }
+bool IndustrialSwitch::hasLed() const { Q_D(const IndustrialSwitch); return d->m_hasLed; }
+QString IndustrialSwitch::label() const { Q_D(const IndustrialSwitch); return d->m_label; }
+QString IndustrialSwitch::labelOff() const { Q_D(const IndustrialSwitch); return d->m_labelOff; }
+QString IndustrialSwitch::labelOn() const { Q_D(const IndustrialSwitch); return d->m_labelOn; }
+QString IndustrialSwitch::labelCenter() const { Q_D(const IndustrialSwitch); return d->m_labelCenter; }
+QColor IndustrialSwitch::plateColor() const { Q_D(const IndustrialSwitch); return d->m_plateColor; }
+QColor IndustrialSwitch::leverColor() const { Q_D(const IndustrialSwitch); return d->m_leverColor; }
+QColor IndustrialSwitch::ledColor() const { Q_D(const IndustrialSwitch); return d->m_ledColor; }
+QColor IndustrialSwitch::textColor() const { Q_D(const IndustrialSwitch); return d->m_textColor; }
+QColor IndustrialSwitch::guardColor() const { Q_D(const IndustrialSwitch); return d->m_guardColor; }
+
+
 QSize IndustrialSwitch::sizeHint() const
 {
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         return {75, 125};
     }
     return {125, 75};
@@ -54,7 +109,7 @@ QSize IndustrialSwitch::sizeHint() const
 
 QSize IndustrialSwitch::minimumSizeHint() const
 {
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         return {50, 80};
     }
     return {80, 50};
@@ -62,9 +117,9 @@ QSize IndustrialSwitch::minimumSizeHint() const
 
 void IndustrialSwitch::setSwitchType(SwitchType type)
 {
-    if (m_switchType == type) return;
-    m_switchType = type;
-    m_cacheValid = false;
+    if (d_ptr->m_switchType == type) return;
+    d_ptr->m_switchType = type;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
@@ -72,60 +127,60 @@ void IndustrialSwitch::setSwitchType(SwitchType type)
 void IndustrialSwitch::setPositionCount(int count)
 {
     count = std::clamp(count, 2, 3);
-    if (m_positionCount == count) return;
-    m_positionCount = count;
-    if (m_position >= m_positionCount) {
-        m_position = m_positionCount - 1;
-        m_currentPos = static_cast<double>(m_position);
+    if (d_ptr->m_positionCount == count) return;
+    d_ptr->m_positionCount = count;
+    if (d_ptr->m_position >= d_ptr->m_positionCount) {
+        d_ptr->m_position = d_ptr->m_positionCount - 1;
+        d_ptr->m_currentPos = static_cast<double>(d_ptr->m_position);
     }
-    m_cacheValid = false;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setPosition(int position)
 {
-    position = std::clamp(position, 0, m_positionCount - 1);
-    if (m_position == position) return;
+    position = std::clamp(position, 0, d_ptr->m_positionCount - 1);
+    if (d_ptr->m_position == position) return;
 
-    m_position = position;
+    d_ptr->m_position = position;
 
-    if (m_animated) {
-        m_switchAnim->stop();
-        m_switchAnim->setStartValue(m_currentPos);
-        m_switchAnim->setEndValue(static_cast<double>(m_position));
-        m_switchAnim->start();
+    if (d_ptr->m_animated) {
+        d_ptr->m_switchAnim->stop();
+        d_ptr->m_switchAnim->setStartValue(d_ptr->m_currentPos);
+        d_ptr->m_switchAnim->setEndValue(static_cast<double>(d_ptr->m_position));
+        d_ptr->m_switchAnim->start();
     } else {
-        m_currentPos = static_cast<double>(m_position);
+        d_ptr->m_currentPos = static_cast<double>(d_ptr->m_position);
         update();
     }
 
-    Q_EMIT positionChanged(m_position);
+    Q_EMIT positionChanged(d_ptr->m_position);
     Q_EMIT toggled(isChecked());
 }
 
 void IndustrialSwitch::setChecked(bool checked)
 {
-    int target = checked ? (m_positionCount - 1) : 0;
+    int target = checked ? (d_ptr->m_positionCount - 1) : 0;
     setPosition(target);
 }
 
 void IndustrialSwitch::toggle()
 {
-    if (m_positionCount == 2) {
-        setPosition(m_position == 0 ? 1 : 0);
+    if (d_ptr->m_positionCount == 2) {
+        setPosition(d_ptr->m_position == 0 ? 1 : 0);
     } else {
         // 3-position toggle sequence: 0 -> 1 -> 2 -> 1 -> 0
-        int next = (m_position + 1) % m_positionCount;
+        int next = (d_ptr->m_position + 1) % d_ptr->m_positionCount;
         setPosition(next);
     }
 }
 
 void IndustrialSwitch::setOrientation(Qt::Orientation orientation)
 {
-    if (m_orientation == orientation) return;
-    m_orientation = orientation;
-    m_cacheValid = false;
+    if (d_ptr->m_orientation == orientation) return;
+    d_ptr->m_orientation = orientation;
+    d_ptr->m_cacheValid = false;
     updateGeometry();
     Q_EMIT appearanceChanged();
     update();
@@ -133,123 +188,123 @@ void IndustrialSwitch::setOrientation(Qt::Orientation orientation)
 
 void IndustrialSwitch::setHasSafetyGuard(bool guard)
 {
-    if (m_hasSafetyGuard == guard) return;
-    m_hasSafetyGuard = guard;
-    m_isGuardOpen = false;
-    m_guardOpenFactor = 0.0;
-    m_cacheValid = false;
+    if (d_ptr->m_hasSafetyGuard == guard) return;
+    d_ptr->m_hasSafetyGuard = guard;
+    d_ptr->m_isGuardOpen = false;
+    d_ptr->m_guardOpenFactor = 0.0;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setGuardOpen(bool open)
 {
-    if (m_isGuardOpen == open) return;
-    m_isGuardOpen = open;
+    if (d_ptr->m_isGuardOpen == open) return;
+    d_ptr->m_isGuardOpen = open;
 
-    if (m_animated) {
-        m_guardAnim->stop();
-        m_guardAnim->setStartValue(m_guardOpenFactor);
-        m_guardAnim->setEndValue(open ? 1.0 : 0.0);
-        m_guardAnim->start();
+    if (d_ptr->m_animated) {
+        d_ptr->m_guardAnim->stop();
+        d_ptr->m_guardAnim->setStartValue(d_ptr->m_guardOpenFactor);
+        d_ptr->m_guardAnim->setEndValue(open ? 1.0 : 0.0);
+        d_ptr->m_guardAnim->start();
     } else {
-        m_guardOpenFactor = open ? 1.0 : 0.0;
+        d_ptr->m_guardOpenFactor = open ? 1.0 : 0.0;
         update();
     }
 
-    Q_EMIT guardToggled(m_isGuardOpen);
+    Q_EMIT guardToggled(d_ptr->m_isGuardOpen);
 }
 
 void IndustrialSwitch::setAnimated(bool animated)
 {
-    if (m_animated == animated) return;
-    m_animated = animated;
+    if (d_ptr->m_animated == animated) return;
+    d_ptr->m_animated = animated;
     Q_EMIT appearanceChanged();
 }
 
 void IndustrialSwitch::setHasLed(bool hasLed)
 {
-    if (m_hasLed == hasLed) return;
-    m_hasLed = hasLed;
-    m_cacheValid = false;
+    if (d_ptr->m_hasLed == hasLed) return;
+    d_ptr->m_hasLed = hasLed;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setLabel(const QString &label)
 {
-    if (m_label == label) return;
-    m_label = label;
-    m_cacheValid = false;
+    if (d_ptr->m_label == label) return;
+    d_ptr->m_label = label;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setLabelOff(const QString &label)
 {
-    if (m_labelOff == label) return;
-    m_labelOff = label;
-    m_cacheValid = false;
+    if (d_ptr->m_labelOff == label) return;
+    d_ptr->m_labelOff = label;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setLabelOn(const QString &label)
 {
-    if (m_labelOn == label) return;
-    m_labelOn = label;
-    m_cacheValid = false;
+    if (d_ptr->m_labelOn == label) return;
+    d_ptr->m_labelOn = label;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setLabelCenter(const QString &label)
 {
-    if (m_labelCenter == label) return;
-    m_labelCenter = label;
-    m_cacheValid = false;
+    if (d_ptr->m_labelCenter == label) return;
+    d_ptr->m_labelCenter = label;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setPlateColor(const QColor &color)
 {
-    if (m_plateColor == color) return;
-    m_plateColor = color;
-    m_cacheValid = false;
+    if (d_ptr->m_plateColor == color) return;
+    d_ptr->m_plateColor = color;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setLeverColor(const QColor &color)
 {
-    if (m_leverColor == color) return;
-    m_leverColor = color;
+    if (d_ptr->m_leverColor == color) return;
+    d_ptr->m_leverColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setLedColor(const QColor &color)
 {
-    if (m_ledColor == color) return;
-    m_ledColor = color;
+    if (d_ptr->m_ledColor == color) return;
+    d_ptr->m_ledColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setTextColor(const QColor &color)
 {
-    if (m_textColor == color) return;
-    m_textColor = color;
-    m_cacheValid = false;
+    if (d_ptr->m_textColor == color) return;
+    d_ptr->m_textColor = color;
+    d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
     update();
 }
 
 void IndustrialSwitch::setGuardColor(const QColor &color)
 {
-    if (m_guardColor == color) return;
-    m_guardColor = color;
+    if (d_ptr->m_guardColor == color) return;
+    d_ptr->m_guardColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
@@ -257,7 +312,7 @@ void IndustrialSwitch::setGuardColor(const QColor &color)
 void IndustrialSwitch::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
-    m_cacheValid = false;
+    d_ptr->m_cacheValid = false;
 }
 
 QRectF IndustrialSwitch::calculateSwitchRect() const
@@ -266,7 +321,7 @@ QRectF IndustrialSwitch::calculateSwitchRect() const
     double w = r.width();
     double h = r.height();
 
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         double switchH = h * 0.55;
         double switchW = std::min(w * 0.7, switchH * 0.65);
         double top = r.top() + (h - switchH) * 0.52;
@@ -334,7 +389,7 @@ void IndustrialSwitch::drawLed(QPainter &painter, const QPointF &center, double 
     if (active) {
         // Halo glow
         QRadialGradient halo(center, radius * 2.5);
-        QColor glow = m_ledColor;
+        QColor glow = d_ptr->m_ledColor;
         glow.setAlpha(120);
         halo.setColorAt(0.0, glow);
         glow.setAlpha(0);
@@ -343,12 +398,12 @@ void IndustrialSwitch::drawLed(QPainter &painter, const QPointF &center, double 
         painter.drawEllipse(center, radius * 2.5, radius * 2.5);
 
         lensGrad.setColorAt(0.0, QColor(255, 255, 255, 240));
-        lensGrad.setColorAt(0.3, m_ledColor.lighter(130));
-        lensGrad.setColorAt(0.8, m_ledColor);
-        lensGrad.setColorAt(1.0, m_ledColor.darker(160));
+        lensGrad.setColorAt(0.3, d_ptr->m_ledColor.lighter(130));
+        lensGrad.setColorAt(0.8, d_ptr->m_ledColor);
+        lensGrad.setColorAt(1.0, d_ptr->m_ledColor.darker(160));
     } else {
-        lensGrad.setColorAt(0.0, m_ledColor.darker(280));
-        lensGrad.setColorAt(0.7, m_ledColor.darker(350));
+        lensGrad.setColorAt(0.0, d_ptr->m_ledColor.darker(280));
+        lensGrad.setColorAt(0.7, d_ptr->m_ledColor.darker(350));
         lensGrad.setColorAt(1.0, QColor(25, 25, 25));
     }
 
@@ -370,11 +425,11 @@ void IndustrialSwitch::renderStaticBackground()
     QSize pixSize = size() * dpr;
     if (pixSize.isEmpty()) return;
 
-    m_cachedBackground = QPixmap(pixSize);
-    m_cachedBackground.setDevicePixelRatio(dpr);
-    m_cachedBackground.fill(Qt::transparent);
+    d_ptr->m_cachedBackground = QPixmap(pixSize);
+    d_ptr->m_cachedBackground.setDevicePixelRatio(dpr);
+    d_ptr->m_cachedBackground.fill(Qt::transparent);
 
-    QPainter painter(&m_cachedBackground);
+    QPainter painter(&d_ptr->m_cachedBackground);
     painter.setRenderHint(QPainter::Antialiasing);
 
     QRectF plateRect = rect().adjusted(3, 3, -3, -3);
@@ -387,9 +442,9 @@ void IndustrialSwitch::renderStaticBackground()
 
     // Plate Body (Brushed dark industrial metal)
     QLinearGradient plateGrad(plateRect.topLeft(), plateRect.bottomRight());
-    plateGrad.setColorAt(0.0, m_plateColor.lighter(120));
-    plateGrad.setColorAt(0.5, m_plateColor);
-    plateGrad.setColorAt(1.0, m_plateColor.darker(130));
+    plateGrad.setColorAt(0.0, d_ptr->m_plateColor.lighter(120));
+    plateGrad.setColorAt(0.5, d_ptr->m_plateColor);
+    plateGrad.setColorAt(1.0, d_ptr->m_plateColor.darker(130));
     painter.setBrush(plateGrad);
 
     // Plate Chamfer / Bevel Border
@@ -410,21 +465,21 @@ void IndustrialSwitch::renderStaticBackground()
 
     // Title Label
     painter.setFont(font());
-    painter.setPen(m_textColor);
+    painter.setPen(d_ptr->m_textColor);
 
-    if (!m_label.isEmpty()) {
+    if (!d_ptr->m_label.isEmpty()) {
         QFont titleFont = font();
         titleFont.setBold(true);
         titleFont.setPointSizeF(std::max(7.0, font().pointSizeF() * 0.85));
         painter.setFont(titleFont);
 
         QRectF titleRect;
-        if (m_orientation == Qt::Vertical) {
+        if (d_ptr->m_orientation == Qt::Vertical) {
             titleRect = QRectF(plateRect.left(), plateRect.top() + 6, plateRect.width(), 16);
         } else {
             titleRect = QRectF(plateRect.left() + 6, plateRect.top() + 6, plateRect.width() - 12, 14);
         }
-        painter.drawText(titleRect, Qt::AlignCenter, m_label);
+        painter.drawText(titleRect, Qt::AlignCenter, d_ptr->m_label);
     }
 
     // Position Labels ("ON", "OFF", "AUTO", etc.)
@@ -434,45 +489,45 @@ void IndustrialSwitch::renderStaticBackground()
     labelFont.setPointSizeF(std::max(6.5, font().pointSizeF() * 0.8));
     painter.setFont(labelFont);
 
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         // Upper label (ON)
         QRectF topLabelRect(plateRect.left(), switchRect.top() - 16, plateRect.width(), 14);
-        painter.setPen(m_textColor.lighter(110));
-        painter.drawText(topLabelRect, Qt::AlignCenter, m_labelOn);
+        painter.setPen(d_ptr->m_textColor.lighter(110));
+        painter.drawText(topLabelRect, Qt::AlignCenter, d_ptr->m_labelOn);
 
         // Lower label (OFF)
         QRectF botLabelRect(plateRect.left(), switchRect.bottom() + 3, plateRect.width(), 14);
-        painter.setPen(m_textColor.darker(110));
-        painter.drawText(botLabelRect, Qt::AlignCenter, m_labelOff);
+        painter.setPen(d_ptr->m_textColor.darker(110));
+        painter.drawText(botLabelRect, Qt::AlignCenter, d_ptr->m_labelOff);
 
         // Center label if 3-position
-        if (m_positionCount == 3) {
+        if (d_ptr->m_positionCount == 3) {
             QRectF centerLabelRect(switchRect.right() + 4, switchRect.center().y() - 7, plateRect.right() - switchRect.right() - 6, 14);
-            painter.setPen(m_textColor);
-            painter.drawText(centerLabelRect, Qt::AlignLeft | Qt::AlignVCenter, m_labelCenter);
+            painter.setPen(d_ptr->m_textColor);
+            painter.drawText(centerLabelRect, Qt::AlignLeft | Qt::AlignVCenter, d_ptr->m_labelCenter);
         }
     } else {
         // Horizontal orientation
         // Left label (OFF)
         QRectF leftLabelRect(plateRect.left() + 4, switchRect.top(), switchRect.left() - plateRect.left() - 6, switchRect.height());
-        painter.setPen(m_textColor.darker(110));
-        painter.drawText(leftLabelRect, Qt::AlignRight | Qt::AlignVCenter, m_labelOff);
+        painter.setPen(d_ptr->m_textColor.darker(110));
+        painter.drawText(leftLabelRect, Qt::AlignRight | Qt::AlignVCenter, d_ptr->m_labelOff);
 
         // Right label (ON)
         QRectF rightLabelRect(switchRect.right() + 6, switchRect.top(), plateRect.right() - switchRect.right() - 8, switchRect.height());
-        painter.setPen(m_textColor.lighter(110));
-        painter.drawText(rightLabelRect, Qt::AlignLeft | Qt::AlignVCenter, m_labelOn);
+        painter.setPen(d_ptr->m_textColor.lighter(110));
+        painter.drawText(rightLabelRect, Qt::AlignLeft | Qt::AlignVCenter, d_ptr->m_labelOn);
 
         // Center label if 3-position
-        if (m_positionCount == 3) {
+        if (d_ptr->m_positionCount == 3) {
             QRectF centerLabelRect(switchRect.left(), switchRect.bottom() + 2, switchRect.width(), 14);
-            painter.setPen(m_textColor);
-            painter.drawText(centerLabelRect, Qt::AlignCenter, m_labelCenter);
+            painter.setPen(d_ptr->m_textColor);
+            painter.drawText(centerLabelRect, Qt::AlignCenter, d_ptr->m_labelCenter);
         }
     }
 
     // Switch Socket Base
-    if (m_switchType == SwitchType::ToggleLever) {
+    if (d_ptr->m_switchType == SwitchType::ToggleLever) {
         // Circular threaded bezel collar nut
         QPointF socketCenter = switchRect.center();
         double socketRadius = std::min(switchRect.width(), switchRect.height()) * 0.44;
@@ -512,7 +567,7 @@ void IndustrialSwitch::renderStaticBackground()
         painter.drawRoundedRect(switchRect.adjusted(1, 1, -1, -1), 3.0, 3.0);
     }
 
-    m_cacheValid = true;
+    d_ptr->m_cacheValid = true;
 }
 
 void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchArea, double currentPos)
@@ -527,7 +582,7 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
     // Calculate lever tilt angle and travel
     // pos 0 = off/down (-32 degrees or offset down), pos 1/2 = on/up (+32 degrees or offset up)
     double normPos = 0.0;
-    if (m_positionCount == 2) {
+    if (d_ptr->m_positionCount == 2) {
         normPos = currentPos; // 0.0 to 1.0
     } else {
         normPos = currentPos * 0.5; // 0.0 to 1.0
@@ -535,13 +590,13 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
 
     // Map 0.0 -> -32 deg, 1.0 -> +32 deg
     double angleDeg = -32.0 + normPos * 64.0;
-    if (m_orientation == Qt::Horizontal) {
+    if (d_ptr->m_orientation == Qt::Horizontal) {
         angleDeg = -32.0 + normPos * 64.0;
     }
 
     painter.translate(pivot);
 
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         // In vertical mode: 0 is DOWN (positive Y in Qt), 1 is UP (negative Y in Qt)
         // Let's rotate so that angleDeg tilts lever
         painter.rotate(angleDeg);
@@ -561,11 +616,11 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
         QRectF batRect(-thickness * 0.4, -length, thickness * 0.8, length);
 
         QLinearGradient shaftGrad(batRect.left(), 0, batRect.right(), 0);
-        shaftGrad.setColorAt(0.0, m_leverColor.darker(170));
-        shaftGrad.setColorAt(0.3, m_leverColor.lighter(130));
+        shaftGrad.setColorAt(0.0, d_ptr->m_leverColor.darker(170));
+        shaftGrad.setColorAt(0.3, d_ptr->m_leverColor.lighter(130));
         shaftGrad.setColorAt(0.55, QColor(255, 255, 255, 240));
-        shaftGrad.setColorAt(0.75, m_leverColor);
-        shaftGrad.setColorAt(1.0, m_leverColor.darker(200));
+        shaftGrad.setColorAt(0.75, d_ptr->m_leverColor);
+        shaftGrad.setColorAt(1.0, d_ptr->m_leverColor.darker(200));
 
         painter.setPen(QPen(QColor(60, 65, 70), 0.8));
         painter.setBrush(shaftGrad);
@@ -577,10 +632,10 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
 
         QRadialGradient tipGrad(tipCenter - QPointF(tipRadius * 0.3, tipRadius * 0.3), tipRadius * 1.3);
         tipGrad.setColorAt(0.0, QColor(255, 255, 255, 250));
-        tipGrad.setColorAt(0.25, m_leverColor.lighter(120));
-        tipGrad.setColorAt(0.65, m_leverColor);
-        tipGrad.setColorAt(0.9, m_leverColor.darker(160));
-        tipGrad.setColorAt(1.0, m_leverColor.darker(220));
+        tipGrad.setColorAt(0.25, d_ptr->m_leverColor.lighter(120));
+        tipGrad.setColorAt(0.65, d_ptr->m_leverColor);
+        tipGrad.setColorAt(0.9, d_ptr->m_leverColor.darker(160));
+        tipGrad.setColorAt(1.0, d_ptr->m_leverColor.darker(220));
 
         painter.setPen(QPen(QColor(50, 55, 60), 0.8));
         painter.setBrush(tipGrad);
@@ -589,8 +644,8 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
         // Pivot chrome hemisphere hub
         QRadialGradient hubGrad(QPointF(-thickness * 0.2, -thickness * 0.2), thickness * 0.8);
         hubGrad.setColorAt(0.0, QColor(250, 252, 255));
-        hubGrad.setColorAt(0.4, m_leverColor);
-        hubGrad.setColorAt(0.85, m_leverColor.darker(180));
+        hubGrad.setColorAt(0.4, d_ptr->m_leverColor);
+        hubGrad.setColorAt(0.85, d_ptr->m_leverColor.darker(180));
         hubGrad.setColorAt(1.0, QColor(35, 38, 42));
         painter.setBrush(hubGrad);
         painter.drawEllipse(QPointF(0, 0), thickness * 0.55, thickness * 0.55);
@@ -601,11 +656,11 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
 
         QRectF batRect(-thickness * 0.4, -length, thickness * 0.8, length);
         QLinearGradient shaftGrad(batRect.left(), 0, batRect.right(), 0);
-        shaftGrad.setColorAt(0.0, m_leverColor.darker(170));
-        shaftGrad.setColorAt(0.3, m_leverColor.lighter(130));
+        shaftGrad.setColorAt(0.0, d_ptr->m_leverColor.darker(170));
+        shaftGrad.setColorAt(0.3, d_ptr->m_leverColor.lighter(130));
         shaftGrad.setColorAt(0.55, QColor(255, 255, 255, 240));
-        shaftGrad.setColorAt(0.75, m_leverColor);
-        shaftGrad.setColorAt(1.0, m_leverColor.darker(200));
+        shaftGrad.setColorAt(0.75, d_ptr->m_leverColor);
+        shaftGrad.setColorAt(1.0, d_ptr->m_leverColor.darker(200));
 
         painter.setPen(QPen(QColor(60, 65, 70), 0.8));
         painter.setBrush(shaftGrad);
@@ -615,10 +670,10 @@ void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchAr
         double tipRadius = thickness * 0.62;
         QRadialGradient tipGrad(tipCenter - QPointF(tipRadius * 0.3, tipRadius * 0.3), tipRadius * 1.3);
         tipGrad.setColorAt(0.0, QColor(255, 255, 255, 250));
-        tipGrad.setColorAt(0.25, m_leverColor.lighter(120));
-        tipGrad.setColorAt(0.65, m_leverColor);
-        tipGrad.setColorAt(0.9, m_leverColor.darker(160));
-        tipGrad.setColorAt(1.0, m_leverColor.darker(220));
+        tipGrad.setColorAt(0.25, d_ptr->m_leverColor.lighter(120));
+        tipGrad.setColorAt(0.65, d_ptr->m_leverColor);
+        tipGrad.setColorAt(0.9, d_ptr->m_leverColor.darker(160));
+        tipGrad.setColorAt(1.0, d_ptr->m_leverColor.darker(220));
 
         painter.setBrush(tipGrad);
         painter.drawEllipse(tipCenter, tipRadius, tipRadius);
@@ -637,7 +692,7 @@ void IndustrialSwitch::drawRocker(QPainter &painter, const QRectF &switchArea, d
     double h = paddleRect.height();
 
     double normPos = 0.0;
-    if (m_positionCount == 2) {
+    if (d_ptr->m_positionCount == 2) {
         normPos = currentPos; // 0.0 to 1.0
     } else {
         normPos = currentPos * 0.5; // 0.0 to 1.0
@@ -648,7 +703,7 @@ void IndustrialSwitch::drawRocker(QPainter &painter, const QRectF &switchArea, d
     // pos 0 (OFF) presses bottom side down, lifts top side up
     double tilt = (normPos - 0.5) * 2.0; // -1.0 (OFF) to +1.0 (ON)
 
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         QRectF topHalf(paddleRect.left(), paddleRect.top(), w, h * 0.5);
         QRectF botHalf(paddleRect.left(), paddleRect.top() + h * 0.5, w, h * 0.5);
 
@@ -702,13 +757,13 @@ void IndustrialSwitch::drawRocker(QPainter &painter, const QRectF &switchArea, d
 
         // Illuminated status indicator line on ON half
         QRectF ledBar(paddleRect.center().x() - 5, topHalf.top() + 6, 10, 4);
-        bool active = (m_position > 0);
+        bool active = (d_ptr->m_position > 0);
         if (active) {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(m_ledColor);
+            painter.setBrush(d_ptr->m_ledColor);
             painter.drawRoundedRect(ledBar, 1.5, 1.5);
             // Glow
-            painter.setBrush(QColor(m_ledColor.red(), m_ledColor.green(), m_ledColor.blue(), 100));
+            painter.setBrush(QColor(d_ptr->m_ledColor.red(), d_ptr->m_ledColor.green(), d_ptr->m_ledColor.blue(), 100));
             painter.drawRoundedRect(ledBar.adjusted(-2, -2, 2, 2), 2.5, 2.5);
         } else {
             painter.setPen(Qt::NoPen);
@@ -756,7 +811,7 @@ void IndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switc
     painter.setRenderHint(QPainter::Antialiasing);
 
     QRectF guardBase = calculateGuardRect();
-    double openFactor = m_guardOpenFactor; // 0.0 = closed, 1.0 = fully open
+    double openFactor = d_ptr->m_guardOpenFactor; // 0.0 = closed, 1.0 = fully open
 
     // Hinge position (at the bottom or top of switch area)
     QPointF hinge = QPointF(guardBase.center().x(), guardBase.top() + 6);
@@ -780,9 +835,9 @@ void IndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switc
 
     // Safety Cover outer shell
     QLinearGradient guardGrad(coverRect.topLeft(), coverRect.bottomRight());
-    guardGrad.setColorAt(0.0, m_guardColor.lighter(130));
-    guardGrad.setColorAt(0.4, m_guardColor);
-    guardGrad.setColorAt(1.0, m_guardColor.darker(150));
+    guardGrad.setColorAt(0.0, d_ptr->m_guardColor.lighter(130));
+    guardGrad.setColorAt(0.4, d_ptr->m_guardColor);
+    guardGrad.setColorAt(1.0, d_ptr->m_guardColor.darker(150));
 
     painter.setPen(QPen(QColor(40, 10, 15), 1.2));
     painter.setBrush(guardGrad);
@@ -823,7 +878,7 @@ void IndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switc
 
     // Lift tab at the bottom of the guard
     QRectF liftTab(coverRect.center().x() - 12, coverRect.bottom() - 3, 24, 7);
-    painter.setBrush(m_guardColor.darker(120));
+    painter.setBrush(d_ptr->m_guardColor.darker(120));
     painter.drawRoundedRect(liftTab, 2.0, 2.0);
 
     painter.restore();
@@ -831,27 +886,27 @@ void IndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switc
 
 void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
 {
-    if (!m_cacheValid || m_cachedBackground.size() != size() * devicePixelRatioF()) {
+    if (!d_ptr->m_cacheValid || d_ptr->m_cachedBackground.size() != size() * devicePixelRatioF()) {
         renderStaticBackground();
     }
 
     QPainter painter(this);
-    painter.drawPixmap(0, 0, m_cachedBackground);
+    painter.drawPixmap(0, 0, d_ptr->m_cachedBackground);
 
     QRectF switchRect = calculateSwitchRect();
 
     // Draw active switch mechanism
-    if (m_switchType == SwitchType::ToggleLever) {
-        drawToggleLever(painter, switchRect, m_currentPos);
+    if (d_ptr->m_switchType == SwitchType::ToggleLever) {
+        drawToggleLever(painter, switchRect, d_ptr->m_currentPos);
     } else {
-        drawRocker(painter, switchRect, m_currentPos);
+        drawRocker(painter, switchRect, d_ptr->m_currentPos);
     }
 
     // Draw Status LED if enabled
-    if (m_hasLed) {
+    if (d_ptr->m_hasLed) {
         QRectF plateRect = rect().adjusted(3, 3, -3, -3);
         QPointF ledCenter;
-        if (m_orientation == Qt::Vertical) {
+        if (d_ptr->m_orientation == Qt::Vertical) {
             ledCenter = QPointF(plateRect.center().x(), switchRect.top() - 26);
         } else {
             ledCenter = QPointF(switchRect.right() + 18, plateRect.center().y());
@@ -860,7 +915,7 @@ void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
     }
 
     // Draw Safety Guard over the switch if enabled
-    if (m_hasSafetyGuard) {
+    if (d_ptr->m_hasSafetyGuard) {
         drawSafetyGuard(painter, switchRect);
     }
 }
@@ -873,8 +928,8 @@ void IndustrialSwitch::mousePressEvent(QMouseEvent *event)
     }
 
     // Safety guard logic
-    if (m_hasSafetyGuard) {
-        if (!m_isGuardOpen) {
+    if (d_ptr->m_hasSafetyGuard) {
+        if (!d_ptr->m_isGuardOpen) {
             // Guard is closed: click flips the guard open!
             setGuardOpen(true);
             return;
@@ -890,12 +945,12 @@ void IndustrialSwitch::mousePressEvent(QMouseEvent *event)
 
     // Switch actuation
     QRectF switchRect = calculateSwitchRect();
-    if (m_positionCount == 2) {
+    if (d_ptr->m_positionCount == 2) {
         // Toggle state
         toggle();
     } else {
         // 3-position: check whether clicked top, middle, or bottom
-        if (m_orientation == Qt::Vertical) {
+        if (d_ptr->m_orientation == Qt::Vertical) {
             double relY = (event->position().y() - switchRect.top()) / switchRect.height();
             if (relY < 0.35) {
                 setPosition(2); // Top (ON / POS 2)
@@ -916,21 +971,21 @@ void IndustrialSwitch::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    m_isDragging = true;
+    d_ptr->m_isDragging = true;
 }
 
 void IndustrialSwitch::mouseMoveEvent(QMouseEvent *event)
 {
-    if (!m_isDragging || (m_hasSafetyGuard && !m_isGuardOpen)) {
+    if (!d_ptr->m_isDragging || (d_ptr->m_hasSafetyGuard && !d_ptr->m_isGuardOpen)) {
         QWidget::mouseMoveEvent(event);
         return;
     }
 
     QRectF switchRect = calculateSwitchRect();
-    if (m_orientation == Qt::Vertical) {
+    if (d_ptr->m_orientation == Qt::Vertical) {
         double relY = (event->position().y() - switchRect.top()) / switchRect.height();
         relY = std::clamp(relY, 0.0, 1.0);
-        if (m_positionCount == 2) {
+        if (d_ptr->m_positionCount == 2) {
             setPosition(relY < 0.5 ? 1 : 0);
         } else {
             if (relY < 0.33) setPosition(2);
@@ -940,7 +995,7 @@ void IndustrialSwitch::mouseMoveEvent(QMouseEvent *event)
     } else {
         double relX = (event->position().x() - switchRect.left()) / switchRect.width();
         relX = std::clamp(relX, 0.0, 1.0);
-        if (m_positionCount == 2) {
+        if (d_ptr->m_positionCount == 2) {
             setPosition(relX > 0.5 ? 1 : 0);
         } else {
             if (relX < 0.33) setPosition(0);
@@ -952,13 +1007,13 @@ void IndustrialSwitch::mouseMoveEvent(QMouseEvent *event)
 
 void IndustrialSwitch::mouseReleaseEvent(QMouseEvent *event)
 {
-    m_isDragging = false;
+    d_ptr->m_isDragging = false;
     QWidget::mouseReleaseEvent(event);
 }
 
 void IndustrialSwitch::keyPressEvent(QKeyEvent *event)
 {
-    if (m_hasSafetyGuard && !m_isGuardOpen) {
+    if (d_ptr->m_hasSafetyGuard && !d_ptr->m_isGuardOpen) {
         if (event->key() == Qt::Key_Space || event->key() == Qt::Key_Return) {
             setGuardOpen(true);
             return;
@@ -972,11 +1027,11 @@ void IndustrialSwitch::keyPressEvent(QKeyEvent *event)
         break;
     case Qt::Key_Up:
     case Qt::Key_Right:
-        setPosition(std::min(m_position + 1, m_positionCount - 1));
+        setPosition(std::min(d_ptr->m_position + 1, d_ptr->m_positionCount - 1));
         break;
     case Qt::Key_Down:
     case Qt::Key_Left:
-        setPosition(std::max(m_position - 1, 0));
+        setPosition(std::max(d_ptr->m_position - 1, 0));
         break;
     default:
         QWidget::keyPressEvent(event);
@@ -985,16 +1040,16 @@ void IndustrialSwitch::keyPressEvent(QKeyEvent *event)
 
 void IndustrialSwitch::wheelEvent(QWheelEvent *event)
 {
-    if (m_hasSafetyGuard && !m_isGuardOpen) {
+    if (d_ptr->m_hasSafetyGuard && !d_ptr->m_isGuardOpen) {
         QWidget::wheelEvent(event);
         return;
     }
 
     int delta = event->angleDelta().y();
     if (delta > 0) {
-        setPosition(std::min(m_position + 1, m_positionCount - 1));
+        setPosition(std::min(d_ptr->m_position + 1, d_ptr->m_positionCount - 1));
     } else if (delta < 0) {
-        setPosition(std::max(m_position - 1, 0));
+        setPosition(std::max(d_ptr->m_position - 1, 0));
     }
     event->accept();
 }

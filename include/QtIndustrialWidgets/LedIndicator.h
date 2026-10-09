@@ -8,6 +8,7 @@
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
+#include <memory>
 #include <QtGui/QColor>
 #include <QtCore/QTimer>
 
@@ -27,6 +28,8 @@
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class LedIndicatorPrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT LedIndicator : public QWidget
 {
@@ -63,30 +66,30 @@ public:
      * \param parent Optional parent widget.
      */
     explicit LedIndicator(const QColor &onColor, QWidget *parent = nullptr);
-    ~LedIndicator() override = default;
+    ~LedIndicator() override;
 
     /** \brief Returns true if the LED is currently powered ON. */
-    [[nodiscard]] bool isOn() const { return m_on; }
+    [[nodiscard]] bool isOn() const;
     /** \brief Returns true if autonomous periodic blinking is active. */
-    [[nodiscard]] bool isBlinking() const { return m_blinking; }
+    [[nodiscard]] bool isBlinking() const;
     /** \brief Returns the blinking toggle period in milliseconds. */
-    [[nodiscard]] int blinkRateMs() const { return m_blinkRateMs; }
+    [[nodiscard]] int blinkRateMs() const;
     /** \brief Returns the lit ON state color. */
-    [[nodiscard]] QColor onColor() const { return m_onColor; }
+    [[nodiscard]] QColor onColor() const;
     /** \brief Returns the unlit OFF state color. */
-    [[nodiscard]] QColor offColor() const { return m_offColor; }
+    [[nodiscard]] QColor offColor() const;
     /** \brief Returns the outer rim bezel color. */
-    [[nodiscard]] QColor bezelColor() const { return m_bezelColor; }
+    [[nodiscard]] QColor bezelColor() const;
     /** \brief Returns true if the metallic bezel rim is displayed. */
-    [[nodiscard]] bool isBezelVisible() const { return m_bezelVisible; }
+    [[nodiscard]] bool isBezelVisible() const;
     /** \brief Returns true if the radial glow aura effect is enabled. */
-    [[nodiscard]] bool hasGlowEffect() const { return m_glowEffect; }
+    [[nodiscard]] bool hasGlowEffect() const;
     /** \brief Returns the current lens shape. */
-    [[nodiscard]] LedShape shape() const { return m_shape; }
+    [[nodiscard]] LedShape shape() const;
     /** \brief Returns the status caption label text. */
-    [[nodiscard]] QString labelText() const { return m_labelText; }
+    [[nodiscard]] QString labelText() const;
     /** \brief Returns true if user mouse clicks emit clicked() and toggle state. */
-    [[nodiscard]] bool isClickable() const { return m_clickable; }
+    [[nodiscard]] bool isClickable() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -139,21 +142,8 @@ private Q_SLOTS:
 private:
     [[nodiscard]] QColor calculateDefaultOffColor(const QColor &onCol) const;
 
-    bool m_on{true};
-    bool m_blinking{false};
-    bool m_blinkState{true};
-    int m_blinkRateMs{500};
-
-    QColor m_onColor{QColor(46, 204, 113)};          // Neon Emerald Green
-    QColor m_offColor{QColor(15, 60, 35)};           // Dim green-tinted off state
-    QColor m_bezelColor{QColor(60, 70, 85)};         // Metallic Bezel
-    bool m_bezelVisible{true};
-    bool m_glowEffect{true};
-    LedShape m_shape{LedShape::Circular};
-    QString m_labelText;
-    bool m_clickable{false};
-
-    QTimer m_blinkTimer;
+    std::unique_ptr<LedIndicatorPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(LedIndicator)
 };
 
 } // namespace QtIndustrialWidgets

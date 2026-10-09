@@ -9,9 +9,12 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
-#include <QtGui/QPixmap>
 #include <QtCore/QVector>
-#include <vector>
+#include <memory>
+
+namespace QtIndustrialWidgets {
+
+class StripChartPrivate;
 
 /**
  * \class StripChart
@@ -37,8 +40,6 @@
  * chart->addDataPoint(chTemp, 88.2);
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
 class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
 {
     Q_OBJECT
@@ -56,14 +57,12 @@ class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
     Q_PROPERTY(int verticalDivisions READ verticalDivisions WRITE setVerticalDivisions NOTIFY appearanceChanged)
 
 public:
-    /** \brief Metadata and circular ring buffer for an individual waveform channel. */
+    /** \brief Metadata and live telemetry info for an individual waveform channel. */
     struct ChannelInfo {
         QString name;              ///< Channel name displayed in legend
         QColor color;              ///< Waveform trace stroke color
         bool visible{true};        ///< Channel visibility flag
         double penWidth{1.8};      ///< Trace stroke thickness in pixels
-        std::vector<double> buffer;///< Pre-allocated circular ring buffer
-        size_t headIndex{0};       ///< Ring buffer insertion head index
         size_t count{0};           ///< Total valid points stored in ring buffer
         double latestValue{0.0};   ///< Most recently streamed telemetry value
     };
@@ -73,33 +72,33 @@ public:
      * \param parent Optional parent widget.
      */
     explicit StripChart(QWidget *parent = nullptr);
-    ~StripChart() override = default;
+    ~StripChart() override;
 
     /** \brief Returns the ring buffer history point capacity per channel. */
-    [[nodiscard]] int capacity() const { return m_capacity; }
+    [[nodiscard]] int capacity() const;
     /** \brief Returns the minimum vertical Y scale bound. */
-    [[nodiscard]] double yMinimum() const { return m_yMinimum; }
+    [[nodiscard]] double yMinimum() const;
     /** \brief Returns the maximum vertical Y scale bound. */
-    [[nodiscard]] double yMaximum() const { return m_yMaximum; }
+    [[nodiscard]] double yMaximum() const;
     /** \brief Returns true if vertical auto-scaling is enabled. */
-    [[nodiscard]] bool isAutoScaleY() const { return m_autoScaleY; }
+    [[nodiscard]] bool isAutoScaleY() const;
     /** \brief Returns true if oscilloscope reticle grid is displayed. */
-    [[nodiscard]] bool isGridVisible() const { return m_gridVisible; }
+    [[nodiscard]] bool isGridVisible() const;
     /** \brief Returns true if top legend overlay is displayed. */
-    [[nodiscard]] bool isLegendVisible() const { return m_legendVisible; }
+    [[nodiscard]] bool isLegendVisible() const;
     /** \brief Returns the reticle grid lines color. */
-    [[nodiscard]] QColor gridColor() const { return m_gridColor; }
+    [[nodiscard]] QColor gridColor() const;
     /** \brief Returns the oscilloscope screen dark background color. */
-    [[nodiscard]] QColor backgroundColor() const { return m_backgroundColor; }
+    [[nodiscard]] QColor backgroundColor() const;
     /** \brief Returns the outer chassis bezel frame color. */
-    [[nodiscard]] QColor bezelColor() const { return m_bezelColor; }
+    [[nodiscard]] QColor bezelColor() const;
     /** \brief Returns the number of horizontal grid divisions. */
-    [[nodiscard]] int horizontalDivisions() const { return m_horizontalDivisions; }
+    [[nodiscard]] int horizontalDivisions() const;
     /** \brief Returns the number of vertical grid divisions. */
-    [[nodiscard]] int verticalDivisions() const { return m_verticalDivisions; }
+    [[nodiscard]] int verticalDivisions() const;
 
     /** \brief Returns the total number of registered channels. */
-    [[nodiscard]] int channelCount() const { return static_cast<int>(m_channels.size()); }
+    [[nodiscard]] int channelCount() const;
     /** \brief Returns a pointer to channel info by index, or nullptr if invalid. */
     [[nodiscard]] const ChannelInfo *channel(int index) const;
 
@@ -172,26 +171,8 @@ private:
     void updateAutoScaling();
     [[nodiscard]] QRectF plotArea() const;
 
-    int m_capacity{300};
-    double m_yMinimum{0.0};
-    double m_yMaximum{100.0};
-    bool m_autoScaleY{false};
-    bool m_gridVisible{true};
-    bool m_legendVisible{true};
-    int m_horizontalDivisions{6};
-    int m_verticalDivisions{8};
-
-    // Colors
-    QColor m_gridColor{QColor(42, 54, 70)};           // Subdued grid reticle
-    QColor m_backgroundColor{QColor(14, 18, 25)};     // Deep oscilloscope dark
-    QColor m_bezelColor{QColor(38, 46, 60)};          // Outer metal frame
-    QColor m_textColor{QColor(210, 220, 235)};        // Grid text color
-
-    std::vector<ChannelInfo> m_channels;
-
-    // Static Grid Cache
-    QPixmap m_cachePixmap;
-    bool m_cacheDirty{true};
+    std::unique_ptr<StripChartPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(StripChart)
 };
 
 } // namespace QtIndustrialWidgets

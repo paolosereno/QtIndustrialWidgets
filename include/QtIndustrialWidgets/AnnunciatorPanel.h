@@ -9,10 +9,9 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
-#include <QtGui/QPixmap>
 #include <QtCore/QVector>
 #include <QtCore/QString>
-#include <QtCore/QTimer>
+#include <memory>
 
 /**
  * \class AnnunciatorPanel
@@ -45,6 +44,8 @@
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class AnnunciatorPanelPrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT AnnunciatorPanel : public QWidget
 {
@@ -113,17 +114,17 @@ public:
     ~AnnunciatorPanel() override;
 
     /** \brief Returns the number of grid rows. */
-    [[nodiscard]] int rows() const { return m_rows; }
+    [[nodiscard]] int rows() const;
     /** \brief Returns the number of grid columns. */
-    [[nodiscard]] int columns() const { return m_columns; }
+    [[nodiscard]] int columns() const;
     /** \brief Returns the total number of alarm tiles (rows * columns). */
-    [[nodiscard]] int tileCount() const { return m_tiles.size(); }
+    [[nodiscard]] int tileCount() const;
     /** \brief Returns the operational sequence standard. */
-    [[nodiscard]] AnnunciatorSequence sequence() const { return m_sequence; }
+    [[nodiscard]] AnnunciatorSequence sequence() const;
     /** \brief Returns true if all windows are currently illuminated by Lamp Test. */
-    [[nodiscard]] bool isLampTestActive() const { return m_lampTest; }
+    [[nodiscard]] bool isLampTestActive() const;
     /** \brief Returns true if the audible horn signal is currently requested. */
-    [[nodiscard]] bool isAudibleHornActive() const { return m_hornActive; }
+    [[nodiscard]] bool isAudibleHornActive() const;
     /** \brief Returns the total number of currently active alarms. */
     [[nodiscard]] int activeAlarmsCount() const;
     /** \brief Returns the number of unacknowledged alarms. */
@@ -139,17 +140,17 @@ public:
     [[nodiscard]] bool isAlarmActive(int index) const;
 
     /** \brief Returns the outer chassis bezel frame color. */
-    [[nodiscard]] QColor frameColor() const { return m_frameColor; }
+    [[nodiscard]] QColor frameColor() const;
     /** \brief Returns the internal matrix grid dividers color. */
-    [[nodiscard]] QColor gridColor() const { return m_gridColor; }
+    [[nodiscard]] QColor gridColor() const;
     /** \brief Returns the critical red alarm illumination color. */
-    [[nodiscard]] QColor criticalColor() const { return m_criticalColor; }
+    [[nodiscard]] QColor criticalColor() const;
     /** \brief Returns the warning amber alarm illumination color. */
-    [[nodiscard]] QColor warningColor() const { return m_warningColor; }
+    [[nodiscard]] QColor warningColor() const;
     /** \brief Returns the advisory cyan/blue alarm illumination color. */
-    [[nodiscard]] QColor advisoryColor() const { return m_advisoryColor; }
+    [[nodiscard]] QColor advisoryColor() const;
     /** \brief Returns the tile engraved lettering font color. */
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
+    [[nodiscard]] QColor textColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -240,32 +241,8 @@ private:
     [[nodiscard]] int tileIndexAt(const QPointF &pos) const;
     [[nodiscard]] QColor colorForSeverity(Severity severity, bool lit) const;
 
-    int m_rows{2};
-    int m_columns{4};
-    AnnunciatorSequence m_sequence{AnnunciatorSequence::SequenceA_AutomaticReset};
-    bool m_lampTest{false};
-    bool m_hornActive{false};
-    bool m_hornSilenced{false};
-
-    QVector<TileData> m_tiles;
-
-    // Flash timer states (Fast: 2 Hz, Slow: 0.8 Hz)
-    QTimer m_flashTimer;
-    int m_flashTickCounter{0};
-    bool m_fastFlashPhase{true};
-    bool m_slowFlashPhase{true};
-
-    // Styling colors
-    QColor m_frameColor{QColor(30, 36, 46)};       // Heavy industrial dark chassis
-    QColor m_gridColor{QColor(55, 65, 80)};        // Metal grid divider bars
-    QColor m_criticalColor{QColor(235, 59, 90)};   // Crimson red alarm
-    QColor m_warningColor{QColor(254, 211, 48)};   // Amber gold warning
-    QColor m_advisoryColor{QColor(0, 229, 255)};   // Cyan advisory
-    QColor m_textColor{QColor(240, 244, 250)};     // White engraved text
-
-    // Frame cache
-    QPixmap m_cachePixmap;
-    bool m_cacheDirty{true};
+    std::unique_ptr<AnnunciatorPanelPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(AnnunciatorPanel)
 };
 
 } // namespace QtIndustrialWidgets

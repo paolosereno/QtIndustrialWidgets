@@ -9,9 +9,7 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
-#include <QtGui/QPixmap>
-
-class QVariantAnimation;
+#include <memory>
 
 /**
  * \class IndustrialSwitch
@@ -35,6 +33,8 @@ class QVariantAnimation;
  * \endcode
  */
 namespace QtIndustrialWidgets {
+
+class IndustrialSwitchPrivate;
 
 class QTINDUSTRIALWIDGETS_EXPORT IndustrialSwitch : public QWidget
 {
@@ -75,42 +75,42 @@ public:
     ~IndustrialSwitch() override;
 
     /** \brief Returns the switch mechanical actuator style. */
-    [[nodiscard]] SwitchType switchType() const { return m_switchType; }
+    [[nodiscard]] SwitchType switchType() const;
     /** \brief Returns the number of discrete detent positions (2 or 3). */
-    [[nodiscard]] int positionCount() const { return m_positionCount; }
+    [[nodiscard]] int positionCount() const;
     /** \brief Returns the current indexed switch position (0 to positionCount-1). */
-    [[nodiscard]] int position() const { return m_position; }
+    [[nodiscard]] int position() const;
     /** \brief Returns true if the switch is in the active/ON position. */
-    [[nodiscard]] bool isChecked() const { return m_position == (m_positionCount - 1); }
+    [[nodiscard]] bool isChecked() const;
     /** \brief Returns the installation orientation (Vertical or Horizontal). */
-    [[nodiscard]] Qt::Orientation orientation() const { return m_orientation; }
+    [[nodiscard]] Qt::Orientation orientation() const;
     /** \brief Returns true if the flip-up safety guard is equipped. */
-    [[nodiscard]] bool hasSafetyGuard() const { return m_hasSafetyGuard; }
+    [[nodiscard]] bool hasSafetyGuard() const;
     /** \brief Returns true if the flip-up safety guard is open. */
-    [[nodiscard]] bool isGuardOpen() const { return m_isGuardOpen; }
+    [[nodiscard]] bool isGuardOpen() const;
     /** \brief Returns true if lever throw transitions are animated. */
-    [[nodiscard]] bool isAnimated() const { return m_animated; }
+    [[nodiscard]] bool isAnimated() const;
     /** \brief Returns true if the integrated status pilot LED is present. */
-    [[nodiscard]] bool hasLed() const { return m_hasLed; }
+    [[nodiscard]] bool hasLed() const;
     /** \brief Returns the primary title caption text. */
-    [[nodiscard]] QString label() const { return m_label; }
+    [[nodiscard]] QString label() const;
     /** \brief Returns the label text for the OFF/lower detent. */
-    [[nodiscard]] QString labelOff() const { return m_labelOff; }
+    [[nodiscard]] QString labelOff() const;
     /** \brief Returns the label text for the ON/upper detent. */
-    [[nodiscard]] QString labelOn() const { return m_labelOn; }
+    [[nodiscard]] QString labelOn() const;
     /** \brief Returns the label text for the center position (in 3-position mode). */
-    [[nodiscard]] QString labelCenter() const { return m_labelCenter; }
+    [[nodiscard]] QString labelCenter() const;
 
     /** \brief Returns the mounting faceplate metal color. */
-    [[nodiscard]] QColor plateColor() const { return m_plateColor; }
+    [[nodiscard]] QColor plateColor() const;
     /** \brief Returns the lever handle or rocker body color. */
-    [[nodiscard]] QColor leverColor() const { return m_leverColor; }
+    [[nodiscard]] QColor leverColor() const;
     /** \brief Returns the pilot indicator LED lens color. */
-    [[nodiscard]] QColor ledColor() const { return m_ledColor; }
+    [[nodiscard]] QColor ledColor() const;
     /** \brief Returns the engraved lettering text color. */
-    [[nodiscard]] QColor textColor() const { return m_textColor; }
+    [[nodiscard]] QColor textColor() const;
     /** \brief Returns the safety guard cover color. */
-    [[nodiscard]] QColor guardColor() const { return m_guardColor; }
+    [[nodiscard]] QColor guardColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -184,35 +184,8 @@ private:
     QRectF calculateSwitchRect() const;
     QRectF calculateGuardRect() const;
 
-    SwitchType m_switchType = SwitchType::ToggleLever;
-    int m_positionCount = 2; // 2 or 3
-    int m_position = 0;      // 0, 1 (or 2 if 3-pos)
-    double m_currentPos = 0.0; // for animation: 0.0 to 1.0 (or 2.0)
-    Qt::Orientation m_orientation = Qt::Vertical;
-
-    bool m_hasSafetyGuard = false;
-    bool m_isGuardOpen = false;
-    double m_guardOpenFactor = 0.0; // 0.0 = closed, 1.0 = fully open
-    bool m_animated = true;
-    bool m_hasLed = true;
-
-    QString m_label;
-    QString m_labelOff = QStringLiteral("OFF");
-    QString m_labelOn = QStringLiteral("ON");
-    QString m_labelCenter = QStringLiteral("AUTO");
-
-    QColor m_plateColor = QColor(42, 45, 52);
-    QColor m_leverColor = QColor(220, 225, 230);
-    QColor m_ledColor = QColor(46, 204, 113);
-    QColor m_textColor = QColor(200, 205, 215);
-    QColor m_guardColor = QColor(220, 53, 69); // Industrial crimson safety red
-
-    QVariantAnimation *m_switchAnim = nullptr;
-    QVariantAnimation *m_guardAnim = nullptr;
-
-    QPixmap m_cachedBackground;
-    bool m_cacheValid = false;
-    bool m_isDragging = false;
+    std::unique_ptr<IndustrialSwitchPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(IndustrialSwitch)
 };
 
 } // namespace QtIndustrialWidgets

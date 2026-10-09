@@ -9,23 +9,69 @@
 #include <QtGui/QPaintEvent>
 #include <QtGui/QResizeEvent>
 #include <QtGui/QFontMetricsF>
+#include <QtGui/QPixmap>
 #include <QtCore/QtMath>
 #include <algorithm>
+#include <vector>
 
 namespace QtIndustrialWidgets {
 
+struct ChannelInternal {
+    StripChart::ChannelInfo info;
+    std::vector<double> buffer;
+    size_t headIndex{0};
+};
+
+class StripChartPrivate {
+public:
+    int m_capacity{300};
+    double m_yMinimum{0.0};
+    double m_yMaximum{100.0};
+    bool m_autoScaleY{false};
+    bool m_gridVisible{true};
+    bool m_legendVisible{true};
+    int m_horizontalDivisions{6};
+    int m_verticalDivisions{8};
+
+    QColor m_gridColor{QColor(42, 54, 70)};
+    QColor m_backgroundColor{QColor(14, 18, 25)};
+    QColor m_bezelColor{QColor(38, 46, 60)};
+    QColor m_textColor{QColor(210, 220, 235)};
+
+    std::vector<ChannelInternal> m_channels;
+
+    QPixmap m_cachePixmap;
+    bool m_cacheDirty{true};
+};
 
 StripChart::StripChart(QWidget *parent)
     : QWidget(parent)
+    , d_ptr(std::make_unique<StripChartPrivate>())
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
+StripChart::~StripChart() = default;
+
+int StripChart::capacity() const { Q_D(const StripChart); return d->m_capacity; }
+double StripChart::yMinimum() const { Q_D(const StripChart); return d->m_yMinimum; }
+double StripChart::yMaximum() const { Q_D(const StripChart); return d->m_yMaximum; }
+bool StripChart::isAutoScaleY() const { Q_D(const StripChart); return d->m_autoScaleY; }
+bool StripChart::isGridVisible() const { Q_D(const StripChart); return d->m_gridVisible; }
+bool StripChart::isLegendVisible() const { Q_D(const StripChart); return d->m_legendVisible; }
+QColor StripChart::gridColor() const { Q_D(const StripChart); return d->m_gridColor; }
+QColor StripChart::backgroundColor() const { Q_D(const StripChart); return d->m_backgroundColor; }
+QColor StripChart::bezelColor() const { Q_D(const StripChart); return d->m_bezelColor; }
+int StripChart::horizontalDivisions() const { Q_D(const StripChart); return d->m_horizontalDivisions; }
+int StripChart::verticalDivisions() const { Q_D(const StripChart); return d->m_verticalDivisions; }
+int StripChart::channelCount() const { Q_D(const StripChart); return static_cast<int>(d->m_channels.size()); }
+
 const StripChart::ChannelInfo *StripChart::channel(int index) const
 {
-    if (index >= 0 && index < static_cast<int>(m_channels.size())) {
-        return &m_channels[index];
+    Q_D(const StripChart);
+    if (index >= 0 && index < static_cast<int>(d->m_channels.size())) {
+        return &d->m_channels[index].info;
     }
     return nullptr;
 }
@@ -42,40 +88,41 @@ QSize StripChart::minimumSizeHint() const
 
 int StripChart::addChannel(const QString &name, const QColor &color, double penWidth)
 {
-    ChannelInfo ch;
-    ch.name = name;
-    ch.color = color;
-    ch.penWidth = penWidth;
-    ch.buffer.resize(m_capacity, 0.0);
+    ChannelInternal ch;
+    ch.info.name = name;
+    ch.info.color = color;
+    ch.info.penWidth = penWidth;
+    ch.info.visible = true;
+    ch.info.count = 0;
+    ch.info.latestValue = 0.0;
+    ch.buffer.resize(d_ptr->m_capacity, 0.0);
     ch.headIndex = 0;
-    ch.count = 0;
-    ch.latestValue = 0.0;
 
-    m_channels.push_back(ch);
+    d_ptr->m_channels.push_back(ch);
     invalidateCache();
     update();
-    return static_cast<int>(m_channels.size()) - 1;
+    return static_cast<int>(d_ptr->m_channels.size()) - 1;
 }
 
 void StripChart::addDataPoint(int channelId, double value)
 {
-    if (channelId < 0 || channelId >= static_cast<int>(m_channels.size())) {
+    if (channelId < 0 || channelId >= static_cast<int>(d_ptr->m_channels.size())) {
         return;
     }
 
-    ChannelInfo &ch = m_channels[channelId];
-    if (ch.buffer.size() != static_cast<size_t>(m_capacity)) {
-        ch.buffer.resize(m_capacity, 0.0);
+    ChannelInternal &ch = d_ptr->m_channels[channelId];
+    if (ch.buffer.size() != static_cast<size_t>(d_ptr->m_capacity)) {
+        ch.buffer.resize(d_ptr->m_capacity, 0.0);
     }
 
     ch.buffer[ch.headIndex] = value;
-    ch.headIndex = (ch.headIndex + 1) % m_capacity;
-    if (ch.count < static_cast<size_t>(m_capacity)) {
-        ch.count++;
+    ch.headIndex = (ch.headIndex + 1) % d_ptr->m_capacity;
+    if (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) {
+        ch.info.count++;
     }
-    ch.latestValue = value;
+    ch.info.latestValue = value;
 
-    if (m_autoScaleY) {
+    if (d_ptr->m_autoScaleY) {
         updateAutoScaling();
     }
 
@@ -85,22 +132,22 @@ void StripChart::addDataPoint(int channelId, double value)
 
 void StripChart::addDataPoints(const QVector<double> &values)
 {
-    int limit = std::min(static_cast<int>(values.size()), static_cast<int>(m_channels.size()));
+    int limit = std::min(static_cast<int>(values.size()), static_cast<int>(d_ptr->m_channels.size()));
     for (int i = 0; i < limit; ++i) {
-        ChannelInfo &ch = m_channels[i];
-        if (ch.buffer.size() != static_cast<size_t>(m_capacity)) {
-            ch.buffer.resize(m_capacity, 0.0);
+        ChannelInternal &ch = d_ptr->m_channels[i];
+        if (ch.buffer.size() != static_cast<size_t>(d_ptr->m_capacity)) {
+            ch.buffer.resize(d_ptr->m_capacity, 0.0);
         }
         double val = values[i];
         ch.buffer[ch.headIndex] = val;
-        ch.headIndex = (ch.headIndex + 1) % m_capacity;
-        if (ch.count < static_cast<size_t>(m_capacity)) {
-            ch.count++;
+        ch.headIndex = (ch.headIndex + 1) % d_ptr->m_capacity;
+        if (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) {
+            ch.info.count++;
         }
-        ch.latestValue = val;
+        ch.info.latestValue = val;
     }
 
-    if (m_autoScaleY) {
+    if (d_ptr->m_autoScaleY) {
         updateAutoScaling();
     }
 
@@ -110,10 +157,10 @@ void StripChart::addDataPoints(const QVector<double> &values)
 
 void StripChart::clear()
 {
-    for (auto &ch : m_channels) {
+    for (auto &ch : d_ptr->m_channels) {
         ch.headIndex = 0;
-        ch.count = 0;
-        ch.latestValue = 0.0;
+        ch.info.count = 0;
+        ch.info.latestValue = 0.0;
         std::fill(ch.buffer.begin(), ch.buffer.end(), 0.0);
     }
     update();
@@ -122,46 +169,46 @@ void StripChart::clear()
 void StripChart::setCapacity(int count)
 {
     int c = std::clamp(count, 10, 5000);
-    if (m_capacity == c) return;
-    m_capacity = c;
+    if (d_ptr->m_capacity == c) return;
+    d_ptr->m_capacity = c;
 
-    for (auto &ch : m_channels) {
-        ch.buffer.resize(m_capacity, 0.0);
+    for (auto &ch : d_ptr->m_channels) {
+        ch.buffer.resize(d_ptr->m_capacity, 0.0);
         ch.headIndex = 0;
-        ch.count = 0;
+        ch.info.count = 0;
     }
 
-    Q_EMIT capacityChanged(m_capacity);
+    Q_EMIT capacityChanged(d_ptr->m_capacity);
     update();
 }
 
 void StripChart::setYMinimum(double min)
 {
-    setYRange(min, m_yMaximum);
+    setYRange(min, d_ptr->m_yMaximum);
 }
 
 void StripChart::setYMaximum(double max)
 {
-    setYRange(m_yMinimum, max);
+    setYRange(d_ptr->m_yMinimum, max);
 }
 
 void StripChart::setYRange(double min, double max)
 {
     if (min >= max) return;
-    if (qFuzzyCompare(min, m_yMinimum) && qFuzzyCompare(max, m_yMaximum)) return;
+    if (qFuzzyCompare(min, d_ptr->m_yMinimum) && qFuzzyCompare(max, d_ptr->m_yMaximum)) return;
 
-    m_yMinimum = min;
-    m_yMaximum = max;
+    d_ptr->m_yMinimum = min;
+    d_ptr->m_yMaximum = max;
     invalidateCache();
-    Q_EMIT yRangeChanged(m_yMinimum, m_yMaximum);
+    Q_EMIT yRangeChanged(d_ptr->m_yMinimum, d_ptr->m_yMaximum);
     update();
 }
 
 void StripChart::setAutoScaleY(bool autoScale)
 {
-    if (m_autoScaleY == autoScale) return;
-    m_autoScaleY = autoScale;
-    if (m_autoScaleY) {
+    if (d_ptr->m_autoScaleY == autoScale) return;
+    d_ptr->m_autoScaleY = autoScale;
+    if (d_ptr->m_autoScaleY) {
         updateAutoScaling();
     }
     invalidateCache();
@@ -171,8 +218,8 @@ void StripChart::setAutoScaleY(bool autoScale)
 
 void StripChart::setGridVisible(bool visible)
 {
-    if (m_gridVisible == visible) return;
-    m_gridVisible = visible;
+    if (d_ptr->m_gridVisible == visible) return;
+    d_ptr->m_gridVisible = visible;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -180,8 +227,8 @@ void StripChart::setGridVisible(bool visible)
 
 void StripChart::setLegendVisible(bool visible)
 {
-    if (m_legendVisible == visible) return;
-    m_legendVisible = visible;
+    if (d_ptr->m_legendVisible == visible) return;
+    d_ptr->m_legendVisible = visible;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -189,8 +236,8 @@ void StripChart::setLegendVisible(bool visible)
 
 void StripChart::setGridColor(const QColor &color)
 {
-    if (m_gridColor == color) return;
-    m_gridColor = color;
+    if (d_ptr->m_gridColor == color) return;
+    d_ptr->m_gridColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -198,8 +245,8 @@ void StripChart::setGridColor(const QColor &color)
 
 void StripChart::setBackgroundColor(const QColor &color)
 {
-    if (m_backgroundColor == color) return;
-    m_backgroundColor = color;
+    if (d_ptr->m_backgroundColor == color) return;
+    d_ptr->m_backgroundColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -207,8 +254,8 @@ void StripChart::setBackgroundColor(const QColor &color)
 
 void StripChart::setBezelColor(const QColor &color)
 {
-    if (m_bezelColor == color) return;
-    m_bezelColor = color;
+    if (d_ptr->m_bezelColor == color) return;
+    d_ptr->m_bezelColor = color;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -217,8 +264,8 @@ void StripChart::setBezelColor(const QColor &color)
 void StripChart::setHorizontalDivisions(int divisions)
 {
     int d = std::clamp(divisions, 2, 20);
-    if (m_horizontalDivisions == d) return;
-    m_horizontalDivisions = d;
+    if (d_ptr->m_horizontalDivisions == d) return;
+    d_ptr->m_horizontalDivisions = d;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -227,8 +274,8 @@ void StripChart::setHorizontalDivisions(int divisions)
 void StripChart::setVerticalDivisions(int divisions)
 {
     int d = std::clamp(divisions, 2, 30);
-    if (m_verticalDivisions == d) return;
-    m_verticalDivisions = d;
+    if (d_ptr->m_verticalDivisions == d) return;
+    d_ptr->m_verticalDivisions = d;
     invalidateCache();
     Q_EMIT appearanceChanged();
     update();
@@ -236,9 +283,9 @@ void StripChart::setVerticalDivisions(int divisions)
 
 void StripChart::setChannelVisible(int channelId, bool visible)
 {
-    if (channelId >= 0 && channelId < static_cast<int>(m_channels.size())) {
-        if (m_channels[channelId].visible != visible) {
-            m_channels[channelId].visible = visible;
+    if (channelId >= 0 && channelId < static_cast<int>(d_ptr->m_channels.size())) {
+        if (d_ptr->m_channels[channelId].info.visible != visible) {
+            d_ptr->m_channels[channelId].info.visible = visible;
             update();
         }
     }
@@ -246,8 +293,8 @@ void StripChart::setChannelVisible(int channelId, bool visible)
 
 void StripChart::setChannelColor(int channelId, const QColor &color)
 {
-    if (channelId >= 0 && channelId < static_cast<int>(m_channels.size())) {
-        m_channels[channelId].color = color;
+    if (channelId >= 0 && channelId < static_cast<int>(d_ptr->m_channels.size())) {
+        d_ptr->m_channels[channelId].info.color = color;
         update();
     }
 }
@@ -258,10 +305,10 @@ void StripChart::updateAutoScaling()
     double minVal = 1e9;
     double maxVal = -1e9;
 
-    for (const auto &ch : m_channels) {
-        if (!ch.visible || ch.count == 0) continue;
+    for (const auto &ch : d_ptr->m_channels) {
+        if (!ch.info.visible || ch.info.count == 0) continue;
         hasData = true;
-        for (size_t i = 0; i < ch.count; ++i) {
+        for (size_t i = 0; i < ch.info.count; ++i) {
             double v = ch.buffer[i];
             if (v < minVal) minVal = v;
             if (v > maxVal) maxVal = v;
@@ -285,7 +332,7 @@ QRectF StripChart::plotArea() const
 {
     double leftMargin = 42.0; // Room for Y-axis labels
     double rightMargin = 12.0;
-    double topMargin = m_legendVisible ? 30.0 : 12.0;
+    double topMargin = d_ptr->m_legendVisible ? 30.0 : 12.0;
     double bottomMargin = 16.0;
 
     double w = std::max(10.0, width() - leftMargin - rightMargin);
@@ -296,7 +343,7 @@ QRectF StripChart::plotArea() const
 
 void StripChart::invalidateCache()
 {
-    m_cacheDirty = true;
+    d_ptr->m_cacheDirty = true;
 }
 
 void StripChart::resizeEvent(QResizeEvent *event)
@@ -320,11 +367,11 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
     QSize pixmapSize = (QSizeF(targetSize) * dpr).toSize();
     if (pixmapSize.isEmpty()) return;
 
-    m_cachePixmap = QPixmap(pixmapSize);
-    m_cachePixmap.setDevicePixelRatio(dpr);
-    m_cachePixmap.fill(Qt::transparent);
+    d_ptr->m_cachePixmap = QPixmap(pixmapSize);
+    d_ptr->m_cachePixmap.setDevicePixelRatio(dpr);
+    d_ptr->m_cachePixmap.fill(Qt::transparent);
 
-    QPainter painter(&m_cachePixmap);
+    QPainter painter(&d_ptr->m_cachePixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
@@ -333,8 +380,8 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
 
     // 1. Outer Bezel & Metal Chassis
     QRectF outerRect(1.0, 1.0, w - 2.0, h - 2.0);
-    painter.setPen(QPen(m_bezelColor.darker(170), 1.5));
-    painter.setBrush(m_bezelColor);
+    painter.setPen(QPen(d_ptr->m_bezelColor.darker(170), 1.5));
+    painter.setBrush(d_ptr->m_bezelColor);
     painter.drawRoundedRect(outerRect, 6.0, 6.0);
 
     // 2. Oscilloscope Plot Screen (Dark recessed glass)
@@ -343,19 +390,19 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
     QRectF screenRect(plotRect.left() - 4.0, plotRect.top() - 4.0,
                       plotRect.width() + 8.0, plotRect.height() + 8.0);
 
-    painter.setPen(QPen(m_bezelColor.darker(190), 1.2));
-    painter.setBrush(m_backgroundColor);
+    painter.setPen(QPen(d_ptr->m_bezelColor.darker(190), 1.2));
+    painter.setBrush(d_ptr->m_backgroundColor);
     painter.drawRoundedRect(screenRect, 4.0, 4.0);
 
     // 3. Grid Reticle
-    if (m_gridVisible && plotRect.width() > 10.0 && plotRect.height() > 10.0) {
-        QPen fineGridPen(m_gridColor, 1.0, Qt::DotLine);
-        QPen solidGridPen(m_gridColor.lighter(130), 1.0, Qt::SolidLine);
+    if (d_ptr->m_gridVisible && plotRect.width() > 10.0 && plotRect.height() > 10.0) {
+        QPen fineGridPen(d_ptr->m_gridColor, 1.0, Qt::DotLine);
+        QPen solidGridPen(d_ptr->m_gridColor.lighter(130), 1.0, Qt::SolidLine);
 
         // Vertical division lines
-        for (int i = 0; i <= m_verticalDivisions; ++i) {
-            double x = plotRect.left() + (static_cast<double>(i) / m_verticalDivisions) * plotRect.width();
-            bool isCenter = (i == m_verticalDivisions / 2);
+        for (int i = 0; i <= d_ptr->m_verticalDivisions; ++i) {
+            double x = plotRect.left() + (static_cast<double>(i) / d_ptr->m_verticalDivisions) * plotRect.width();
+            bool isCenter = (i == d_ptr->m_verticalDivisions / 2);
             painter.setPen(isCenter ? solidGridPen : fineGridPen);
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
@@ -366,29 +413,29 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
         font.setPixelSize(fontSize);
         painter.setFont(font);
 
-        for (int i = 0; i <= m_horizontalDivisions; ++i) {
-            double frac = static_cast<double>(i) / m_horizontalDivisions;
+        for (int i = 0; i <= d_ptr->m_horizontalDivisions; ++i) {
+            double frac = static_cast<double>(i) / d_ptr->m_horizontalDivisions;
             double y = plotRect.bottom() - frac * plotRect.height();
-            double val = m_yMinimum + frac * (m_yMaximum - m_yMinimum);
+            double val = d_ptr->m_yMinimum + frac * (d_ptr->m_yMaximum - d_ptr->m_yMinimum);
 
             bool isZero = qFuzzyIsNull(val);
-            painter.setPen(isZero ? QPen(m_gridColor.lighter(170), 1.2) : fineGridPen);
+            painter.setPen(isZero ? QPen(d_ptr->m_gridColor.lighter(170), 1.2) : fineGridPen);
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
 
             // Y label on the left
             QString labelStr = QString::number(val, 'f', (std::abs(val) >= 100.0) ? 0 : 1);
             QRectF labelRect(0.0, y - fontSize * 0.7, plotRect.left() - 6.0, fontSize * 1.4);
-            painter.setPen(m_textColor);
+            painter.setPen(d_ptr->m_textColor);
             painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, labelStr);
         }
     }
 
-    m_cacheDirty = false;
+    d_ptr->m_cacheDirty = false;
 }
 
 void StripChart::paintEvent(QPaintEvent *)
 {
-    if (m_cacheDirty || m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
+    if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
         renderStaticGrid(size());
     }
 
@@ -398,7 +445,7 @@ void StripChart::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
     // 1. Fast Blit of Cached Grid & Chassis
-    painter.drawPixmap(0, 0, m_cachePixmap);
+    painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
     const QRectF plotRect = plotArea();
     if (plotRect.width() <= 10.0 || plotRect.height() <= 10.0) return;
@@ -407,23 +454,23 @@ void StripChart::paintEvent(QPaintEvent *)
     painter.save();
     painter.setClipRect(plotRect);
 
-    double yRange = m_yMaximum - m_yMinimum;
+    double yRange = d_ptr->m_yMaximum - d_ptr->m_yMinimum;
     if (qFuzzyIsNull(yRange)) yRange = 1.0;
 
-    for (const auto &ch : m_channels) {
-        if (!ch.visible || ch.count < 2) continue;
+    for (const auto &ch : d_ptr->m_channels) {
+        if (!ch.info.visible || ch.info.count < 2) continue;
 
         QPolygonF polyline;
-        polyline.reserve(static_cast<int>(ch.count));
+        polyline.reserve(static_cast<int>(ch.info.count));
 
-        size_t start = (ch.count < static_cast<size_t>(m_capacity)) ? 0 : ch.headIndex;
+        size_t start = (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
 
-        for (size_t i = 0; i < ch.count; ++i) {
-            size_t bufIdx = (start + i) % m_capacity;
+        for (size_t i = 0; i < ch.info.count; ++i) {
+            size_t bufIdx = (start + i) % d_ptr->m_capacity;
             double val = ch.buffer[bufIdx];
 
-            double x = plotRect.left() + (static_cast<double>(i) / (m_capacity - 1)) * plotRect.width();
-            double yNorm = (val - m_yMinimum) / yRange;
+            double x = plotRect.left() + (static_cast<double>(i) / (d_ptr->m_capacity - 1)) * plotRect.width();
+            double yNorm = (val - d_ptr->m_yMinimum) / yRange;
             double y = plotRect.bottom() - yNorm * plotRect.height();
             y = std::clamp(y, plotRect.top(), plotRect.bottom());
 
@@ -431,7 +478,7 @@ void StripChart::paintEvent(QPaintEvent *)
         }
 
         // Draw smooth waveform trace
-        QPen tracePen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        QPen tracePen(ch.info.color, ch.info.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         painter.setPen(tracePen);
         painter.drawPolyline(polyline);
 
@@ -439,7 +486,7 @@ void StripChart::paintEvent(QPaintEvent *)
         if (!polyline.isEmpty()) {
             QPointF latestPt = polyline.last();
             painter.setPen(Qt::NoPen);
-            painter.setBrush(ch.color.lighter(150));
+            painter.setBrush(ch.info.color.lighter(150));
             painter.drawEllipse(latestPt, 2.5, 2.5);
         }
     }
@@ -447,7 +494,7 @@ void StripChart::paintEvent(QPaintEvent *)
     painter.restore();
 
     // 3. Channel Legend and Real-Time Readouts (Top Bar)
-    if (m_legendVisible && !m_channels.empty()) {
+    if (d_ptr->m_legendVisible && !d_ptr->m_channels.empty()) {
         double curX = plotRect.left() + 4.0;
         int fontSize = 10;
         QFont f = font();
@@ -456,19 +503,19 @@ void StripChart::paintEvent(QPaintEvent *)
         painter.setFont(f);
         QFontMetricsF fm(f);
 
-        for (const auto &ch : m_channels) {
-            if (!ch.visible) continue;
+        for (const auto &ch : d_ptr->m_channels) {
+            if (!ch.info.visible) continue;
 
             // Channel color swatch
             painter.setPen(Qt::NoPen);
-            painter.setBrush(ch.color);
+            painter.setBrush(ch.info.color);
             painter.drawRoundedRect(QRectF(curX, 10.0, 10.0, 10.0), 2.0, 2.0);
             curX += 14.0;
 
             // Channel name and latest numeric readout
-            QString txt = QStringLiteral("%1: %2").arg(ch.name, QString::number(ch.latestValue, 'f', 1));
+            QString txt = QStringLiteral("%1: %2").arg(ch.info.name, QString::number(ch.info.latestValue, 'f', 1));
             QRectF txtRect = fm.boundingRect(txt);
-            painter.setPen(m_textColor);
+            painter.setPen(d_ptr->m_textColor);
             painter.drawText(QPointF(curX, 19.0), txt);
 
             curX += txtRect.width() + 18.0;
