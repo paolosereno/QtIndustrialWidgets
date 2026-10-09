@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QIndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtGui/QPixmap>
 
-class tst_QIndustrialKnob : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_IndustrialKnob : public QObject
 {
     Q_OBJECT
 
@@ -20,18 +22,18 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QIndustrialKnob::defaultValues()
+void tst_IndustrialKnob::defaultValues()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     QCOMPARE(knob.minimum(), 0.0);
     QCOMPARE(knob.maximum(), 100.0);
     QCOMPARE(knob.value(), 25.0);
-    QCOMPARE(knob.mode(), QIndustrialKnob::KnobMode::Continuous);
+    QCOMPARE(knob.mode(), IndustrialKnob::KnobMode::Continuous);
 }
 
-void tst_QIndustrialKnob::rangeAndClamping()
+void tst_IndustrialKnob::rangeAndClamping()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     knob.setRange(0.0, 50.0);
 
     // Below minimum
@@ -47,14 +49,14 @@ void tst_QIndustrialKnob::rangeAndClamping()
     QCOMPARE(knob.value(), 25.0);
 }
 
-void tst_QIndustrialKnob::modes()
+void tst_IndustrialKnob::modes()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     knob.setRange(0.0, 100.0);
-    knob.setMode(QIndustrialKnob::KnobMode::Discrete);
+    knob.setMode(IndustrialKnob::KnobMode::Discrete);
     knob.setDiscreteSteps(5);
 
-    QCOMPARE(knob.mode(), QIndustrialKnob::KnobMode::Discrete);
+    QCOMPARE(knob.mode(), IndustrialKnob::KnobMode::Discrete);
     QCOMPARE(knob.discreteSteps(), 5);
 
     // In discrete 5 steps over [0, 100], steps are 0, 25, 50, 75, 100
@@ -65,9 +67,9 @@ void tst_QIndustrialKnob::modes()
     QCOMPARE(knob.value(), 75.0);
 }
 
-void tst_QIndustrialKnob::keyboardInteraction()
+void tst_IndustrialKnob::keyboardInteraction()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     knob.setRange(0.0, 100.0);
     knob.setValue(10.0);
     knob.setStep(5.0);
@@ -79,12 +81,12 @@ void tst_QIndustrialKnob::keyboardInteraction()
     QCOMPARE(knob.value(), 10.0);
 }
 
-void tst_QIndustrialKnob::signalEmission()
+void tst_IndustrialKnob::signalEmission()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     knob.setRange(0.0, 100.0);
 
-    QSignalSpy spy(&knob, &QIndustrialKnob::valueChanged);
+    QSignalSpy spy(&knob, &IndustrialKnob::valueChanged);
     knob.setValue(30.0);
     QCOMPARE(spy.count(), 1);
 
@@ -93,9 +95,9 @@ void tst_QIndustrialKnob::signalEmission()
     QCOMPARE(spy.count(), 1);
 }
 
-void tst_QIndustrialKnob::renderOffscreen()
+void tst_IndustrialKnob::renderOffscreen()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     knob.setRange(0.0, 100.0);
     knob.setValue(45.0);
     knob.resize(120, 120);
@@ -105,9 +107,9 @@ void tst_QIndustrialKnob::renderOffscreen()
     QVERIFY(!pix.isNull());
 }
 
-void tst_QIndustrialKnob::extremeResizeNoCrash()
+void tst_IndustrialKnob::extremeResizeNoCrash()
 {
-    QIndustrialKnob knob;
+    IndustrialKnob knob;
     knob.resize(1, 1);
     QPixmap pixSmall(knob.size());
     knob.render(&pixSmall);
@@ -118,5 +120,7 @@ void tst_QIndustrialKnob::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QIndustrialKnob)
-#include "tst_QIndustrialKnob.moc"
+QTEST_MAIN(tst_IndustrialKnob)
+#include "tst_IndustrialKnob.moc"
+
+

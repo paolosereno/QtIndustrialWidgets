@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QLevelMeter.h>
+#include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtGui/QPixmap>
 
-class tst_QLevelMeter : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_LevelMeter : public QObject
 {
     Q_OBJECT
 
@@ -21,20 +23,20 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QLevelMeter::defaultValues()
+void tst_LevelMeter::defaultValues()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     QCOMPARE(meter.channelCount(), 2);
     QCOMPARE(meter.minimum(), -60.0);
     QCOMPARE(meter.maximum(), 6.0);
-    QCOMPARE(meter.displayMode(), QLevelMeter::DisplayMode::Segmented);
+    QCOMPARE(meter.displayMode(), LevelMeter::DisplayMode::Segmented);
     QCOMPARE(meter.orientation(), Qt::Vertical);
     QCOMPARE(meter.isPeakHoldEnabled(), true);
 }
 
-void tst_QLevelMeter::channelValuesAndClamping()
+void tst_LevelMeter::channelValuesAndClamping()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     meter.setRange(-40.0, 10.0);
 
     // Below minimum
@@ -52,9 +54,9 @@ void tst_QLevelMeter::channelValuesAndClamping()
     QCOMPARE(meter.value(1), -6.0);
 }
 
-void tst_QLevelMeter::peakHoldAndReset()
+void tst_LevelMeter::peakHoldAndReset()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     meter.setRange(0.0, 100.0);
     meter.setValue(0, 80.0);
 
@@ -69,13 +71,13 @@ void tst_QLevelMeter::peakHoldAndReset()
     QCOMPARE(meter.peakValue(0), 40.0);
 }
 
-void tst_QLevelMeter::overloadSignal()
+void tst_LevelMeter::overloadSignal()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     meter.setRange(-20.0, 10.0);
     meter.setErrorThreshold(0.0);
 
-    QSignalSpy overloadSpy(&meter, &QLevelMeter::overloadOccurred);
+    QSignalSpy overloadSpy(&meter, &LevelMeter::overloadOccurred);
     meter.setValue(0, -5.0);
     QCOMPARE(overloadSpy.count(), 0);
 
@@ -85,22 +87,22 @@ void tst_QLevelMeter::overloadSignal()
     QCOMPARE(overloadSpy.takeFirst().at(0).toInt(), 0);
 }
 
-void tst_QLevelMeter::displayModes()
+void tst_LevelMeter::displayModes()
 {
-    QLevelMeter meter;
-    meter.setDisplayMode(QLevelMeter::DisplayMode::Continuous);
-    QCOMPARE(meter.displayMode(), QLevelMeter::DisplayMode::Continuous);
+    LevelMeter meter;
+    meter.setDisplayMode(LevelMeter::DisplayMode::Continuous);
+    QCOMPARE(meter.displayMode(), LevelMeter::DisplayMode::Continuous);
 
     meter.setOrientation(Qt::Horizontal);
     QCOMPARE(meter.orientation(), Qt::Horizontal);
 }
 
-void tst_QLevelMeter::signalEmission()
+void tst_LevelMeter::signalEmission()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     meter.setRange(0.0, 100.0);
 
-    QSignalSpy spy(&meter, &QLevelMeter::valueChanged);
+    QSignalSpy spy(&meter, &LevelMeter::valueChanged);
     meter.setValue(0, 55.0);
 
     QCOMPARE(spy.count(), 1);
@@ -109,9 +111,9 @@ void tst_QLevelMeter::signalEmission()
     QCOMPARE(args.at(1).toDouble(), 55.0);
 }
 
-void tst_QLevelMeter::renderOffscreen()
+void tst_LevelMeter::renderOffscreen()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     meter.setChannelCount(2);
     meter.setValue(0, -12.0);
     meter.setValue(1, -6.0);
@@ -122,7 +124,7 @@ void tst_QLevelMeter::renderOffscreen()
     QVERIFY(!pix.isNull());
 
     // Continuous and horizontal mode
-    meter.setDisplayMode(QLevelMeter::DisplayMode::Continuous);
+    meter.setDisplayMode(LevelMeter::DisplayMode::Continuous);
     meter.setOrientation(Qt::Horizontal);
     meter.resize(220, 80);
     QPixmap pixH(meter.size());
@@ -130,9 +132,9 @@ void tst_QLevelMeter::renderOffscreen()
     QVERIFY(!pixH.isNull());
 }
 
-void tst_QLevelMeter::extremeResizeNoCrash()
+void tst_LevelMeter::extremeResizeNoCrash()
 {
-    QLevelMeter meter;
+    LevelMeter meter;
     meter.resize(2, 2);
     QPixmap pixSmall(meter.size());
     meter.render(&pixSmall);
@@ -143,5 +145,7 @@ void tst_QLevelMeter::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QLevelMeter)
-#include "tst_QLevelMeter.moc"
+QTEST_MAIN(tst_LevelMeter)
+#include "tst_LevelMeter.moc"
+
+

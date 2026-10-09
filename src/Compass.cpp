@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include "QtIndustrialWidgets/QCompass.h"
+#include "QtIndustrialWidgets/Compass.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -12,24 +12,27 @@
 #include <algorithm>
 #include <cmath>
 
-QCompass::QCompass(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+Compass::Compass(QWidget *parent)
     : QWidget(parent)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMinimumSize(minimumSizeHint());
 }
 
-QSize QCompass::sizeHint() const
+QSize Compass::sizeHint() const
 {
     return {260, 260};
 }
 
-QSize QCompass::minimumSizeHint() const
+QSize Compass::minimumSizeHint() const
 {
     return {110, 110};
 }
 
-double QCompass::normalizeDegrees(double deg)
+double Compass::normalizeDegrees(double deg)
 {
     double r = std::fmod(deg, 360.0);
     if (r < 0.0) {
@@ -38,13 +41,13 @@ double QCompass::normalizeDegrees(double deg)
     return r;
 }
 
-double QCompass::courseDeviation() const
+double Compass::courseDeviation() const
 {
     double diff = std::fmod(m_heading - m_targetHeading + 540.0, 360.0) - 180.0;
     return diff;
 }
 
-void QCompass::setHeading(double heading)
+void Compass::setHeading(double heading)
 {
     double norm = normalizeDegrees(heading);
     if (std::abs(m_heading - norm) > 0.001) {
@@ -54,7 +57,7 @@ void QCompass::setHeading(double heading)
     }
 }
 
-void QCompass::setTargetHeading(double target)
+void Compass::setTargetHeading(double target)
 {
     double norm = normalizeDegrees(target);
     if (std::abs(m_targetHeading - norm) > 0.001) {
@@ -64,7 +67,7 @@ void QCompass::setTargetHeading(double target)
     }
 }
 
-void QCompass::setDisplayMode(DisplayMode mode)
+void Compass::setDisplayMode(DisplayMode mode)
 {
     if (m_displayMode != mode) {
         m_displayMode = mode;
@@ -74,7 +77,7 @@ void QCompass::setDisplayMode(DisplayMode mode)
     }
 }
 
-void QCompass::setHeadingBugVisible(bool visible)
+void Compass::setHeadingBugVisible(bool visible)
 {
     if (m_bugVisible != visible) {
         m_bugVisible = visible;
@@ -83,7 +86,7 @@ void QCompass::setHeadingBugVisible(bool visible)
     }
 }
 
-void QCompass::setHeadingBugInteractive(bool interactive)
+void Compass::setHeadingBugInteractive(bool interactive)
 {
     if (m_bugInteractive != interactive) {
         m_bugInteractive = interactive;
@@ -91,7 +94,7 @@ void QCompass::setHeadingBugInteractive(bool interactive)
     }
 }
 
-void QCompass::setLubberLineVisible(bool visible)
+void Compass::setLubberLineVisible(bool visible)
 {
     if (m_lubberVisible != visible) {
         m_lubberVisible = visible;
@@ -100,7 +103,7 @@ void QCompass::setLubberLineVisible(bool visible)
     }
 }
 
-void QCompass::setDigitalReadoutVisible(bool visible)
+void Compass::setDigitalReadoutVisible(bool visible)
 {
     if (m_digitalVisible != visible) {
         m_digitalVisible = visible;
@@ -109,7 +112,7 @@ void QCompass::setDigitalReadoutVisible(bool visible)
     }
 }
 
-void QCompass::setDialColor(const QColor &color)
+void Compass::setDialColor(const QColor &color)
 {
     if (m_dialColor != color) {
         m_dialColor = color;
@@ -119,7 +122,7 @@ void QCompass::setDialColor(const QColor &color)
     }
 }
 
-void QCompass::setBezelColor(const QColor &color)
+void Compass::setBezelColor(const QColor &color)
 {
     if (m_bezelColor != color) {
         m_bezelColor = color;
@@ -129,7 +132,7 @@ void QCompass::setBezelColor(const QColor &color)
     }
 }
 
-void QCompass::setTextColor(const QColor &color)
+void Compass::setTextColor(const QColor &color)
 {
     if (m_textColor != color) {
         m_textColor = color;
@@ -139,7 +142,7 @@ void QCompass::setTextColor(const QColor &color)
     }
 }
 
-void QCompass::setCardinalColor(const QColor &color)
+void Compass::setCardinalColor(const QColor &color)
 {
     if (m_cardinalColor != color) {
         m_cardinalColor = color;
@@ -149,7 +152,7 @@ void QCompass::setCardinalColor(const QColor &color)
     }
 }
 
-void QCompass::setNeedleColor(const QColor &color)
+void Compass::setNeedleColor(const QColor &color)
 {
     if (m_needleColor != color) {
         m_needleColor = color;
@@ -158,7 +161,7 @@ void QCompass::setNeedleColor(const QColor &color)
     }
 }
 
-void QCompass::setNeedleTailColor(const QColor &color)
+void Compass::setNeedleTailColor(const QColor &color)
 {
     if (m_needleTailColor != color) {
         m_needleTailColor = color;
@@ -167,7 +170,7 @@ void QCompass::setNeedleTailColor(const QColor &color)
     }
 }
 
-void QCompass::setBugColor(const QColor &color)
+void Compass::setBugColor(const QColor &color)
 {
     if (m_bugColor != color) {
         m_bugColor = color;
@@ -176,7 +179,7 @@ void QCompass::setBugColor(const QColor &color)
     }
 }
 
-void QCompass::setLubberColor(const QColor &color)
+void Compass::setLubberColor(const QColor &color)
 {
     if (m_lubberColor != color) {
         m_lubberColor = color;
@@ -185,18 +188,18 @@ void QCompass::setLubberColor(const QColor &color)
     }
 }
 
-void QCompass::invalidateCache()
+void Compass::invalidateCache()
 {
     m_cacheDirty = true;
 }
 
-void QCompass::resizeEvent(QResizeEvent *event)
+void Compass::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
 }
 
-void QCompass::changeEvent(QEvent *event)
+void Compass::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
@@ -205,7 +208,7 @@ void QCompass::changeEvent(QEvent *event)
     }
 }
 
-double QCompass::angleFromPoint(const QPointF &pos) const
+double Compass::angleFromPoint(const QPointF &pos) const
 {
     QPointF center = rect().center();
     double dx = pos.x() - center.x();
@@ -219,7 +222,7 @@ double QCompass::angleFromPoint(const QPointF &pos) const
     return normalizeDegrees(deg);
 }
 
-void QCompass::mousePressEvent(QMouseEvent *event)
+void Compass::mousePressEvent(QMouseEvent *event)
 {
     if (m_bugInteractive && event->button() == Qt::LeftButton) {
         double r = std::min(width(), height()) / 2.0;
@@ -240,7 +243,7 @@ void QCompass::mousePressEvent(QMouseEvent *event)
     QWidget::mousePressEvent(event);
 }
 
-void QCompass::mouseMoveEvent(QMouseEvent *event)
+void Compass::mouseMoveEvent(QMouseEvent *event)
 {
     if (m_isDraggingBug && (event->buttons() & Qt::LeftButton)) {
         double angle = angleFromPoint(event->position());
@@ -254,7 +257,7 @@ void QCompass::mouseMoveEvent(QMouseEvent *event)
     QWidget::mouseMoveEvent(event);
 }
 
-void QCompass::mouseReleaseEvent(QMouseEvent *event)
+void Compass::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton && m_isDraggingBug) {
         m_isDraggingBug = false;
@@ -263,7 +266,7 @@ void QCompass::mouseReleaseEvent(QMouseEvent *event)
     QWidget::mouseReleaseEvent(event);
 }
 
-void QCompass::renderCompassCard(const QSize &size)
+void Compass::renderCompassCard(const QSize &size)
 {
     const qreal dpr = devicePixelRatioF();
     m_cardCache = QPixmap(size * dpr);
@@ -444,7 +447,7 @@ void QCompass::renderCompassCard(const QSize &size)
     m_cacheDirty = false;
 }
 
-void QCompass::paintEvent(QPaintEvent *)
+void Compass::paintEvent(QPaintEvent *)
 {
     const int side = std::min(width(), height());
     if (side <= 10) return;
@@ -650,3 +653,5 @@ void QCompass::paintEvent(QPaintEvent *)
         painter.restore();
     }
 }
+
+} // namespace QtIndustrialWidgets

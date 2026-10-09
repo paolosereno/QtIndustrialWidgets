@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QStripChart.h>
+#include <QtIndustrialWidgets/StripChart.h>
 #include <QtGui/QPixmap>
 
-class tst_QStripChart : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_StripChart : public QObject
 {
     Q_OBJECT
 
@@ -21,9 +23,9 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QStripChart::defaultValues()
+void tst_StripChart::defaultValues()
 {
-    QStripChart chart;
+    StripChart chart;
     QCOMPARE(chart.channelCount(), 0);
     QCOMPARE(chart.capacity(), 300);
     QCOMPARE(chart.yMinimum(), 0.0);
@@ -31,9 +33,9 @@ void tst_QStripChart::defaultValues()
     QCOMPARE(chart.isAutoScaleY(), false);
 }
 
-void tst_QStripChart::channelManagement()
+void tst_StripChart::channelManagement()
 {
-    QStripChart chart;
+    StripChart chart;
     int ch1 = chart.addChannel(QStringLiteral("Voltage"), Qt::red, 2.0);
     int ch2 = chart.addChannel(QStringLiteral("Current"), Qt::blue, 1.5);
 
@@ -47,9 +49,9 @@ void tst_QStripChart::channelManagement()
     QCOMPARE(info->color, QColor(Qt::red));
 }
 
-void tst_QStripChart::circularBufferInsertion()
+void tst_StripChart::circularBufferInsertion()
 {
-    QStripChart chart;
+    StripChart chart;
     chart.setCapacity(10);
     int ch = chart.addChannel(QStringLiteral("Signal"), Qt::green);
 
@@ -64,9 +66,9 @@ void tst_QStripChart::circularBufferInsertion()
     QCOMPARE(static_cast<int>(info->count), 10);
 }
 
-void tst_QStripChart::autoScaling()
+void tst_StripChart::autoScaling()
 {
-    QStripChart chart;
+    StripChart chart;
     chart.setAutoScaleY(true);
     int ch = chart.addChannel(QStringLiteral("Wave"), Qt::cyan);
 
@@ -77,9 +79,9 @@ void tst_QStripChart::autoScaling()
     QVERIFY(chart.yMaximum() >= 350.0);
 }
 
-void tst_QStripChart::clearData()
+void tst_StripChart::clearData()
 {
-    QStripChart chart;
+    StripChart chart;
     int ch = chart.addChannel(QStringLiteral("Data"), Qt::yellow);
     chart.addDataPoint(ch, 42.0);
 
@@ -90,20 +92,20 @@ void tst_QStripChart::clearData()
     QCOMPARE(info->latestValue, 0.0);
 }
 
-void tst_QStripChart::signalEmission()
+void tst_StripChart::signalEmission()
 {
-    QStripChart chart;
+    StripChart chart;
     int ch = chart.addChannel(QStringLiteral("Test"), Qt::magenta);
 
-    QSignalSpy spy(&chart, &QStripChart::dataAdded);
+    QSignalSpy spy(&chart, &StripChart::dataAdded);
     chart.addDataPoint(ch, 12.3);
 
     QCOMPARE(spy.count(), 1);
 }
 
-void tst_QStripChart::renderOffscreen()
+void tst_StripChart::renderOffscreen()
 {
-    QStripChart chart;
+    StripChart chart;
     int ch = chart.addChannel(QStringLiteral("Wave"), Qt::green);
     for (int i = 0; i < 50; ++i) {
         chart.addDataPoint(ch, std::sin(i * 0.1) * 50.0 + 50.0);
@@ -115,9 +117,9 @@ void tst_QStripChart::renderOffscreen()
     QVERIFY(!pix.isNull());
 }
 
-void tst_QStripChart::extremeResizeNoCrash()
+void tst_StripChart::extremeResizeNoCrash()
 {
-    QStripChart chart;
+    StripChart chart;
     chart.resize(2, 2);
     QPixmap pixSmall(chart.size());
     chart.render(&pixSmall);
@@ -128,5 +130,7 @@ void tst_QStripChart::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QStripChart)
-#include "tst_QStripChart.moc"
+QTEST_MAIN(tst_StripChart)
+#include "tst_StripChart.moc"
+
+

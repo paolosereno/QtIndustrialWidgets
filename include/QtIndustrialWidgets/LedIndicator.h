@@ -12,21 +12,23 @@
 #include <QtCore/QTimer>
 
 /**
- * \class QLedIndicator
+ * \class LedIndicator
  * \brief Realistic industrial status LED pilot lamp widget.
  *
- * QLedIndicator renders an industrial pilot light or status LED with specular highlight reflections,
+ * LedIndicator renders an industrial pilot light or status LED with specular highlight reflections,
  * radial glow aura halos, blinking timer support, circular or rectangular shapes, optional metallic bezels,
  * and optional integrated text labels.
  *
  * \code
- * auto *led = new QLedIndicator(QColor(46, 204, 113), parent);
+ * auto *led = new LedIndicator(QColor(46, 204, 113), parent);
  * led->setLabelText("PUMP 1 RUNNING");
  * led->setBlinking(true);
  * led->setBlinkRateMs(400);
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QLedIndicator : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT LedIndicator : public QWidget
 {
     Q_OBJECT
 
@@ -54,14 +56,14 @@ public:
      * \brief Constructs a default green pilot LED.
      * \param parent Optional parent widget.
      */
-    explicit QLedIndicator(QWidget *parent = nullptr);
+    explicit LedIndicator(QWidget *parent = nullptr);
     /**
      * \brief Constructs a pilot LED with a specific illuminated color.
      * \param onColor Color when illuminated.
      * \param parent Optional parent widget.
      */
-    explicit QLedIndicator(const QColor &onColor, QWidget *parent = nullptr);
-    ~QLedIndicator() override = default;
+    explicit LedIndicator(const QColor &onColor, QWidget *parent = nullptr);
+    ~LedIndicator() override = default;
 
     /** \brief Returns true if the LED is currently powered ON. */
     [[nodiscard]] bool isOn() const { return m_on; }
@@ -153,3 +155,5 @@ private:
 
     QTimer m_blinkTimer;
 };
+
+} // namespace QtIndustrialWidgets

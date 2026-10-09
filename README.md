@@ -54,7 +54,17 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 
 ## 📦 Widgets Included
 
-### 1. `QRadialGauge`
+All widgets are encapsulated in the `QtIndustrialWidgets` namespace (with a convenient short alias `qiw` provided by default in headers):
+
+```cpp
+#include <QtIndustrialWidgets/RadialGauge.h>
+auto *gauge = new qiw::RadialGauge(parent);
+// or:
+using namespace QtIndustrialWidgets;
+auto *gauge = new RadialGauge(parent);
+```
+
+### 1. `RadialGauge` (`qiw::RadialGauge`)
 Circular tachometer, speedometer, and manometer widget.
 - **Configurable Sweep Angles**: Supports standard 270° dials, 240° automotive clusters, or 180° semicircular gauges (`startAngle`, `spanAngle`).
 - **Graduated Scale**: Major ticks, minor subdivisions, and auto-centered numeric values.
@@ -62,42 +72,42 @@ Circular tachometer, speedometer, and manometer widget.
 - **Vector Needle**: Multi-tone metallic needle with 3D bevel and chrome center pivot hub.
 - **Digital Readout**: Integrated recessed display box with configurable precision and measurement units (`km/h`, `bar`, `RPM`, `°C`).
 
-### 2. `QLinearGauge`
+### 2. `LinearGauge` (`qiw::LinearGauge`)
 Versatile column gauge and thermometer.
 - **Dual Orientation**: `Qt::Vertical` and `Qt::Horizontal`.
 - **Thermometer & Panel Modes**: Spherical bottom/left bulb mode or rectangular panel bar mode.
 - **Dynamic Liquid Styling**: Automatic color shifting based on warning/error thresholds, or continuous linear gradient fill.
 - **Reflective Glass Tube**: High-gloss cylindrical reflections with smooth graduated ticks and labels.
 
-### 3. `QSevenSegmentDisplay`
+### 3. `SevenSegmentDisplay` (`qiw::SevenSegmentDisplay`)
 Scalable vector digital display for instrumentation readouts.
 - **Vector Polygons**: 100% vector-rendered segments (no pixelated bitmap fonts).
 - **Customizable Typography**: Configurable italic tilt angle (`skewAngle`), segment thickness (`segmentWidthRatio`), and leading zeros.
 - **Authentic LED/LCD Feel**: Configurable active and inactive segment colors with transparency for realistic ghost segments.
 - **Alphanumeric & Decimals**: Supports numbers, minus signs, decimal points, and status codes (`ERR`, `READY`, etc.).
 
-### 4. `QLedIndicator`
+### 4. `LedIndicator` (`qiw::LedIndicator`)
 Industrial LED panel indicator with 3D lens refraction and blinking.
 - **Shapes & Bezels**: Circular or rectangular shapes with machined aluminum/metal bezel ring.
 - **Realistic 3D Optics**: Spherical convex lens gradient, specular dome highlights, and soft glow halo.
 - **States & Blinking**: Discrete On/Off states with configurable blinking frequency (in milliseconds or Hz) via efficient internal timer.
 - **Interactive**: Optional clickable mode with `clicked()` signal for interactive control boards.
 
-### 5. `QIndustrialKnob`
+### 5. `IndustrialKnob` (`qiw::IndustrialKnob`)
 Precision rotary potentiometer and selector switch.
 - **Machined CNC Texture**: Lathe-turned aluminum / gunmetal finish with 32-tooth perimeter knurling for realistic tactile appearance.
 - **Dual Operating Modes**: Smooth continuous potentiometer for float adjustments or discrete stepped selector switch (e.g. multi-position mode selector).
 - **Graduated Scale & Track**: Circular scale with major/minor ticks, aligned numeric values, illuminated active arc track, and bottom digital readout pod.
 - **Ergonomic Controls**: Rotary drag, linear drag, mouse wheel fine adjustment, and full keyboard navigation (arrows, PageUp/PageDown, Home/End).
 
-### 6. `QStripChart`
+### 6. `StripChart` (`qiw::StripChart`)
 Real-time scrolling telemetry strip chart and oscilloscope.
 - **High Performance (60+ FPS)**: Built for high-frequency streaming using preallocated circular ring buffers (`O(1)` amortized point insertion) and Hi-DPI reticle grid background caching.
 - **Multi-Channel**: Independent channels with individual trace colors, pen widths, styles, and names.
 - **Flexible Axis Scaling**: Manual Y-range or automatic dynamic scaling with margin padding.
 - **Oscilloscope Reticle & Legend**: Configurable grid subdivisions, zero-baseline highlighting, live values legend overlay, and real-time numeric readouts.
 
-### 7. `QIndustrialSwitch`
+### 7. `IndustrialSwitch` (`qiw::IndustrialSwitch`)
 Heavy-duty industrial toggle lever and rocker switch with safety guard.
 - **Dual Switch Styles**: Machined metal bat toggle lever or industrial dual-slope rocker switch with illuminated status line.
 - **2 & 3 Positions**: Supports standard 2-position (`Off` / `On`) and 3-position (`Manual` / `Off` / `Auto`) operations.
@@ -105,7 +115,7 @@ Heavy-duty industrial toggle lever and rocker switch with safety guard.
 - **Dual Orientation**: Native support for `Qt::Vertical` and `Qt::Horizontal` mounting.
 - **Tactile Feedback & Animation**: Mechanical snap toggle animation with realistic bounce, LED status indicator, 4-corner mounting screws, keyboard navigation, and mouse drag.
 
-### 8. `QLevelMeter`
+### 8. `LevelMeter` (`qiw::LevelMeter`)
 Multi-channel industrial VU and level meter with peak hold.
 - **Multi-Channel & Stereo**: Supports 1, 2 (stereo L/R) or arbitrary N channels with customizable labels.
 - **Peak Hold & Decay**: Floating peak indicator line/segment with configurable hold time (in ms) and smooth exponential/linear decay rate.
@@ -113,7 +123,7 @@ Multi-channel industrial VU and level meter with peak hold.
 - **Tri-Color Zones**: Configurable Normal (green), Warning (amber) and Error / Overload (red) zones with `overloadOccurred(int)` signal.
 - **Dual Orientation & Scale**: Vertical and horizontal mounting with graduated dB or engineering units scale.
 
-### 9. `QAnnunciatorPanel`
+### 9. `AnnunciatorPanel` (`qiw::AnnunciatorPanel`)
 Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 standard.
 - **Configurable Matrix**: Flexible N x M grid of backlit acrylic indicator tiles with engraved multi-line legends.
 - **ANSI/ISA-18.1 Sequences**: Sequence A (Automatic Reset) and Sequence M (Manual Reset) logic handling Normal, Unacknowledged (rapid flash), Acknowledged (steady lit), and Ringback (slow flash) alarm states.
@@ -121,7 +131,7 @@ Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 stand
 - **Control Station Operations**: Dedicated Acknowledge (ACK), Silence (horn mute), Reset, and Lamp Test functionality with `audibleHornChanged(bool)` horn signal.
 - **Interactive Operator Action**: Click directly on individual tiles to acknowledge alarms, with Hi-DPI frame caching for zero-overhead rendering.
 
-### 10. `QCompass`
+### 10. `Compass` (`qiw::Compass`)
 Marine gyrocompass and aeronautical directional heading indicator instrument.
 - **Dual Operating Modes**: `HeadingUp` (rotating compass card matching aircraft/marine heading) and `NorthUp` (fixed compass rose with 360° dual-tone magnetic needle).
 - **Course Deviation & Heading Bug**: Adjustable target heading bug with interactive mouse click/drag, displaying real-time angular course deviation (CDI).

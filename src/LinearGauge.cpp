@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QLinearGauge.h>
+#include <QtIndustrialWidgets/LinearGauge.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -13,24 +13,27 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 
-QLinearGauge::QLinearGauge(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+LinearGauge::LinearGauge(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-QSize QLinearGauge::sizeHint() const
+QSize LinearGauge::sizeHint() const
 {
     return (m_orientation == Qt::Vertical) ? QSize(100, 280) : QSize(280, 100);
 }
 
-QSize QLinearGauge::minimumSizeHint() const
+QSize LinearGauge::minimumSizeHint() const
 {
     return (m_orientation == Qt::Vertical) ? QSize(50, 120) : QSize(120, 50);
 }
 
-void QLinearGauge::setOrientation(Qt::Orientation orientation)
+void LinearGauge::setOrientation(Qt::Orientation orientation)
 {
     if (m_orientation == orientation) return;
     m_orientation = orientation;
@@ -40,7 +43,7 @@ void QLinearGauge::setOrientation(Qt::Orientation orientation)
     update();
 }
 
-void QLinearGauge::setThermometerMode(bool thermometer)
+void LinearGauge::setThermometerMode(bool thermometer)
 {
     if (m_thermometerMode == thermometer) return;
     m_thermometerMode = thermometer;
@@ -49,7 +52,7 @@ void QLinearGauge::setThermometerMode(bool thermometer)
     update();
 }
 
-void QLinearGauge::setValue(double val)
+void LinearGauge::setValue(double val)
 {
     double clamped = std::clamp(val, m_minimum, m_maximum);
     if (qFuzzyCompare(clamped, m_value)) {
@@ -61,17 +64,17 @@ void QLinearGauge::setValue(double val)
     update();
 }
 
-void QLinearGauge::setMinimum(double min)
+void LinearGauge::setMinimum(double min)
 {
     setRange(min, m_maximum);
 }
 
-void QLinearGauge::setMaximum(double max)
+void LinearGauge::setMaximum(double max)
 {
     setRange(m_minimum, max);
 }
 
-void QLinearGauge::setRange(double min, double max)
+void LinearGauge::setRange(double min, double max)
 {
     if (min >= max) return;
     if (qFuzzyCompare(min, m_minimum) && qFuzzyCompare(max, m_maximum)) return;
@@ -86,7 +89,7 @@ void QLinearGauge::setRange(double min, double max)
     update();
 }
 
-void QLinearGauge::setPrecision(int precision)
+void LinearGauge::setPrecision(int precision)
 {
     if (m_precision == precision) return;
     m_precision = std::max(0, precision);
@@ -95,7 +98,7 @@ void QLinearGauge::setPrecision(int precision)
     update();
 }
 
-void QLinearGauge::setUnit(const QString &unit)
+void LinearGauge::setUnit(const QString &unit)
 {
     if (m_unit == unit) return;
     m_unit = unit;
@@ -104,7 +107,7 @@ void QLinearGauge::setUnit(const QString &unit)
     update();
 }
 
-void QLinearGauge::setMajorTicks(int count)
+void LinearGauge::setMajorTicks(int count)
 {
     if (m_majorTicks == count || count < 1) return;
     m_majorTicks = count;
@@ -113,7 +116,7 @@ void QLinearGauge::setMajorTicks(int count)
     update();
 }
 
-void QLinearGauge::setMinorTicks(int count)
+void LinearGauge::setMinorTicks(int count)
 {
     if (m_minorTicks == count || count < 0) return;
     m_minorTicks = count;
@@ -122,7 +125,7 @@ void QLinearGauge::setMinorTicks(int count)
     update();
 }
 
-void QLinearGauge::setWarningThreshold(double threshold)
+void LinearGauge::setWarningThreshold(double threshold)
 {
     if (qFuzzyCompare(m_warningThreshold, threshold)) return;
     m_warningThreshold = threshold;
@@ -132,7 +135,7 @@ void QLinearGauge::setWarningThreshold(double threshold)
     update();
 }
 
-void QLinearGauge::setErrorThreshold(double threshold)
+void LinearGauge::setErrorThreshold(double threshold)
 {
     if (qFuzzyCompare(m_errorThreshold, threshold)) return;
     m_errorThreshold = threshold;
@@ -142,7 +145,7 @@ void QLinearGauge::setErrorThreshold(double threshold)
     update();
 }
 
-void QLinearGauge::setDynamicLiquidColor(bool dynamic)
+void LinearGauge::setDynamicLiquidColor(bool dynamic)
 {
     if (m_dynamicLiquidColor == dynamic) return;
     m_dynamicLiquidColor = dynamic;
@@ -150,7 +153,7 @@ void QLinearGauge::setDynamicLiquidColor(bool dynamic)
     update();
 }
 
-void QLinearGauge::setGradientLiquid(bool gradient)
+void LinearGauge::setGradientLiquid(bool gradient)
 {
     if (m_gradientLiquid == gradient) return;
     m_gradientLiquid = gradient;
@@ -158,7 +161,7 @@ void QLinearGauge::setGradientLiquid(bool gradient)
     update();
 }
 
-void QLinearGauge::setDigitalDisplayVisible(bool visible)
+void LinearGauge::setDigitalDisplayVisible(bool visible)
 {
     if (m_digitalDisplayVisible == visible) return;
     m_digitalDisplayVisible = visible;
@@ -167,7 +170,7 @@ void QLinearGauge::setDigitalDisplayVisible(bool visible)
     update();
 }
 
-void QLinearGauge::setScaleVisible(bool visible)
+void LinearGauge::setScaleVisible(bool visible)
 {
     if (m_scaleVisible == visible) return;
     m_scaleVisible = visible;
@@ -176,7 +179,7 @@ void QLinearGauge::setScaleVisible(bool visible)
     update();
 }
 
-void QLinearGauge::setLiquidColor(const QColor &color)
+void LinearGauge::setLiquidColor(const QColor &color)
 {
     if (m_liquidColor == color) return;
     m_liquidColor = color;
@@ -184,7 +187,7 @@ void QLinearGauge::setLiquidColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setNormalColor(const QColor &color)
+void LinearGauge::setNormalColor(const QColor &color)
 {
     if (m_normalColor == color) return;
     m_normalColor = color;
@@ -192,7 +195,7 @@ void QLinearGauge::setNormalColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setWarningColor(const QColor &color)
+void LinearGauge::setWarningColor(const QColor &color)
 {
     if (m_warningColor == color) return;
     m_warningColor = color;
@@ -200,7 +203,7 @@ void QLinearGauge::setWarningColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setErrorColor(const QColor &color)
+void LinearGauge::setErrorColor(const QColor &color)
 {
     if (m_errorColor == color) return;
     m_errorColor = color;
@@ -208,7 +211,7 @@ void QLinearGauge::setErrorColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setTroughColor(const QColor &color)
+void LinearGauge::setTroughColor(const QColor &color)
 {
     if (m_troughColor == color) return;
     m_troughColor = color;
@@ -217,7 +220,7 @@ void QLinearGauge::setTroughColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setScaleColor(const QColor &color)
+void LinearGauge::setScaleColor(const QColor &color)
 {
     if (m_scaleColor == color) return;
     m_scaleColor = color;
@@ -226,7 +229,7 @@ void QLinearGauge::setScaleColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setTextColor(const QColor &color)
+void LinearGauge::setTextColor(const QColor &color)
 {
     if (m_textColor == color) return;
     m_textColor = color;
@@ -235,7 +238,7 @@ void QLinearGauge::setTextColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::setBezelColor(const QColor &color)
+void LinearGauge::setBezelColor(const QColor &color)
 {
     if (m_bezelColor == color) return;
     m_bezelColor = color;
@@ -244,18 +247,18 @@ void QLinearGauge::setBezelColor(const QColor &color)
     update();
 }
 
-void QLinearGauge::invalidateCache()
+void LinearGauge::invalidateCache()
 {
     m_cacheDirty = true;
 }
 
-void QLinearGauge::resizeEvent(QResizeEvent *event)
+void LinearGauge::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
 }
 
-void QLinearGauge::changeEvent(QEvent *event)
+void LinearGauge::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::PaletteChange) {
         invalidateCache();
@@ -264,7 +267,7 @@ void QLinearGauge::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
 }
 
-QColor QLinearGauge::determineActiveLiquidColor() const
+QColor LinearGauge::determineActiveLiquidColor() const
 {
     if (!m_dynamicLiquidColor) {
         return m_liquidColor;
@@ -278,7 +281,7 @@ QColor QLinearGauge::determineActiveLiquidColor() const
     return m_normalColor;
 }
 
-void QLinearGauge::renderStaticScale(const QSize &targetSize)
+void LinearGauge::renderStaticScale(const QSize &targetSize)
 {
     qreal dpr = devicePixelRatioF();
     QSize pixmapSize = targetSize * dpr;
@@ -499,7 +502,7 @@ void QLinearGauge::renderStaticScale(const QSize &targetSize)
     m_cacheDirty = false;
 }
 
-void QLinearGauge::paintEvent(QPaintEvent *)
+void LinearGauge::paintEvent(QPaintEvent *)
 {
     if (m_cacheDirty || m_cachePixmap.size() != (size() * devicePixelRatioF())) {
         renderStaticScale(size());
@@ -628,3 +631,5 @@ void QLinearGauge::paintEvent(QPaintEvent *)
         }
     }
 }
+
+} // namespace QtIndustrialWidgets

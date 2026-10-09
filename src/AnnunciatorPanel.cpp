@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QAnnunciatorPanel.h>
+#include <QtIndustrialWidgets/AnnunciatorPanel.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -12,12 +12,15 @@
 #include <QtGui/QFontMetrics>
 #include <algorithm>
 
-QAnnunciatorPanel::QAnnunciatorPanel(QWidget *parent)
-    : QAnnunciatorPanel(2, 4, parent)
+namespace QtIndustrialWidgets {
+
+
+AnnunciatorPanel::AnnunciatorPanel(QWidget *parent)
+    : AnnunciatorPanel(2, 4, parent)
 {
 }
 
-QAnnunciatorPanel::QAnnunciatorPanel(int rows, int cols, QWidget *parent)
+AnnunciatorPanel::AnnunciatorPanel(int rows, int cols, QWidget *parent)
     : QWidget(parent)
     , m_rows(std::max(1, rows))
     , m_columns(std::max(1, cols))
@@ -34,27 +37,27 @@ QAnnunciatorPanel::QAnnunciatorPanel(int rows, int cols, QWidget *parent)
         m_tiles[i].alarmActive = false;
     }
 
-    connect(&m_flashTimer, &QTimer::timeout, this, &QAnnunciatorPanel::onFlashTimerTick);
+    connect(&m_flashTimer, &QTimer::timeout, this, &AnnunciatorPanel::onFlashTimerTick);
     m_flashTimer.start(125); // 8 Hz ticks for smooth flash phase synchronization
 }
 
-QAnnunciatorPanel::~QAnnunciatorPanel()
+AnnunciatorPanel::~AnnunciatorPanel()
 {
     m_flashTimer.stop();
 }
 
-QSize QAnnunciatorPanel::sizeHint() const
+QSize AnnunciatorPanel::sizeHint() const
 {
     // Approximately 120x65 per tile + margins
     return QSize(m_columns * 130 + 20, m_rows * 75 + 20);
 }
 
-QSize QAnnunciatorPanel::minimumSizeHint() const
+QSize AnnunciatorPanel::minimumSizeHint() const
 {
     return QSize(m_columns * 60 + 16, m_rows * 36 + 16);
 }
 
-int QAnnunciatorPanel::activeAlarmsCount() const
+int AnnunciatorPanel::activeAlarmsCount() const
 {
     int count = 0;
     for (const auto &tile : m_tiles) {
@@ -65,7 +68,7 @@ int QAnnunciatorPanel::activeAlarmsCount() const
     return count;
 }
 
-int QAnnunciatorPanel::unacknowledgedCount() const
+int AnnunciatorPanel::unacknowledgedCount() const
 {
     int count = 0;
     for (const auto &tile : m_tiles) {
@@ -76,7 +79,7 @@ int QAnnunciatorPanel::unacknowledgedCount() const
     return count;
 }
 
-QString QAnnunciatorPanel::tileText(int index) const
+QString AnnunciatorPanel::tileText(int index) const
 {
     if (index >= 0 && index < m_tiles.size()) {
         return m_tiles[index].text;
@@ -84,7 +87,7 @@ QString QAnnunciatorPanel::tileText(int index) const
     return QString();
 }
 
-QAnnunciatorPanel::Severity QAnnunciatorPanel::tileSeverity(int index) const
+AnnunciatorPanel::Severity AnnunciatorPanel::tileSeverity(int index) const
 {
     if (index >= 0 && index < m_tiles.size()) {
         return m_tiles[index].severity;
@@ -92,7 +95,7 @@ QAnnunciatorPanel::Severity QAnnunciatorPanel::tileSeverity(int index) const
     return Severity::Critical;
 }
 
-QAnnunciatorPanel::AlarmState QAnnunciatorPanel::tileState(int index) const
+AnnunciatorPanel::AlarmState AnnunciatorPanel::tileState(int index) const
 {
     if (index >= 0 && index < m_tiles.size()) {
         return m_tiles[index].state;
@@ -100,7 +103,7 @@ QAnnunciatorPanel::AlarmState QAnnunciatorPanel::tileState(int index) const
     return AlarmState::Normal;
 }
 
-bool QAnnunciatorPanel::isAlarmActive(int index) const
+bool AnnunciatorPanel::isAlarmActive(int index) const
 {
     if (index >= 0 && index < m_tiles.size()) {
         return m_tiles[index].alarmActive;
@@ -108,17 +111,17 @@ bool QAnnunciatorPanel::isAlarmActive(int index) const
     return false;
 }
 
-void QAnnunciatorPanel::setRows(int rows)
+void AnnunciatorPanel::setRows(int rows)
 {
     setGridSize(rows, m_columns);
 }
 
-void QAnnunciatorPanel::setColumns(int cols)
+void AnnunciatorPanel::setColumns(int cols)
 {
     setGridSize(m_rows, cols);
 }
 
-void QAnnunciatorPanel::setGridSize(int rows, int cols)
+void AnnunciatorPanel::setGridSize(int rows, int cols)
 {
     int newRows = std::max(1, rows);
     int newCols = std::max(1, cols);
@@ -136,7 +139,7 @@ void QAnnunciatorPanel::setGridSize(int rows, int cols)
     update();
 }
 
-void QAnnunciatorPanel::setSequence(AnnunciatorSequence sequence)
+void AnnunciatorPanel::setSequence(AnnunciatorSequence sequence)
 {
     if (m_sequence != sequence) {
         m_sequence = sequence;
@@ -144,7 +147,7 @@ void QAnnunciatorPanel::setSequence(AnnunciatorSequence sequence)
     }
 }
 
-void QAnnunciatorPanel::setTileText(int index, const QString &text)
+void AnnunciatorPanel::setTileText(int index, const QString &text)
 {
     if (index >= 0 && index < m_tiles.size()) {
         if (m_tiles[index].text != text) {
@@ -154,14 +157,14 @@ void QAnnunciatorPanel::setTileText(int index, const QString &text)
     }
 }
 
-void QAnnunciatorPanel::setTileText(int row, int col, const QString &text)
+void AnnunciatorPanel::setTileText(int row, int col, const QString &text)
 {
     if (row >= 0 && row < m_rows && col >= 0 && col < m_columns) {
         setTileText(row * m_columns + col, text);
     }
 }
 
-void QAnnunciatorPanel::setTileSeverity(int index, Severity severity)
+void AnnunciatorPanel::setTileSeverity(int index, Severity severity)
 {
     if (index >= 0 && index < m_tiles.size()) {
         if (m_tiles[index].severity != severity) {
@@ -171,14 +174,14 @@ void QAnnunciatorPanel::setTileSeverity(int index, Severity severity)
     }
 }
 
-void QAnnunciatorPanel::setTileSeverity(int row, int col, Severity severity)
+void AnnunciatorPanel::setTileSeverity(int row, int col, Severity severity)
 {
     if (row >= 0 && row < m_rows && col >= 0 && col < m_columns) {
         setTileSeverity(row * m_columns + col, severity);
     }
 }
 
-void QAnnunciatorPanel::setAlarmActive(int index, bool active)
+void AnnunciatorPanel::setAlarmActive(int index, bool active)
 {
     if (index < 0 || index >= m_tiles.size()) {
         return;
@@ -215,24 +218,24 @@ void QAnnunciatorPanel::setAlarmActive(int index, bool active)
     update();
 }
 
-void QAnnunciatorPanel::setAlarmActive(int row, int col, bool active)
+void AnnunciatorPanel::setAlarmActive(int row, int col, bool active)
 {
     if (row >= 0 && row < m_rows && col >= 0 && col < m_columns) {
         setAlarmActive(row * m_columns + col, active);
     }
 }
 
-void QAnnunciatorPanel::triggerAlarm(int index)
+void AnnunciatorPanel::triggerAlarm(int index)
 {
     setAlarmActive(index, true);
 }
 
-void QAnnunciatorPanel::clearAlarm(int index)
+void AnnunciatorPanel::clearAlarm(int index)
 {
     setAlarmActive(index, false);
 }
 
-void QAnnunciatorPanel::acknowledgeAll()
+void AnnunciatorPanel::acknowledgeAll()
 {
     bool changed = false;
     for (int i = 0; i < m_tiles.size(); ++i) {
@@ -254,7 +257,7 @@ void QAnnunciatorPanel::acknowledgeAll()
     }
 }
 
-void QAnnunciatorPanel::acknowledge(int index)
+void AnnunciatorPanel::acknowledge(int index)
 {
     if (index < 0 || index >= m_tiles.size()) {
         return;
@@ -273,7 +276,7 @@ void QAnnunciatorPanel::acknowledge(int index)
     }
 }
 
-void QAnnunciatorPanel::silence()
+void AnnunciatorPanel::silence()
 {
     if (!m_hornSilenced) {
         m_hornSilenced = true;
@@ -281,7 +284,7 @@ void QAnnunciatorPanel::silence()
     }
 }
 
-void QAnnunciatorPanel::resetAll()
+void AnnunciatorPanel::resetAll()
 {
     bool changed = false;
     for (int i = 0; i < m_tiles.size(); ++i) {
@@ -300,7 +303,7 @@ void QAnnunciatorPanel::resetAll()
     }
 }
 
-void QAnnunciatorPanel::reset(int index)
+void AnnunciatorPanel::reset(int index)
 {
     if (index < 0 || index >= m_tiles.size()) {
         return;
@@ -315,7 +318,7 @@ void QAnnunciatorPanel::reset(int index)
     }
 }
 
-void QAnnunciatorPanel::setLampTest(bool active)
+void AnnunciatorPanel::setLampTest(bool active)
 {
     if (m_lampTest != active) {
         m_lampTest = active;
@@ -324,7 +327,7 @@ void QAnnunciatorPanel::setLampTest(bool active)
     }
 }
 
-void QAnnunciatorPanel::setFrameColor(const QColor &color)
+void AnnunciatorPanel::setFrameColor(const QColor &color)
 {
     if (m_frameColor != color) {
         m_frameColor = color;
@@ -334,7 +337,7 @@ void QAnnunciatorPanel::setFrameColor(const QColor &color)
     }
 }
 
-void QAnnunciatorPanel::setGridColor(const QColor &color)
+void AnnunciatorPanel::setGridColor(const QColor &color)
 {
     if (m_gridColor != color) {
         m_gridColor = color;
@@ -344,7 +347,7 @@ void QAnnunciatorPanel::setGridColor(const QColor &color)
     }
 }
 
-void QAnnunciatorPanel::setCriticalColor(const QColor &color)
+void AnnunciatorPanel::setCriticalColor(const QColor &color)
 {
     if (m_criticalColor != color) {
         m_criticalColor = color;
@@ -353,7 +356,7 @@ void QAnnunciatorPanel::setCriticalColor(const QColor &color)
     }
 }
 
-void QAnnunciatorPanel::setWarningColor(const QColor &color)
+void AnnunciatorPanel::setWarningColor(const QColor &color)
 {
     if (m_warningColor != color) {
         m_warningColor = color;
@@ -362,7 +365,7 @@ void QAnnunciatorPanel::setWarningColor(const QColor &color)
     }
 }
 
-void QAnnunciatorPanel::setAdvisoryColor(const QColor &color)
+void AnnunciatorPanel::setAdvisoryColor(const QColor &color)
 {
     if (m_advisoryColor != color) {
         m_advisoryColor = color;
@@ -371,7 +374,7 @@ void QAnnunciatorPanel::setAdvisoryColor(const QColor &color)
     }
 }
 
-void QAnnunciatorPanel::setTextColor(const QColor &color)
+void AnnunciatorPanel::setTextColor(const QColor &color)
 {
     if (m_textColor != color) {
         m_textColor = color;
@@ -380,7 +383,7 @@ void QAnnunciatorPanel::setTextColor(const QColor &color)
     }
 }
 
-void QAnnunciatorPanel::updateHornAndSummary()
+void AnnunciatorPanel::updateHornAndSummary()
 {
     int unack = unacknowledgedCount();
     bool shouldHorn = (unack > 0) && !m_hornSilenced;
@@ -393,7 +396,7 @@ void QAnnunciatorPanel::updateHornAndSummary()
     Q_EMIT unacknowledgedCountChanged(unack);
 }
 
-void QAnnunciatorPanel::onFlashTimerTick()
+void AnnunciatorPanel::onFlashTimerTick()
 {
     m_flashTickCounter++;
 
@@ -425,18 +428,18 @@ void QAnnunciatorPanel::onFlashTimerTick()
     }
 }
 
-void QAnnunciatorPanel::invalidateCache()
+void AnnunciatorPanel::invalidateCache()
 {
     m_cacheDirty = true;
 }
 
-void QAnnunciatorPanel::resizeEvent(QResizeEvent *event)
+void AnnunciatorPanel::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
 }
 
-void QAnnunciatorPanel::changeEvent(QEvent *event)
+void AnnunciatorPanel::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
@@ -445,7 +448,7 @@ void QAnnunciatorPanel::changeEvent(QEvent *event)
     }
 }
 
-void QAnnunciatorPanel::mousePressEvent(QMouseEvent *event)
+void AnnunciatorPanel::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         int idx = tileIndexAt(event->position());
@@ -462,7 +465,7 @@ void QAnnunciatorPanel::mousePressEvent(QMouseEvent *event)
     QWidget::mousePressEvent(event);
 }
 
-QRectF QAnnunciatorPanel::calculateTileRect(int row, int col) const
+QRectF AnnunciatorPanel::calculateTileRect(int row, int col) const
 {
     const double margin = 12.0;
     const double spacing = 4.0;
@@ -479,7 +482,7 @@ QRectF QAnnunciatorPanel::calculateTileRect(int row, int col) const
     return QRectF(x, y, tileW, tileH);
 }
 
-int QAnnunciatorPanel::tileIndexAt(const QPointF &pos) const
+int AnnunciatorPanel::tileIndexAt(const QPointF &pos) const
 {
     for (int r = 0; r < m_rows; ++r) {
         for (int c = 0; c < m_columns; ++c) {
@@ -491,7 +494,7 @@ int QAnnunciatorPanel::tileIndexAt(const QPointF &pos) const
     return -1;
 }
 
-QColor QAnnunciatorPanel::colorForSeverity(Severity severity, bool lit) const
+QColor AnnunciatorPanel::colorForSeverity(Severity severity, bool lit) const
 {
     QColor base;
     switch (severity) {
@@ -508,7 +511,7 @@ QColor QAnnunciatorPanel::colorForSeverity(Severity severity, bool lit) const
     }
 }
 
-void QAnnunciatorPanel::renderStaticFrame(const QSize &size)
+void AnnunciatorPanel::renderStaticFrame(const QSize &size)
 {
     qreal dpr = devicePixelRatioF();
     QSize pixelSize = size * dpr;
@@ -579,7 +582,7 @@ void QAnnunciatorPanel::renderStaticFrame(const QSize &size)
     m_cacheDirty = false;
 }
 
-void QAnnunciatorPanel::paintEvent(QPaintEvent *)
+void AnnunciatorPanel::paintEvent(QPaintEvent *)
 {
     if (m_cacheDirty || m_cachePixmap.size() != (size() * devicePixelRatioF())) {
         renderStaticFrame(size());
@@ -681,3 +684,5 @@ void QAnnunciatorPanel::paintEvent(QPaintEvent *)
         }
     }
 }
+
+} // namespace QtIndustrialWidgets

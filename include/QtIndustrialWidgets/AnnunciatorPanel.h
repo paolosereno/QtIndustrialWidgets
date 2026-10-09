@@ -15,10 +15,10 @@
 #include <QtCore/QTimer>
 
 /**
- * \class QAnnunciatorPanel
+ * \class AnnunciatorPanel
  * \brief Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 standard.
  *
- * QAnnunciatorPanel emulates hardwired and SCADA alarm annunciator light panels used in
+ * AnnunciatorPanel emulates hardwired and SCADA alarm annunciator light panels used in
  * process control rooms, power generation stations, maritime vessels, and industrial plants.
  *
  * Features include:
@@ -32,19 +32,21 @@
  * - Hardware-accelerated Hi-DPI background caching for high rendering performance.
  *
  * \code
- * auto *panel = new QAnnunciatorPanel(parent);
+ * auto *panel = new AnnunciatorPanel(parent);
  * panel->setGridSize(2, 4); // 2 rows x 4 columns = 8 alarm windows
  * panel->setTileText(0, "TURBINE 1\nBEARING TRIP");
- * panel->setTileSeverity(0, QAnnunciatorPanel::Severity::Critical);
+ * panel->setTileSeverity(0, AnnunciatorPanel::Severity::Critical);
  *
  * panel->setTileText(1, "MAIN STEAM\nPRESS LOW");
- * panel->setTileSeverity(1, QAnnunciatorPanel::Severity::Warning);
+ * panel->setTileSeverity(1, AnnunciatorPanel::Severity::Warning);
  *
  * // Trigger an alarm event:
  * panel->setAlarmActive(0, true);
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QAnnunciatorPanel : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT AnnunciatorPanel : public QWidget
 {
     Q_OBJECT
 
@@ -97,18 +99,18 @@ public:
     };
 
     /**
-     * \brief Constructs a QAnnunciatorPanel with a 2x4 matrix of alarm windows.
+     * \brief Constructs a AnnunciatorPanel with a 2x4 matrix of alarm windows.
      * \param parent Optional parent widget.
      */
-    explicit QAnnunciatorPanel(QWidget *parent = nullptr);
+    explicit AnnunciatorPanel(QWidget *parent = nullptr);
     /**
-     * \brief Constructs a QAnnunciatorPanel with custom rows and columns.
+     * \brief Constructs a AnnunciatorPanel with custom rows and columns.
      * \param rows Number of vertical grid rows.
      * \param cols Number of horizontal grid columns.
      * \param parent Optional parent widget.
      */
-    QAnnunciatorPanel(int rows, int cols, QWidget *parent = nullptr);
-    ~QAnnunciatorPanel() override;
+    AnnunciatorPanel(int rows, int cols, QWidget *parent = nullptr);
+    ~AnnunciatorPanel() override;
 
     /** \brief Returns the number of grid rows. */
     [[nodiscard]] int rows() const { return m_rows; }
@@ -265,3 +267,5 @@ private:
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
 };
+
+} // namespace QtIndustrialWidgets

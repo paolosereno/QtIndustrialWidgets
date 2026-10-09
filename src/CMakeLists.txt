@@ -3,27 +3,27 @@
 # SPDX-License-Identifier: MIT
 
 add_library(QtIndustrialWidgets SHARED
-    QRadialGauge.cpp
-    QLinearGauge.cpp
-    QSevenSegmentDisplay.cpp
-    QLedIndicator.cpp
-    QIndustrialKnob.cpp
-    QStripChart.cpp
-    QIndustrialSwitch.cpp
-    QLevelMeter.cpp
-    QAnnunciatorPanel.cpp
-    QCompass.cpp
+    RadialGauge.cpp
+    LinearGauge.cpp
+    SevenSegmentDisplay.cpp
+    LedIndicator.cpp
+    IndustrialKnob.cpp
+    StripChart.cpp
+    IndustrialSwitch.cpp
+    LevelMeter.cpp
+    AnnunciatorPanel.cpp
+    Compass.cpp
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QRadialGauge.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLinearGauge.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QSevenSegmentDisplay.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLedIndicator.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialKnob.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QStripChart.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialSwitch.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLevelMeter.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QAnnunciatorPanel.h
-    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QCompass.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/SevenSegmentDisplay.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LedIndicator.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/IndustrialKnob.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/StripChart.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/IndustrialSwitch.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LevelMeter.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/AnnunciatorPanel.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/Compass.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

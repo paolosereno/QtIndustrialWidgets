@@ -14,10 +14,10 @@
 class QVariantAnimation;
 
 /**
- * \class QIndustrialSwitch
+ * \class IndustrialSwitch
  * \brief Heavy-duty industrial toggle switch and rocker control with safety guard.
  *
- * QIndustrialSwitch emulates rugged panel switches including:
+ * IndustrialSwitch emulates rugged panel switches including:
  * - Bat-handle toggle lever or curved rocker switch styles.
  * - 2-position (ON/OFF) or 3-position (ON/OFF/ON or AUTO/OFF/MANUAL).
  * - Optional spring-loaded missile safety guard cover that must be flipped open to throw the switch.
@@ -25,16 +25,18 @@ class QVariantAnimation;
  * - Integrated miniature status LED lamp, metallic faceplate screws, and engraved labels.
  *
  * \code
- * auto *sw = new QIndustrialSwitch(parent);
- * sw->setSwitchType(QIndustrialSwitch::SwitchType::ToggleLever);
+ * auto *sw = new IndustrialSwitch(parent);
+ * sw->setSwitchType(IndustrialSwitch::SwitchType::ToggleLever);
  * sw->setHasSafetyGuard(true);
  * sw->setLabel("MAIN POWER");
- * connect(sw, &QIndustrialSwitch::toggled, [](bool on){
+ * connect(sw, &IndustrialSwitch::toggled, [](bool on){
  *     qDebug() << "Power switch:" << on;
  * });
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QIndustrialSwitch : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT IndustrialSwitch : public QWidget
 {
     Q_OBJECT
 
@@ -66,11 +68,11 @@ public:
     Q_ENUM(SwitchType)
 
     /**
-     * \brief Constructs a QIndustrialSwitch with default 2-position toggle lever styling.
+     * \brief Constructs a IndustrialSwitch with default 2-position toggle lever styling.
      * \param parent Optional parent widget.
      */
-    explicit QIndustrialSwitch(QWidget *parent = nullptr);
-    ~QIndustrialSwitch() override;
+    explicit IndustrialSwitch(QWidget *parent = nullptr);
+    ~IndustrialSwitch() override;
 
     /** \brief Returns the switch mechanical actuator style. */
     [[nodiscard]] SwitchType switchType() const { return m_switchType; }
@@ -212,3 +214,5 @@ private:
     bool m_cacheValid = false;
     bool m_isDragging = false;
 };
+
+} // namespace QtIndustrialWidgets

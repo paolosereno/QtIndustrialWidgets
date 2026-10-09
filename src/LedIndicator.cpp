@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QLedIndicator.h>
+#include <QtIndustrialWidgets/LedIndicator.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -13,23 +13,26 @@
 #include <QtGui/QFontMetrics>
 #include <algorithm>
 
-QLedIndicator::QLedIndicator(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+LedIndicator::LedIndicator(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     m_offColor = calculateDefaultOffColor(m_onColor);
 
-    connect(&m_blinkTimer, &QTimer::timeout, this, &QLedIndicator::onBlinkTimeout);
+    connect(&m_blinkTimer, &QTimer::timeout, this, &LedIndicator::onBlinkTimeout);
 }
 
-QLedIndicator::QLedIndicator(const QColor &onColor, QWidget *parent)
-    : QLedIndicator(parent)
+LedIndicator::LedIndicator(const QColor &onColor, QWidget *parent)
+    : LedIndicator(parent)
 {
     setOnColor(onColor);
 }
 
-QSize QLedIndicator::sizeHint() const
+QSize LedIndicator::sizeHint() const
 {
     if (!m_labelText.isEmpty()) {
         QFontMetrics fm(font());
@@ -40,18 +43,18 @@ QSize QLedIndicator::sizeHint() const
     return QSize(28, 28);
 }
 
-QSize QLedIndicator::minimumSizeHint() const
+QSize LedIndicator::minimumSizeHint() const
 {
     return QSize(16, 16);
 }
 
-QColor QLedIndicator::calculateDefaultOffColor(const QColor &onCol) const
+QColor LedIndicator::calculateDefaultOffColor(const QColor &onCol) const
 {
     // Deep dark tint corresponding to the unlit LED dye
     return QColor(onCol.red() / 6, onCol.green() / 6, onCol.blue() / 6, 255);
 }
 
-void QLedIndicator::setOn(bool on)
+void LedIndicator::setOn(bool on)
 {
     if (m_on == on) return;
     m_on = on;
@@ -59,17 +62,17 @@ void QLedIndicator::setOn(bool on)
     update();
 }
 
-void QLedIndicator::setOff()
+void LedIndicator::setOff()
 {
     setOn(false);
 }
 
-void QLedIndicator::toggle()
+void LedIndicator::toggle()
 {
     setOn(!m_on);
 }
 
-void QLedIndicator::setBlinking(bool blinking)
+void LedIndicator::setBlinking(bool blinking)
 {
     if (m_blinking == blinking) return;
     m_blinking = blinking;
@@ -86,7 +89,7 @@ void QLedIndicator::setBlinking(bool blinking)
     update();
 }
 
-void QLedIndicator::setBlinkRateMs(int rateMs)
+void LedIndicator::setBlinkRateMs(int rateMs)
 {
     int rate = std::max(50, rateMs);
     if (m_blinkRateMs == rate) return;
@@ -97,13 +100,13 @@ void QLedIndicator::setBlinkRateMs(int rateMs)
     Q_EMIT appearanceChanged();
 }
 
-void QLedIndicator::onBlinkTimeout()
+void LedIndicator::onBlinkTimeout()
 {
     m_blinkState = !m_blinkState;
     update();
 }
 
-void QLedIndicator::setOnColor(const QColor &color)
+void LedIndicator::setOnColor(const QColor &color)
 {
     if (m_onColor == color) return;
     m_onColor = color;
@@ -112,7 +115,7 @@ void QLedIndicator::setOnColor(const QColor &color)
     update();
 }
 
-void QLedIndicator::setOffColor(const QColor &color)
+void LedIndicator::setOffColor(const QColor &color)
 {
     if (m_offColor == color) return;
     m_offColor = color;
@@ -120,7 +123,7 @@ void QLedIndicator::setOffColor(const QColor &color)
     update();
 }
 
-void QLedIndicator::setBezelColor(const QColor &color)
+void LedIndicator::setBezelColor(const QColor &color)
 {
     if (m_bezelColor == color) return;
     m_bezelColor = color;
@@ -128,7 +131,7 @@ void QLedIndicator::setBezelColor(const QColor &color)
     update();
 }
 
-void QLedIndicator::setBezelVisible(bool visible)
+void LedIndicator::setBezelVisible(bool visible)
 {
     if (m_bezelVisible == visible) return;
     m_bezelVisible = visible;
@@ -136,7 +139,7 @@ void QLedIndicator::setBezelVisible(bool visible)
     update();
 }
 
-void QLedIndicator::setGlowEffect(bool glow)
+void LedIndicator::setGlowEffect(bool glow)
 {
     if (m_glowEffect == glow) return;
     m_glowEffect = glow;
@@ -144,7 +147,7 @@ void QLedIndicator::setGlowEffect(bool glow)
     update();
 }
 
-void QLedIndicator::setShape(LedShape shape)
+void LedIndicator::setShape(LedShape shape)
 {
     if (m_shape == shape) return;
     m_shape = shape;
@@ -152,7 +155,7 @@ void QLedIndicator::setShape(LedShape shape)
     update();
 }
 
-void QLedIndicator::setLabelText(const QString &text)
+void LedIndicator::setLabelText(const QString &text)
 {
     if (m_labelText == text) return;
     m_labelText = text;
@@ -161,7 +164,7 @@ void QLedIndicator::setLabelText(const QString &text)
     update();
 }
 
-void QLedIndicator::setClickable(bool clickable)
+void LedIndicator::setClickable(bool clickable)
 {
     if (m_clickable == clickable) return;
     m_clickable = clickable;
@@ -169,7 +172,7 @@ void QLedIndicator::setClickable(bool clickable)
     Q_EMIT appearanceChanged();
 }
 
-void QLedIndicator::mousePressEvent(QMouseEvent *event)
+void LedIndicator::mousePressEvent(QMouseEvent *event)
 {
     if (m_clickable && event->button() == Qt::LeftButton) {
         toggle();
@@ -180,7 +183,7 @@ void QLedIndicator::mousePressEvent(QMouseEvent *event)
     QWidget::mousePressEvent(event);
 }
 
-void QLedIndicator::paintEvent(QPaintEvent *)
+void LedIndicator::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -345,3 +348,5 @@ void QLedIndicator::paintEvent(QPaintEvent *)
         painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, m_labelText);
     }
 }
+
+} // namespace QtIndustrialWidgets

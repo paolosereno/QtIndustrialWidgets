@@ -16,10 +16,10 @@
 class QTimer;
 
 /**
- * \class QLevelMeter
+ * \class LevelMeter
  * \brief High-performance multi-channel audio VU meter and telemetry level ladder widget.
  *
- * QLevelMeter displays signal levels, sound volume units (VU/dBFS), tank fill levels,
+ * LevelMeter displays signal levels, sound volume units (VU/dBFS), tank fill levels,
  * or industrial channel amplitudes across single or multiple concurrent channels (e.g. Stereo Left/Right).
  *
  * Features include:
@@ -30,7 +30,7 @@ class QTimer;
  * - High-DPI cached background scale ticks, channel division gutters, and labels.
  *
  * \code
- * auto *meter = new QLevelMeter(parent);
+ * auto *meter = new LevelMeter(parent);
  * meter->setChannelCount(2);
  * meter->setChannelLabels({"CH 1", "CH 2"});
  * meter->setRange(-60.0, 6.0);
@@ -40,7 +40,9 @@ class QTimer;
  * meter->setValues({-12.4, -9.8});
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QLevelMeter : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT LevelMeter : public QWidget
 {
     Q_OBJECT
 
@@ -74,11 +76,11 @@ public:
     Q_ENUM(DisplayMode)
 
     /**
-     * \brief Constructs a QLevelMeter widget with default 1-channel vertical segmented styling.
+     * \brief Constructs a LevelMeter widget with default 1-channel vertical segmented styling.
      * \param parent Optional parent widget.
      */
-    explicit QLevelMeter(QWidget *parent = nullptr);
-    ~QLevelMeter() override;
+    explicit LevelMeter(QWidget *parent = nullptr);
+    ~LevelMeter() override;
 
     /** \brief Returns the number of concurrent channels rendered (default: 1). */
     [[nodiscard]] int channelCount() const { return m_channelCount; }
@@ -254,3 +256,5 @@ private:
     bool m_cacheValid = false;
     qint64 m_lastDecayTime = 0;
 };
+
+} // namespace QtIndustrialWidgets

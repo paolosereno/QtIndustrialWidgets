@@ -12,10 +12,10 @@
 #include <QtGui/QPixmap>
 
 /**
- * \class QRadialGauge
+ * \class RadialGauge
  * \brief High-performance circular dial instrument for industrial SCADA and telemetry displays.
  *
- * QRadialGauge renders a high-precision circular dial gauge featuring an anti-aliased needle pointer,
+ * RadialGauge renders a high-precision circular dial gauge featuring an anti-aliased needle pointer,
  * customizable angular spans (e.g. 270° industrial sweep, 180° semi-circular, etc.), major and minor graduation ticks,
  * color-coded warning/error threshold arc bands, and an integrated recessed digital readout pod.
  *
@@ -23,7 +23,7 @@
  * that updates only when geometry or visual properties change, allowing 60+ FPS needle animation with minimal CPU usage.
  *
  * \code
- * auto *gauge = new QRadialGauge(parent);
+ * auto *gauge = new RadialGauge(parent);
  * gauge->setRange(0.0, 100.0);
  * gauge->setValue(42.5);
  * gauge->setUnit("bar");
@@ -31,7 +31,9 @@
  * gauge->setErrorThreshold(85.0);
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QRadialGauge : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT RadialGauge : public QWidget
 {
     Q_OBJECT
 
@@ -59,11 +61,11 @@ class QTINDUSTRIALWIDGETS_EXPORT QRadialGauge : public QWidget
 
 public:
     /**
-     * \brief Constructs a QRadialGauge widget with default industrial styling.
+     * \brief Constructs a RadialGauge widget with default industrial styling.
      * \param parent Optional parent widget.
      */
-    explicit QRadialGauge(QWidget *parent = nullptr);
-    ~QRadialGauge() override = default;
+    explicit RadialGauge(QWidget *parent = nullptr);
+    ~RadialGauge() override = default;
 
     /** \brief Returns the minimum scale value. */
     [[nodiscard]] double minimum() const { return m_minimum; }
@@ -218,3 +220,5 @@ private:
     bool m_wasWarning{false};
     bool m_wasError{false};
 };
+
+} // namespace QtIndustrialWidgets

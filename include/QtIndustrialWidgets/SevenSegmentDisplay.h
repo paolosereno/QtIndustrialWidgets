@@ -11,10 +11,10 @@
 #include <QtGui/QColor>
 
 /**
- * \class QSevenSegmentDisplay
+ * \class SevenSegmentDisplay
  * \brief Realistic electronic 7-segment LED/LCD numeric display widget.
  *
- * QSevenSegmentDisplay emulates multi-digit electronic digital panel meters, counters, and digital clocks.
+ * SevenSegmentDisplay emulates multi-digit electronic digital panel meters, counters, and digital clocks.
  * Features include:
  * - Geometric vector segment rendering with customizable italic skew angle and segment stroke width.
  * - Realistic "ghost" unlit segment glow effect via inactiveSegmentColor.
@@ -22,14 +22,16 @@
  * - Drop-in QLCDNumber replacement with extended modern industrial styling properties.
  *
  * \code
- * auto *display = new QSevenSegmentDisplay(parent);
+ * auto *display = new SevenSegmentDisplay(parent);
  * display->setDigitCount(6);
  * display->setDecimalPlaces(2);
  * display->display(123.45);
  * display->setActiveSegmentColor(QColor(0, 229, 255)); // Neon Cyan
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QSevenSegmentDisplay : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT SevenSegmentDisplay : public QWidget
 {
     Q_OBJECT
 
@@ -49,11 +51,11 @@ class QTINDUSTRIALWIDGETS_EXPORT QSevenSegmentDisplay : public QWidget
 
 public:
     /**
-     * \brief Constructs a QSevenSegmentDisplay widget with 5 digits and cyan LED styling.
+     * \brief Constructs a SevenSegmentDisplay widget with 5 digits and cyan LED styling.
      * \param parent Optional parent widget.
      */
-    explicit QSevenSegmentDisplay(QWidget *parent = nullptr);
-    ~QSevenSegmentDisplay() override = default;
+    explicit SevenSegmentDisplay(QWidget *parent = nullptr);
+    ~SevenSegmentDisplay() override = default;
 
     /** \brief Returns the currently displayed numeric value. */
     [[nodiscard]] double value() const { return m_value; }
@@ -154,3 +156,5 @@ private:
     bool m_bezelVisible{true};
     bool m_isTextExplicit{false};
 };
+
+} // namespace QtIndustrialWidgets

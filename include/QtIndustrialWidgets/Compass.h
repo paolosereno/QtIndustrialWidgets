@@ -12,10 +12,10 @@
 #include <QtGui/QPixmap>
 
 /**
- * \class QCompass
+ * \class Compass
  * \brief Marine gyrocompass and aeronautical heading indicator instrument.
  *
- * QCompass provides an authentic 360° directional navigation instrument for maritime vessels,
+ * Compass provides an authentic 360° directional navigation instrument for maritime vessels,
  * avionics systems, autonomous vehicles (UAV/ROV), and industrial positioning test benches.
  *
  * Features include:
@@ -30,14 +30,16 @@
  * - Hardware-accelerated Hi-DPI circular card pixmap caching for 60+ FPS rendering.
  *
  * \code
- * auto *compass = new QCompass(parent);
- * compass->setDisplayMode(QCompass::DisplayMode::HeadingUp);
+ * auto *compass = new Compass(parent);
+ * compass->setDisplayMode(Compass::DisplayMode::HeadingUp);
  * compass->setHeading(45.0);        // 045° North-East
  * compass->setTargetHeading(90.0);  // Target East (090°)
  * compass->setHeadingBugVisible(true);
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QCompass : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT Compass : public QWidget
 {
     Q_OBJECT
 
@@ -68,11 +70,11 @@ public:
     Q_ENUM(DisplayMode)
 
     /**
-     * \brief Constructs a QCompass widget with default industrial styling.
+     * \brief Constructs a Compass widget with default industrial styling.
      * \param parent Optional parent widget.
      */
-    explicit QCompass(QWidget *parent = nullptr);
-    ~QCompass() override = default;
+    explicit Compass(QWidget *parent = nullptr);
+    ~Compass() override = default;
 
     /** \brief Returns the current vessel/aircraft heading in degrees [0.0, 360.0). */
     [[nodiscard]] double heading() const { return m_heading; }
@@ -182,3 +184,5 @@ private:
     QPixmap m_cardCache;
     bool m_cacheDirty{true};
 };
+
+} // namespace QtIndustrialWidgets

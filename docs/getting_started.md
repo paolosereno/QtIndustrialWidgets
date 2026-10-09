@@ -98,14 +98,14 @@ conan install . --output-folder=build --build=missing
 
 ## 💡 Quick Code Example
 
-Here is a minimal example using `QRadialGauge` and `QLedIndicator`:
+Here is a minimal example using `qiw::RadialGauge` and `qiw::LedIndicator`:
 
 ```cpp
 #include <QApplication>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <QtIndustrialWidgets/QRadialGauge.h>
-#include <QtIndustrialWidgets/QLedIndicator.h>
+#include <QtIndustrialWidgets/RadialGauge.h>
+#include <QtIndustrialWidgets/LedIndicator.h>
 
 int main(int argc, char *argv[])
 {
@@ -114,8 +114,8 @@ int main(int argc, char *argv[])
     QWidget window;
     QVBoxLayout layout(&window);
 
-    // Create a circular tachometer
-    auto *gauge = new QRadialGauge(&window);
+    // Using the compact namespace alias 'qiw' (or namespace QtIndustrialWidgets)
+    auto *gauge = new qiw::RadialGauge(&window);
     gauge->setRange(0.0, 8000.0);
     gauge->setValue(3500.0);
     gauge->setUnit(QStringLiteral("RPM"));
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
     gauge->setErrorThreshold(7200.0);
 
     // Create a status LED
-    auto *led = new QLedIndicator(QColor(46, 204, 113), &window);
+    auto *led = new qiw::LedIndicator(QColor(46, 204, 113), &window);
     led->setLabelText(QStringLiteral("SYSTEM RUNNING"));
     led->setOn(true);
 

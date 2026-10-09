@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QIndustrialSwitch.h>
+#include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtGui/QPixmap>
 
-class tst_QIndustrialSwitch : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_IndustrialSwitch : public QObject
 {
     Q_OBJECT
 
@@ -22,19 +24,19 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QIndustrialSwitch::defaultValues()
+void tst_IndustrialSwitch::defaultValues()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     QCOMPARE(sw.positionCount(), 2);
     QCOMPARE(sw.position(), 0);
     QCOMPARE(sw.isChecked(), false);
-    QCOMPARE(sw.switchType(), QIndustrialSwitch::SwitchType::ToggleLever);
+    QCOMPARE(sw.switchType(), IndustrialSwitch::SwitchType::ToggleLever);
     QCOMPARE(sw.hasSafetyGuard(), false);
 }
 
-void tst_QIndustrialSwitch::twoPositionToggle()
+void tst_IndustrialSwitch::twoPositionToggle()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.setAnimated(false);
 
     sw.setChecked(true);
@@ -46,9 +48,9 @@ void tst_QIndustrialSwitch::twoPositionToggle()
     QCOMPARE(sw.isChecked(), false);
 }
 
-void tst_QIndustrialSwitch::threePositionSwitch()
+void tst_IndustrialSwitch::threePositionSwitch()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.setAnimated(false);
     sw.setPositionCount(3);
 
@@ -62,16 +64,16 @@ void tst_QIndustrialSwitch::threePositionSwitch()
     QCOMPARE(sw.isChecked(), false);
 }
 
-void tst_QIndustrialSwitch::safetyGuardBehavior()
+void tst_IndustrialSwitch::safetyGuardBehavior()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.setAnimated(false);
     sw.setHasSafetyGuard(true);
 
     QCOMPARE(sw.hasSafetyGuard(), true);
     QCOMPARE(sw.isGuardOpen(), false);
 
-    QSignalSpy guardSpy(&sw, &QIndustrialSwitch::guardToggled);
+    QSignalSpy guardSpy(&sw, &IndustrialSwitch::guardToggled);
     sw.setGuardOpen(true);
 
     QCOMPARE(guardSpy.count(), 1);
@@ -81,32 +83,32 @@ void tst_QIndustrialSwitch::safetyGuardBehavior()
     QCOMPARE(sw.isGuardOpen(), false);
 }
 
-void tst_QIndustrialSwitch::switchStylesAndOrientations()
+void tst_IndustrialSwitch::switchStylesAndOrientations()
 {
-    QIndustrialSwitch sw;
-    sw.setSwitchType(QIndustrialSwitch::SwitchType::Rocker);
-    QCOMPARE(sw.switchType(), QIndustrialSwitch::SwitchType::Rocker);
+    IndustrialSwitch sw;
+    sw.setSwitchType(IndustrialSwitch::SwitchType::Rocker);
+    QCOMPARE(sw.switchType(), IndustrialSwitch::SwitchType::Rocker);
 
     sw.setOrientation(Qt::Horizontal);
     QCOMPARE(sw.orientation(), Qt::Horizontal);
 }
 
-void tst_QIndustrialSwitch::signalEmission()
+void tst_IndustrialSwitch::signalEmission()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.setAnimated(false);
 
-    QSignalSpy posSpy(&sw, &QIndustrialSwitch::positionChanged);
-    QSignalSpy toggleSpy(&sw, &QIndustrialSwitch::toggled);
+    QSignalSpy posSpy(&sw, &IndustrialSwitch::positionChanged);
+    QSignalSpy toggleSpy(&sw, &IndustrialSwitch::toggled);
 
     sw.setPosition(1);
     QCOMPARE(posSpy.count(), 1);
     QCOMPARE(toggleSpy.count(), 1);
 }
 
-void tst_QIndustrialSwitch::keyboardInteraction()
+void tst_IndustrialSwitch::keyboardInteraction()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.setAnimated(false);
 
     QTest::keyClick(&sw, Qt::Key_Space);
@@ -116,9 +118,9 @@ void tst_QIndustrialSwitch::keyboardInteraction()
     QCOMPARE(sw.position(), 0);
 }
 
-void tst_QIndustrialSwitch::renderOffscreen()
+void tst_IndustrialSwitch::renderOffscreen()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.setLabel(QStringLiteral("TEST"));
     sw.setHasSafetyGuard(true);
     sw.setChecked(true);
@@ -129,15 +131,15 @@ void tst_QIndustrialSwitch::renderOffscreen()
     QVERIFY(!pix.isNull());
 
     // Rocker mode
-    sw.setSwitchType(QIndustrialSwitch::SwitchType::Rocker);
+    sw.setSwitchType(IndustrialSwitch::SwitchType::Rocker);
     QPixmap pixRocker(sw.size());
     sw.render(&pixRocker);
     QVERIFY(!pixRocker.isNull());
 }
 
-void tst_QIndustrialSwitch::extremeResizeNoCrash()
+void tst_IndustrialSwitch::extremeResizeNoCrash()
 {
-    QIndustrialSwitch sw;
+    IndustrialSwitch sw;
     sw.resize(2, 2);
     QPixmap pixSmall(sw.size());
     sw.render(&pixSmall);
@@ -148,5 +150,7 @@ void tst_QIndustrialSwitch::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QIndustrialSwitch)
-#include "tst_QIndustrialSwitch.moc"
+QTEST_MAIN(tst_IndustrialSwitch)
+#include "tst_IndustrialSwitch.moc"
+
+

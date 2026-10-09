@@ -14,10 +14,10 @@
 #include <vector>
 
 /**
- * \class QStripChart
+ * \class StripChart
  * \brief Real-time multi-channel scrolling oscilloscope and strip chart recorder.
  *
- * QStripChart provides high-performance scrolling telemetry waveform visualization for industrial test benches,
+ * StripChart provides high-performance scrolling telemetry waveform visualization for industrial test benches,
  * SCADA systems, and embedded monitoring.
  *
  * Features include:
@@ -27,7 +27,7 @@
  * - Multi-channel legend overlay with live telemetry readouts.
  *
  * \code
- * auto *chart = new QStripChart(parent);
+ * auto *chart = new StripChart(parent);
  * chart->setCapacity(300);
  * chart->setYRange(0.0, 100.0);
  * int chRpm = chart->addChannel("RPM %", Qt::cyan, 2.0);
@@ -37,7 +37,9 @@
  * chart->addDataPoint(chTemp, 88.2);
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QStripChart : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
 {
     Q_OBJECT
 
@@ -67,11 +69,11 @@ public:
     };
 
     /**
-     * \brief Constructs a QStripChart widget with default 300 points capacity.
+     * \brief Constructs a StripChart widget with default 300 points capacity.
      * \param parent Optional parent widget.
      */
-    explicit QStripChart(QWidget *parent = nullptr);
-    ~QStripChart() override = default;
+    explicit StripChart(QWidget *parent = nullptr);
+    ~StripChart() override = default;
 
     /** \brief Returns the ring buffer history point capacity per channel. */
     [[nodiscard]] int capacity() const { return m_capacity; }
@@ -191,3 +193,5 @@ private:
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
 };
+
+} // namespace QtIndustrialWidgets

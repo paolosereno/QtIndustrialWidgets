@@ -49,6 +49,7 @@ CMakeLists.txt.user
 
 # Local development notes
 nextWork.md
+newWidget.md
 
 # CPack packaging artifacts
 _CPack_Packages/

@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
+#include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtGui/QPixmap>
 
-class tst_QSevenSegmentDisplay : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_SevenSegmentDisplay : public QObject
 {
     Q_OBJECT
 
@@ -20,17 +22,17 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QSevenSegmentDisplay::defaultValues()
+void tst_SevenSegmentDisplay::defaultValues()
 {
-    QSevenSegmentDisplay disp;
+    SevenSegmentDisplay disp;
     QCOMPARE(disp.digitCount(), 5);
     QCOMPARE(disp.decimalPlaces(), 1);
     QCOMPARE(disp.showLeadingZeros(), false);
 }
 
-void tst_QSevenSegmentDisplay::numericalFormatting()
+void tst_SevenSegmentDisplay::numericalFormatting()
 {
-    QSevenSegmentDisplay disp;
+    SevenSegmentDisplay disp;
     disp.setDigitCount(5);
     disp.setDecimalPlaces(1);
     disp.setValue(123.4);
@@ -39,9 +41,9 @@ void tst_QSevenSegmentDisplay::numericalFormatting()
     QVERIFY(disp.text().contains(QStringLiteral("123.4")));
 }
 
-void tst_QSevenSegmentDisplay::textDisplay()
+void tst_SevenSegmentDisplay::textDisplay()
 {
-    QSevenSegmentDisplay disp;
+    SevenSegmentDisplay disp;
     disp.setText(QStringLiteral("ERR-1"));
     QCOMPARE(disp.text(), QStringLiteral("ERR-1"));
 
@@ -49,9 +51,9 @@ void tst_QSevenSegmentDisplay::textDisplay()
     QCOMPARE(disp.text(), QStringLiteral("READY"));
 }
 
-void tst_QSevenSegmentDisplay::leadingZeros()
+void tst_SevenSegmentDisplay::leadingZeros()
 {
-    QSevenSegmentDisplay disp;
+    SevenSegmentDisplay disp;
     disp.setDigitCount(4);
     disp.setDecimalPlaces(0);
     disp.setShowLeadingZeros(true);
@@ -60,20 +62,20 @@ void tst_QSevenSegmentDisplay::leadingZeros()
     QCOMPARE(disp.text(), QStringLiteral("0007"));
 }
 
-void tst_QSevenSegmentDisplay::signalEmission()
+void tst_SevenSegmentDisplay::signalEmission()
 {
-    QSevenSegmentDisplay disp;
-    QSignalSpy valSpy(&disp, &QSevenSegmentDisplay::valueChanged);
-    QSignalSpy textSpy(&disp, &QSevenSegmentDisplay::textChanged);
+    SevenSegmentDisplay disp;
+    QSignalSpy valSpy(&disp, &SevenSegmentDisplay::valueChanged);
+    QSignalSpy textSpy(&disp, &SevenSegmentDisplay::textChanged);
 
     disp.setValue(42.0);
     QCOMPARE(valSpy.count(), 1);
     QCOMPARE(textSpy.count(), 1);
 }
 
-void tst_QSevenSegmentDisplay::renderOffscreen()
+void tst_SevenSegmentDisplay::renderOffscreen()
 {
-    QSevenSegmentDisplay disp;
+    SevenSegmentDisplay disp;
     disp.setDigitCount(6);
     disp.setDecimalPlaces(2);
     disp.setValue(-42.75);
@@ -84,9 +86,9 @@ void tst_QSevenSegmentDisplay::renderOffscreen()
     QVERIFY(!pix.isNull());
 }
 
-void tst_QSevenSegmentDisplay::extremeResizeNoCrash()
+void tst_SevenSegmentDisplay::extremeResizeNoCrash()
 {
-    QSevenSegmentDisplay disp;
+    SevenSegmentDisplay disp;
     disp.resize(1, 1);
     QPixmap pixSmall(disp.size());
     disp.render(&pixSmall);
@@ -97,5 +99,7 @@ void tst_QSevenSegmentDisplay::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QSevenSegmentDisplay)
-#include "tst_QSevenSegmentDisplay.moc"
+QTEST_MAIN(tst_SevenSegmentDisplay)
+#include "tst_SevenSegmentDisplay.moc"
+
+

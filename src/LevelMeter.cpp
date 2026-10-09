@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QLevelMeter.h>
+#include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtCore/QTimer>
 #include <QtCore/QDateTime>
 #include <QtGui/QPainter>
@@ -12,7 +12,10 @@
 #include <cmath>
 #include <algorithm>
 
-QLevelMeter::QLevelMeter(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+LevelMeter::LevelMeter(QWidget *parent)
     : QWidget(parent)
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -25,12 +28,12 @@ QLevelMeter::QLevelMeter(QWidget *parent)
 
     m_decayTimer = new QTimer(this);
     m_decayTimer->setInterval(33); // ~30 FPS
-    connect(m_decayTimer, &QTimer::timeout, this, &QLevelMeter::updatePeakDecay);
+    connect(m_decayTimer, &QTimer::timeout, this, &LevelMeter::updatePeakDecay);
 }
 
-QLevelMeter::~QLevelMeter() = default;
+LevelMeter::~LevelMeter() = default;
 
-double QLevelMeter::value(int channel) const
+double LevelMeter::value(int channel) const
 {
     if (channel >= 0 && channel < m_channels.size()) {
         return m_channels[channel].value;
@@ -38,7 +41,7 @@ double QLevelMeter::value(int channel) const
     return m_minimum;
 }
 
-double QLevelMeter::peakValue(int channel) const
+double LevelMeter::peakValue(int channel) const
 {
     if (channel >= 0 && channel < m_channels.size()) {
         return m_channels[channel].peakValue;
@@ -46,7 +49,7 @@ double QLevelMeter::peakValue(int channel) const
     return m_minimum;
 }
 
-QVector<double> QLevelMeter::values() const
+QVector<double> LevelMeter::values() const
 {
     QVector<double> res;
     res.reserve(m_channels.size());
@@ -56,7 +59,7 @@ QVector<double> QLevelMeter::values() const
     return res;
 }
 
-QSize QLevelMeter::sizeHint() const
+QSize LevelMeter::sizeHint() const
 {
     if (m_orientation == Qt::Vertical) {
         int w = 24 + m_channelCount * 18 + (m_scaleVisible ? 38 : 0);
@@ -67,7 +70,7 @@ QSize QLevelMeter::sizeHint() const
     }
 }
 
-QSize QLevelMeter::minimumSizeHint() const
+QSize LevelMeter::minimumSizeHint() const
 {
     if (m_orientation == Qt::Vertical) {
         return {45, 100};
@@ -76,12 +79,12 @@ QSize QLevelMeter::minimumSizeHint() const
     }
 }
 
-void QLevelMeter::setValue(double value)
+void LevelMeter::setValue(double value)
 {
     setValue(0, value);
 }
 
-void QLevelMeter::setValue(int channel, double value)
+void LevelMeter::setValue(int channel, double value)
 {
     if (channel < 0 || channel >= m_channels.size()) return;
 
@@ -114,7 +117,7 @@ void QLevelMeter::setValue(int channel, double value)
     update();
 }
 
-void QLevelMeter::setValues(const QVector<double> &values)
+void LevelMeter::setValues(const QVector<double> &values)
 {
     int count = std::min(static_cast<int>(values.size()), static_cast<int>(m_channels.size()));
     for (int i = 0; i < count; ++i) {
@@ -122,7 +125,7 @@ void QLevelMeter::setValues(const QVector<double> &values)
     }
 }
 
-void QLevelMeter::resetPeaks()
+void LevelMeter::resetPeaks()
 {
     for (auto &ch : m_channels) {
         ch.peakValue = ch.value;
@@ -131,7 +134,7 @@ void QLevelMeter::resetPeaks()
     update();
 }
 
-void QLevelMeter::updatePeakDecay()
+void LevelMeter::updatePeakDecay()
 {
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     double dt = (m_lastDecayTime > 0) ? (now - m_lastDecayTime) / 1000.0 : 0.033;
@@ -155,7 +158,7 @@ void QLevelMeter::updatePeakDecay()
     update();
 }
 
-void QLevelMeter::setChannelCount(int count)
+void LevelMeter::setChannelCount(int count)
 {
     count = std::max(1, count);
     if (m_channelCount == count) return;
@@ -173,7 +176,7 @@ void QLevelMeter::setChannelCount(int count)
     update();
 }
 
-void QLevelMeter::setRange(double min, double max)
+void LevelMeter::setRange(double min, double max)
 {
     if (min >= max) return;
     m_minimum = min;
@@ -190,17 +193,17 @@ void QLevelMeter::setRange(double min, double max)
     update();
 }
 
-void QLevelMeter::setMinimum(double min)
+void LevelMeter::setMinimum(double min)
 {
     setRange(min, m_maximum);
 }
 
-void QLevelMeter::setMaximum(double max)
+void LevelMeter::setMaximum(double max)
 {
     setRange(m_minimum, max);
 }
 
-void QLevelMeter::setWarningThreshold(double threshold)
+void LevelMeter::setWarningThreshold(double threshold)
 {
     if (std::abs(m_warningThreshold - threshold) < 1e-4) return;
     m_warningThreshold = threshold;
@@ -209,7 +212,7 @@ void QLevelMeter::setWarningThreshold(double threshold)
     update();
 }
 
-void QLevelMeter::setErrorThreshold(double threshold)
+void LevelMeter::setErrorThreshold(double threshold)
 {
     if (std::abs(m_errorThreshold - threshold) < 1e-4) return;
     m_errorThreshold = threshold;
@@ -218,7 +221,7 @@ void QLevelMeter::setErrorThreshold(double threshold)
     update();
 }
 
-void QLevelMeter::setSegmentCount(int count)
+void LevelMeter::setSegmentCount(int count)
 {
     count = std::clamp(count, 5, 120);
     if (m_segmentCount == count) return;
@@ -228,7 +231,7 @@ void QLevelMeter::setSegmentCount(int count)
     update();
 }
 
-void QLevelMeter::setDisplayMode(DisplayMode mode)
+void LevelMeter::setDisplayMode(DisplayMode mode)
 {
     if (m_displayMode == mode) return;
     m_displayMode = mode;
@@ -237,7 +240,7 @@ void QLevelMeter::setDisplayMode(DisplayMode mode)
     update();
 }
 
-void QLevelMeter::setOrientation(Qt::Orientation orientation)
+void LevelMeter::setOrientation(Qt::Orientation orientation)
 {
     if (m_orientation == orientation) return;
     m_orientation = orientation;
@@ -247,7 +250,7 @@ void QLevelMeter::setOrientation(Qt::Orientation orientation)
     update();
 }
 
-void QLevelMeter::setPeakHoldEnabled(bool enabled)
+void LevelMeter::setPeakHoldEnabled(bool enabled)
 {
     if (m_peakHoldEnabled == enabled) return;
     m_peakHoldEnabled = enabled;
@@ -259,21 +262,21 @@ void QLevelMeter::setPeakHoldEnabled(bool enabled)
     update();
 }
 
-void QLevelMeter::setPeakHoldTimeMs(int ms)
+void LevelMeter::setPeakHoldTimeMs(int ms)
 {
     if (m_peakHoldTimeMs == ms) return;
     m_peakHoldTimeMs = std::max(0, ms);
     Q_EMIT appearanceChanged();
 }
 
-void QLevelMeter::setPeakDecayRate(double rate)
+void LevelMeter::setPeakDecayRate(double rate)
 {
     if (std::abs(m_peakDecayRate - rate) < 1e-4) return;
     m_peakDecayRate = std::max(0.1, rate);
     Q_EMIT appearanceChanged();
 }
 
-void QLevelMeter::setScaleVisible(bool visible)
+void LevelMeter::setScaleVisible(bool visible)
 {
     if (m_scaleVisible == visible) return;
     m_scaleVisible = visible;
@@ -283,7 +286,7 @@ void QLevelMeter::setScaleVisible(bool visible)
     update();
 }
 
-void QLevelMeter::setUnit(const QString &unit)
+void LevelMeter::setUnit(const QString &unit)
 {
     if (m_unit == unit) return;
     m_unit = unit;
@@ -292,7 +295,7 @@ void QLevelMeter::setUnit(const QString &unit)
     update();
 }
 
-void QLevelMeter::setTitle(const QString &title)
+void LevelMeter::setTitle(const QString &title)
 {
     if (m_title == title) return;
     m_title = title;
@@ -301,7 +304,7 @@ void QLevelMeter::setTitle(const QString &title)
     update();
 }
 
-void QLevelMeter::setChannelLabels(const QStringList &labels)
+void LevelMeter::setChannelLabels(const QStringList &labels)
 {
     m_channelLabels = labels;
     m_cacheValid = false;
@@ -309,7 +312,7 @@ void QLevelMeter::setChannelLabels(const QStringList &labels)
     update();
 }
 
-void QLevelMeter::setNormalColor(const QColor &color)
+void LevelMeter::setNormalColor(const QColor &color)
 {
     if (m_normalColor == color) return;
     m_normalColor = color;
@@ -318,7 +321,7 @@ void QLevelMeter::setNormalColor(const QColor &color)
     update();
 }
 
-void QLevelMeter::setWarningColor(const QColor &color)
+void LevelMeter::setWarningColor(const QColor &color)
 {
     if (m_warningColor == color) return;
     m_warningColor = color;
@@ -327,7 +330,7 @@ void QLevelMeter::setWarningColor(const QColor &color)
     update();
 }
 
-void QLevelMeter::setErrorColor(const QColor &color)
+void LevelMeter::setErrorColor(const QColor &color)
 {
     if (m_errorColor == color) return;
     m_errorColor = color;
@@ -336,7 +339,7 @@ void QLevelMeter::setErrorColor(const QColor &color)
     update();
 }
 
-void QLevelMeter::setPeakColor(const QColor &color)
+void LevelMeter::setPeakColor(const QColor &color)
 {
     if (m_peakColor == color) return;
     m_peakColor = color;
@@ -344,7 +347,7 @@ void QLevelMeter::setPeakColor(const QColor &color)
     update();
 }
 
-void QLevelMeter::setBackgroundColor(const QColor &color)
+void LevelMeter::setBackgroundColor(const QColor &color)
 {
     if (m_backgroundColor == color) return;
     m_backgroundColor = color;
@@ -353,7 +356,7 @@ void QLevelMeter::setBackgroundColor(const QColor &color)
     update();
 }
 
-void QLevelMeter::setTextColor(const QColor &color)
+void LevelMeter::setTextColor(const QColor &color)
 {
     if (m_textColor == color) return;
     m_textColor = color;
@@ -362,13 +365,13 @@ void QLevelMeter::setTextColor(const QColor &color)
     update();
 }
 
-void QLevelMeter::resizeEvent(QResizeEvent *event)
+void LevelMeter::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     m_cacheValid = false;
 }
 
-QColor QLevelMeter::colorForNormalizedValue(double norm) const
+QColor LevelMeter::colorForNormalizedValue(double norm) const
 {
     double val = m_minimum + norm * (m_maximum - m_minimum);
     if (val >= m_errorThreshold) {
@@ -380,7 +383,7 @@ QColor QLevelMeter::colorForNormalizedValue(double norm) const
     return m_normalColor;
 }
 
-QVector<QRectF> QLevelMeter::calculateBarRects(const QRectF &contentRect) const
+QVector<QRectF> LevelMeter::calculateBarRects(const QRectF &contentRect) const
 {
     QVector<QRectF> rects;
     if (m_channelCount <= 0) return rects;
@@ -424,7 +427,7 @@ QVector<QRectF> QLevelMeter::calculateBarRects(const QRectF &contentRect) const
     return rects;
 }
 
-void QLevelMeter::renderStaticBackground()
+void LevelMeter::renderStaticBackground()
 {
     qreal dpr = devicePixelRatioF();
     QSize pixSize = size() * dpr;
@@ -608,7 +611,7 @@ void QLevelMeter::renderStaticBackground()
     m_cacheValid = true;
 }
 
-void QLevelMeter::drawSegmentedBar(QPainter &painter, double val, double peakVal, const QRectF &barRect)
+void LevelMeter::drawSegmentedBar(QPainter &painter, double val, double peakVal, const QRectF &barRect)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -695,7 +698,7 @@ void QLevelMeter::drawSegmentedBar(QPainter &painter, double val, double peakVal
     painter.restore();
 }
 
-void QLevelMeter::drawContinuousBar(QPainter &painter, double val, double peakVal, const QRectF &barRect)
+void LevelMeter::drawContinuousBar(QPainter &painter, double val, double peakVal, const QRectF &barRect)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -757,7 +760,7 @@ void QLevelMeter::drawContinuousBar(QPainter &painter, double val, double peakVa
     painter.restore();
 }
 
-void QLevelMeter::paintEvent(QPaintEvent * /*event*/)
+void LevelMeter::paintEvent(QPaintEvent * /*event*/)
 {
     if (!m_cacheValid || m_cachedBackground.size() != size() * devicePixelRatioF()) {
         renderStaticBackground();
@@ -781,3 +784,5 @@ void QLevelMeter::paintEvent(QPaintEvent * /*event*/)
         }
     }
 }
+
+} // namespace QtIndustrialWidgets

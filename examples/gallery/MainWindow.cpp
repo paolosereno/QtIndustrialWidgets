@@ -4,16 +4,16 @@
 
 #include "MainWindow.h"
 
-#include <QtIndustrialWidgets/QRadialGauge.h>
-#include <QtIndustrialWidgets/QLinearGauge.h>
-#include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
-#include <QtIndustrialWidgets/QLedIndicator.h>
-#include <QtIndustrialWidgets/QIndustrialKnob.h>
-#include <QtIndustrialWidgets/QStripChart.h>
-#include <QtIndustrialWidgets/QIndustrialSwitch.h>
-#include <QtIndustrialWidgets/QLevelMeter.h>
-#include <QtIndustrialWidgets/QAnnunciatorPanel.h>
-#include <QtIndustrialWidgets/QCompass.h>
+#include <QtIndustrialWidgets/RadialGauge.h>
+#include <QtIndustrialWidgets/LinearGauge.h>
+#include <QtIndustrialWidgets/SevenSegmentDisplay.h>
+#include <QtIndustrialWidgets/LedIndicator.h>
+#include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/StripChart.h>
+#include <QtIndustrialWidgets/IndustrialSwitch.h>
+#include <QtIndustrialWidgets/LevelMeter.h>
+#include <QtIndustrialWidgets/AnnunciatorPanel.h>
+#include <QtIndustrialWidgets/Compass.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -34,6 +34,9 @@
 #include <QtCore/QEasingCurve>
 #include <QtGui/QPalette>
 #include <QtCore/QtMath>
+
+using namespace QtIndustrialWidgets;
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -81,22 +84,22 @@ void MainWindow::setupUi()
     m_fpsLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace;"));
 
     // Annunciator Status LEDs
-    m_runLed = new QLedIndicator(QColor(46, 204, 113), topBar);
+    m_runLed = new LedIndicator(QColor(46, 204, 113), topBar);
     m_runLed->setLabelText(QStringLiteral("RUN"));
     m_runLed->setOn(false);
 
-    m_warnLed = new QLedIndicator(QColor(254, 211, 48), topBar);
+    m_warnLed = new LedIndicator(QColor(254, 211, 48), topBar);
     m_warnLed->setLabelText(QStringLiteral("WARN"));
     m_warnLed->setOn(false);
 
-    m_alarmLed = new QLedIndicator(QColor(235, 59, 90), topBar);
+    m_alarmLed = new LedIndicator(QColor(235, 59, 90), topBar);
     m_alarmLed->setLabelText(QStringLiteral("FAULT"));
     m_alarmLed->setOn(false);
     m_alarmLed->setBlinkRateMs(180);
 
-    m_pumpLed = new QLedIndicator(QColor(0, 229, 255), topBar);
+    m_pumpLed = new LedIndicator(QColor(0, 229, 255), topBar);
     m_pumpLed->setLabelText(QStringLiteral("AUX PUMP"));
-    m_pumpLed->setShape(QLedIndicator::LedShape::Rectangular);
+    m_pumpLed->setShape(LedIndicator::LedShape::Rectangular);
     m_pumpLed->setOn(false);
 
     m_simButton = new QPushButton(QStringLiteral("▶ Start Simulation (50 Hz)"), this);
@@ -161,7 +164,7 @@ void MainWindow::setupUi()
     radialLayout->setSpacing(14);
 
     // RPM Gauge (0 - 8000 RPM)
-    m_rpmGauge = new QRadialGauge(radialGroup);
+    m_rpmGauge = new RadialGauge(radialGroup);
     m_rpmGauge->setRange(0.0, 8000.0);
     m_rpmGauge->setValue(2400.0);
     m_rpmGauge->setUnit(QStringLiteral("RPM"));
@@ -173,7 +176,7 @@ void MainWindow::setupUi()
     m_rpmGauge->setSpanAngle(270.0);
 
     // Boost Gauge (0.0 - 3.0 bar)
-    m_boostGauge = new QRadialGauge(radialGroup);
+    m_boostGauge = new RadialGauge(radialGroup);
     m_boostGauge->setRange(0.0, 3.0);
     m_boostGauge->setValue(1.15);
     m_boostGauge->setUnit(QStringLiteral("bar"));
@@ -185,7 +188,7 @@ void MainWindow::setupUi()
     m_boostGauge->setSpanAngle(240.0);
 
     // Oil Pressure Gauge (0.0 - 10.0 bar)
-    m_oilGauge = new QRadialGauge(radialGroup);
+    m_oilGauge = new RadialGauge(radialGroup);
     m_oilGauge->setRange(0.0, 10.0);
     m_oilGauge->setValue(4.8);
     m_oilGauge->setUnit(QStringLiteral("bar"));
@@ -197,7 +200,7 @@ void MainWindow::setupUi()
     m_oilGauge->setSpanAngle(220.0);
 
     // Steering / Angle Semicircular Gauge (-90° to +90°)
-    m_steeringGauge = new QRadialGauge(radialGroup);
+    m_steeringGauge = new RadialGauge(radialGroup);
     m_steeringGauge->setRange(-90.0, 90.0);
     m_steeringGauge->setValue(15.0);
     m_steeringGauge->setUnit(QStringLiteral("DEG"));
@@ -226,7 +229,7 @@ void MainWindow::setupUi()
     linearLayout->setSpacing(14);
 
     // Coolant Thermometer (with bulb mode)
-    m_coolantGauge = new QLinearGauge(linearGroup);
+    m_coolantGauge = new LinearGauge(linearGroup);
     m_coolantGauge->setOrientation(Qt::Vertical);
     m_coolantGauge->setThermometerMode(true);
     m_coolantGauge->setRange(0.0, 120.0);
@@ -237,7 +240,7 @@ void MainWindow::setupUi()
     m_coolantGauge->setErrorThreshold(108.0);
 
     // Fuel Tank Gauge (rectangular bar mode)
-    m_fuelGauge = new QLinearGauge(linearGroup);
+    m_fuelGauge = new LinearGauge(linearGroup);
     m_fuelGauge->setOrientation(Qt::Vertical);
     m_fuelGauge->setThermometerMode(false);
     m_fuelGauge->setRange(0.0, 100.0);
@@ -248,7 +251,7 @@ void MainWindow::setupUi()
     m_fuelGauge->setErrorThreshold(90.0);
 
     // Hydraulic Line Pressure (Horizontal)
-    m_hydraulicGauge = new QLinearGauge(linearGroup);
+    m_hydraulicGauge = new LinearGauge(linearGroup);
     m_hydraulicGauge->setOrientation(Qt::Horizontal);
     m_hydraulicGauge->setThermometerMode(false);
     m_hydraulicGauge->setRange(0.0, 250.0);
@@ -266,8 +269,8 @@ void MainWindow::setupUi()
     combinedLinearLayout->addLayout(vertGaugesLayout, 3);
     combinedLinearLayout->addWidget(m_hydraulicGauge, 1);
 
-    // Dynamic Vibration Dual-Channel Meter (QLevelMeter)
-    m_vibrationMeter = new QLevelMeter(linearGroup);
+    // Dynamic Vibration Dual-Channel Meter (LevelMeter)
+    m_vibrationMeter = new LevelMeter(linearGroup);
     m_vibrationMeter->setChannelCount(2);
     m_vibrationMeter->setChannelLabels({QStringLiteral("X"), QStringLiteral("Y")});
     m_vibrationMeter->setTitle(QStringLiteral("VIB RMS"));
@@ -293,7 +296,7 @@ void MainWindow::setupUi()
     auto *speedBox = new QHBoxLayout();
     auto *speedLbl = new QLabel(QStringLiteral("SPEED [km/h]:"), digitalGroup);
     speedLbl->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px;"));
-    m_speedDisplay = new QSevenSegmentDisplay(digitalGroup);
+    m_speedDisplay = new SevenSegmentDisplay(digitalGroup);
     m_speedDisplay->setDigitCount(5);
     m_speedDisplay->setDecimalPlaces(1);
     m_speedDisplay->setValue(142.6);
@@ -306,7 +309,7 @@ void MainWindow::setupUi()
     auto *voltBox = new QHBoxLayout();
     auto *voltLbl = new QLabel(QStringLiteral("BUS VOLTAGE [V]:"), digitalGroup);
     voltLbl->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px;"));
-    m_voltageDisplay = new QSevenSegmentDisplay(digitalGroup);
+    m_voltageDisplay = new SevenSegmentDisplay(digitalGroup);
     m_voltageDisplay->setDigitCount(4);
     m_voltageDisplay->setDecimalPlaces(1);
     m_voltageDisplay->setValue(13.8);
@@ -319,7 +322,7 @@ void MainWindow::setupUi()
     auto *timerBox = new QHBoxLayout();
     auto *timerLbl = new QLabel(QStringLiteral("TEST TIME [s]:"), digitalGroup);
     timerLbl->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px;"));
-    m_timerDisplay = new QSevenSegmentDisplay(digitalGroup);
+    m_timerDisplay = new SevenSegmentDisplay(digitalGroup);
     m_timerDisplay->setDigitCount(6);
     m_timerDisplay->setDecimalPlaces(2);
     m_timerDisplay->setValue(45.28);
@@ -335,11 +338,11 @@ void MainWindow::setupUi()
     lowerRowLayout->addWidget(digitalGroup, 3);
 
     // Group for Real-Time Oscilloscope / Telemetry Strip Chart
-    auto *chartGroup = new QGroupBox(QStringLiteral("Real-Time Telemetry (QStripChart)"), dashTab);
+    auto *chartGroup = new QGroupBox(QStringLiteral("Real-Time Telemetry (StripChart)"), dashTab);
     auto *chartLayout = new QVBoxLayout(chartGroup);
     chartLayout->setContentsMargins(10, 16, 10, 10);
 
-    m_stripChart = new QStripChart(chartGroup);
+    m_stripChart = new StripChart(chartGroup);
     m_stripChart->setCapacity(300);
     m_stripChart->setYRange(0.0, 120.0);
     m_chRpm = m_stripChart->addChannel(QStringLiteral("RPM %"), QColor(0, 229, 255), 2.0);
@@ -413,15 +416,15 @@ void MainWindow::setupUi()
                      [this](double v) { m_hydraulicGauge->setValue(v); }, m_hydraulicSlider);
 
     // ------------------------------------------------------------------------
-    // Precision Rotary Knobs Showcase Group (QIndustrialKnob)
+    // Precision Rotary Knobs Showcase Group (IndustrialKnob)
     // ------------------------------------------------------------------------
-    auto *knobBox = new QGroupBox(QStringLiteral("Precision Rotary Controls (QIndustrialKnob)"), controlsTab);
+    auto *knobBox = new QGroupBox(QStringLiteral("Precision Rotary Controls (IndustrialKnob)"), controlsTab);
     auto *knobLayout = new QHBoxLayout(knobBox);
     knobLayout->setSpacing(24);
     knobLayout->setContentsMargins(16, 18, 16, 14);
 
     // Throttle / Target RPM Knob (Continuous)
-    m_throttleKnob = new QIndustrialKnob(knobBox);
+    m_throttleKnob = new IndustrialKnob(knobBox);
     m_throttleKnob->setRange(0.0, 8000.0);
     m_throttleKnob->setValue(2400.0);
     m_throttleKnob->setUnit(QStringLiteral("RPM"));
@@ -431,7 +434,7 @@ void MainWindow::setupUi()
     m_throttleKnob->setMinorTicks(4);
 
     // Boost Regulator Knob (Continuous)
-    m_boostKnob = new QIndustrialKnob(knobBox);
+    m_boostKnob = new IndustrialKnob(knobBox);
     m_boostKnob->setRange(0.0, 3.0);
     m_boostKnob->setValue(1.15);
     m_boostKnob->setUnit(QStringLiteral("bar"));
@@ -443,8 +446,8 @@ void MainWindow::setupUi()
     m_boostKnob->setTrackColor(QColor(235, 59, 90));
 
     // Drive Mode Selector Knob (Discrete 4 positions)
-    m_modeSelectorKnob = new QIndustrialKnob(knobBox);
-    m_modeSelectorKnob->setMode(QIndustrialKnob::KnobMode::Discrete);
+    m_modeSelectorKnob = new IndustrialKnob(knobBox);
+    m_modeSelectorKnob->setMode(IndustrialKnob::KnobMode::Discrete);
     m_modeSelectorKnob->setDiscreteSteps(4);
     m_modeSelectorKnob->setRange(1.0, 4.0);
     m_modeSelectorKnob->setValue(2.0);
@@ -453,7 +456,7 @@ void MainWindow::setupUi()
     m_modeSelectorKnob->setTrackColor(QColor(46, 204, 113));
 
     // Synchronize throttle knob with slider and gauge
-    connect(m_throttleKnob, &QIndustrialKnob::valueChanged, this, [this](double val) {
+    connect(m_throttleKnob, &IndustrialKnob::valueChanged, this, [this](double val) {
         if (!m_isSimulating) {
             m_rpmSlider->setValue(static_cast<int>(val));
             m_rpmGauge->setValue(val);
@@ -461,7 +464,7 @@ void MainWindow::setupUi()
     });
 
     // Synchronize boost knob with slider and gauge
-    connect(m_boostKnob, &QIndustrialKnob::valueChanged, this, [this](double val) {
+    connect(m_boostKnob, &IndustrialKnob::valueChanged, this, [this](double val) {
         if (!m_isSimulating) {
             m_boostSlider->setValue(static_cast<int>(val * 100.0));
             m_boostGauge->setValue(val);
@@ -476,30 +479,30 @@ void MainWindow::setupUi()
     row++;
 
     // ------------------------------------------------------------------------
-    // Interactive LED testing group (QLedIndicator)
+    // Interactive LED testing group (LedIndicator)
     // ------------------------------------------------------------------------
-    auto *ledBox = new QGroupBox(QStringLiteral("Interactive QLedIndicator Showcase (Click on LEDs to Toggle)"), controlsTab);
+    auto *ledBox = new QGroupBox(QStringLiteral("Interactive LedIndicator Showcase (Click on LEDs to Toggle)"), controlsTab);
     auto *ledLayout = new QHBoxLayout(ledBox);
     ledLayout->setSpacing(20);
 
-    auto *testLed1 = new QLedIndicator(QColor(46, 204, 113), ledBox);
+    auto *testLed1 = new LedIndicator(QColor(46, 204, 113), ledBox);
     testLed1->setLabelText(QStringLiteral("Green (Click Me)"));
     testLed1->setClickable(true);
 
-    auto *testLed2 = new QLedIndicator(QColor(235, 59, 90), ledBox);
+    auto *testLed2 = new LedIndicator(QColor(235, 59, 90), ledBox);
     testLed2->setLabelText(QStringLiteral("Red Blinking (2 Hz)"));
     testLed2->setBlinking(true);
     testLed2->setBlinkRateMs(250);
     testLed2->setClickable(true);
 
-    auto *testLed3 = new QLedIndicator(QColor(254, 211, 48), ledBox);
+    auto *testLed3 = new LedIndicator(QColor(254, 211, 48), ledBox);
     testLed3->setLabelText(QStringLiteral("Amber Rectangular"));
-    testLed3->setShape(QLedIndicator::LedShape::Rectangular);
+    testLed3->setShape(LedIndicator::LedShape::Rectangular);
     testLed3->setClickable(true);
 
-    auto *testLed4 = new QLedIndicator(QColor(0, 229, 255), ledBox);
+    auto *testLed4 = new LedIndicator(QColor(0, 229, 255), ledBox);
     testLed4->setLabelText(QStringLiteral("Cyan Rectangular"));
-    testLed4->setShape(QLedIndicator::LedShape::Rectangular);
+    testLed4->setShape(LedIndicator::LedShape::Rectangular);
     testLed4->setClickable(true);
 
     ledLayout->addWidget(testLed1);
@@ -512,34 +515,34 @@ void MainWindow::setupUi()
     row++;
 
     // ------------------------------------------------------------------------
-    // Heavy-Duty Industrial Switches Showcase Group (QIndustrialSwitch)
+    // Heavy-Duty Industrial Switches Showcase Group (IndustrialSwitch)
     // ------------------------------------------------------------------------
-    auto *switchBox = new QGroupBox(QStringLiteral("Heavy-Duty Industrial Switches (QIndustrialSwitch)"), controlsTab);
+    auto *switchBox = new QGroupBox(QStringLiteral("Heavy-Duty Industrial Switches (IndustrialSwitch)"), controlsTab);
     auto *switchLayout = new QHBoxLayout(switchBox);
     switchLayout->setSpacing(28);
     switchLayout->setContentsMargins(18, 18, 18, 14);
 
     // 1. Classic Main Power Toggle Switch
-    m_powerSwitch = new QIndustrialSwitch(switchBox);
+    m_powerSwitch = new IndustrialSwitch(switchBox);
     m_powerSwitch->setLabel(QStringLiteral("MAIN PWR"));
     m_powerSwitch->setLabelOn(QStringLiteral("ON"));
     m_powerSwitch->setLabelOff(QStringLiteral("OFF"));
     m_powerSwitch->setChecked(false);
-    connect(m_powerSwitch, &QIndustrialSwitch::toggled, this, [this](bool on) {
+    connect(m_powerSwitch, &IndustrialSwitch::toggled, this, [this](bool on) {
         if (on != m_isSimulating) {
             toggleSimulation();
         }
     });
 
     // 2. High-Risk Safety Guard Switch (Red flip-up cover)
-    m_safetySwitch = new QIndustrialSwitch(switchBox);
+    m_safetySwitch = new IndustrialSwitch(switchBox);
     m_safetySwitch->setLabel(QStringLiteral("EMERGENCY"));
     m_safetySwitch->setLabelOn(QStringLiteral("ARMED"));
     m_safetySwitch->setLabelOff(QStringLiteral("SAFE"));
     m_safetySwitch->setHasSafetyGuard(true);
     m_safetySwitch->setGuardColor(QColor(220, 53, 69));
     m_safetySwitch->setLedColor(QColor(235, 59, 90));
-    connect(m_safetySwitch, &QIndustrialSwitch::toggled, this, [this](bool armed) {
+    connect(m_safetySwitch, &IndustrialSwitch::toggled, this, [this](bool armed) {
         if (m_alarmLed) {
             m_alarmLed->setOn(armed);
             m_alarmLed->setBlinking(armed);
@@ -547,7 +550,7 @@ void MainWindow::setupUi()
     });
 
     // 3. 3-Position Mode Selector (MANUAL / OFF / AUTO)
-    m_modeSwitch = new QIndustrialSwitch(switchBox);
+    m_modeSwitch = new IndustrialSwitch(switchBox);
     m_modeSwitch->setPositionCount(3);
     m_modeSwitch->setLabel(QStringLiteral("SYS MODE"));
     m_modeSwitch->setLabelOff(QStringLiteral("MAN"));
@@ -557,21 +560,21 @@ void MainWindow::setupUi()
     m_modeSwitch->setLedColor(QColor(254, 211, 48));
 
     // 4. Industrial Rocker Switch (Cooling Fan)
-    m_rockerSwitch = new QIndustrialSwitch(switchBox);
-    m_rockerSwitch->setSwitchType(QIndustrialSwitch::SwitchType::Rocker);
+    m_rockerSwitch = new IndustrialSwitch(switchBox);
+    m_rockerSwitch->setSwitchType(IndustrialSwitch::SwitchType::Rocker);
     m_rockerSwitch->setLabel(QStringLiteral("COOLING"));
     m_rockerSwitch->setLabelOn(QStringLiteral("HIGH"));
     m_rockerSwitch->setLabelOff(QStringLiteral("LOW"));
     m_rockerSwitch->setLedColor(QColor(0, 229, 255));
     m_rockerSwitch->setChecked(false);
-    connect(m_rockerSwitch, &QIndustrialSwitch::toggled, this, [this](bool on) {
+    connect(m_rockerSwitch, &IndustrialSwitch::toggled, this, [this](bool on) {
         if (m_pumpLed) {
             m_pumpLed->setOn(on);
         }
     });
 
     // 5. Horizontal Toggle Switch (Bus Tie Feed)
-    auto *horizSwitch = new QIndustrialSwitch(switchBox);
+    auto *horizSwitch = new IndustrialSwitch(switchBox);
     horizSwitch->setOrientation(Qt::Horizontal);
     horizSwitch->setLabel(QStringLiteral("BUS TIE"));
     horizSwitch->setLabelOff(QStringLiteral("GEN A"));
@@ -589,15 +592,15 @@ void MainWindow::setupUi()
     row++;
 
     // ------------------------------------------------------------------------
-    // Multi-Channel VU & Level Meter Showcase (QLevelMeter)
+    // Multi-Channel VU & Level Meter Showcase (LevelMeter)
     // ------------------------------------------------------------------------
-    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic & Signal Level Meters (QLevelMeter)"), controlsTab);
+    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic & Signal Level Meters (LevelMeter)"), controlsTab);
     auto *meterLayout = new QHBoxLayout(meterBox);
     meterLayout->setSpacing(24);
     meterLayout->setContentsMargins(18, 18, 18, 14);
 
     // 1. Classic Studio Stereo VU Meter (-60 dB to +6 dB)
-    m_audioVuMeter = new QLevelMeter(meterBox);
+    m_audioVuMeter = new LevelMeter(meterBox);
     m_audioVuMeter->setChannelCount(2);
     m_audioVuMeter->setTitle(QStringLiteral("MASTER BUS"));
     m_audioVuMeter->setChannelLabels({QStringLiteral("CH 1"), QStringLiteral("CH 2")});
@@ -610,9 +613,9 @@ void MainWindow::setupUi()
     m_audioVuMeter->setValue(1, -14.0);
 
     // 2. Continuous Mode Smooth Level Meter (0 - 100%)
-    auto *contMeter = new QLevelMeter(meterBox);
+    auto *contMeter = new LevelMeter(meterBox);
     contMeter->setChannelCount(1);
-    contMeter->setDisplayMode(QLevelMeter::DisplayMode::Continuous);
+    contMeter->setDisplayMode(LevelMeter::DisplayMode::Continuous);
     contMeter->setTitle(QStringLiteral("LINE RMS"));
     contMeter->setChannelLabels({QStringLiteral("LINE")});
     contMeter->setRange(0.0, 100.0);
@@ -622,7 +625,7 @@ void MainWindow::setupUi()
     contMeter->setValue(62.0);
 
     // 3. Horizontal Level Meter
-    auto *horizMeter = new QLevelMeter(meterBox);
+    auto *horizMeter = new LevelMeter(meterBox);
     horizMeter->setOrientation(Qt::Horizontal);
     horizMeter->setChannelCount(2);
     horizMeter->setTitle(QStringLiteral("TELEMETRY LINK"));
@@ -676,29 +679,29 @@ void MainWindow::setupUi()
     annLayout->addWidget(annHeaderBox);
 
     // The Central Matrix Panel (3 rows x 4 columns = 12 windows)
-    m_annunciatorPanel = new QAnnunciatorPanel(3, 4, annunciatorTab);
+    m_annunciatorPanel = new AnnunciatorPanel(3, 4, annunciatorTab);
     m_annunciatorPanel->setMinimumHeight(320);
 
     const struct {
         int row;
         int col;
         const char *text;
-        QAnnunciatorPanel::Severity severity;
+        AnnunciatorPanel::Severity severity;
     } tileConfigs[] = {
-        {0, 0, "TURBINE 1\nOVERSPEED TRIP", QAnnunciatorPanel::Severity::Critical},
-        {0, 1, "MAIN STEAM\nPRESS HIGH", QAnnunciatorPanel::Severity::Critical},
-        {0, 2, "BEARING OIL\nPRESS LOW", QAnnunciatorPanel::Severity::Critical},
-        {0, 3, "GENERATOR\nLOCKOUT TRIP", QAnnunciatorPanel::Severity::Critical},
+        {0, 0, "TURBINE 1\nOVERSPEED TRIP", AnnunciatorPanel::Severity::Critical},
+        {0, 1, "MAIN STEAM\nPRESS HIGH", AnnunciatorPanel::Severity::Critical},
+        {0, 2, "BEARING OIL\nPRESS LOW", AnnunciatorPanel::Severity::Critical},
+        {0, 3, "GENERATOR\nLOCKOUT TRIP", AnnunciatorPanel::Severity::Critical},
 
-        {1, 0, "FEEDWATER PUMP\nTRIP FAULT", QAnnunciatorPanel::Severity::Warning},
-        {1, 1, "CONDENSER\nVACUUM LOW", QAnnunciatorPanel::Severity::Warning},
-        {1, 2, "TRANSFORMER\nTEMP HIGH", QAnnunciatorPanel::Severity::Warning},
-        {1, 3, "MAIN STEAM\nTEMP HIGH", QAnnunciatorPanel::Severity::Warning},
+        {1, 0, "FEEDWATER PUMP\nTRIP FAULT", AnnunciatorPanel::Severity::Warning},
+        {1, 1, "CONDENSER\nVACUUM LOW", AnnunciatorPanel::Severity::Warning},
+        {1, 2, "TRANSFORMER\nTEMP HIGH", AnnunciatorPanel::Severity::Warning},
+        {1, 3, "MAIN STEAM\nTEMP HIGH", AnnunciatorPanel::Severity::Warning},
 
-        {2, 0, "FIRE SUPPRESSION\nDISCHARGED", QAnnunciatorPanel::Severity::Critical},
-        {2, 1, "AUX DIESEL GEN\nRUNNING", QAnnunciatorPanel::Severity::Advisory},
-        {2, 2, "UPS BATTERY\nON INVERTER", QAnnunciatorPanel::Severity::Advisory},
-        {2, 3, "SCADA TELEMETRY\nLINK OFFLINE", QAnnunciatorPanel::Severity::Warning}
+        {2, 0, "FIRE SUPPRESSION\nDISCHARGED", AnnunciatorPanel::Severity::Critical},
+        {2, 1, "AUX DIESEL GEN\nRUNNING", AnnunciatorPanel::Severity::Advisory},
+        {2, 2, "UPS BATTERY\nON INVERTER", AnnunciatorPanel::Severity::Advisory},
+        {2, 3, "SCADA TELEMETRY\nLINK OFFLINE", AnnunciatorPanel::Severity::Warning}
     };
 
     for (const auto &cfg : tileConfigs) {
@@ -721,23 +724,23 @@ void MainWindow::setupUi()
     auto *ackBtn = new QPushButton(QStringLiteral("🔔 ACKNOWLEDGE (ACK)"), operatorBox);
     ackBtn->setCursor(Qt::PointingHandCursor);
     ackBtn->setStyleSheet(QStringLiteral("background-color: #0984e3; color: white; font-weight: bold; padding: 8px 16px;"));
-    connect(ackBtn, &QPushButton::clicked, m_annunciatorPanel, &QAnnunciatorPanel::acknowledgeAll);
+    connect(ackBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::acknowledgeAll);
 
     auto *silenceBtn = new QPushButton(QStringLiteral("🔇 SILENCE"), operatorBox);
     silenceBtn->setCursor(Qt::PointingHandCursor);
     silenceBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
-    connect(silenceBtn, &QPushButton::clicked, m_annunciatorPanel, &QAnnunciatorPanel::silence);
+    connect(silenceBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::silence);
 
     auto *resetBtn = new QPushButton(QStringLiteral("🔄 RESET"), operatorBox);
     resetBtn->setCursor(Qt::PointingHandCursor);
     resetBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
-    connect(resetBtn, &QPushButton::clicked, m_annunciatorPanel, &QAnnunciatorPanel::resetAll);
+    connect(resetBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::resetAll);
 
     auto *lampTestBtn = new QPushButton(QStringLiteral("💡 LAMP TEST"), operatorBox);
     lampTestBtn->setCheckable(true);
     lampTestBtn->setCursor(Qt::PointingHandCursor);
     lampTestBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
-    connect(lampTestBtn, &QPushButton::toggled, m_annunciatorPanel, &QAnnunciatorPanel::setLampTest);
+    connect(lampTestBtn, &QPushButton::toggled, m_annunciatorPanel, &AnnunciatorPanel::setLampTest);
 
     operatorLayout->addWidget(ackBtn);
     operatorLayout->addWidget(silenceBtn);
@@ -752,10 +755,10 @@ void MainWindow::setupUi()
     simLayout->setContentsMargins(14, 16, 14, 14);
 
     auto *seqCombo = new QComboBox(simBox);
-    seqCombo->addItem(QStringLiteral("Sequence A (Automatic Reset)"), static_cast<int>(QAnnunciatorPanel::AnnunciatorSequence::SequenceA_AutomaticReset));
-    seqCombo->addItem(QStringLiteral("Sequence M (Manual Reset)"), static_cast<int>(QAnnunciatorPanel::AnnunciatorSequence::SequenceM_ManualReset));
+    seqCombo->addItem(QStringLiteral("Sequence A (Automatic Reset)"), static_cast<int>(AnnunciatorPanel::AnnunciatorSequence::SequenceA_AutomaticReset));
+    seqCombo->addItem(QStringLiteral("Sequence M (Manual Reset)"), static_cast<int>(AnnunciatorPanel::AnnunciatorSequence::SequenceM_ManualReset));
     connect(seqCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, seqCombo](int index) {
-        auto seq = static_cast<QAnnunciatorPanel::AnnunciatorSequence>(seqCombo->itemData(index).toInt());
+        auto seq = static_cast<AnnunciatorPanel::AnnunciatorSequence>(seqCombo->itemData(index).toInt());
         m_annunciatorPanel->setSequence(seq);
     });
 
@@ -808,13 +811,13 @@ void MainWindow::setupUi()
                 .arg(act).arg(unack).arg(norm));
     };
 
-    connect(m_annunciatorPanel, &QAnnunciatorPanel::activeAlarmsCountChanged, this, [updateStatus](int) {
+    connect(m_annunciatorPanel, &AnnunciatorPanel::activeAlarmsCountChanged, this, [updateStatus](int) {
         updateStatus();
     });
-    connect(m_annunciatorPanel, &QAnnunciatorPanel::unacknowledgedCountChanged, this, [updateStatus](int) {
+    connect(m_annunciatorPanel, &AnnunciatorPanel::unacknowledgedCountChanged, this, [updateStatus](int) {
         updateStatus();
     });
-    connect(m_annunciatorPanel, &QAnnunciatorPanel::audibleHornChanged, this, [this](bool horn) {
+    connect(m_annunciatorPanel, &AnnunciatorPanel::audibleHornChanged, this, [this](bool horn) {
         if (horn) {
             m_annunciatorHornLabel->setText(QStringLiteral("🔊 HORN: SOUNDING (AUDIBLE ALARM)"));
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #eb3b5a; border-radius: 4px; color: #ffffff;"));
@@ -827,12 +830,12 @@ void MainWindow::setupUi()
     });
 
     // When an operator clicks a tile directly:
-    connect(m_annunciatorPanel, &QAnnunciatorPanel::tileClicked, this, [this](int idx) {
-        if (m_annunciatorPanel->tileState(idx) == QAnnunciatorPanel::AlarmState::Unacknowledged) {
+    connect(m_annunciatorPanel, &AnnunciatorPanel::tileClicked, this, [this](int idx) {
+        if (m_annunciatorPanel->tileState(idx) == AnnunciatorPanel::AlarmState::Unacknowledged) {
             m_annunciatorPanel->acknowledge(idx);
-        } else if (m_annunciatorPanel->tileState(idx) == QAnnunciatorPanel::AlarmState::Ringback) {
+        } else if (m_annunciatorPanel->tileState(idx) == AnnunciatorPanel::AlarmState::Ringback) {
             m_annunciatorPanel->reset(idx);
-        } else if (m_annunciatorPanel->tileState(idx) == QAnnunciatorPanel::AlarmState::Normal) {
+        } else if (m_annunciatorPanel->tileState(idx) == AnnunciatorPanel::AlarmState::Normal) {
             m_annunciatorPanel->setAlarmActive(idx, !m_annunciatorPanel->isAlarmActive(idx));
         }
     });
@@ -840,7 +843,7 @@ void MainWindow::setupUi()
     tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
 
     // ------------------------------------------------------------------------
-    // TAB 4: Navigation & Directional Gyro (QCompass)
+    // TAB 4: Navigation & Directional Gyro (Compass)
     // ------------------------------------------------------------------------
     auto *navTab = new QWidget(tabWidget);
     auto *navLayout = new QVBoxLayout(navTab);
@@ -877,8 +880,8 @@ void MainWindow::setupUi()
     auto *headingUpGroup = new QGroupBox(QStringLiteral("Heading-Up Gyrocompass (Aircraft / Marine Compass Card)"), navTab);
     auto *huLayout = new QVBoxLayout(headingUpGroup);
     huLayout->setContentsMargins(12, 16, 12, 12);
-    m_compassHeadingUp = new QCompass(headingUpGroup);
-    m_compassHeadingUp->setDisplayMode(QCompass::DisplayMode::HeadingUp);
+    m_compassHeadingUp = new Compass(headingUpGroup);
+    m_compassHeadingUp->setDisplayMode(Compass::DisplayMode::HeadingUp);
     m_compassHeadingUp->setHeading(45.0);
     m_compassHeadingUp->setTargetHeading(90.0);
     m_compassHeadingUp->setMinimumHeight(280);
@@ -889,8 +892,8 @@ void MainWindow::setupUi()
     auto *northUpGroup = new QGroupBox(QStringLiteral("North-Up Heading Indicator (360° Magnetic Pointer)"), navTab);
     auto *nuLayout = new QVBoxLayout(northUpGroup);
     nuLayout->setContentsMargins(12, 16, 12, 12);
-    m_compassNorthUp = new QCompass(northUpGroup);
-    m_compassNorthUp->setDisplayMode(QCompass::DisplayMode::NorthUp);
+    m_compassNorthUp = new Compass(northUpGroup);
+    m_compassNorthUp->setDisplayMode(Compass::DisplayMode::NorthUp);
     m_compassNorthUp->setHeading(45.0);
     m_compassNorthUp->setTargetHeading(90.0);
     m_compassNorthUp->setMinimumHeight(280);
@@ -1020,13 +1023,13 @@ void MainWindow::setupUi()
     });
 
     // When user drags bug directly on compass:
-    connect(m_compassHeadingUp, &QCompass::targetHeadingChanged, this, [=](double val) {
+    connect(m_compassHeadingUp, &Compass::targetHeadingChanged, this, [=](double val) {
         m_compassNorthUp->setTargetHeading(val);
         m_targetBugSlider->setValue(static_cast<int>(val));
         bugValLbl->setText(QStringLiteral("%1°").arg(static_cast<int>(val), 3, 10, QLatin1Char('0')));
         updateDeviation();
     });
-    connect(m_compassNorthUp, &QCompass::targetHeadingChanged, this, [=](double val) {
+    connect(m_compassNorthUp, &Compass::targetHeadingChanged, this, [=](double val) {
         m_compassHeadingUp->setTargetHeading(val);
         m_targetBugSlider->setValue(static_cast<int>(val));
         bugValLbl->setText(QStringLiteral("%1°").arg(static_cast<int>(val), 3, 10, QLatin1Char('0')));
@@ -1034,7 +1037,7 @@ void MainWindow::setupUi()
     });
 
     navLayout->addWidget(navControlsBox);
-    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (QCompass)"));
+    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (Compass)"));
 
     rootLayout->addWidget(tabWidget);
 }
@@ -1207,12 +1210,12 @@ void MainWindow::onSimulationTick()
     // Elapsed test time
     m_timerDisplay->setValue(m_simTime);
 
-    // Stream real-time waveforms into QStripChart
+    // Stream real-time waveforms into StripChart
     m_stripChart->addDataPoint(m_chRpm, (currentRpm / 8000.0) * 100.0);
     m_stripChart->addDataPoint(m_chBoost, boostBase * 35.0);
     m_stripChart->addDataPoint(m_chTemp, coolantTemp);
 
-    // Dynamic multi-channel vibration levels (QLevelMeter)
+    // Dynamic multi-channel vibration levels (LevelMeter)
     if (m_vibrationMeter) {
         double vibX = 1.5 + (currentRpm / 8000.0) * 5.2 + 1.2 * std::sin(m_simTime * 14.0);
         double vibY = 1.2 + (boostBase / 3.0) * 4.8 + 1.0 * std::cos(m_simTime * 18.0);
@@ -1223,7 +1226,7 @@ void MainWindow::onSimulationTick()
         m_vibrationMeter->setValue(1, vibY);
     }
 
-    // Dynamic acoustic / bus VU levels (QLevelMeter)
+    // Dynamic acoustic / bus VU levels (LevelMeter)
     if (m_audioVuMeter) {
         double db1 = -26.0 + (currentRpm / 8000.0) * 24.0 + 3.0 * std::sin(m_simTime * 9.0);
         double db2 = -28.0 + (boostBase / 3.0) * 26.0 + 2.5 * std::cos(m_simTime * 11.0);
@@ -1246,12 +1249,12 @@ void MainWindow::onSimulationTick()
         }
     }
 
-    // Autopilot Course Correction for QCompass
+    // Autopilot Course Correction for Compass
     if (m_isAutopilotActive && m_compassHeadingUp && m_compassNorthUp) {
         double dev = m_compassHeadingUp->courseDeviation();
         if (std::abs(dev) > 0.4) {
             double turnRate = std::clamp(dev * 0.08, -1.8, 1.8);
-            double newHdg = QCompass::normalizeDegrees(m_compassHeadingUp->heading() - turnRate);
+            double newHdg = Compass::normalizeDegrees(m_compassHeadingUp->heading() - turnRate);
             m_compassHeadingUp->setHeading(newHdg);
             m_compassNorthUp->setHeading(newHdg);
             if (m_headingSlider) {

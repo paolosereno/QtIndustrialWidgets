@@ -10,13 +10,13 @@
 #include <QtGui/QIcon>
 #include <QtUiPlugin/QDesignerCustomWidgetInterface>
 
-class QRadialGaugePlugin : public QObject, public QDesignerCustomWidgetInterface
+class RadialGaugePlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QRadialGaugePlugin(QObject *parent = nullptr);
+    explicit RadialGaugePlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -34,13 +34,13 @@ private:
     bool m_initialized{false};
 };
 
-class QLinearGaugePlugin : public QObject, public QDesignerCustomWidgetInterface
+class LinearGaugePlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QLinearGaugePlugin(QObject *parent = nullptr);
+    explicit LinearGaugePlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -58,13 +58,13 @@ private:
     bool m_initialized{false};
 };
 
-class QSevenSegmentDisplayPlugin : public QObject, public QDesignerCustomWidgetInterface
+class SevenSegmentDisplayPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QSevenSegmentDisplayPlugin(QObject *parent = nullptr);
+    explicit SevenSegmentDisplayPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -82,13 +82,13 @@ private:
     bool m_initialized{false};
 };
 
-class QLedIndicatorPlugin : public QObject, public QDesignerCustomWidgetInterface
+class LedIndicatorPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QLedIndicatorPlugin(QObject *parent = nullptr);
+    explicit LedIndicatorPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -106,13 +106,13 @@ private:
     bool m_initialized{false};
 };
 
-class QIndustrialKnobPlugin : public QObject, public QDesignerCustomWidgetInterface
+class IndustrialKnobPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QIndustrialKnobPlugin(QObject *parent = nullptr);
+    explicit IndustrialKnobPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -130,13 +130,13 @@ private:
     bool m_initialized{false};
 };
 
-class QStripChartPlugin : public QObject, public QDesignerCustomWidgetInterface
+class StripChartPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QStripChartPlugin(QObject *parent = nullptr);
+    explicit StripChartPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -154,13 +154,13 @@ private:
     bool m_initialized{false};
 };
 
-class QIndustrialSwitchPlugin : public QObject, public QDesignerCustomWidgetInterface
+class IndustrialSwitchPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QIndustrialSwitchPlugin(QObject *parent = nullptr);
+    explicit IndustrialSwitchPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -178,13 +178,13 @@ private:
     bool m_initialized{false};
 };
 
-class QLevelMeterPlugin : public QObject, public QDesignerCustomWidgetInterface
+class LevelMeterPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QLevelMeterPlugin(QObject *parent = nullptr);
+    explicit LevelMeterPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -202,13 +202,13 @@ private:
     bool m_initialized{false};
 };
 
-class QAnnunciatorPanelPlugin : public QObject, public QDesignerCustomWidgetInterface
+class AnnunciatorPanelPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QAnnunciatorPanelPlugin(QObject *parent = nullptr);
+    explicit AnnunciatorPanelPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
@@ -226,13 +226,13 @@ private:
     bool m_initialized{false};
 };
 
-class QCompassPlugin : public QObject, public QDesignerCustomWidgetInterface
+class CompassPlugin : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit QCompassPlugin(QObject *parent = nullptr);
+    explicit CompassPlugin(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }

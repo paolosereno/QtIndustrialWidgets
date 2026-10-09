@@ -3,11 +3,13 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QCompass.h>
+#include <QtIndustrialWidgets/Compass.h>
 #include <QtGui/QPixmap>
 #include <QtGui/QPainter>
 
-class tst_QCompass : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_Compass : public QObject
 {
     Q_OBJECT
 
@@ -25,20 +27,20 @@ private Q_SLOTS:
     void cleanupTestCase();
 };
 
-void tst_QCompass::initTestCase()
+void tst_Compass::initTestCase()
 {
 }
 
-void tst_QCompass::cleanupTestCase()
+void tst_Compass::cleanupTestCase()
 {
 }
 
-void tst_QCompass::defaultValues()
+void tst_Compass::defaultValues()
 {
-    QCompass compass;
+    Compass compass;
     QCOMPARE(compass.heading(), 0.0);
     QCOMPARE(compass.targetHeading(), 0.0);
-    QCOMPARE(compass.displayMode(), QCompass::DisplayMode::HeadingUp);
+    QCOMPARE(compass.displayMode(), Compass::DisplayMode::HeadingUp);
     QVERIFY(compass.isHeadingBugVisible());
     QVERIFY(compass.isHeadingBugInteractive());
     QVERIFY(compass.isLubberLineVisible());
@@ -48,10 +50,10 @@ void tst_QCompass::defaultValues()
     QVERIFY(compass.sizeHint().width() >= compass.minimumSizeHint().width());
 }
 
-void tst_QCompass::headingNormalization()
+void tst_Compass::headingNormalization()
 {
-    QCompass compass;
-    QSignalSpy spy(&compass, &QCompass::headingChanged);
+    Compass compass;
+    QSignalSpy spy(&compass, &Compass::headingChanged);
 
     // Standard heading within [0, 360)
     compass.setHeading(45.0);
@@ -82,16 +84,16 @@ void tst_QCompass::headingNormalization()
     QCOMPARE(spy.count(), 5);
 
     // Static helper
-    QCOMPARE(QCompass::normalizeDegrees(0.0), 0.0);
-    QCOMPARE(QCompass::normalizeDegrees(360.0), 0.0);
-    QCOMPARE(QCompass::normalizeDegrees(-45.0), 315.0);
+    QCOMPARE(Compass::normalizeDegrees(0.0), 0.0);
+    QCOMPARE(Compass::normalizeDegrees(360.0), 0.0);
+    QCOMPARE(Compass::normalizeDegrees(-45.0), 315.0);
 }
 
-void tst_QCompass::targetHeadingAndBug()
+void tst_Compass::targetHeadingAndBug()
 {
-    QCompass compass;
-    QSignalSpy spyTarget(&compass, &QCompass::targetHeadingChanged);
-    QSignalSpy spyApp(&compass, &QCompass::appearanceChanged);
+    Compass compass;
+    QSignalSpy spyTarget(&compass, &Compass::targetHeadingChanged);
+    QSignalSpy spyApp(&compass, &Compass::appearanceChanged);
 
     compass.setTargetHeading(120.0);
     QCOMPARE(compass.targetHeading(), 120.0);
@@ -120,9 +122,9 @@ void tst_QCompass::targetHeadingAndBug()
     QVERIFY(!compass.isDigitalReadoutVisible());
 }
 
-void tst_QCompass::courseDeviationCalculation()
+void tst_Compass::courseDeviationCalculation()
 {
-    QCompass compass;
+    Compass compass;
 
     // On course
     compass.setHeading(45.0);
@@ -149,30 +151,30 @@ void tst_QCompass::courseDeviationCalculation()
     QCOMPARE(compass.courseDeviation(), -20.0);
 }
 
-void tst_QCompass::displayModeSwitch()
+void tst_Compass::displayModeSwitch()
 {
-    QCompass compass;
-    QSignalSpy spyMode(&compass, &QCompass::displayModeChanged);
+    Compass compass;
+    QSignalSpy spyMode(&compass, &Compass::displayModeChanged);
 
-    QCOMPARE(compass.displayMode(), QCompass::DisplayMode::HeadingUp);
+    QCOMPARE(compass.displayMode(), Compass::DisplayMode::HeadingUp);
 
-    compass.setDisplayMode(QCompass::DisplayMode::NorthUp);
-    QCOMPARE(compass.displayMode(), QCompass::DisplayMode::NorthUp);
+    compass.setDisplayMode(Compass::DisplayMode::NorthUp);
+    QCOMPARE(compass.displayMode(), Compass::DisplayMode::NorthUp);
     QCOMPARE(spyMode.count(), 1);
 
     // Re-setting same mode does not emit duplicate
-    compass.setDisplayMode(QCompass::DisplayMode::NorthUp);
+    compass.setDisplayMode(Compass::DisplayMode::NorthUp);
     QCOMPARE(spyMode.count(), 1);
 
-    compass.setDisplayMode(QCompass::DisplayMode::HeadingUp);
-    QCOMPARE(compass.displayMode(), QCompass::DisplayMode::HeadingUp);
+    compass.setDisplayMode(Compass::DisplayMode::HeadingUp);
+    QCOMPARE(compass.displayMode(), Compass::DisplayMode::HeadingUp);
     QCOMPARE(spyMode.count(), 2);
 }
 
-void tst_QCompass::colorSetters()
+void tst_Compass::colorSetters()
 {
-    QCompass compass;
-    QSignalSpy spy(&compass, &QCompass::appearanceChanged);
+    Compass compass;
+    QSignalSpy spy(&compass, &Compass::appearanceChanged);
 
     compass.setDialColor(QColor(10, 10, 10));
     QCOMPARE(compass.dialColor(), QColor(10, 10, 10));
@@ -201,14 +203,14 @@ void tst_QCompass::colorSetters()
     QVERIFY(spy.count() >= 8);
 }
 
-void tst_QCompass::mouseInteractionBug()
+void tst_Compass::mouseInteractionBug()
 {
-    QCompass compass;
+    Compass compass;
     compass.resize(300, 300);
     compass.show();
     QVERIFY(QTest::qWaitForWindowExposed(&compass));
 
-    compass.setDisplayMode(QCompass::DisplayMode::NorthUp);
+    compass.setDisplayMode(Compass::DisplayMode::NorthUp);
     compass.setHeadingBugInteractive(true);
 
     // Center is (150, 150).
@@ -229,31 +231,31 @@ void tst_QCompass::mouseInteractionBug()
     QVERIFY(std::abs(compass.targetHeading() - 180.0) < 3.0);
 }
 
-void tst_QCompass::renderOffscreen()
+void tst_Compass::renderOffscreen()
 {
-    QCompass compass;
+    Compass compass;
     compass.resize(250, 250);
     compass.setHeading(45.0);
     compass.setTargetHeading(90.0);
 
     // Render HeadingUp mode
-    compass.setDisplayMode(QCompass::DisplayMode::HeadingUp);
+    compass.setDisplayMode(Compass::DisplayMode::HeadingUp);
     QPixmap pixmap1(250, 250);
     pixmap1.fill(Qt::transparent);
     compass.render(&pixmap1);
     QVERIFY(!pixmap1.isNull());
 
     // Render NorthUp mode
-    compass.setDisplayMode(QCompass::DisplayMode::NorthUp);
+    compass.setDisplayMode(Compass::DisplayMode::NorthUp);
     QPixmap pixmap2(250, 250);
     pixmap2.fill(Qt::transparent);
     compass.render(&pixmap2);
     QVERIFY(!pixmap2.isNull());
 }
 
-void tst_QCompass::extremeResizeNoCrash()
+void tst_Compass::extremeResizeNoCrash()
 {
-    QCompass compass;
+    Compass compass;
 
     const QList<QSize> extremeSizes = {
         QSize(0, 0),
@@ -276,5 +278,7 @@ void tst_QCompass::extremeResizeNoCrash()
     }
 }
 
-QTEST_MAIN(tst_QCompass)
-#include "tst_QCompass.moc"
+QTEST_MAIN(tst_Compass)
+#include "tst_Compass.moc"
+
+

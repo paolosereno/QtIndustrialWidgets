@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QRadialGauge.h>
+#include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtGui/QPixmap>
 
-class tst_QRadialGauge : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_RadialGauge : public QObject
 {
     Q_OBJECT
 
@@ -22,13 +24,13 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QRadialGauge::initTestCase()
+void tst_RadialGauge::initTestCase()
 {
 }
 
-void tst_QRadialGauge::defaultValues()
+void tst_RadialGauge::defaultValues()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     QCOMPARE(gauge.minimum(), 0.0);
     QCOMPARE(gauge.maximum(), 100.0);
     QCOMPARE(gauge.value(), 0.0);
@@ -36,9 +38,9 @@ void tst_QRadialGauge::defaultValues()
     QCOMPARE(gauge.precision(), 1);
 }
 
-void tst_QRadialGauge::rangeAndClamping()
+void tst_RadialGauge::rangeAndClamping()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     gauge.setRange(0.0, 200.0);
     QCOMPARE(gauge.minimum(), 0.0);
     QCOMPARE(gauge.maximum(), 200.0);
@@ -56,9 +58,9 @@ void tst_QRadialGauge::rangeAndClamping()
     QCOMPARE(gauge.value(), 125.0);
 }
 
-void tst_QRadialGauge::invalidRangeIgnored()
+void tst_RadialGauge::invalidRangeIgnored()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     gauge.setRange(0.0, 100.0);
     // Setting min >= max should be safely rejected
     gauge.setRange(150.0, 50.0);
@@ -66,33 +68,33 @@ void tst_QRadialGauge::invalidRangeIgnored()
     QCOMPARE(gauge.maximum(), 100.0);
 }
 
-void tst_QRadialGauge::signalEmission()
+void tst_RadialGauge::signalEmission()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     gauge.setRange(0.0, 100.0);
 
-    QSignalSpy valueSpy(&gauge, &QRadialGauge::valueChanged);
+    QSignalSpy valueSpy(&gauge, &RadialGauge::valueChanged);
     gauge.setValue(45.0);
 
     QCOMPARE(valueSpy.count(), 1);
     QCOMPARE(valueSpy.takeFirst().at(0).toDouble(), 45.0);
 }
 
-void tst_QRadialGauge::noDuplicateSignal()
+void tst_RadialGauge::noDuplicateSignal()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     gauge.setRange(0.0, 100.0);
     gauge.setValue(45.0);
 
-    QSignalSpy valueSpy(&gauge, &QRadialGauge::valueChanged);
+    QSignalSpy valueSpy(&gauge, &RadialGauge::valueChanged);
     // Setting identical value should not emit duplicate signal
     gauge.setValue(45.0);
     QCOMPARE(valueSpy.count(), 0);
 }
 
-void tst_QRadialGauge::thresholdZones()
+void tst_RadialGauge::thresholdZones()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     gauge.setRange(0.0, 100.0);
     gauge.setWarningThreshold(75.0);
     gauge.setErrorThreshold(90.0);
@@ -101,9 +103,9 @@ void tst_QRadialGauge::thresholdZones()
     QCOMPARE(gauge.errorThreshold(), 90.0);
 }
 
-void tst_QRadialGauge::renderOffscreen()
+void tst_RadialGauge::renderOffscreen()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     gauge.setRange(0.0, 100.0);
     gauge.setValue(60.0);
     gauge.resize(250, 250);
@@ -114,9 +116,9 @@ void tst_QRadialGauge::renderOffscreen()
     QVERIFY(!pix.isNull());
 }
 
-void tst_QRadialGauge::extremeResizeNoCrash()
+void tst_RadialGauge::extremeResizeNoCrash()
 {
-    QRadialGauge gauge;
+    RadialGauge gauge;
     // Tiny size
     gauge.resize(2, 2);
     QPixmap pixSmall(gauge.size());
@@ -129,5 +131,7 @@ void tst_QRadialGauge::extremeResizeNoCrash()
     QVERIFY(!pix4k.isNull());
 }
 
-QTEST_MAIN(tst_QRadialGauge)
-#include "tst_QRadialGauge.moc"
+QTEST_MAIN(tst_RadialGauge)
+#include "tst_RadialGauge.moc"
+
+

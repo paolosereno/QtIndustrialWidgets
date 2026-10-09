@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QIndustrialSwitch.h>
+#include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtCore/QVariantAnimation>
 #include <QtCore/QEasingCurve>
 #include <QtGui/QPainter>
@@ -15,7 +15,10 @@
 #include <cmath>
 #include <algorithm>
 
-QIndustrialSwitch::QIndustrialSwitch(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+IndustrialSwitch::IndustrialSwitch(QWidget *parent)
     : QWidget(parent)
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -39,9 +42,9 @@ QIndustrialSwitch::QIndustrialSwitch(QWidget *parent)
     });
 }
 
-QIndustrialSwitch::~QIndustrialSwitch() = default;
+IndustrialSwitch::~IndustrialSwitch() = default;
 
-QSize QIndustrialSwitch::sizeHint() const
+QSize IndustrialSwitch::sizeHint() const
 {
     if (m_orientation == Qt::Vertical) {
         return {75, 125};
@@ -49,7 +52,7 @@ QSize QIndustrialSwitch::sizeHint() const
     return {125, 75};
 }
 
-QSize QIndustrialSwitch::minimumSizeHint() const
+QSize IndustrialSwitch::minimumSizeHint() const
 {
     if (m_orientation == Qt::Vertical) {
         return {50, 80};
@@ -57,7 +60,7 @@ QSize QIndustrialSwitch::minimumSizeHint() const
     return {80, 50};
 }
 
-void QIndustrialSwitch::setSwitchType(SwitchType type)
+void IndustrialSwitch::setSwitchType(SwitchType type)
 {
     if (m_switchType == type) return;
     m_switchType = type;
@@ -66,7 +69,7 @@ void QIndustrialSwitch::setSwitchType(SwitchType type)
     update();
 }
 
-void QIndustrialSwitch::setPositionCount(int count)
+void IndustrialSwitch::setPositionCount(int count)
 {
     count = std::clamp(count, 2, 3);
     if (m_positionCount == count) return;
@@ -80,7 +83,7 @@ void QIndustrialSwitch::setPositionCount(int count)
     update();
 }
 
-void QIndustrialSwitch::setPosition(int position)
+void IndustrialSwitch::setPosition(int position)
 {
     position = std::clamp(position, 0, m_positionCount - 1);
     if (m_position == position) return;
@@ -101,13 +104,13 @@ void QIndustrialSwitch::setPosition(int position)
     Q_EMIT toggled(isChecked());
 }
 
-void QIndustrialSwitch::setChecked(bool checked)
+void IndustrialSwitch::setChecked(bool checked)
 {
     int target = checked ? (m_positionCount - 1) : 0;
     setPosition(target);
 }
 
-void QIndustrialSwitch::toggle()
+void IndustrialSwitch::toggle()
 {
     if (m_positionCount == 2) {
         setPosition(m_position == 0 ? 1 : 0);
@@ -118,7 +121,7 @@ void QIndustrialSwitch::toggle()
     }
 }
 
-void QIndustrialSwitch::setOrientation(Qt::Orientation orientation)
+void IndustrialSwitch::setOrientation(Qt::Orientation orientation)
 {
     if (m_orientation == orientation) return;
     m_orientation = orientation;
@@ -128,7 +131,7 @@ void QIndustrialSwitch::setOrientation(Qt::Orientation orientation)
     update();
 }
 
-void QIndustrialSwitch::setHasSafetyGuard(bool guard)
+void IndustrialSwitch::setHasSafetyGuard(bool guard)
 {
     if (m_hasSafetyGuard == guard) return;
     m_hasSafetyGuard = guard;
@@ -139,7 +142,7 @@ void QIndustrialSwitch::setHasSafetyGuard(bool guard)
     update();
 }
 
-void QIndustrialSwitch::setGuardOpen(bool open)
+void IndustrialSwitch::setGuardOpen(bool open)
 {
     if (m_isGuardOpen == open) return;
     m_isGuardOpen = open;
@@ -157,14 +160,14 @@ void QIndustrialSwitch::setGuardOpen(bool open)
     Q_EMIT guardToggled(m_isGuardOpen);
 }
 
-void QIndustrialSwitch::setAnimated(bool animated)
+void IndustrialSwitch::setAnimated(bool animated)
 {
     if (m_animated == animated) return;
     m_animated = animated;
     Q_EMIT appearanceChanged();
 }
 
-void QIndustrialSwitch::setHasLed(bool hasLed)
+void IndustrialSwitch::setHasLed(bool hasLed)
 {
     if (m_hasLed == hasLed) return;
     m_hasLed = hasLed;
@@ -173,7 +176,7 @@ void QIndustrialSwitch::setHasLed(bool hasLed)
     update();
 }
 
-void QIndustrialSwitch::setLabel(const QString &label)
+void IndustrialSwitch::setLabel(const QString &label)
 {
     if (m_label == label) return;
     m_label = label;
@@ -182,7 +185,7 @@ void QIndustrialSwitch::setLabel(const QString &label)
     update();
 }
 
-void QIndustrialSwitch::setLabelOff(const QString &label)
+void IndustrialSwitch::setLabelOff(const QString &label)
 {
     if (m_labelOff == label) return;
     m_labelOff = label;
@@ -191,7 +194,7 @@ void QIndustrialSwitch::setLabelOff(const QString &label)
     update();
 }
 
-void QIndustrialSwitch::setLabelOn(const QString &label)
+void IndustrialSwitch::setLabelOn(const QString &label)
 {
     if (m_labelOn == label) return;
     m_labelOn = label;
@@ -200,7 +203,7 @@ void QIndustrialSwitch::setLabelOn(const QString &label)
     update();
 }
 
-void QIndustrialSwitch::setLabelCenter(const QString &label)
+void IndustrialSwitch::setLabelCenter(const QString &label)
 {
     if (m_labelCenter == label) return;
     m_labelCenter = label;
@@ -209,7 +212,7 @@ void QIndustrialSwitch::setLabelCenter(const QString &label)
     update();
 }
 
-void QIndustrialSwitch::setPlateColor(const QColor &color)
+void IndustrialSwitch::setPlateColor(const QColor &color)
 {
     if (m_plateColor == color) return;
     m_plateColor = color;
@@ -218,7 +221,7 @@ void QIndustrialSwitch::setPlateColor(const QColor &color)
     update();
 }
 
-void QIndustrialSwitch::setLeverColor(const QColor &color)
+void IndustrialSwitch::setLeverColor(const QColor &color)
 {
     if (m_leverColor == color) return;
     m_leverColor = color;
@@ -226,7 +229,7 @@ void QIndustrialSwitch::setLeverColor(const QColor &color)
     update();
 }
 
-void QIndustrialSwitch::setLedColor(const QColor &color)
+void IndustrialSwitch::setLedColor(const QColor &color)
 {
     if (m_ledColor == color) return;
     m_ledColor = color;
@@ -234,7 +237,7 @@ void QIndustrialSwitch::setLedColor(const QColor &color)
     update();
 }
 
-void QIndustrialSwitch::setTextColor(const QColor &color)
+void IndustrialSwitch::setTextColor(const QColor &color)
 {
     if (m_textColor == color) return;
     m_textColor = color;
@@ -243,7 +246,7 @@ void QIndustrialSwitch::setTextColor(const QColor &color)
     update();
 }
 
-void QIndustrialSwitch::setGuardColor(const QColor &color)
+void IndustrialSwitch::setGuardColor(const QColor &color)
 {
     if (m_guardColor == color) return;
     m_guardColor = color;
@@ -251,13 +254,13 @@ void QIndustrialSwitch::setGuardColor(const QColor &color)
     update();
 }
 
-void QIndustrialSwitch::resizeEvent(QResizeEvent *event)
+void IndustrialSwitch::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     m_cacheValid = false;
 }
 
-QRectF QIndustrialSwitch::calculateSwitchRect() const
+QRectF IndustrialSwitch::calculateSwitchRect() const
 {
     QRectF r = rect().adjusted(10, 10, -10, -10);
     double w = r.width();
@@ -278,13 +281,13 @@ QRectF QIndustrialSwitch::calculateSwitchRect() const
     }
 }
 
-QRectF QIndustrialSwitch::calculateGuardRect() const
+QRectF IndustrialSwitch::calculateGuardRect() const
 {
     QRectF sw = calculateSwitchRect();
     return sw.adjusted(-8, -12, 8, 12);
 }
 
-void QIndustrialSwitch::drawScrew(QPainter &painter, const QPointF &center, double radius)
+void IndustrialSwitch::drawScrew(QPainter &painter, const QPointF &center, double radius)
 {
     painter.save();
     painter.setPen(Qt::NoPen);
@@ -312,7 +315,7 @@ void QIndustrialSwitch::drawScrew(QPainter &painter, const QPointF &center, doub
     painter.restore();
 }
 
-void QIndustrialSwitch::drawLed(QPainter &painter, const QPointF &center, double radius, bool active)
+void IndustrialSwitch::drawLed(QPainter &painter, const QPointF &center, double radius, bool active)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -361,7 +364,7 @@ void QIndustrialSwitch::drawLed(QPainter &painter, const QPointF &center, double
     painter.restore();
 }
 
-void QIndustrialSwitch::renderStaticBackground()
+void IndustrialSwitch::renderStaticBackground()
 {
     qreal dpr = devicePixelRatioF();
     QSize pixSize = size() * dpr;
@@ -512,7 +515,7 @@ void QIndustrialSwitch::renderStaticBackground()
     m_cacheValid = true;
 }
 
-void QIndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchArea, double currentPos)
+void IndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchArea, double currentPos)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -624,7 +627,7 @@ void QIndustrialSwitch::drawToggleLever(QPainter &painter, const QRectF &switchA
     painter.restore();
 }
 
-void QIndustrialSwitch::drawRocker(QPainter &painter, const QRectF &switchArea, double currentPos)
+void IndustrialSwitch::drawRocker(QPainter &painter, const QRectF &switchArea, double currentPos)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -747,7 +750,7 @@ void QIndustrialSwitch::drawRocker(QPainter &painter, const QRectF &switchArea, 
     painter.restore();
 }
 
-void QIndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switchArea*/)
+void IndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switchArea*/)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -826,7 +829,7 @@ void QIndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*swit
     painter.restore();
 }
 
-void QIndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
+void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
 {
     if (!m_cacheValid || m_cachedBackground.size() != size() * devicePixelRatioF()) {
         renderStaticBackground();
@@ -862,7 +865,7 @@ void QIndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
     }
 }
 
-void QIndustrialSwitch::mousePressEvent(QMouseEvent *event)
+void IndustrialSwitch::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() != Qt::LeftButton) {
         QWidget::mousePressEvent(event);
@@ -916,7 +919,7 @@ void QIndustrialSwitch::mousePressEvent(QMouseEvent *event)
     m_isDragging = true;
 }
 
-void QIndustrialSwitch::mouseMoveEvent(QMouseEvent *event)
+void IndustrialSwitch::mouseMoveEvent(QMouseEvent *event)
 {
     if (!m_isDragging || (m_hasSafetyGuard && !m_isGuardOpen)) {
         QWidget::mouseMoveEvent(event);
@@ -947,13 +950,13 @@ void QIndustrialSwitch::mouseMoveEvent(QMouseEvent *event)
     }
 }
 
-void QIndustrialSwitch::mouseReleaseEvent(QMouseEvent *event)
+void IndustrialSwitch::mouseReleaseEvent(QMouseEvent *event)
 {
     m_isDragging = false;
     QWidget::mouseReleaseEvent(event);
 }
 
-void QIndustrialSwitch::keyPressEvent(QKeyEvent *event)
+void IndustrialSwitch::keyPressEvent(QKeyEvent *event)
 {
     if (m_hasSafetyGuard && !m_isGuardOpen) {
         if (event->key() == Qt::Key_Space || event->key() == Qt::Key_Return) {
@@ -980,7 +983,7 @@ void QIndustrialSwitch::keyPressEvent(QKeyEvent *event)
     }
 }
 
-void QIndustrialSwitch::wheelEvent(QWheelEvent *event)
+void IndustrialSwitch::wheelEvent(QWheelEvent *event)
 {
     if (m_hasSafetyGuard && !m_isGuardOpen) {
         QWidget::wheelEvent(event);
@@ -995,3 +998,5 @@ void QIndustrialSwitch::wheelEvent(QWheelEvent *event)
     }
     event->accept();
 }
+
+} // namespace QtIndustrialWidgets

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QRadialGauge.h>
+#include <QtIndustrialWidgets/RadialGauge.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -12,24 +12,27 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 
-QRadialGauge::QRadialGauge(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+RadialGauge::RadialGauge(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-QSize QRadialGauge::sizeHint() const
+QSize RadialGauge::sizeHint() const
 {
     return QSize(220, 220);
 }
 
-QSize QRadialGauge::minimumSizeHint() const
+QSize RadialGauge::minimumSizeHint() const
 {
     return QSize(90, 90);
 }
 
-void QRadialGauge::setValue(double val)
+void RadialGauge::setValue(double val)
 {
     double clamped = std::clamp(val, m_minimum, m_maximum);
     if (qFuzzyCompare(clamped, m_value)) {
@@ -54,17 +57,17 @@ void QRadialGauge::setValue(double val)
     update();
 }
 
-void QRadialGauge::setMinimum(double min)
+void RadialGauge::setMinimum(double min)
 {
     setRange(min, m_maximum);
 }
 
-void QRadialGauge::setMaximum(double max)
+void RadialGauge::setMaximum(double max)
 {
     setRange(m_minimum, max);
 }
 
-void QRadialGauge::setRange(double min, double max)
+void RadialGauge::setRange(double min, double max)
 {
     if (min >= max) {
         return;
@@ -83,7 +86,7 @@ void QRadialGauge::setRange(double min, double max)
     update();
 }
 
-void QRadialGauge::setPrecision(int precision)
+void RadialGauge::setPrecision(int precision)
 {
     if (m_precision == precision) return;
     m_precision = std::max(0, precision);
@@ -92,7 +95,7 @@ void QRadialGauge::setPrecision(int precision)
     update();
 }
 
-void QRadialGauge::setUnit(const QString &unit)
+void RadialGauge::setUnit(const QString &unit)
 {
     if (m_unit == unit) return;
     m_unit = unit;
@@ -101,7 +104,7 @@ void QRadialGauge::setUnit(const QString &unit)
     update();
 }
 
-void QRadialGauge::setStartAngle(double angle)
+void RadialGauge::setStartAngle(double angle)
 {
     if (qFuzzyCompare(m_startAngle, angle)) return;
     m_startAngle = angle;
@@ -110,7 +113,7 @@ void QRadialGauge::setStartAngle(double angle)
     update();
 }
 
-void QRadialGauge::setSpanAngle(double span)
+void RadialGauge::setSpanAngle(double span)
 {
     if (qFuzzyCompare(m_spanAngle, span) || span <= 0.0) return;
     m_spanAngle = span;
@@ -119,7 +122,7 @@ void QRadialGauge::setSpanAngle(double span)
     update();
 }
 
-void QRadialGauge::setMajorTicks(int count)
+void RadialGauge::setMajorTicks(int count)
 {
     if (m_majorTicks == count || count < 1) return;
     m_majorTicks = count;
@@ -128,7 +131,7 @@ void QRadialGauge::setMajorTicks(int count)
     update();
 }
 
-void QRadialGauge::setMinorTicks(int count)
+void RadialGauge::setMinorTicks(int count)
 {
     if (m_minorTicks == count || count < 0) return;
     m_minorTicks = count;
@@ -137,7 +140,7 @@ void QRadialGauge::setMinorTicks(int count)
     update();
 }
 
-void QRadialGauge::setWarningThreshold(double threshold)
+void RadialGauge::setWarningThreshold(double threshold)
 {
     if (qFuzzyCompare(m_warningThreshold, threshold)) return;
     m_warningThreshold = threshold;
@@ -147,7 +150,7 @@ void QRadialGauge::setWarningThreshold(double threshold)
     update();
 }
 
-void QRadialGauge::setErrorThreshold(double threshold)
+void RadialGauge::setErrorThreshold(double threshold)
 {
     if (qFuzzyCompare(m_errorThreshold, threshold)) return;
     m_errorThreshold = threshold;
@@ -157,7 +160,7 @@ void QRadialGauge::setErrorThreshold(double threshold)
     update();
 }
 
-void QRadialGauge::setThresholdBandsVisible(bool visible)
+void RadialGauge::setThresholdBandsVisible(bool visible)
 {
     if (m_thresholdBandsVisible == visible) return;
     m_thresholdBandsVisible = visible;
@@ -166,7 +169,7 @@ void QRadialGauge::setThresholdBandsVisible(bool visible)
     update();
 }
 
-void QRadialGauge::setDigitalDisplayVisible(bool visible)
+void RadialGauge::setDigitalDisplayVisible(bool visible)
 {
     if (m_digitalDisplayVisible == visible) return;
     m_digitalDisplayVisible = visible;
@@ -175,7 +178,7 @@ void QRadialGauge::setDigitalDisplayVisible(bool visible)
     update();
 }
 
-void QRadialGauge::setNeedleColor(const QColor &color)
+void RadialGauge::setNeedleColor(const QColor &color)
 {
     if (m_needleColor == color) return;
     m_needleColor = color;
@@ -183,7 +186,7 @@ void QRadialGauge::setNeedleColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setNormalColor(const QColor &color)
+void RadialGauge::setNormalColor(const QColor &color)
 {
     if (m_normalColor == color) return;
     m_normalColor = color;
@@ -192,7 +195,7 @@ void QRadialGauge::setNormalColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setWarningColor(const QColor &color)
+void RadialGauge::setWarningColor(const QColor &color)
 {
     if (m_warningColor == color) return;
     m_warningColor = color;
@@ -201,7 +204,7 @@ void QRadialGauge::setWarningColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setErrorColor(const QColor &color)
+void RadialGauge::setErrorColor(const QColor &color)
 {
     if (m_errorColor == color) return;
     m_errorColor = color;
@@ -210,7 +213,7 @@ void QRadialGauge::setErrorColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setDialColor(const QColor &color)
+void RadialGauge::setDialColor(const QColor &color)
 {
     if (m_dialColor == color) return;
     m_dialColor = color;
@@ -219,7 +222,7 @@ void QRadialGauge::setDialColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setScaleColor(const QColor &color)
+void RadialGauge::setScaleColor(const QColor &color)
 {
     if (m_scaleColor == color) return;
     m_scaleColor = color;
@@ -228,7 +231,7 @@ void QRadialGauge::setScaleColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setTextColor(const QColor &color)
+void RadialGauge::setTextColor(const QColor &color)
 {
     if (m_textColor == color) return;
     m_textColor = color;
@@ -237,7 +240,7 @@ void QRadialGauge::setTextColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::setBezelColor(const QColor &color)
+void RadialGauge::setBezelColor(const QColor &color)
 {
     if (m_bezelColor == color) return;
     m_bezelColor = color;
@@ -246,18 +249,18 @@ void QRadialGauge::setBezelColor(const QColor &color)
     update();
 }
 
-void QRadialGauge::invalidateCache()
+void RadialGauge::invalidateCache()
 {
     m_cacheDirty = true;
 }
 
-void QRadialGauge::resizeEvent(QResizeEvent *event)
+void RadialGauge::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
 }
 
-void QRadialGauge::changeEvent(QEvent *event)
+void RadialGauge::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::PaletteChange) {
         invalidateCache();
@@ -266,7 +269,7 @@ void QRadialGauge::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
 }
 
-double QRadialGauge::valueToAngle(double val) const
+double RadialGauge::valueToAngle(double val) const
 {
     if (m_maximum <= m_minimum) {
         return m_startAngle;
@@ -276,7 +279,7 @@ double QRadialGauge::valueToAngle(double val) const
     return m_startAngle + factor * m_spanAngle;
 }
 
-void QRadialGauge::renderStaticScale(const QSize &targetSize)
+void RadialGauge::renderStaticScale(const QSize &targetSize)
 {
     qreal dpr = devicePixelRatioF();
     QSize pixmapSize = (targetSize * dpr);
@@ -468,7 +471,7 @@ void QRadialGauge::renderStaticScale(const QSize &targetSize)
     m_cacheDirty = false;
 }
 
-void QRadialGauge::paintEvent(QPaintEvent *)
+void RadialGauge::paintEvent(QPaintEvent *)
 {
     if (m_cacheDirty || m_cachePixmap.size() != (size() * devicePixelRatioF())) {
         renderStaticScale(size());
@@ -584,3 +587,5 @@ void QRadialGauge::paintEvent(QPaintEvent *)
     painter.drawEllipse(QPointF(center.x() - innerPivot * 0.3, center.y() - innerPivot * 0.3),
                        innerPivot * 0.25, innerPivot * 0.25);
 }
+
+} // namespace QtIndustrialWidgets

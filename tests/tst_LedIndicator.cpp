@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QLedIndicator.h>
+#include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtGui/QPixmap>
 
-class tst_QLedIndicator : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_LedIndicator : public QObject
 {
     Q_OBJECT
 
@@ -21,18 +23,18 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QLedIndicator::defaultValues()
+void tst_LedIndicator::defaultValues()
 {
-    QLedIndicator led;
+    LedIndicator led;
     QCOMPARE(led.isOn(), true);
     QCOMPARE(led.isBlinking(), false);
-    QCOMPARE(led.shape(), QLedIndicator::LedShape::Circular);
+    QCOMPARE(led.shape(), LedIndicator::LedShape::Circular);
     QCOMPARE(led.isClickable(), false);
 }
 
-void tst_QLedIndicator::stateAndToggling()
+void tst_LedIndicator::stateAndToggling()
 {
-    QLedIndicator led;
+    LedIndicator led;
     led.setOn(false);
     QCOMPARE(led.isOn(), false);
 
@@ -43,31 +45,31 @@ void tst_QLedIndicator::stateAndToggling()
     QCOMPARE(led.isOn(), false);
 }
 
-void tst_QLedIndicator::signalEmission()
+void tst_LedIndicator::signalEmission()
 {
-    QLedIndicator led;
+    LedIndicator led;
     led.setOn(false);
 
-    QSignalSpy spy(&led, &QLedIndicator::stateChanged);
+    QSignalSpy spy(&led, &LedIndicator::stateChanged);
     led.setOn(true);
 
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.takeFirst().at(0).toBool(), true);
 }
 
-void tst_QLedIndicator::shapes()
+void tst_LedIndicator::shapes()
 {
-    QLedIndicator led;
-    led.setShape(QLedIndicator::LedShape::Rectangular);
-    QCOMPARE(led.shape(), QLedIndicator::LedShape::Rectangular);
+    LedIndicator led;
+    led.setShape(LedIndicator::LedShape::Rectangular);
+    QCOMPARE(led.shape(), LedIndicator::LedShape::Rectangular);
 
-    led.setShape(QLedIndicator::LedShape::Circular);
-    QCOMPARE(led.shape(), QLedIndicator::LedShape::Circular);
+    led.setShape(LedIndicator::LedShape::Circular);
+    QCOMPARE(led.shape(), LedIndicator::LedShape::Circular);
 }
 
-void tst_QLedIndicator::blinking()
+void tst_LedIndicator::blinking()
 {
-    QLedIndicator led;
+    LedIndicator led;
     led.setBlinking(true);
     QVERIFY(led.isBlinking());
 
@@ -78,14 +80,14 @@ void tst_QLedIndicator::blinking()
     QVERIFY(!led.isBlinking());
 }
 
-void tst_QLedIndicator::clickableMouseInteraction()
+void tst_LedIndicator::clickableMouseInteraction()
 {
-    QLedIndicator led;
+    LedIndicator led;
     led.setClickable(true);
     led.setOn(false);
 
-    QSignalSpy clickSpy(&led, &QLedIndicator::clicked);
-    QSignalSpy stateSpy(&led, &QLedIndicator::stateChanged);
+    QSignalSpy clickSpy(&led, &LedIndicator::clicked);
+    QSignalSpy stateSpy(&led, &LedIndicator::stateChanged);
 
     QTest::mouseClick(&led, Qt::LeftButton);
 
@@ -94,11 +96,11 @@ void tst_QLedIndicator::clickableMouseInteraction()
     QCOMPARE(led.isOn(), true);
 }
 
-void tst_QLedIndicator::renderOffscreen()
+void tst_LedIndicator::renderOffscreen()
 {
-    QLedIndicator led;
+    LedIndicator led;
     led.setOn(true);
-    led.setShape(QLedIndicator::LedShape::Circular);
+    led.setShape(LedIndicator::LedShape::Circular);
     led.setLabelText(QStringLiteral("RUN"));
     led.resize(60, 60);
 
@@ -106,15 +108,15 @@ void tst_QLedIndicator::renderOffscreen()
     led.render(&pix);
     QVERIFY(!pix.isNull());
 
-    led.setShape(QLedIndicator::LedShape::Rectangular);
+    led.setShape(LedIndicator::LedShape::Rectangular);
     QPixmap pixRect(led.size());
     led.render(&pixRect);
     QVERIFY(!pixRect.isNull());
 }
 
-void tst_QLedIndicator::extremeResizeNoCrash()
+void tst_LedIndicator::extremeResizeNoCrash()
 {
-    QLedIndicator led;
+    LedIndicator led;
     led.resize(1, 1);
     QPixmap pixSmall(led.size());
     led.render(&pixSmall);
@@ -125,5 +127,7 @@ void tst_QLedIndicator::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QLedIndicator)
-#include "tst_QLedIndicator.moc"
+QTEST_MAIN(tst_LedIndicator)
+#include "tst_LedIndicator.moc"
+
+

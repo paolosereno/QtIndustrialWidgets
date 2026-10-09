@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QIndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialKnob.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -15,7 +15,10 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 
-QIndustrialKnob::QIndustrialKnob(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+IndustrialKnob::IndustrialKnob(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
@@ -23,17 +26,17 @@ QIndustrialKnob::QIndustrialKnob(QWidget *parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-QSize QIndustrialKnob::sizeHint() const
+QSize IndustrialKnob::sizeHint() const
 {
     return QSize(160, 180);
 }
 
-QSize QIndustrialKnob::minimumSizeHint() const
+QSize IndustrialKnob::minimumSizeHint() const
 {
     return QSize(80, 90);
 }
 
-void QIndustrialKnob::setValue(double val)
+void IndustrialKnob::setValue(double val)
 {
     double clamped = std::clamp(val, m_minimum, m_maximum);
     if (m_mode == KnobMode::Discrete && m_discreteSteps > 1) {
@@ -51,17 +54,17 @@ void QIndustrialKnob::setValue(double val)
     update();
 }
 
-void QIndustrialKnob::setMinimum(double min)
+void IndustrialKnob::setMinimum(double min)
 {
     setRange(min, m_maximum);
 }
 
-void QIndustrialKnob::setMaximum(double max)
+void IndustrialKnob::setMaximum(double max)
 {
     setRange(m_minimum, max);
 }
 
-void QIndustrialKnob::setRange(double min, double max)
+void IndustrialKnob::setRange(double min, double max)
 {
     if (min >= max) return;
     if (qFuzzyCompare(min, m_minimum) && qFuzzyCompare(max, m_maximum)) return;
@@ -76,14 +79,14 @@ void QIndustrialKnob::setRange(double min, double max)
     update();
 }
 
-void QIndustrialKnob::setStep(double step)
+void IndustrialKnob::setStep(double step)
 {
     if (step <= 0.0 || qFuzzyCompare(m_step, step)) return;
     m_step = step;
     Q_EMIT appearanceChanged();
 }
 
-void QIndustrialKnob::setPrecision(int precision)
+void IndustrialKnob::setPrecision(int precision)
 {
     if (m_precision == precision) return;
     m_precision = std::max(0, precision);
@@ -91,7 +94,7 @@ void QIndustrialKnob::setPrecision(int precision)
     update();
 }
 
-void QIndustrialKnob::setUnit(const QString &unit)
+void IndustrialKnob::setUnit(const QString &unit)
 {
     if (m_unit == unit) return;
     m_unit = unit;
@@ -100,7 +103,7 @@ void QIndustrialKnob::setUnit(const QString &unit)
     update();
 }
 
-void QIndustrialKnob::setStartAngle(double angle)
+void IndustrialKnob::setStartAngle(double angle)
 {
     if (qFuzzyCompare(m_startAngle, angle)) return;
     m_startAngle = angle;
@@ -109,7 +112,7 @@ void QIndustrialKnob::setStartAngle(double angle)
     update();
 }
 
-void QIndustrialKnob::setSpanAngle(double span)
+void IndustrialKnob::setSpanAngle(double span)
 {
     if (span <= 0.0 || qFuzzyCompare(m_spanAngle, span)) return;
     m_spanAngle = span;
@@ -118,7 +121,7 @@ void QIndustrialKnob::setSpanAngle(double span)
     update();
 }
 
-void QIndustrialKnob::setMajorTicks(int count)
+void IndustrialKnob::setMajorTicks(int count)
 {
     if (m_majorTicks == count || count < 1) return;
     m_majorTicks = count;
@@ -127,7 +130,7 @@ void QIndustrialKnob::setMajorTicks(int count)
     update();
 }
 
-void QIndustrialKnob::setMinorTicks(int count)
+void IndustrialKnob::setMinorTicks(int count)
 {
     if (m_minorTicks == count || count < 0) return;
     m_minorTicks = count;
@@ -136,7 +139,7 @@ void QIndustrialKnob::setMinorTicks(int count)
     update();
 }
 
-void QIndustrialKnob::setMode(KnobMode mode)
+void IndustrialKnob::setMode(KnobMode mode)
 {
     if (m_mode == mode) return;
     m_mode = mode;
@@ -147,7 +150,7 @@ void QIndustrialKnob::setMode(KnobMode mode)
     update();
 }
 
-void QIndustrialKnob::setDiscreteSteps(int steps)
+void IndustrialKnob::setDiscreteSteps(int steps)
 {
     int s = std::max(2, steps);
     if (m_discreteSteps == s) return;
@@ -160,7 +163,7 @@ void QIndustrialKnob::setDiscreteSteps(int steps)
     update();
 }
 
-void QIndustrialKnob::setTrackVisible(bool visible)
+void IndustrialKnob::setTrackVisible(bool visible)
 {
     if (m_trackVisible == visible) return;
     m_trackVisible = visible;
@@ -168,7 +171,7 @@ void QIndustrialKnob::setTrackVisible(bool visible)
     update();
 }
 
-void QIndustrialKnob::setValueDisplayVisible(bool visible)
+void IndustrialKnob::setValueDisplayVisible(bool visible)
 {
     if (m_valueDisplayVisible == visible) return;
     m_valueDisplayVisible = visible;
@@ -177,7 +180,7 @@ void QIndustrialKnob::setValueDisplayVisible(bool visible)
     update();
 }
 
-void QIndustrialKnob::setKnobColor(const QColor &color)
+void IndustrialKnob::setKnobColor(const QColor &color)
 {
     if (m_knobColor == color) return;
     m_knobColor = color;
@@ -185,7 +188,7 @@ void QIndustrialKnob::setKnobColor(const QColor &color)
     update();
 }
 
-void QIndustrialKnob::setPointerColor(const QColor &color)
+void IndustrialKnob::setPointerColor(const QColor &color)
 {
     if (m_pointerColor == color) return;
     m_pointerColor = color;
@@ -193,7 +196,7 @@ void QIndustrialKnob::setPointerColor(const QColor &color)
     update();
 }
 
-void QIndustrialKnob::setScaleColor(const QColor &color)
+void IndustrialKnob::setScaleColor(const QColor &color)
 {
     if (m_scaleColor == color) return;
     m_scaleColor = color;
@@ -202,7 +205,7 @@ void QIndustrialKnob::setScaleColor(const QColor &color)
     update();
 }
 
-void QIndustrialKnob::setTrackColor(const QColor &color)
+void IndustrialKnob::setTrackColor(const QColor &color)
 {
     if (m_trackColor == color) return;
     m_trackColor = color;
@@ -210,7 +213,7 @@ void QIndustrialKnob::setTrackColor(const QColor &color)
     update();
 }
 
-void QIndustrialKnob::setTextColor(const QColor &color)
+void IndustrialKnob::setTextColor(const QColor &color)
 {
     if (m_textColor == color) return;
     m_textColor = color;
@@ -219,18 +222,18 @@ void QIndustrialKnob::setTextColor(const QColor &color)
     update();
 }
 
-void QIndustrialKnob::invalidateCache()
+void IndustrialKnob::invalidateCache()
 {
     m_cacheDirty = true;
 }
 
-void QIndustrialKnob::resizeEvent(QResizeEvent *event)
+void IndustrialKnob::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
 }
 
-void QIndustrialKnob::changeEvent(QEvent *event)
+void IndustrialKnob::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::PaletteChange) {
         invalidateCache();
@@ -239,7 +242,7 @@ void QIndustrialKnob::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
 }
 
-double QIndustrialKnob::valueToAngle(double val) const
+double IndustrialKnob::valueToAngle(double val) const
 {
     if (m_maximum <= m_minimum) return m_startAngle;
     double factor = (val - m_minimum) / (m_maximum - m_minimum);
@@ -247,7 +250,7 @@ double QIndustrialKnob::valueToAngle(double val) const
     return m_startAngle + factor * m_spanAngle;
 }
 
-double QIndustrialKnob::angleToValue(double angle) const
+double IndustrialKnob::angleToValue(double angle) const
 {
     if (m_spanAngle <= 0.0) return m_minimum;
     double normAngle = angle - m_startAngle;
@@ -259,7 +262,7 @@ double QIndustrialKnob::angleToValue(double angle) const
     return m_minimum + factor * (m_maximum - m_minimum);
 }
 
-void QIndustrialKnob::updateValueFromPoint(const QPointF &pos)
+void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
 {
     const double w = width();
     const double h = height();
@@ -294,7 +297,7 @@ void QIndustrialKnob::updateValueFromPoint(const QPointF &pos)
     }
 }
 
-void QIndustrialKnob::mousePressEvent(QMouseEvent *event)
+void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         m_isDragging = true;
@@ -306,7 +309,7 @@ void QIndustrialKnob::mousePressEvent(QMouseEvent *event)
     QWidget::mousePressEvent(event);
 }
 
-void QIndustrialKnob::mouseMoveEvent(QMouseEvent *event)
+void IndustrialKnob::mouseMoveEvent(QMouseEvent *event)
 {
     if (m_isDragging && (event->buttons() & Qt::LeftButton)) {
         updateValueFromPoint(event->position());
@@ -316,7 +319,7 @@ void QIndustrialKnob::mouseMoveEvent(QMouseEvent *event)
     QWidget::mouseMoveEvent(event);
 }
 
-void QIndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
+void IndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         m_isDragging = false;
@@ -326,7 +329,7 @@ void QIndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
     QWidget::mouseReleaseEvent(event);
 }
 
-void QIndustrialKnob::wheelEvent(QWheelEvent *event)
+void IndustrialKnob::wheelEvent(QWheelEvent *event)
 {
     double numSteps = event->angleDelta().y() / 120.0;
     double delta = numSteps * m_step;
@@ -334,7 +337,7 @@ void QIndustrialKnob::wheelEvent(QWheelEvent *event)
     event->accept();
 }
 
-void QIndustrialKnob::keyPressEvent(QKeyEvent *event)
+void IndustrialKnob::keyPressEvent(QKeyEvent *event)
 {
     switch (event->key()) {
         case Qt::Key_Left:
@@ -368,7 +371,7 @@ void QIndustrialKnob::keyPressEvent(QKeyEvent *event)
     }
 }
 
-void QIndustrialKnob::renderStaticScale(const QSize &targetSize)
+void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 {
     qreal dpr = devicePixelRatioF();
     QSize pixmapSize = (QSizeF(targetSize) * dpr).toSize();
@@ -480,7 +483,7 @@ void QIndustrialKnob::renderStaticScale(const QSize &targetSize)
     m_cacheDirty = false;
 }
 
-void QIndustrialKnob::paintEvent(QPaintEvent *)
+void IndustrialKnob::paintEvent(QPaintEvent *)
 {
     if (m_cacheDirty || m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
         renderStaticScale(size());
@@ -629,3 +632,5 @@ void QIndustrialKnob::paintEvent(QPaintEvent *)
         painter.drawText(podRect, Qt::AlignCenter, valStr);
     }
 }
+
+} // namespace QtIndustrialWidgets

@@ -10,16 +10,18 @@
 #include <QtCore/QTimer>
 #include <QtCore/QElapsedTimer>
 
-class QRadialGauge;
-class QLinearGauge;
-class QSevenSegmentDisplay;
-class QLedIndicator;
-class QIndustrialKnob;
-class QStripChart;
-class QIndustrialSwitch;
-class QLevelMeter;
-class QAnnunciatorPanel;
-class QCompass;
+namespace QtIndustrialWidgets {
+class RadialGauge;
+class LinearGauge;
+class SevenSegmentDisplay;
+class LedIndicator;
+class IndustrialKnob;
+class StripChart;
+class IndustrialSwitch;
+class LevelMeter;
+class AnnunciatorPanel;
+class Compass;
+}
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -47,45 +49,45 @@ private:
     void switchToTabWithTransition(int nextIndex);
 
     // Gauges
-    QRadialGauge *m_rpmGauge{nullptr};
-    QRadialGauge *m_boostGauge{nullptr};
-    QRadialGauge *m_oilGauge{nullptr};
-    QRadialGauge *m_steeringGauge{nullptr};
+    QtIndustrialWidgets::RadialGauge *m_rpmGauge{nullptr};
+    QtIndustrialWidgets::RadialGauge *m_boostGauge{nullptr};
+    QtIndustrialWidgets::RadialGauge *m_oilGauge{nullptr};
+    QtIndustrialWidgets::RadialGauge *m_steeringGauge{nullptr};
 
-    QLinearGauge *m_coolantGauge{nullptr};
-    QLinearGauge *m_fuelGauge{nullptr};
-    QLinearGauge *m_hydraulicGauge{nullptr};
+    QtIndustrialWidgets::LinearGauge *m_coolantGauge{nullptr};
+    QtIndustrialWidgets::LinearGauge *m_fuelGauge{nullptr};
+    QtIndustrialWidgets::LinearGauge *m_hydraulicGauge{nullptr};
 
-    QSevenSegmentDisplay *m_speedDisplay{nullptr};
-    QSevenSegmentDisplay *m_voltageDisplay{nullptr};
-    QSevenSegmentDisplay *m_timerDisplay{nullptr};
+    QtIndustrialWidgets::SevenSegmentDisplay *m_speedDisplay{nullptr};
+    QtIndustrialWidgets::SevenSegmentDisplay *m_voltageDisplay{nullptr};
+    QtIndustrialWidgets::SevenSegmentDisplay *m_timerDisplay{nullptr};
 
     // LED Indicators
-    QLedIndicator *m_runLed{nullptr};
-    QLedIndicator *m_alarmLed{nullptr};
-    QLedIndicator *m_warnLed{nullptr};
-    QLedIndicator *m_pumpLed{nullptr};
+    QtIndustrialWidgets::LedIndicator *m_runLed{nullptr};
+    QtIndustrialWidgets::LedIndicator *m_alarmLed{nullptr};
+    QtIndustrialWidgets::LedIndicator *m_warnLed{nullptr};
+    QtIndustrialWidgets::LedIndicator *m_pumpLed{nullptr};
 
     // Rotary Knobs
-    QIndustrialKnob *m_throttleKnob{nullptr};
-    QIndustrialKnob *m_boostKnob{nullptr};
-    QIndustrialKnob *m_modeSelectorKnob{nullptr};
+    QtIndustrialWidgets::IndustrialKnob *m_throttleKnob{nullptr};
+    QtIndustrialWidgets::IndustrialKnob *m_boostKnob{nullptr};
+    QtIndustrialWidgets::IndustrialKnob *m_modeSelectorKnob{nullptr};
 
     // Telemetry Strip Chart
-    QStripChart *m_stripChart{nullptr};
+    QtIndustrialWidgets::StripChart *m_stripChart{nullptr};
     int m_chRpm{0};
     int m_chBoost{1};
     int m_chTemp{2};
 
     // Industrial Switches
-    QIndustrialSwitch *m_powerSwitch{nullptr};
-    QIndustrialSwitch *m_safetySwitch{nullptr};
-    QIndustrialSwitch *m_modeSwitch{nullptr};
-    QIndustrialSwitch *m_rockerSwitch{nullptr};
+    QtIndustrialWidgets::IndustrialSwitch *m_powerSwitch{nullptr};
+    QtIndustrialWidgets::IndustrialSwitch *m_safetySwitch{nullptr};
+    QtIndustrialWidgets::IndustrialSwitch *m_modeSwitch{nullptr};
+    QtIndustrialWidgets::IndustrialSwitch *m_rockerSwitch{nullptr};
 
     // Level Meters / VU Meters
-    QLevelMeter *m_vibrationMeter{nullptr};
-    QLevelMeter *m_audioVuMeter{nullptr};
+    QtIndustrialWidgets::LevelMeter *m_vibrationMeter{nullptr};
+    QtIndustrialWidgets::LevelMeter *m_audioVuMeter{nullptr};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};
@@ -96,13 +98,13 @@ private:
     QSlider *m_hydraulicSlider{nullptr};
 
     // Alarm Annunciator Matrix (ISA-18.1)
-    QAnnunciatorPanel *m_annunciatorPanel{nullptr};
+    QtIndustrialWidgets::AnnunciatorPanel *m_annunciatorPanel{nullptr};
     QLabel *m_annunciatorHornLabel{nullptr};
     QLabel *m_annunciatorStatusLabel{nullptr};
 
     // Navigation / Directional Gyro (QCompass)
-    QCompass *m_compassHeadingUp{nullptr};
-    QCompass *m_compassNorthUp{nullptr};
+    QtIndustrialWidgets::Compass *m_compassHeadingUp{nullptr};
+    QtIndustrialWidgets::Compass *m_compassNorthUp{nullptr};
     QSlider *m_headingSlider{nullptr};
     QSlider *m_targetBugSlider{nullptr};
     QLabel *m_deviationLabel{nullptr};

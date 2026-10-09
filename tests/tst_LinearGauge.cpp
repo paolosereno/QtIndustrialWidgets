@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
-#include <QtIndustrialWidgets/QLinearGauge.h>
+#include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtGui/QPixmap>
 
-class tst_QLinearGauge : public QObject
+using namespace QtIndustrialWidgets;
+
+class tst_LinearGauge : public QObject
 {
     Q_OBJECT
 
@@ -20,18 +22,18 @@ private Q_SLOTS:
     void extremeResizeNoCrash();
 };
 
-void tst_QLinearGauge::defaultValues()
+void tst_LinearGauge::defaultValues()
 {
-    QLinearGauge gauge;
+    LinearGauge gauge;
     QCOMPARE(gauge.minimum(), 0.0);
     QCOMPARE(gauge.maximum(), 100.0);
     QCOMPARE(gauge.value(), 0.0);
     QCOMPARE(gauge.orientation(), Qt::Vertical);
 }
 
-void tst_QLinearGauge::rangeAndClamping()
+void tst_LinearGauge::rangeAndClamping()
 {
-    QLinearGauge gauge;
+    LinearGauge gauge;
     gauge.setRange(-20.0, 80.0);
     QCOMPARE(gauge.minimum(), -20.0);
     QCOMPARE(gauge.maximum(), 80.0);
@@ -49,9 +51,9 @@ void tst_QLinearGauge::rangeAndClamping()
     QCOMPARE(gauge.value(), 25.0);
 }
 
-void tst_QLinearGauge::orientationSwitching()
+void tst_LinearGauge::orientationSwitching()
 {
-    QLinearGauge gauge;
+    LinearGauge gauge;
     gauge.setOrientation(Qt::Horizontal);
     QCOMPARE(gauge.orientation(), Qt::Horizontal);
 
@@ -59,9 +61,9 @@ void tst_QLinearGauge::orientationSwitching()
     QCOMPARE(gauge.orientation(), Qt::Vertical);
 }
 
-void tst_QLinearGauge::thermometerMode()
+void tst_LinearGauge::thermometerMode()
 {
-    QLinearGauge gauge;
+    LinearGauge gauge;
     gauge.setThermometerMode(true);
     QVERIFY(gauge.isThermometerMode());
 
@@ -69,10 +71,10 @@ void tst_QLinearGauge::thermometerMode()
     QVERIFY(!gauge.isThermometerMode());
 }
 
-void tst_QLinearGauge::signalEmission()
+void tst_LinearGauge::signalEmission()
 {
-    QLinearGauge gauge;
-    QSignalSpy spy(&gauge, &QLinearGauge::valueChanged);
+    LinearGauge gauge;
+    QSignalSpy spy(&gauge, &LinearGauge::valueChanged);
 
     gauge.setValue(35.0);
     QCOMPARE(spy.count(), 1);
@@ -82,9 +84,9 @@ void tst_QLinearGauge::signalEmission()
     QCOMPARE(spy.count(), 1);
 }
 
-void tst_QLinearGauge::renderOffscreen()
+void tst_LinearGauge::renderOffscreen()
 {
-    QLinearGauge gauge;
+    LinearGauge gauge;
     gauge.setRange(0.0, 100.0);
     gauge.setValue(72.0);
     gauge.setOrientation(Qt::Vertical);
@@ -103,9 +105,9 @@ void tst_QLinearGauge::renderOffscreen()
     QVERIFY(!pixH.isNull());
 }
 
-void tst_QLinearGauge::extremeResizeNoCrash()
+void tst_LinearGauge::extremeResizeNoCrash()
 {
-    QLinearGauge gauge;
+    LinearGauge gauge;
     gauge.resize(1, 1);
     QPixmap pixSmall(gauge.size());
     gauge.render(&pixSmall);
@@ -116,5 +118,7 @@ void tst_QLinearGauge::extremeResizeNoCrash()
     QVERIFY(!pixLarge.isNull());
 }
 
-QTEST_MAIN(tst_QLinearGauge)
-#include "tst_QLinearGauge.moc"
+QTEST_MAIN(tst_LinearGauge)
+#include "tst_LinearGauge.moc"
+
+

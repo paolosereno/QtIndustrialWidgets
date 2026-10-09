@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QStripChart.h>
+#include <QtIndustrialWidgets/StripChart.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -12,14 +12,17 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 
-QStripChart::QStripChart(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+StripChart::StripChart(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-const QStripChart::ChannelInfo *QStripChart::channel(int index) const
+const StripChart::ChannelInfo *StripChart::channel(int index) const
 {
     if (index >= 0 && index < static_cast<int>(m_channels.size())) {
         return &m_channels[index];
@@ -27,17 +30,17 @@ const QStripChart::ChannelInfo *QStripChart::channel(int index) const
     return nullptr;
 }
 
-QSize QStripChart::sizeHint() const
+QSize StripChart::sizeHint() const
 {
     return QSize(380, 220);
 }
 
-QSize QStripChart::minimumSizeHint() const
+QSize StripChart::minimumSizeHint() const
 {
     return QSize(180, 120);
 }
 
-int QStripChart::addChannel(const QString &name, const QColor &color, double penWidth)
+int StripChart::addChannel(const QString &name, const QColor &color, double penWidth)
 {
     ChannelInfo ch;
     ch.name = name;
@@ -54,7 +57,7 @@ int QStripChart::addChannel(const QString &name, const QColor &color, double pen
     return static_cast<int>(m_channels.size()) - 1;
 }
 
-void QStripChart::addDataPoint(int channelId, double value)
+void StripChart::addDataPoint(int channelId, double value)
 {
     if (channelId < 0 || channelId >= static_cast<int>(m_channels.size())) {
         return;
@@ -80,7 +83,7 @@ void QStripChart::addDataPoint(int channelId, double value)
     update();
 }
 
-void QStripChart::addDataPoints(const QVector<double> &values)
+void StripChart::addDataPoints(const QVector<double> &values)
 {
     int limit = std::min(static_cast<int>(values.size()), static_cast<int>(m_channels.size()));
     for (int i = 0; i < limit; ++i) {
@@ -105,7 +108,7 @@ void QStripChart::addDataPoints(const QVector<double> &values)
     update();
 }
 
-void QStripChart::clear()
+void StripChart::clear()
 {
     for (auto &ch : m_channels) {
         ch.headIndex = 0;
@@ -116,7 +119,7 @@ void QStripChart::clear()
     update();
 }
 
-void QStripChart::setCapacity(int count)
+void StripChart::setCapacity(int count)
 {
     int c = std::clamp(count, 10, 5000);
     if (m_capacity == c) return;
@@ -132,17 +135,17 @@ void QStripChart::setCapacity(int count)
     update();
 }
 
-void QStripChart::setYMinimum(double min)
+void StripChart::setYMinimum(double min)
 {
     setYRange(min, m_yMaximum);
 }
 
-void QStripChart::setYMaximum(double max)
+void StripChart::setYMaximum(double max)
 {
     setYRange(m_yMinimum, max);
 }
 
-void QStripChart::setYRange(double min, double max)
+void StripChart::setYRange(double min, double max)
 {
     if (min >= max) return;
     if (qFuzzyCompare(min, m_yMinimum) && qFuzzyCompare(max, m_yMaximum)) return;
@@ -154,7 +157,7 @@ void QStripChart::setYRange(double min, double max)
     update();
 }
 
-void QStripChart::setAutoScaleY(bool autoScale)
+void StripChart::setAutoScaleY(bool autoScale)
 {
     if (m_autoScaleY == autoScale) return;
     m_autoScaleY = autoScale;
@@ -166,7 +169,7 @@ void QStripChart::setAutoScaleY(bool autoScale)
     update();
 }
 
-void QStripChart::setGridVisible(bool visible)
+void StripChart::setGridVisible(bool visible)
 {
     if (m_gridVisible == visible) return;
     m_gridVisible = visible;
@@ -175,7 +178,7 @@ void QStripChart::setGridVisible(bool visible)
     update();
 }
 
-void QStripChart::setLegendVisible(bool visible)
+void StripChart::setLegendVisible(bool visible)
 {
     if (m_legendVisible == visible) return;
     m_legendVisible = visible;
@@ -184,7 +187,7 @@ void QStripChart::setLegendVisible(bool visible)
     update();
 }
 
-void QStripChart::setGridColor(const QColor &color)
+void StripChart::setGridColor(const QColor &color)
 {
     if (m_gridColor == color) return;
     m_gridColor = color;
@@ -193,7 +196,7 @@ void QStripChart::setGridColor(const QColor &color)
     update();
 }
 
-void QStripChart::setBackgroundColor(const QColor &color)
+void StripChart::setBackgroundColor(const QColor &color)
 {
     if (m_backgroundColor == color) return;
     m_backgroundColor = color;
@@ -202,7 +205,7 @@ void QStripChart::setBackgroundColor(const QColor &color)
     update();
 }
 
-void QStripChart::setBezelColor(const QColor &color)
+void StripChart::setBezelColor(const QColor &color)
 {
     if (m_bezelColor == color) return;
     m_bezelColor = color;
@@ -211,7 +214,7 @@ void QStripChart::setBezelColor(const QColor &color)
     update();
 }
 
-void QStripChart::setHorizontalDivisions(int divisions)
+void StripChart::setHorizontalDivisions(int divisions)
 {
     int d = std::clamp(divisions, 2, 20);
     if (m_horizontalDivisions == d) return;
@@ -221,7 +224,7 @@ void QStripChart::setHorizontalDivisions(int divisions)
     update();
 }
 
-void QStripChart::setVerticalDivisions(int divisions)
+void StripChart::setVerticalDivisions(int divisions)
 {
     int d = std::clamp(divisions, 2, 30);
     if (m_verticalDivisions == d) return;
@@ -231,7 +234,7 @@ void QStripChart::setVerticalDivisions(int divisions)
     update();
 }
 
-void QStripChart::setChannelVisible(int channelId, bool visible)
+void StripChart::setChannelVisible(int channelId, bool visible)
 {
     if (channelId >= 0 && channelId < static_cast<int>(m_channels.size())) {
         if (m_channels[channelId].visible != visible) {
@@ -241,7 +244,7 @@ void QStripChart::setChannelVisible(int channelId, bool visible)
     }
 }
 
-void QStripChart::setChannelColor(int channelId, const QColor &color)
+void StripChart::setChannelColor(int channelId, const QColor &color)
 {
     if (channelId >= 0 && channelId < static_cast<int>(m_channels.size())) {
         m_channels[channelId].color = color;
@@ -249,7 +252,7 @@ void QStripChart::setChannelColor(int channelId, const QColor &color)
     }
 }
 
-void QStripChart::updateAutoScaling()
+void StripChart::updateAutoScaling()
 {
     bool hasData = false;
     double minVal = 1e9;
@@ -278,7 +281,7 @@ void QStripChart::updateAutoScaling()
     }
 }
 
-QRectF QStripChart::plotArea() const
+QRectF StripChart::plotArea() const
 {
     double leftMargin = 42.0; // Room for Y-axis labels
     double rightMargin = 12.0;
@@ -291,18 +294,18 @@ QRectF QStripChart::plotArea() const
     return QRectF(leftMargin, topMargin, w, h);
 }
 
-void QStripChart::invalidateCache()
+void StripChart::invalidateCache()
 {
     m_cacheDirty = true;
 }
 
-void QStripChart::resizeEvent(QResizeEvent *event)
+void StripChart::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
 }
 
-void QStripChart::changeEvent(QEvent *event)
+void StripChart::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::PaletteChange) {
         invalidateCache();
@@ -311,7 +314,7 @@ void QStripChart::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
 }
 
-void QStripChart::renderStaticGrid(const QSize &targetSize)
+void StripChart::renderStaticGrid(const QSize &targetSize)
 {
     qreal dpr = devicePixelRatioF();
     QSize pixmapSize = (QSizeF(targetSize) * dpr).toSize();
@@ -383,7 +386,7 @@ void QStripChart::renderStaticGrid(const QSize &targetSize)
     m_cacheDirty = false;
 }
 
-void QStripChart::paintEvent(QPaintEvent *)
+void StripChart::paintEvent(QPaintEvent *)
 {
     if (m_cacheDirty || m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
         renderStaticGrid(size());
@@ -473,3 +476,5 @@ void QStripChart::paintEvent(QPaintEvent *)
         }
     }
 }
+
+} // namespace QtIndustrialWidgets

@@ -12,23 +12,25 @@
 #include <QtGui/QPixmap>
 
 /**
- * \class QIndustrialKnob
+ * \class IndustrialKnob
  * \brief Precision industrial rotary control potentiometer and selector knob.
  *
- * QIndustrialKnob provides an interactive rotary control with brushed metal texture, notched grips,
+ * IndustrialKnob provides an interactive rotary control with brushed metal texture, notched grips,
  * continuous or discrete indexed stepping, mouse dragging, mouse wheel, and keyboard arrow controls.
  *
  * It features high-DPI caching for background ticks and scales to ensure smooth 60 FPS rotation interaction.
  *
  * \code
- * auto *knob = new QIndustrialKnob(parent);
+ * auto *knob = new IndustrialKnob(parent);
  * knob->setRange(0.0, 100.0);
  * knob->setValue(50.0);
  * knob->setStep(1.0);
  * knob->setUnit("%");
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QIndustrialKnob : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
 {
     Q_OBJECT
 
@@ -61,11 +63,11 @@ public:
     Q_ENUM(KnobMode)
 
     /**
-     * \brief Constructs a QIndustrialKnob widget with default [0, 100] range.
+     * \brief Constructs a IndustrialKnob widget with default [0, 100] range.
      * \param parent Optional parent widget.
      */
-    explicit QIndustrialKnob(QWidget *parent = nullptr);
-    ~QIndustrialKnob() override = default;
+    explicit IndustrialKnob(QWidget *parent = nullptr);
+    ~IndustrialKnob() override = default;
 
     /** \brief Returns the minimum dial value. */
     [[nodiscard]] double minimum() const { return m_minimum; }
@@ -213,3 +215,5 @@ private:
     bool m_isDragging{false};
     QPointF m_lastMousePos;
 };
+
+} // namespace QtIndustrialWidgets

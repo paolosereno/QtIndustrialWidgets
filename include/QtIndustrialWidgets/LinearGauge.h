@@ -12,17 +12,17 @@
 #include <QtGui/QPixmap>
 
 /**
- * \class QLinearGauge
+ * \class LinearGauge
  * \brief High-performance linear bar and thermometer instrument for industrial SCADA and telemetry dashboards.
  *
- * QLinearGauge supports both vertical and horizontal orientations, bulb thermometer or flat panel bar designs,
+ * LinearGauge supports both vertical and horizontal orientations, bulb thermometer or flat panel bar designs,
  * major and minor graduation scales, dynamic threshold liquid color shifts (Normal -> Warning -> Error),
  * optional gradient liquid fills, and an integrated digital readout pod.
  *
  * Scale geometry, graduation ticks, and recessed trough background are cached in a Hi-DPI QPixmap for high-frequency updates.
  *
  * \code
- * auto *gauge = new QLinearGauge(parent);
+ * auto *gauge = new LinearGauge(parent);
  * gauge->setOrientation(Qt::Vertical);
  * gauge->setThermometerMode(true);
  * gauge->setRange(-20.0, 100.0);
@@ -30,7 +30,9 @@
  * gauge->setUnit("°C");
  * \endcode
  */
-class QTINDUSTRIALWIDGETS_EXPORT QLinearGauge : public QWidget
+namespace QtIndustrialWidgets {
+
+class QTINDUSTRIALWIDGETS_EXPORT LinearGauge : public QWidget
 {
     Q_OBJECT
 
@@ -60,11 +62,11 @@ class QTINDUSTRIALWIDGETS_EXPORT QLinearGauge : public QWidget
 
 public:
     /**
-     * \brief Constructs a QLinearGauge widget with default vertical thermometer styling.
+     * \brief Constructs a LinearGauge widget with default vertical thermometer styling.
      * \param parent Optional parent widget.
      */
-    explicit QLinearGauge(QWidget *parent = nullptr);
-    ~QLinearGauge() override = default;
+    explicit LinearGauge(QWidget *parent = nullptr);
+    ~LinearGauge() override = default;
 
     /** \brief Returns the orientation (Qt::Vertical or Qt::Horizontal). */
     [[nodiscard]] Qt::Orientation orientation() const { return m_orientation; }
@@ -226,3 +228,5 @@ private:
     QPointF m_bulbCenter;
     double m_bulbRadius{0.0};
 };
+
+} // namespace QtIndustrialWidgets

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-#include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
+#include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPaintEvent>
@@ -10,7 +10,10 @@
 #include <algorithm>
 #include <vector>
 
-QSevenSegmentDisplay::QSevenSegmentDisplay(QWidget *parent)
+namespace QtIndustrialWidgets {
+
+
+SevenSegmentDisplay::SevenSegmentDisplay(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent, false);
@@ -18,17 +21,17 @@ QSevenSegmentDisplay::QSevenSegmentDisplay(QWidget *parent)
     updateFormattedText();
 }
 
-QSize QSevenSegmentDisplay::sizeHint() const
+QSize SevenSegmentDisplay::sizeHint() const
 {
     return QSize(m_digitCount * 45 + 30, 80);
 }
 
-QSize QSevenSegmentDisplay::minimumSizeHint() const
+QSize SevenSegmentDisplay::minimumSizeHint() const
 {
     return QSize(m_digitCount * 18 + 15, 35);
 }
 
-void QSevenSegmentDisplay::setValue(double val)
+void SevenSegmentDisplay::setValue(double val)
 {
     m_isTextExplicit = false;
     if (qFuzzyCompare(val, m_value)) return;
@@ -38,7 +41,7 @@ void QSevenSegmentDisplay::setValue(double val)
     update();
 }
 
-void QSevenSegmentDisplay::setText(const QString &text)
+void SevenSegmentDisplay::setText(const QString &text)
 {
     m_isTextExplicit = true;
     if (m_text == text) return;
@@ -53,22 +56,22 @@ void QSevenSegmentDisplay::setText(const QString &text)
     update();
 }
 
-void QSevenSegmentDisplay::display(double value)
+void SevenSegmentDisplay::display(double value)
 {
     setValue(value);
 }
 
-void QSevenSegmentDisplay::display(int value)
+void SevenSegmentDisplay::display(int value)
 {
     setValue(static_cast<double>(value));
 }
 
-void QSevenSegmentDisplay::display(const QString &text)
+void SevenSegmentDisplay::display(const QString &text)
 {
     setText(text);
 }
 
-void QSevenSegmentDisplay::setDigitCount(int count)
+void SevenSegmentDisplay::setDigitCount(int count)
 {
     int c = std::clamp(count, 1, 16);
     if (m_digitCount == c) return;
@@ -79,7 +82,7 @@ void QSevenSegmentDisplay::setDigitCount(int count)
     update();
 }
 
-void QSevenSegmentDisplay::setDecimalPlaces(int places)
+void SevenSegmentDisplay::setDecimalPlaces(int places)
 {
     if (m_decimalPlaces == places) return;
     m_decimalPlaces = places;
@@ -90,7 +93,7 @@ void QSevenSegmentDisplay::setDecimalPlaces(int places)
     update();
 }
 
-void QSevenSegmentDisplay::setShowLeadingZeros(bool show)
+void SevenSegmentDisplay::setShowLeadingZeros(bool show)
 {
     if (m_showLeadingZeros == show) return;
     m_showLeadingZeros = show;
@@ -101,7 +104,7 @@ void QSevenSegmentDisplay::setShowLeadingZeros(bool show)
     update();
 }
 
-void QSevenSegmentDisplay::setShowDecimalPoint(bool show)
+void SevenSegmentDisplay::setShowDecimalPoint(bool show)
 {
     if (m_showDecimalPoint == show) return;
     m_showDecimalPoint = show;
@@ -109,7 +112,7 @@ void QSevenSegmentDisplay::setShowDecimalPoint(bool show)
     update();
 }
 
-void QSevenSegmentDisplay::setSkewAngle(double angle)
+void SevenSegmentDisplay::setSkewAngle(double angle)
 {
     if (qFuzzyCompare(m_skewAngle, angle)) return;
     m_skewAngle = std::clamp(angle, -30.0, 30.0);
@@ -117,7 +120,7 @@ void QSevenSegmentDisplay::setSkewAngle(double angle)
     update();
 }
 
-void QSevenSegmentDisplay::setSegmentWidthRatio(double ratio)
+void SevenSegmentDisplay::setSegmentWidthRatio(double ratio)
 {
     if (qFuzzyCompare(m_segmentWidthRatio, ratio)) return;
     m_segmentWidthRatio = std::clamp(ratio, 0.08, 0.25);
@@ -125,7 +128,7 @@ void QSevenSegmentDisplay::setSegmentWidthRatio(double ratio)
     update();
 }
 
-void QSevenSegmentDisplay::setActiveSegmentColor(const QColor &color)
+void SevenSegmentDisplay::setActiveSegmentColor(const QColor &color)
 {
     if (m_activeSegmentColor == color) return;
     m_activeSegmentColor = color;
@@ -133,7 +136,7 @@ void QSevenSegmentDisplay::setActiveSegmentColor(const QColor &color)
     update();
 }
 
-void QSevenSegmentDisplay::setInactiveSegmentColor(const QColor &color)
+void SevenSegmentDisplay::setInactiveSegmentColor(const QColor &color)
 {
     if (m_inactiveSegmentColor == color) return;
     m_inactiveSegmentColor = color;
@@ -141,7 +144,7 @@ void QSevenSegmentDisplay::setInactiveSegmentColor(const QColor &color)
     update();
 }
 
-void QSevenSegmentDisplay::setBackgroundColor(const QColor &color)
+void SevenSegmentDisplay::setBackgroundColor(const QColor &color)
 {
     if (m_backgroundColor == color) return;
     m_backgroundColor = color;
@@ -149,7 +152,7 @@ void QSevenSegmentDisplay::setBackgroundColor(const QColor &color)
     update();
 }
 
-void QSevenSegmentDisplay::setBezelColor(const QColor &color)
+void SevenSegmentDisplay::setBezelColor(const QColor &color)
 {
     if (m_bezelColor == color) return;
     m_bezelColor = color;
@@ -157,7 +160,7 @@ void QSevenSegmentDisplay::setBezelColor(const QColor &color)
     update();
 }
 
-void QSevenSegmentDisplay::setBezelVisible(bool visible)
+void SevenSegmentDisplay::setBezelVisible(bool visible)
 {
     if (m_bezelVisible == visible) return;
     m_bezelVisible = visible;
@@ -165,7 +168,7 @@ void QSevenSegmentDisplay::setBezelVisible(bool visible)
     update();
 }
 
-void QSevenSegmentDisplay::updateFormattedText()
+void SevenSegmentDisplay::updateFormattedText()
 {
     if (m_isTextExplicit) return;
 
@@ -197,7 +200,7 @@ void QSevenSegmentDisplay::updateFormattedText()
     Q_EMIT textChanged(m_text);
 }
 
-quint8 QSevenSegmentDisplay::encodeChar(QChar ch)
+quint8 SevenSegmentDisplay::encodeChar(QChar ch)
 {
     // Segment bits:
     // bit 0: a (top)
@@ -240,7 +243,7 @@ quint8 QSevenSegmentDisplay::encodeChar(QChar ch)
     }
 }
 
-void QSevenSegmentDisplay::drawDigit(QPainter &painter, const QRectF &rect, quint8 mask, bool hasDecimalPoint) const
+void SevenSegmentDisplay::drawDigit(QPainter &painter, const QRectF &rect, quint8 mask, bool hasDecimalPoint) const
 {
     const double w = rect.width();
     const double h = rect.height();
@@ -394,7 +397,7 @@ void QSevenSegmentDisplay::drawDigit(QPainter &painter, const QRectF &rect, quin
     painter.restore();
 }
 
-void QSevenSegmentDisplay::paintEvent(QPaintEvent *)
+void SevenSegmentDisplay::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -477,3 +480,5 @@ void QSevenSegmentDisplay::paintEvent(QPaintEvent *)
         drawDigit(painter, digitRect, mask, displaySlots[i].hasDp);
     }
 }
+
+} // namespace QtIndustrialWidgets
