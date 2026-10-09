@@ -7,7 +7,7 @@
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
 [![Tests Defined](https://img.shields.io/badge/tests%20defined-71-blue.svg)](tests/)
 [![Tests Passed](https://img.shields.io/badge/tests%20passed-71%20%2F%2071%20(100%25)-brightgreen.svg)](tests/)
-[![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](docs/)
+[![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
 
@@ -198,7 +198,9 @@ The widgets will automatically appear in the **Industrial Widgets** category in 
 
 ## 📚 Generating Documentation (Doxygen)
 
-QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 8 widgets, architecture design, and integration tutorials.
+> 🌐 **Online Documentation (GitHub Pages)**: [https://paolosereno.github.io/QtIndustrialWidgets/](https://paolosereno.github.io/QtIndustrialWidgets/)
+
+QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 9 widgets, architecture design, and integration tutorials.
 
 ### Prerequisites
 
