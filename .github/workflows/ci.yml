@@ -1,0 +1,171 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # ============================================================
+  # 1. Linux (Ubuntu 24.04 LTS - GCC & Qt 6)
+  # ============================================================
+  build-linux:
+    name: Linux (Ubuntu 24.04, GCC, Qt 6)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            doxygen \
+            graphviz
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_DOCS=ON \
+            -DBUILD_TESTS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_DESIGNER_PLUGIN=ON
+
+      - name: Build all targets
+        run: cmake --build build
+
+      - name: Run unit tests (QtTest)
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          ctest --test-dir build --output-on-failure
+
+      - name: Build Doxygen documentation
+        run: cmake --build build --target docs
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-documentation
+          path: build/docs/html/
+          retention-days: 14
+
+  # ============================================================
+  # 2. Windows (MSVC 2022 & Qt 6)
+  # ============================================================
+  build-windows:
+    name: Windows (MSVC 2022, Qt 6)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          arch: 'win64_msvc2019_64'
+          modules: 'qttools'
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_DOCS=OFF `
+            -DBUILD_TESTS=ON `
+            -DBUILD_EXAMPLES=ON `
+            -DBUILD_DESIGNER_PLUGIN=OFF
+
+      - name: Build all targets
+        run: cmake --build build --config Release
+
+      - name: Run unit tests (QtTest)
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          ctest --test-dir build -C Release --output-on-failure
+
+  # ============================================================
+  # 3. macOS (AppleClang & Qt 6)
+  # ============================================================
+  build-macos:
+    name: macOS (AppleClang, Qt 6)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt via Homebrew
+        run: |
+          brew install qt
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_TESTS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_DESIGNER_PLUGIN=OFF
+
+      - name: Build all targets
+        run: cmake --build build
+
+      - name: Run unit tests (QtTest)
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          ctest --test-dir build --output-on-failure
+
+  # ============================================================
+  # 4. Deploy Documentation to GitHub Pages (Main branch only)
+  # ============================================================
+  deploy-pages:
+    name: Deploy Docs to GitHub Pages
+    needs: build-linux
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download documentation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: doxygen-documentation
+          path: ./public
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
