@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/QLedIndicator.h>
 #include <QtIndustrialWidgets/QIndustrialKnob.h>
+#include <QtIndustrialWidgets/QStripChart.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -289,6 +290,22 @@ void MainWindow::setupUi()
     digitalLayout->addLayout(timerBox);
 
     lowerRowLayout->addWidget(digitalGroup, 3);
+
+    // Group for Real-Time Oscilloscope / Telemetry Strip Chart
+    auto *chartGroup = new QGroupBox(QStringLiteral("Real-Time Telemetry (QStripChart)"), dashTab);
+    auto *chartLayout = new QVBoxLayout(chartGroup);
+    chartLayout->setContentsMargins(10, 16, 10, 10);
+
+    m_stripChart = new QStripChart(chartGroup);
+    m_stripChart->setCapacity(300);
+    m_stripChart->setYRange(0.0, 120.0);
+    m_chRpm = m_stripChart->addChannel(QStringLiteral("RPM %"), QColor(0, 229, 255), 2.0);
+    m_chBoost = m_stripChart->addChannel(QStringLiteral("Boost x35"), QColor(235, 59, 90), 2.0);
+    m_chTemp = m_stripChart->addChannel(QStringLiteral("Temp °C"), QColor(46, 204, 113), 2.0);
+
+    chartLayout->addWidget(m_stripChart);
+    lowerRowLayout->addWidget(chartGroup, 4);
+
     dashLayout->addLayout(lowerRowLayout, 3);
 
     tabWidget->addTab(dashTab, QStringLiteral("📊 Live Instrumentation Dashboard"));
@@ -548,6 +565,11 @@ void MainWindow::onSimulationTick()
 
     // Elapsed test time
     m_timerDisplay->setValue(m_simTime);
+
+    // Stream real-time waveforms into QStripChart
+    m_stripChart->addDataPoint(m_chRpm, (currentRpm / 8000.0) * 100.0);
+    m_stripChart->addDataPoint(m_chBoost, boostBase * 35.0);
+    m_stripChart->addDataPoint(m_chTemp, coolantTemp);
 }
 
 void MainWindow::toggleTheme()
@@ -631,6 +653,12 @@ void MainWindow::applyTheme(bool dark)
             m_modeSelectorKnob->setKnobColor(QColor(42, 48, 60));
             m_modeSelectorKnob->setScaleColor(QColor(190, 200, 215));
             m_modeSelectorKnob->setTextColor(QColor(240, 244, 250));
+        }
+
+        if (m_stripChart) {
+            m_stripChart->setBackgroundColor(QColor(14, 18, 25));
+            m_stripChart->setGridColor(QColor(42, 54, 70));
+            m_stripChart->setBezelColor(QColor(38, 46, 60));
         }
     } else {
         // Modern Clean Light SCADA Theme
@@ -717,6 +745,12 @@ void MainWindow::applyTheme(bool dark)
             m_modeSelectorKnob->setKnobColor(QColor(220, 226, 235));
             m_modeSelectorKnob->setScaleColor(QColor(70, 80, 95));
             m_modeSelectorKnob->setTextColor(QColor(30, 39, 46));
+        }
+
+        if (m_stripChart) {
+            m_stripChart->setBackgroundColor(QColor(242, 246, 252));
+            m_stripChart->setGridColor(QColor(208, 218, 230));
+            m_stripChart->setBezelColor(QColor(215, 222, 230));
         }
     }
 }

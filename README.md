@@ -70,6 +70,13 @@ Precision rotary potentiometer and selector switch.
 - **Graduated Scale & Track**: Circular scale with major/minor ticks, aligned numeric values, illuminated active arc track, and bottom digital readout pod.
 - **Ergonomic Controls**: Rotary drag, linear drag, mouse wheel fine adjustment, and full keyboard navigation (arrows, PageUp/PageDown, Home/End).
 
+### 6. `QStripChart`
+Real-time scrolling telemetry strip chart and oscilloscope.
+- **High Performance (60+ FPS)**: Built for high-frequency streaming using preallocated circular ring buffers (`O(1)` amortized point insertion) and Hi-DPI reticle grid background caching.
+- **Multi-Channel**: Independent channels with individual trace colors, pen widths, styles, and names.
+- **Flexible Axis Scaling**: Manual Y-range or automatic dynamic scaling with margin padding.
+- **Oscilloscope Reticle & Legend**: Configurable grid subdivisions, zero-baseline highlighting, live values legend overlay, and real-time numeric readouts.
+
 ---
 
 ## 🛠️ Build and Installation

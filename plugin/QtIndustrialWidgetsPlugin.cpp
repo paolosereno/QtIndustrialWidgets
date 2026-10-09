@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/QLedIndicator.h>
 #include <QtIndustrialWidgets/QIndustrialKnob.h>
+#include <QtIndustrialWidgets/QStripChart.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -465,6 +466,93 @@ QIcon QIndustrialKnobPlugin::icon() const
 }
 
 // ============================================================================
+// QStripChartPlugin
+// ============================================================================
+
+QStripChartPlugin::QStripChartPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QStripChartPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QStripChartPlugin::createWidget(QWidget *parent)
+{
+    return new QStripChart(parent);
+}
+
+QString QStripChartPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QStripChartPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QStripChart.h");
+}
+
+QString QStripChartPlugin::name() const
+{
+    return QStringLiteral("QStripChart");
+}
+
+QString QStripChartPlugin::toolTip() const
+{
+    return QStringLiteral("High-performance real-time telemetry strip chart and oscilloscope");
+}
+
+QString QStripChartPlugin::whatsThis() const
+{
+    return QStringLiteral("A real-time scrolling multi-channel oscilloscope / strip chart with ring buffers, cached grid reticle, and 60+ FPS performance.");
+}
+
+QString QStripChartPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QStripChart\" name=\"stripChart\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>380</width>\n"
+        "   <height>220</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QStripChartPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Chassis & Screen
+    p.setPen(QPen(QColor(60, 70, 85), 1.5));
+    p.setBrush(QColor(16, 20, 28));
+    p.drawRoundedRect(2, 4, 28, 24, 3, 3);
+
+    // Fine grid
+    p.setPen(QPen(QColor(38, 50, 68), 1.0, Qt::DotLine));
+    p.drawLine(2, 16, 30, 16);
+    p.drawLine(16, 4, 16, 28);
+
+    // Sine waveform
+    p.setPen(QPen(QColor(0, 229, 255), 1.8, Qt::SolidLine, Qt::RoundCap));
+    QPolygonF poly;
+    poly << QPointF(4, 22) << QPointF(10, 8) << QPointF(18, 24) << QPointF(24, 12) << QPointF(28, 16);
+    p.drawPolyline(poly);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -476,6 +564,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QSevenSegmentDisplayPlugin(this));
     m_widgets.append(new QLedIndicatorPlugin(this));
     m_widgets.append(new QIndustrialKnobPlugin(this));
+    m_widgets.append(new QStripChartPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

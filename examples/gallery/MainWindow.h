@@ -9,6 +9,7 @@ class QLinearGauge;
 class QSevenSegmentDisplay;
 class QLedIndicator;
 class QIndustrialKnob;
+class QStripChart;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -54,6 +55,12 @@ private:
     QIndustrialKnob *m_throttleKnob{nullptr};
     QIndustrialKnob *m_boostKnob{nullptr};
     QIndustrialKnob *m_modeSelectorKnob{nullptr};
+
+    // Telemetry Strip Chart
+    QStripChart *m_stripChart{nullptr};
+    int m_chRpm{0};
+    int m_chBoost{1};
+    int m_chTemp{2};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};
