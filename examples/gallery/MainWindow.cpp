@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/QLedIndicator.h>
 #include <QtIndustrialWidgets/QIndustrialKnob.h>
 #include <QtIndustrialWidgets/QStripChart.h>
+#include <QtIndustrialWidgets/QIndustrialSwitch.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -468,8 +469,85 @@ void MainWindow::setupUi()
     controlsLayout->addWidget(ledBox, row, 0, 1, 3);
     row++;
 
+    // ------------------------------------------------------------------------
+    // Heavy-Duty Industrial Switches Showcase Group (QIndustrialSwitch)
+    // ------------------------------------------------------------------------
+    auto *switchBox = new QGroupBox(QStringLiteral("Heavy-Duty Industrial Switches (QIndustrialSwitch)"), controlsTab);
+    auto *switchLayout = new QHBoxLayout(switchBox);
+    switchLayout->setSpacing(28);
+    switchLayout->setContentsMargins(18, 18, 18, 14);
+
+    // 1. Classic Main Power Toggle Switch
+    m_powerSwitch = new QIndustrialSwitch(switchBox);
+    m_powerSwitch->setLabel(QStringLiteral("MAIN PWR"));
+    m_powerSwitch->setLabelOn(QStringLiteral("ON"));
+    m_powerSwitch->setLabelOff(QStringLiteral("OFF"));
+    m_powerSwitch->setChecked(false);
+    connect(m_powerSwitch, &QIndustrialSwitch::toggled, this, [this](bool on) {
+        if (on != m_isSimulating) {
+            toggleSimulation();
+        }
+    });
+
+    // 2. High-Risk Safety Guard Switch (Red flip-up cover)
+    m_safetySwitch = new QIndustrialSwitch(switchBox);
+    m_safetySwitch->setLabel(QStringLiteral("EMERGENCY"));
+    m_safetySwitch->setLabelOn(QStringLiteral("ARMED"));
+    m_safetySwitch->setLabelOff(QStringLiteral("SAFE"));
+    m_safetySwitch->setHasSafetyGuard(true);
+    m_safetySwitch->setGuardColor(QColor(220, 53, 69));
+    m_safetySwitch->setLedColor(QColor(235, 59, 90));
+    connect(m_safetySwitch, &QIndustrialSwitch::toggled, this, [this](bool armed) {
+        if (m_alarmLed) {
+            m_alarmLed->setOn(armed);
+            m_alarmLed->setBlinking(armed);
+        }
+    });
+
+    // 3. 3-Position Mode Selector (MANUAL / OFF / AUTO)
+    m_modeSwitch = new QIndustrialSwitch(switchBox);
+    m_modeSwitch->setPositionCount(3);
+    m_modeSwitch->setLabel(QStringLiteral("SYS MODE"));
+    m_modeSwitch->setLabelOff(QStringLiteral("MAN"));
+    m_modeSwitch->setLabelCenter(QStringLiteral("OFF"));
+    m_modeSwitch->setLabelOn(QStringLiteral("AUTO"));
+    m_modeSwitch->setPosition(1);
+    m_modeSwitch->setLedColor(QColor(254, 211, 48));
+
+    // 4. Industrial Rocker Switch (Cooling Fan)
+    m_rockerSwitch = new QIndustrialSwitch(switchBox);
+    m_rockerSwitch->setSwitchType(QIndustrialSwitch::SwitchType::Rocker);
+    m_rockerSwitch->setLabel(QStringLiteral("COOLING"));
+    m_rockerSwitch->setLabelOn(QStringLiteral("HIGH"));
+    m_rockerSwitch->setLabelOff(QStringLiteral("LOW"));
+    m_rockerSwitch->setLedColor(QColor(0, 229, 255));
+    m_rockerSwitch->setChecked(false);
+    connect(m_rockerSwitch, &QIndustrialSwitch::toggled, this, [this](bool on) {
+        if (m_pumpLed) {
+            m_pumpLed->setOn(on);
+        }
+    });
+
+    // 5. Horizontal Toggle Switch (Bus Tie Feed)
+    auto *horizSwitch = new QIndustrialSwitch(switchBox);
+    horizSwitch->setOrientation(Qt::Horizontal);
+    horizSwitch->setLabel(QStringLiteral("BUS TIE"));
+    horizSwitch->setLabelOff(QStringLiteral("GEN A"));
+    horizSwitch->setLabelOn(QStringLiteral("GEN B"));
+    horizSwitch->setLedColor(QColor(155, 89, 182));
+
+    switchLayout->addWidget(m_powerSwitch);
+    switchLayout->addWidget(m_safetySwitch);
+    switchLayout->addWidget(m_modeSwitch);
+    switchLayout->addWidget(m_rockerSwitch);
+    switchLayout->addWidget(horizSwitch);
+    switchLayout->addStretch();
+
+    controlsLayout->addWidget(switchBox, row, 0, 1, 3);
+    row++;
+
     controlsLayout->setRowStretch(row, 1);
-    tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Sliders & Diagnostics"));
+    tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
 
     rootLayout->addWidget(tabWidget);
 }
@@ -487,6 +565,7 @@ void MainWindow::toggleSimulation()
         m_alarmLed->setOn(false);
         m_alarmLed->setBlinking(false);
         m_pumpLed->setOn(false);
+        if (m_powerSwitch) m_powerSwitch->setChecked(false);
     } else {
         m_simTime = 0.0;
         m_frameCount = 0;
@@ -498,6 +577,7 @@ void MainWindow::toggleSimulation()
 
         m_runLed->setOn(true);
         m_pumpLed->setOn(true);
+        if (m_powerSwitch) m_powerSwitch->setChecked(true);
     }
 }
 

@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/QLedIndicator.h>
 #include <QtIndustrialWidgets/QIndustrialKnob.h>
 #include <QtIndustrialWidgets/QStripChart.h>
+#include <QtIndustrialWidgets/QIndustrialSwitch.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -553,6 +554,98 @@ QIcon QStripChartPlugin::icon() const
 }
 
 // ============================================================================
+// QIndustrialSwitchPlugin
+// ============================================================================
+
+QIndustrialSwitchPlugin::QIndustrialSwitchPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QIndustrialSwitchPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QIndustrialSwitchPlugin::createWidget(QWidget *parent)
+{
+    return new QIndustrialSwitch(parent);
+}
+
+QString QIndustrialSwitchPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QIndustrialSwitchPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QIndustrialSwitch.h");
+}
+
+QString QIndustrialSwitchPlugin::name() const
+{
+    return QStringLiteral("QIndustrialSwitch");
+}
+
+QString QIndustrialSwitchPlugin::toolTip() const
+{
+    return QStringLiteral("Heavy-duty industrial toggle lever and rocker switch with safety guard");
+}
+
+QString QIndustrialSwitchPlugin::whatsThis() const
+{
+    return QStringLiteral("Industrial panel switch supporting bat toggle lever, rocker mode, 2 or 3 positions, and optional safety lock guard.");
+}
+
+QString QIndustrialSwitchPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QIndustrialSwitch\" name=\"industrialSwitch\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>75</width>\n"
+        "   <height>125</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QIndustrialSwitchPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Dark plate
+    p.setPen(QPen(QColor(60, 70, 85), 1.2));
+    p.setBrush(QColor(35, 40, 48));
+    p.drawRoundedRect(4, 2, 24, 28, 3, 3);
+
+    // Collar
+    p.setPen(QPen(QColor(180, 190, 200), 1.0));
+    p.setBrush(QColor(80, 85, 95));
+    p.drawEllipse(QPointF(16, 18), 7, 7);
+
+    // Toggle lever pointing up
+    p.setPen(QPen(QColor(40, 45, 50), 0.8));
+    p.setBrush(QColor(220, 225, 230));
+    p.drawRoundedRect(QRectF(14.5, 6, 3, 12), 1, 1);
+    p.drawEllipse(QPointF(16, 6), 3, 3);
+
+    // Green indicator dot
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(46, 204, 113));
+    p.drawEllipse(QPointF(16, 26), 1.8, 1.8);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -565,6 +658,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QLedIndicatorPlugin(this));
     m_widgets.append(new QIndustrialKnobPlugin(this));
     m_widgets.append(new QStripChartPlugin(this));
+    m_widgets.append(new QIndustrialSwitchPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

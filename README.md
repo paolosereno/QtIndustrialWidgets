@@ -77,6 +77,14 @@ Real-time scrolling telemetry strip chart and oscilloscope.
 - **Flexible Axis Scaling**: Manual Y-range or automatic dynamic scaling with margin padding.
 - **Oscilloscope Reticle & Legend**: Configurable grid subdivisions, zero-baseline highlighting, live values legend overlay, and real-time numeric readouts.
 
+### 7. `QIndustrialSwitch`
+Heavy-duty industrial toggle lever and rocker switch with safety guard.
+- **Dual Switch Styles**: Machined metal bat toggle lever or industrial dual-slope rocker switch with illuminated status line.
+- **2 & 3 Positions**: Supports standard 2-position (`Off` / `On`) and 3-position (`Manual` / `Off` / `Auto`) operations.
+- **Avionics Flip-Up Safety Guard**: Optional iconic red flip-up safety lock cover with warning chevrons and translucent window, preventing accidental actuation.
+- **Dual Orientation**: Native support for `Qt::Vertical` and `Qt::Horizontal` mounting.
+- **Tactile Feedback & Animation**: Mechanical snap toggle animation with realistic bounce, LED status indicator, 4-corner mounting screws, keyboard navigation, and mouse drag.
+
 ---
 
 ## 🛠️ Build and Installation

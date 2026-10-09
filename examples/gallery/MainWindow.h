@@ -10,6 +10,7 @@ class QSevenSegmentDisplay;
 class QLedIndicator;
 class QIndustrialKnob;
 class QStripChart;
+class QIndustrialSwitch;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -61,6 +62,12 @@ private:
     int m_chRpm{0};
     int m_chBoost{1};
     int m_chTemp{2};
+
+    // Industrial Switches
+    QIndustrialSwitch *m_powerSwitch{nullptr};
+    QIndustrialSwitch *m_safetySwitch{nullptr};
+    QIndustrialSwitch *m_modeSwitch{nullptr};
+    QIndustrialSwitch *m_rockerSwitch{nullptr};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};

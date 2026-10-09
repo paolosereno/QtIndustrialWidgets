@@ -5,6 +5,7 @@ add_library(QtIndustrialWidgets SHARED
     QLedIndicator.cpp
     QIndustrialKnob.cpp
     QStripChart.cpp
+    QIndustrialSwitch.cpp
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QRadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLinearGauge.h
@@ -12,6 +13,7 @@ add_library(QtIndustrialWidgets SHARED
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLedIndicator.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialKnob.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QStripChart.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialSwitch.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)
