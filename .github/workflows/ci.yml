@@ -86,7 +86,6 @@ jobs:
         with:
           version: '6.6.3'
           arch: 'win64_msvc2019_64'
-          modules: 'qttools'
 
       - name: Configure CMake
         run: |
@@ -147,6 +146,7 @@ jobs:
     needs: build-linux
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -160,6 +160,8 @@ jobs:
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
