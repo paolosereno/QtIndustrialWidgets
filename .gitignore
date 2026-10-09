@@ -42,3 +42,6 @@ ui_*.h
 *.user.*
 CMakeLists.txt.user
 .DS_Store
+
+# Local development notes
+nextWork.md
