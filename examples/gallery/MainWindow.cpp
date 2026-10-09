@@ -4,6 +4,7 @@
 #include <QtIndustrialWidgets/QLinearGauge.h>
 #include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/QLedIndicator.h>
+#include <QtIndustrialWidgets/QIndustrialKnob.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -328,10 +329,16 @@ void MainWindow::setupUi()
     };
 
     addSliderControl(QStringLiteral("Engine RPM (0 - 8000):"), 0, 8000, 2400, 1.0,
-                     [this](double v) { m_rpmGauge->setValue(v); }, m_rpmSlider);
+                     [this](double v) {
+                         m_rpmGauge->setValue(v);
+                         if (m_throttleKnob && !m_isSimulating) m_throttleKnob->setValue(v);
+                     }, m_rpmSlider);
 
     addSliderControl(QStringLiteral("Turbo Boost (0.0 - 3.0 bar):"), 0, 300, 115, 0.01,
-                     [this](double v) { m_boostGauge->setValue(v); }, m_boostSlider);
+                     [this](double v) {
+                         m_boostGauge->setValue(v);
+                         if (m_boostKnob && !m_isSimulating) m_boostKnob->setValue(v);
+                     }, m_boostSlider);
 
     addSliderControl(QStringLiteral("Oil Pressure (0.0 - 10.0 bar):"), 0, 100, 48, 0.1,
                      [this](double v) { m_oilGauge->setValue(v); }, m_oilSlider);
@@ -345,7 +352,72 @@ void MainWindow::setupUi()
     addSliderControl(QStringLiteral("Hydraulic Line (0 - 250 bar):"), 0, 250, 140, 1.0,
                      [this](double v) { m_hydraulicGauge->setValue(v); }, m_hydraulicSlider);
 
-    // Interactive LED testing group
+    // ------------------------------------------------------------------------
+    // Precision Rotary Knobs Showcase Group (QIndustrialKnob)
+    // ------------------------------------------------------------------------
+    auto *knobBox = new QGroupBox(QStringLiteral("Precision Rotary Controls (QIndustrialKnob)"), controlsTab);
+    auto *knobLayout = new QHBoxLayout(knobBox);
+    knobLayout->setSpacing(24);
+    knobLayout->setContentsMargins(16, 18, 16, 14);
+
+    // Throttle / Target RPM Knob (Continuous)
+    m_throttleKnob = new QIndustrialKnob(knobBox);
+    m_throttleKnob->setRange(0.0, 8000.0);
+    m_throttleKnob->setValue(2400.0);
+    m_throttleKnob->setUnit(QStringLiteral("RPM"));
+    m_throttleKnob->setStep(50.0);
+    m_throttleKnob->setPrecision(0);
+    m_throttleKnob->setMajorTicks(8);
+    m_throttleKnob->setMinorTicks(4);
+
+    // Boost Regulator Knob (Continuous)
+    m_boostKnob = new QIndustrialKnob(knobBox);
+    m_boostKnob->setRange(0.0, 3.0);
+    m_boostKnob->setValue(1.15);
+    m_boostKnob->setUnit(QStringLiteral("bar"));
+    m_boostKnob->setStep(0.05);
+    m_boostKnob->setPrecision(2);
+    m_boostKnob->setMajorTicks(6);
+    m_boostKnob->setMinorTicks(3);
+    m_boostKnob->setPointerColor(QColor(235, 59, 90));
+    m_boostKnob->setTrackColor(QColor(235, 59, 90));
+
+    // Drive Mode Selector Knob (Discrete 4 positions)
+    m_modeSelectorKnob = new QIndustrialKnob(knobBox);
+    m_modeSelectorKnob->setMode(QIndustrialKnob::KnobMode::Discrete);
+    m_modeSelectorKnob->setDiscreteSteps(4);
+    m_modeSelectorKnob->setRange(1.0, 4.0);
+    m_modeSelectorKnob->setValue(2.0);
+    m_modeSelectorKnob->setUnit(QStringLiteral("MODE"));
+    m_modeSelectorKnob->setPointerColor(QColor(46, 204, 113));
+    m_modeSelectorKnob->setTrackColor(QColor(46, 204, 113));
+
+    // Synchronize throttle knob with slider and gauge
+    connect(m_throttleKnob, &QIndustrialKnob::valueChanged, this, [this](double val) {
+        if (!m_isSimulating) {
+            m_rpmSlider->setValue(static_cast<int>(val));
+            m_rpmGauge->setValue(val);
+        }
+    });
+
+    // Synchronize boost knob with slider and gauge
+    connect(m_boostKnob, &QIndustrialKnob::valueChanged, this, [this](double val) {
+        if (!m_isSimulating) {
+            m_boostSlider->setValue(static_cast<int>(val * 100.0));
+            m_boostGauge->setValue(val);
+        }
+    });
+
+    knobLayout->addWidget(m_throttleKnob, 1);
+    knobLayout->addWidget(m_boostKnob, 1);
+    knobLayout->addWidget(m_modeSelectorKnob, 1);
+
+    controlsLayout->addWidget(knobBox, row, 0, 1, 3);
+    row++;
+
+    // ------------------------------------------------------------------------
+    // Interactive LED testing group (QLedIndicator)
+    // ------------------------------------------------------------------------
     auto *ledBox = new QGroupBox(QStringLiteral("Interactive QLedIndicator Showcase (Click on LEDs to Toggle)"), controlsTab);
     auto *ledLayout = new QHBoxLayout(ledBox);
     ledLayout->setSpacing(20);
@@ -544,6 +616,22 @@ void MainWindow::applyTheme(bool dark)
         m_voltageDisplay->setBezelColor(QColor(40, 48, 62));
         m_timerDisplay->setBackgroundColor(QColor(16, 20, 28));
         m_timerDisplay->setBezelColor(QColor(40, 48, 62));
+
+        if (m_throttleKnob) {
+            m_throttleKnob->setKnobColor(QColor(42, 48, 60));
+            m_throttleKnob->setScaleColor(QColor(190, 200, 215));
+            m_throttleKnob->setTextColor(QColor(240, 244, 250));
+        }
+        if (m_boostKnob) {
+            m_boostKnob->setKnobColor(QColor(42, 48, 60));
+            m_boostKnob->setScaleColor(QColor(190, 200, 215));
+            m_boostKnob->setTextColor(QColor(240, 244, 250));
+        }
+        if (m_modeSelectorKnob) {
+            m_modeSelectorKnob->setKnobColor(QColor(42, 48, 60));
+            m_modeSelectorKnob->setScaleColor(QColor(190, 200, 215));
+            m_modeSelectorKnob->setTextColor(QColor(240, 244, 250));
+        }
     } else {
         // Modern Clean Light SCADA Theme
         QString qss = QStringLiteral(
@@ -614,5 +702,21 @@ void MainWindow::applyTheme(bool dark)
         m_timerDisplay->setBezelColor(QColor(190, 200, 210));
         m_timerDisplay->setActiveSegmentColor(QColor(210, 140, 0));
         m_timerDisplay->setInactiveSegmentColor(QColor(210, 140, 0, 25));
+
+        if (m_throttleKnob) {
+            m_throttleKnob->setKnobColor(QColor(220, 226, 235));
+            m_throttleKnob->setScaleColor(QColor(70, 80, 95));
+            m_throttleKnob->setTextColor(QColor(30, 39, 46));
+        }
+        if (m_boostKnob) {
+            m_boostKnob->setKnobColor(QColor(220, 226, 235));
+            m_boostKnob->setScaleColor(QColor(70, 80, 95));
+            m_boostKnob->setTextColor(QColor(30, 39, 46));
+        }
+        if (m_modeSelectorKnob) {
+            m_modeSelectorKnob->setKnobColor(QColor(220, 226, 235));
+            m_modeSelectorKnob->setScaleColor(QColor(70, 80, 95));
+            m_modeSelectorKnob->setTextColor(QColor(30, 39, 46));
+        }
     }
 }

@@ -3,11 +3,13 @@ add_library(QtIndustrialWidgets SHARED
     QLinearGauge.cpp
     QSevenSegmentDisplay.cpp
     QLedIndicator.cpp
+    QIndustrialKnob.cpp
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QRadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLinearGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QSevenSegmentDisplay.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QLedIndicator.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/QIndustrialKnob.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

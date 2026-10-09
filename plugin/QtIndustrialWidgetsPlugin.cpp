@@ -4,6 +4,7 @@
 #include <QtIndustrialWidgets/QLinearGauge.h>
 #include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/QLedIndicator.h>
+#include <QtIndustrialWidgets/QIndustrialKnob.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -375,6 +376,95 @@ QIcon QLedIndicatorPlugin::icon() const
 }
 
 // ============================================================================
+// QIndustrialKnobPlugin
+// ============================================================================
+
+QIndustrialKnobPlugin::QIndustrialKnobPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void QIndustrialKnobPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *QIndustrialKnobPlugin::createWidget(QWidget *parent)
+{
+    return new QIndustrialKnob(parent);
+}
+
+QString QIndustrialKnobPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString QIndustrialKnobPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/QIndustrialKnob.h");
+}
+
+QString QIndustrialKnobPlugin::name() const
+{
+    return QStringLiteral("QIndustrialKnob");
+}
+
+QString QIndustrialKnobPlugin::toolTip() const
+{
+    return QStringLiteral("Industrial rotary knob potentiometer and selector switch");
+}
+
+QString QIndustrialKnobPlugin::whatsThis() const
+{
+    return QStringLiteral("A rotary control knob with CNC knurled grip, graduated circular scale, continuous and discrete modes, and mouse/wheel interaction.");
+}
+
+QString QIndustrialKnobPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QIndustrialKnob\" name=\"industrialKnob\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>160</width>\n"
+        "   <height>180</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon QIndustrialKnobPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Scale arc
+    p.setPen(QPen(QColor(0, 229, 255), 2.0));
+    p.drawArc(3, 3, 26, 26, -45 * 16, 270 * 16);
+
+    // Outer knob
+    p.setPen(QPen(QColor(60, 70, 85), 1.5));
+    p.setBrush(QColor(35, 42, 54));
+    p.drawEllipse(7, 7, 18, 18);
+
+    // Face
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(48, 56, 70));
+    p.drawEllipse(9, 9, 14, 14);
+
+    // Pointer notch
+    p.setPen(QPen(QColor(0, 229, 255), 2.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(16, 16, 20, 11);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -385,6 +475,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new QLinearGaugePlugin(this));
     m_widgets.append(new QSevenSegmentDisplayPlugin(this));
     m_widgets.append(new QLedIndicatorPlugin(this));
+    m_widgets.append(new QIndustrialKnobPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

@@ -63,6 +63,13 @@ Industrial LED panel indicator with 3D lens refraction and blinking.
 - **States & Blinking**: Discrete On/Off states with configurable blinking frequency (in milliseconds or Hz) via efficient internal timer.
 - **Interactive**: Optional clickable mode with `clicked()` signal for interactive control boards.
 
+### 5. `QIndustrialKnob`
+Precision rotary potentiometer and selector switch.
+- **Machined CNC Texture**: Lathe-turned aluminum / gunmetal finish with 32-tooth perimeter knurling for realistic tactile appearance.
+- **Dual Operating Modes**: Smooth continuous potentiometer for float adjustments or discrete stepped selector switch (e.g. multi-position mode selector).
+- **Graduated Scale & Track**: Circular scale with major/minor ticks, aligned numeric values, illuminated active arc track, and bottom digital readout pod.
+- **Ergonomic Controls**: Rotary drag, linear drag, mouse wheel fine adjustment, and full keyboard navigation (arrows, PageUp/PageDown, Home/End).
+
 ---
 
 ## 🛠️ Build and Installation

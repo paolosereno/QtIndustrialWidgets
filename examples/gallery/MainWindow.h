@@ -8,6 +8,7 @@ class QRadialGauge;
 class QLinearGauge;
 class QSevenSegmentDisplay;
 class QLedIndicator;
+class QIndustrialKnob;
 class QSlider;
 class QLabel;
 class QPushButton;
@@ -48,6 +49,11 @@ private:
     QLedIndicator *m_alarmLed{nullptr};
     QLedIndicator *m_warnLed{nullptr};
     QLedIndicator *m_pumpLed{nullptr};
+
+    // Rotary Knobs
+    QIndustrialKnob *m_throttleKnob{nullptr};
+    QIndustrialKnob *m_boostKnob{nullptr};
+    QIndustrialKnob *m_modeSelectorKnob{nullptr};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};
