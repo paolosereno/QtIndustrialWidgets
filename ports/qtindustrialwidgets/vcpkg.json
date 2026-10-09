@@ -1,6 +1,6 @@
 {
   "name": "qtindustrialwidgets",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Modern, high-performance industrial instruments and SCADA widgets for Qt",
   "homepage": "https://github.com/paolosereno/QtIndustrialWidgets",
   "license": "MIT",
