@@ -4,6 +4,9 @@
 [![Qt 6 & 5.15](https://img.shields.io/badge/Qt-6.x%20%7C%205.15-brightgreen.svg)](https://www.qt.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
+[![Tests Defined](https://img.shields.io/badge/tests%20defined-62-blue.svg)](tests/)
+[![Tests Passed](https://img.shields.io/badge/tests%20passed-62%20%2F%2062%20(100%25)-brightgreen.svg)](tests/)
+[![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](docs/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
 
@@ -101,6 +104,7 @@ Multi-channel industrial VU and level meter with peak hold.
 - CMake 3.16 or newer
 - C++17 compiler (GCC 9+, Clang 10+, MSVC 2019+)
 - Qt 6 (6.2+) or Qt 5 (5.15) (`Core`, `Gui`, `Widgets`, and optionally `Designer` / `UiPlugin`)
+- Doxygen & Graphviz (optional, for generating HTML API documentation and class diagrams)
 
 ### Quick Build (Linux / macOS / Windows)
 
@@ -113,6 +117,9 @@ cmake --build build
 
 # Run unit tests (QtTest)
 ctest --test-dir build --output-on-failure
+
+# Generate API documentation (requires Doxygen)
+cmake --build build --target docs
 
 # Run the interactive gallery showcase
 ./build/examples/gallery/QtIndustrialWidgetsGallery
@@ -177,6 +184,68 @@ Install or copy the resulting plugin library into your Qt Designer / Qt Creator 
 - Windows: `<Qt_Install>/plugins/designer/`
 
 The widgets will automatically appear in the **Industrial Widgets** category in Qt Designer.
+
+---
+
+## 📚 Generating Documentation (Doxygen)
+
+QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 8 widgets, architecture design, and integration tutorials.
+
+### Prerequisites
+
+To generate the documentation locally:
+- **Doxygen** (`1.9+` recommended)
+- **Graphviz** (optional, enables inheritance and dependency `.dot` diagrams)
+
+On Debian / Ubuntu:
+```bash
+sudo apt-get install -y doxygen graphviz
+```
+
+On macOS (Homebrew):
+```bash
+brew install doxygen graphviz
+```
+
+On Windows:
+Download and install [Doxygen](https://www.doxygen.nl/download.html) and [Graphviz](https://graphviz.org/download/).
+
+### Build Documentation with CMake
+
+When Doxygen is installed, CMake registers the `docs` target automatically (enabled by default via `BUILD_DOCS=ON`):
+
+```bash
+# Configure with documentation enabled
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_DOCS=ON
+
+# Generate HTML documentation
+cmake --build build --target docs
+```
+
+The generated HTML documentation is placed in:
+```text
+build/docs/html/index.html
+```
+
+### Viewing the Documentation
+
+Open the generated documentation in your default browser:
+```bash
+xdg-open build/docs/html/index.html    # Linux
+open build/docs/html/index.html        # macOS
+start build/docs/html/index.html       # Windows
+```
+
+Alternatively, you can generate documentation standalone from the project root:
+```bash
+doxygen docs/Doxyfile
+```
+
+### Included Documentation Guides
+- **[Getting Started Guide](docs/getting_started.md)**: Setup via CMake `FetchContent`, `find_package`, and standalone integration.
+- **[Theming and Styling Guide](docs/theming.md)**: Customizing dial colors, indicator palettes, and dark/light mode integration.
+- **[Qt Designer Plugin Guide](docs/designer_plugin.md)**: Compiling and deploying the plugin for Qt Designer and Qt Creator.
+- **Full C++ API Reference**: Exhaustive Doxygen docstrings for all classes, properties, slots, and signals.
 
 ---
 
