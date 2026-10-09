@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release & Publish SBOM
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify REUSE Compliance
+        uses: fsfe/reuse-action@v6
+        with:
+          args: lint
+
+      - name: Generate SPDX SBOM
+        uses: fsfe/reuse-action@v6
+        with:
+          args: spdx --creator-person "Paolo Sereno <paolomsereno@gmail.com>" --output QtIndustrialWidgets-${{ github.ref_name }}-SBOM.spdx
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ github.ref_name }}"
+          files: |
+            QtIndustrialWidgets-${{ github.ref_name }}-SBOM.spdx
+          generate_release_notes: true
