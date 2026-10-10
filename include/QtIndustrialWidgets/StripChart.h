@@ -57,16 +57,6 @@ class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
     Q_PROPERTY(int verticalDivisions READ verticalDivisions WRITE setVerticalDivisions NOTIFY appearanceChanged)
 
 public:
-    /** \brief Metadata and live telemetry info for an individual waveform channel. */
-    struct ChannelInfo {
-        QString name;              ///< Channel name displayed in legend
-        QColor color;              ///< Waveform trace stroke color
-        bool visible{true};        ///< Channel visibility flag
-        double penWidth{1.8};      ///< Trace stroke thickness in pixels
-        size_t count{0};           ///< Total valid points stored in ring buffer
-        double latestValue{0.0};   ///< Most recently streamed telemetry value
-    };
-
     /**
      * \brief Constructs a StripChart widget with default 300 points capacity.
      * \param parent Optional parent widget.
@@ -99,8 +89,18 @@ public:
 
     /** \brief Returns the total number of registered channels. */
     [[nodiscard]] int channelCount() const;
-    /** \brief Returns a pointer to channel info by index, or nullptr if invalid. */
-    [[nodiscard]] const ChannelInfo *channel(int index) const;
+    /** \brief Returns the display name of a channel, or an empty string if invalid. */
+    [[nodiscard]] QString channelName(int channelId) const;
+    /** \brief Returns the waveform stroke color of a channel, or an invalid QColor if invalid. */
+    [[nodiscard]] QColor channelColor(int channelId) const;
+    /** \brief Returns true if the channel waveform is currently visible. */
+    [[nodiscard]] bool isChannelVisible(int channelId) const;
+    /** \brief Returns the stroke pen width in pixels of a channel. */
+    [[nodiscard]] double channelPenWidth(int channelId) const;
+    /** \brief Returns the number of valid points currently stored in the channel buffer. */
+    [[nodiscard]] qsizetype channelSampleCount(int channelId) const;
+    /** \brief Returns the most recently streamed telemetry value for a channel. */
+    [[nodiscard]] double channelLatestValue(int channelId) const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;

@@ -47,10 +47,10 @@ void tst_StripChart::channelManagement()
     QCOMPARE(ch2, 1);
     QCOMPARE(chart.channelCount(), 2);
 
-    const auto *info = chart.channel(0);
-    QVERIFY(info != nullptr);
-    QCOMPARE(info->name, QStringLiteral("Voltage"));
-    QCOMPARE(info->color, QColor(Qt::red));
+    QCOMPARE(chart.channelName(0), QStringLiteral("Voltage"));
+    QCOMPARE(chart.channelColor(0), QColor(Qt::red));
+    QCOMPARE(chart.channelPenWidth(0), 2.0);
+    QVERIFY(chart.isChannelVisible(0));
 }
 
 void tst_StripChart::circularBufferInsertion()
@@ -64,10 +64,8 @@ void tst_StripChart::circularBufferInsertion()
         chart.addDataPoint(ch, static_cast<double>(i * 10));
     }
 
-    const auto *info = chart.channel(ch);
-    QVERIFY(info != nullptr);
-    QCOMPARE(info->latestValue, 200.0);
-    QCOMPARE(static_cast<int>(info->count), 10);
+    QCOMPARE(chart.channelLatestValue(ch), 200.0);
+    QCOMPARE(static_cast<int>(chart.channelSampleCount(ch)), 10);
 }
 
 void tst_StripChart::autoScaling()
@@ -90,10 +88,8 @@ void tst_StripChart::clearData()
     chart.addDataPoint(ch, 42.0);
 
     chart.clear();
-    const auto *info = chart.channel(ch);
-    QVERIFY(info != nullptr);
-    QCOMPARE(info->count, static_cast<size_t>(0));
-    QCOMPARE(info->latestValue, 0.0);
+    QCOMPARE(chart.channelSampleCount(ch), static_cast<qsizetype>(0));
+    QCOMPARE(chart.channelLatestValue(ch), 0.0);
 }
 
 void tst_StripChart::signalEmission()
@@ -154,8 +150,7 @@ void tst_StripChart::nanAndInfinityResilience()
 
     // Influx of NaN should hold latest valid value
     chart.addDataPoint(ch, std::numeric_limits<double>::quiet_NaN());
-    QVERIFY(chart.channel(ch) != nullptr);
-    QVERIFY(std::isfinite(chart.channel(ch)->latestValue));
+    QVERIFY(std::isfinite(chart.channelLatestValue(ch)));
 
     // Range setters with NaN/Inf must be rejected
     chart.setYRange(std::numeric_limits<double>::quiet_NaN(), 100.0);

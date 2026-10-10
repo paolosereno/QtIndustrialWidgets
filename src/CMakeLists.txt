@@ -53,6 +53,8 @@ set_target_properties(QtIndustrialWidgets PROPERTIES
     SOVERSION ${PROJECT_VERSION_MAJOR}
     EXPORT_NAME QtIndustrialWidgets
     AUTOMOC ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
 )
 
 include(GNUInstallDirs)

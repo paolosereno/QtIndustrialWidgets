@@ -18,7 +18,12 @@
 namespace QtIndustrialWidgets {
 
 struct ChannelInternal {
-    StripChart::ChannelInfo info;
+    QString name;
+    QColor color;
+    bool visible{true};
+    double penWidth{1.8};
+    size_t count{0};
+    double latestValue{0.0};
     std::vector<double> buffer;
     size_t headIndex{0};
 };
@@ -68,13 +73,58 @@ int StripChart::horizontalDivisions() const { Q_D(const StripChart); return d->m
 int StripChart::verticalDivisions() const { Q_D(const StripChart); return d->m_verticalDivisions; }
 int StripChart::channelCount() const { Q_D(const StripChart); return static_cast<int>(d->m_channels.size()); }
 
-const StripChart::ChannelInfo *StripChart::channel(int index) const
+QString StripChart::channelName(int channelId) const
 {
     Q_D(const StripChart);
-    if (index >= 0 && index < static_cast<int>(d->m_channels.size())) {
-        return &d->m_channels[index].info;
+    if (channelId >= 0 && channelId < static_cast<int>(d->m_channels.size())) {
+        return d->m_channels[channelId].name;
     }
-    return nullptr;
+    return {};
+}
+
+QColor StripChart::channelColor(int channelId) const
+{
+    Q_D(const StripChart);
+    if (channelId >= 0 && channelId < static_cast<int>(d->m_channels.size())) {
+        return d->m_channels[channelId].color;
+    }
+    return {};
+}
+
+bool StripChart::isChannelVisible(int channelId) const
+{
+    Q_D(const StripChart);
+    if (channelId >= 0 && channelId < static_cast<int>(d->m_channels.size())) {
+        return d->m_channels[channelId].visible;
+    }
+    return false;
+}
+
+double StripChart::channelPenWidth(int channelId) const
+{
+    Q_D(const StripChart);
+    if (channelId >= 0 && channelId < static_cast<int>(d->m_channels.size())) {
+        return d->m_channels[channelId].penWidth;
+    }
+    return 0.0;
+}
+
+qsizetype StripChart::channelSampleCount(int channelId) const
+{
+    Q_D(const StripChart);
+    if (channelId >= 0 && channelId < static_cast<int>(d->m_channels.size())) {
+        return static_cast<qsizetype>(d->m_channels[channelId].count);
+    }
+    return 0;
+}
+
+double StripChart::channelLatestValue(int channelId) const
+{
+    Q_D(const StripChart);
+    if (channelId >= 0 && channelId < static_cast<int>(d->m_channels.size())) {
+        return d->m_channels[channelId].latestValue;
+    }
+    return 0.0;
 }
 
 QSize StripChart::sizeHint() const
@@ -90,12 +140,12 @@ QSize StripChart::minimumSizeHint() const
 int StripChart::addChannel(const QString &name, const QColor &color, double penWidth)
 {
     ChannelInternal ch;
-    ch.info.name = name;
-    ch.info.color = color;
-    ch.info.penWidth = penWidth;
-    ch.info.visible = true;
-    ch.info.count = 0;
-    ch.info.latestValue = 0.0;
+    ch.name = name;
+    ch.color = color;
+    ch.penWidth = penWidth;
+    ch.visible = true;
+    ch.count = 0;
+    ch.latestValue = 0.0;
     ch.buffer.resize(d_ptr->m_capacity, 0.0);
     ch.headIndex = 0;
 
@@ -117,17 +167,17 @@ void StripChart::addDataPoint(int channelId, double value)
     }
 
     if (std::isnan(value)) {
-        value = (ch.info.count > 0 && std::isfinite(ch.info.latestValue)) ? ch.info.latestValue : 0.0;
+        value = (ch.count > 0 && std::isfinite(ch.latestValue)) ? ch.latestValue : 0.0;
     } else if (std::isinf(value)) {
         value = (value > 0.0) ? d_ptr->m_yMaximum : d_ptr->m_yMinimum;
     }
 
     ch.buffer[ch.headIndex] = value;
     ch.headIndex = (ch.headIndex + 1) % d_ptr->m_capacity;
-    if (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) {
-        ch.info.count++;
+    if (ch.count < static_cast<size_t>(d_ptr->m_capacity)) {
+        ch.count++;
     }
-    ch.info.latestValue = value;
+    ch.latestValue = value;
 
     if (d_ptr->m_autoScaleY) {
         updateAutoScaling();
@@ -147,17 +197,17 @@ void StripChart::addDataPoints(const QVector<double> &values)
         }
         double val = values[i];
         if (std::isnan(val)) {
-            val = (ch.info.count > 0 && std::isfinite(ch.info.latestValue)) ? ch.info.latestValue : 0.0;
+            val = (ch.count > 0 && std::isfinite(ch.latestValue)) ? ch.latestValue : 0.0;
         } else if (std::isinf(val)) {
             val = (val > 0.0) ? d_ptr->m_yMaximum : d_ptr->m_yMinimum;
         }
 
         ch.buffer[ch.headIndex] = val;
         ch.headIndex = (ch.headIndex + 1) % d_ptr->m_capacity;
-        if (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) {
-            ch.info.count++;
+        if (ch.count < static_cast<size_t>(d_ptr->m_capacity)) {
+            ch.count++;
         }
-        ch.info.latestValue = val;
+        ch.latestValue = val;
     }
 
     if (d_ptr->m_autoScaleY) {
@@ -172,8 +222,8 @@ void StripChart::clear()
 {
     for (auto &ch : d_ptr->m_channels) {
         ch.headIndex = 0;
-        ch.info.count = 0;
-        ch.info.latestValue = 0.0;
+        ch.count = 0;
+        ch.latestValue = 0.0;
         std::fill(ch.buffer.begin(), ch.buffer.end(), 0.0);
     }
     update();
@@ -188,7 +238,7 @@ void StripChart::setCapacity(int count)
     for (auto &ch : d_ptr->m_channels) {
         ch.buffer.resize(d_ptr->m_capacity, 0.0);
         ch.headIndex = 0;
-        ch.info.count = 0;
+        ch.count = 0;
     }
 
     Q_EMIT capacityChanged(d_ptr->m_capacity);
@@ -297,8 +347,8 @@ void StripChart::setVerticalDivisions(int divisions)
 void StripChart::setChannelVisible(int channelId, bool visible)
 {
     if (channelId >= 0 && channelId < static_cast<int>(d_ptr->m_channels.size())) {
-        if (d_ptr->m_channels[channelId].info.visible != visible) {
-            d_ptr->m_channels[channelId].info.visible = visible;
+        if (d_ptr->m_channels[channelId].visible != visible) {
+            d_ptr->m_channels[channelId].visible = visible;
             update();
         }
     }
@@ -307,7 +357,7 @@ void StripChart::setChannelVisible(int channelId, bool visible)
 void StripChart::setChannelColor(int channelId, const QColor &color)
 {
     if (channelId >= 0 && channelId < static_cast<int>(d_ptr->m_channels.size())) {
-        d_ptr->m_channels[channelId].info.color = color;
+        d_ptr->m_channels[channelId].color = color;
         update();
     }
 }
@@ -319,8 +369,8 @@ void StripChart::updateAutoScaling()
     double maxVal = -1e9;
 
     for (const auto &ch : d_ptr->m_channels) {
-        if (!ch.info.visible || ch.info.count == 0) continue;
-        for (size_t i = 0; i < ch.info.count; ++i) {
+        if (!ch.visible || ch.count == 0) continue;
+        for (size_t i = 0; i < ch.count; ++i) {
             double v = ch.buffer[i];
             if (!std::isfinite(v)) continue;
             hasData = true;
@@ -474,14 +524,14 @@ void StripChart::paintEvent(QPaintEvent *)
     if (qFuzzyIsNull(yRange)) yRange = 1.0;
 
     for (const auto &ch : d_ptr->m_channels) {
-        if (!ch.info.visible || ch.info.count < 2) continue;
+        if (!ch.visible || ch.count < 2) continue;
 
         QPolygonF polyline;
-        polyline.reserve(static_cast<int>(ch.info.count));
+        polyline.reserve(static_cast<int>(ch.count));
 
-        size_t start = (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
+        size_t start = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
 
-        for (size_t i = 0; i < ch.info.count; ++i) {
+        for (size_t i = 0; i < ch.count; ++i) {
             size_t bufIdx = (start + i) % d_ptr->m_capacity;
             double val = ch.buffer[bufIdx];
             if (!std::isfinite(val)) continue;
@@ -496,7 +546,7 @@ void StripChart::paintEvent(QPaintEvent *)
         }
 
         // Draw smooth waveform trace
-        QPen tracePen(ch.info.color, ch.info.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        QPen tracePen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         painter.setPen(tracePen);
         painter.drawPolyline(polyline);
 
@@ -504,7 +554,7 @@ void StripChart::paintEvent(QPaintEvent *)
         if (!polyline.isEmpty()) {
             QPointF latestPt = polyline.last();
             painter.setPen(Qt::NoPen);
-            painter.setBrush(ch.info.color.lighter(150));
+            painter.setBrush(ch.color.lighter(150));
             painter.drawEllipse(latestPt, 2.5, 2.5);
         }
     }
@@ -522,16 +572,16 @@ void StripChart::paintEvent(QPaintEvent *)
         QFontMetricsF fm(f);
 
         for (const auto &ch : d_ptr->m_channels) {
-            if (!ch.info.visible) continue;
+            if (!ch.visible) continue;
 
             // Channel color swatch
             painter.setPen(Qt::NoPen);
-            painter.setBrush(ch.info.color);
+            painter.setBrush(ch.color);
             painter.drawRoundedRect(QRectF(curX, 10.0, 10.0, 10.0), 2.0, 2.0);
             curX += 14.0;
 
             // Channel name and latest numeric readout
-            QString txt = QStringLiteral("%1: %2").arg(ch.info.name, QString::number(ch.info.latestValue, 'f', 1));
+            QString txt = QStringLiteral("%1: %2").arg(ch.name, QString::number(ch.latestValue, 'f', 1));
             QRectF txtRect = fm.boundingRect(txt);
             painter.setPen(d_ptr->m_textColor);
             painter.drawText(QPointF(curX, 19.0), txt);
