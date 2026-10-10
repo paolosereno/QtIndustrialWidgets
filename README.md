@@ -37,8 +37,8 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 
 ## 🚀 Key Features
 
-- **Blazing Fast Rendering (60+ FPS)**:
-  Static elements (bezels, backgrounds, threshold arc bands, tick marks, numeric labels) are rendered into a cached `QPixmap` on resize or layout changes. During high-frequency updates (e.g. 50+ Hz), only dynamic elements (needles, liquid levels, digital values) are redrawn over the cached background, ensuring minimal CPU utilization.
+- **Cached Static Rendering**:
+  Static elements (bezels, backgrounds, threshold arc bands, tick marks, numeric labels) are rendered into a cached `QPixmap` on resize or layout changes. During high-frequency updates (e.g. 50+ Hz), only dynamic elements (needles, liquid levels, digital values) are redrawn over the cached background, keeping per-update CPU work small. Measured `StripChart` timings are published in the [Benchmark Report](docs/benchmarks.md).
 - **Hi-DPI & 4K Ready**:
   Accurate multi-monitor and Hi-DPI scaling using `devicePixelRatioF()`. No blurry dial faces or fuzzy text on Retina / 4K monitors.
 - **Pure Vector 7-Segment Display**:
@@ -102,9 +102,9 @@ Precision rotary potentiometer and selector switch.
 
 ### 6. `StripChart` (`qiw::StripChart`)
 Real-time scrolling telemetry strip chart and oscilloscope for high-rate DAQ.
-- **Measured High Performance**: Benchmarked at 1920 device px (Linux, GCC 13, Qt 6.4.2): ingestion throughput of 0.011 µs/sample with autoscale ON (1.1 ms / 100k samples, 3.6 ms for 1M uniform block), and steady-state paint latency under 10 ms for 4 channels × 1M points (under 2 ms for 1 channel × 1M), comfortably sustaining 60 FPS.
+- **Measured Performance**: On an Intel Core i5-13600KF (Ubuntu 24.04 on WSL2, GCC 13.3, Qt 6.4.2, offscreen CPU raster, 1920 device px plot), the steady-state paint median is 2.95 ms for 1 channel × 1M noisy samples and 23.59 ms for 4 channels × 1M; `addSample` with autoscale ON takes 0.0326 µs per call (median). Full tables, method and the 2.1.0 targets that are not yet met: [Benchmark Report](docs/benchmarks.md).
 - **M4 Min/Max Pixel Decimation**: Bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer. Peaks are never lost; intra-pixel waveform shape is not preserved.
-- **Thin Decimated Traces**: When decimation is active, traces render using a cosmetic 1-device-pixel pen without antialiasing to eliminate `QStroker` outline polygon synthesis, accelerating dense waveform rendering by over 1,000×.
+- **Thin Decimated Traces**: When decimation is active, traces render using a cosmetic 1-device-pixel pen without antialiasing to avoid `QStroker` outline polygon synthesis, which dominates the cost of stroking dense zig-zags with wide antialiased pens.
 - **Nanosecond Real-Time Axis**: True `std::chrono::nanoseconds` time representation with dynamic 1-2-5 tick grid, relative (`-10 s … 0 s`) or absolute wall-clock (`HH:mm:ss.zzz`) formats.
 - **Robust Telemetry Handling**: Automatic inter-sample gap detection (4x EMA threshold) and resilience to sensor dropouts (raw NaN/±∞ fault preservation without painter errors).
 - **Multi-Channel & Lazy Autoscale with Hysteresis**: Independent channels, O(W) visible window scanning with grow-on-spike and 30-frame shrink hysteresis, and live telemetry legend overlay. See [StripChart Guide](docs/strip_chart.md) and [Benchmark Report](docs/benchmarks.md).
