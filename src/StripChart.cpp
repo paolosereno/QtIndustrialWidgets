@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/StripChart.h>
 #include "internal/M4Decimator.h"
 #include "internal/StripChartGeometry.h"
+#include "internal/StripChartTestAccess.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -42,6 +43,9 @@ struct ChannelInternal {
     size_t headIndex{0};
 
     internal::M4Decimator::IncrementalStream m4Stream;
+    internal::GeometryKey geometryKey;
+    bool geometryValid{false};
+    bool lastDecimating{false};
 };
 
 class StripChartPrivate {
@@ -60,8 +64,12 @@ public:
         ch.warnedIgnoredTimestamps = false;
         std::fill(ch.values.begin(), ch.values.end(), 0.0);
         std::fill(ch.timestamps.begin(), ch.timestamps.end(), 0);
+        ch.geometryValid = false;
+        ch.lastDecimating = false;
         ch.m4Stream.reset();
     }
+
+    bool m_testRawPenCosmetic1px{false};
 
     int m_capacity{300};
     double m_yMinimum{0.0};
@@ -90,8 +98,53 @@ public:
 
     std::vector<ChannelInternal> m_channels;
 
+    std::vector<std::vector<internal::M4Point>> m_reusableSegments;
+    QPolygonF m_reusablePoly;
+
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
+    double m_cachedDpr{1.0};
+
+    void invalidateGeometry() {
+        for (auto &ch : m_channels) {
+            ch.geometryValid = false;
+        }
+    }
+
+    void rebuildChannelStream(ChannelInternal &ch, const internal::GeometryKey &key) {
+        ch.m4Stream.setWidth(key.widthDev, key.ringSize);
+        ch.m4Stream.reset();
+        ch.geometryKey = key;
+        ch.geometryValid = true;
+
+        if (ch.count == 0) return;
+
+        size_t start = (ch.count < static_cast<size_t>(m_capacity)) ? 0 : ch.headIndex;
+        size_t cap = static_cast<size_t>(m_capacity);
+
+        if (key.axisMode == internal::GeometryAxisMode::Time) {
+            size_t span1 = std::min(ch.count, cap - start);
+            for (size_t i = 0; i < span1; ++i) {
+                ch.m4Stream.addSample(ch.timestamps[start + i], ch.values[start + i], key.bucketWidth);
+            }
+            size_t span2 = ch.count - span1;
+            for (size_t i = 0; i < span2; ++i) {
+                ch.m4Stream.addSample(ch.timestamps[i], ch.values[i], key.bucketWidth);
+            }
+        } else {
+            quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
+            size_t span1 = std::min(ch.count, cap - start);
+            for (size_t i = 0; i < span1; ++i) {
+                qint64 sampleIdx = static_cast<qint64>(startCounter + i);
+                ch.m4Stream.addSample(sampleIdx, ch.values[start + i], key.bucketWidth);
+            }
+            size_t span2 = ch.count - span1;
+            for (size_t i = 0; i < span2; ++i) {
+                qint64 sampleIdx = static_cast<qint64>(startCounter + span1 + i);
+                ch.m4Stream.addSample(sampleIdx, ch.values[i], key.bucketWidth);
+            }
+        }
+    }
 
     [[nodiscard]] qint64 arrivalTimestampNs() {
         return m_arrivalTimer.nsecsElapsed();
@@ -148,6 +201,17 @@ public:
         ch.totalSamples++;
         ch.lastTimestamp = t;
         ch.latestValue = value;
+
+        if (ch.geometryValid && ch.visible) {
+            if (m_xAxisMode == StripChart::XAxisMode::Time) {
+                ch.m4Stream.addSample(t, value, ch.geometryKey.bucketWidth);
+            } else {
+                qint64 sampleIdx = static_cast<qint64>(ch.totalSamples - 1);
+                ch.m4Stream.addSample(sampleIdx, value, ch.geometryKey.bucketWidth);
+            }
+        } else if (!ch.visible) {
+            ch.geometryValid = false;
+        }
 
         m_autoScaleDirty = true;
         return true;
@@ -281,6 +345,7 @@ void StripChart::setTimeSpan(std::chrono::nanoseconds span)
     if (span <= std::chrono::nanoseconds::zero() || d->m_timeSpan == span) return;
     d->m_timeSpan = span;
     invalidateCache();
+    d->invalidateGeometry();
     Q_EMIT timeSpanChanged(timeSpanSeconds());
     update();
 }
@@ -308,6 +373,7 @@ void StripChart::setDecimationMode(DecimationMode mode)
     Q_D(StripChart);
     if (d->m_decimationMode == mode) return;
     d->m_decimationMode = mode;
+    d->invalidateGeometry();
     Q_EMIT decimationModeChanged(mode);
     update();
 }
@@ -645,6 +711,7 @@ void StripChart::setCapacity(int count)
     }
 
     Q_EMIT capacityChanged(d_ptr->m_capacity);
+    d_ptr->invalidateGeometry();
     update();
 }
 
@@ -752,6 +819,9 @@ void StripChart::setChannelVisible(int channelId, bool visible)
     if (channelId >= 0 && channelId < static_cast<int>(d_ptr->m_channels.size())) {
         if (d_ptr->m_channels[channelId].visible != visible) {
             d_ptr->m_channels[channelId].visible = visible;
+            if (visible) {
+                d_ptr->m_channels[channelId].geometryValid = false;
+            }
             update();
         }
     }
@@ -852,12 +922,18 @@ void StripChart::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     invalidateCache();
+    d_ptr->invalidateGeometry();
 }
 
 void StripChart::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::PaletteChange) {
         invalidateCache();
+        update();
+    }
+    if (event->type() == QEvent::ScreenChangeInternal) {
+        invalidateCache();
+        d_ptr->invalidateGeometry();
         update();
     }
     QWidget::changeEvent(event);
@@ -1021,6 +1097,10 @@ void StripChart::paintEvent(QPaintEvent *)
     if (plotRect.width() <= 10.0 || plotRect.height() <= 10.0) return;
 
     qreal dpr = devicePixelRatioF();
+    if (!qFuzzyCompare(dpr, d_ptr->m_cachedDpr)) {
+        d_ptr->m_cachedDpr = dpr;
+        d_ptr->invalidateGeometry();
+    }
     int W_dev = std::max(1, static_cast<int>(std::round(plotRect.width() * dpr)));
 
     double yRange = d_ptr->m_yMaximum - d_ptr->m_yMinimum;
@@ -1124,20 +1204,13 @@ void StripChart::paintEvent(QPaintEvent *)
             size_t visibleSamples = ch.count - firstIdx;
             if (visibleSamples == 0) continue;
 
-            std::vector<qint64> visT(visibleSamples);
-            std::vector<double> visY(visibleSamples);
-            for (size_t j = 0; j < visibleSamples; ++j) {
-                size_t idx = (start + firstIdx + j) % static_cast<size_t>(d_ptr->m_capacity);
-                visT[j] = ch.timestamps[idx];
-                visY[j] = ch.values[idx];
-            }
-
             bool doDecimate = false;
             if (d_ptr->m_decimationMode == DecimationMode::Always) {
                 doDecimate = true;
             } else if (d_ptr->m_decimationMode == DecimationMode::Auto) {
                 doDecimate = (visibleSamples > static_cast<size_t>(W_dev));
             }
+            const_cast<ChannelInternal&>(ch).lastDecimating = doDecimate;
 
             qint64 gapThresh = d_ptr->m_gapThreshold.count();
             if (gapThresh == 0 && ch.hasEma && ch.emaIntervalNs > 0.0) {
@@ -1153,7 +1226,7 @@ void StripChart::paintEvent(QPaintEvent *)
             };
 
             QPen tracePen;
-            if (doDecimate) {
+            if (doDecimate || d_ptr->m_testRawPenCosmetic1px) {
                 tracePen = QPen(ch.color, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
                 tracePen.setCosmetic(true);
                 painter.setRenderHint(QPainter::Antialiasing, false);
@@ -1167,60 +1240,97 @@ void StripChart::paintEvent(QPaintEvent *)
             bool hasDrawnPt = false;
 
             if (doDecimate) {
-                auto segments = internal::M4Decimator::decimateToSegments(
-                    visT.data(), visY.data(), visibleSamples, dt_px, win.kStart, win.numBuckets, gapThresh);
+                internal::GeometryKey targetKey;
+                targetKey.axisMode = internal::GeometryAxisMode::Time;
+                targetKey.bucketWidth = dt_px;
+                targetKey.widthDev = W_dev;
+                targetKey.ringSize = static_cast<size_t>(std::max(win.numBuckets + 4, W_dev + 4));
 
-                for (const auto &seg : segments) {
-                    if (seg.empty()) continue;
-                    QPolygonF poly;
-                    poly.reserve(static_cast<int>(seg.size()));
-                    for (const auto &pt : seg) {
-                        poly << mapPoint(pt.t, pt.value);
+                if (!ch.geometryValid || ch.geometryKey != targetKey) {
+                    d_ptr->rebuildChannelStream(const_cast<ChannelInternal&>(ch), targetKey);
+                }
+
+                qint64 kStartQuery = win.kStart;
+                int numBucketsQuery = win.numBuckets;
+
+                if (ch.totalSamples > ch.count && ch.count > 0) {
+                    size_t oldestIdx = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
+                    qint64 tOldest = ch.timestamps[oldestIdx];
+                    qint64 kOldest = internal::M4Decimator::floorDiv(tOldest, dt_px);
+
+                    if (kStartQuery < kOldest) {
+                        qint64 diff = kOldest - kStartQuery;
+                        kStartQuery = kOldest;
+                        numBucketsQuery = std::max(0, numBucketsQuery - static_cast<int>(diff));
                     }
-                    painter.drawPolyline(poly);
-                    lastDrawnPt = poly.last();
+
+                    internal::M4Bucket freshBucket;
+                    size_t cap = static_cast<size_t>(d_ptr->m_capacity);
+                    for (size_t j = 0; j < ch.count; ++j) {
+                        size_t idx = (oldestIdx + j) % cap;
+                        qint64 tSample = ch.timestamps[idx];
+                        if (internal::M4Decimator::floorDiv(tSample, dt_px) != kOldest) {
+                            break;
+                        }
+                        freshBucket.addSample(tSample, ch.values[idx]);
+                    }
+                    const_cast<ChannelInternal&>(ch).m4Stream.setBucket(kOldest, freshBucket);
+                }
+
+                ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, gapThresh);
+
+                for (const auto &seg : d_ptr->m_reusableSegments) {
+                    if (seg.empty()) continue;
+                    d_ptr->m_reusablePoly.clear();
+                    for (const auto &pt : seg) {
+                        d_ptr->m_reusablePoly << mapPoint(pt.t, pt.value);
+                    }
+                    painter.drawPolyline(d_ptr->m_reusablePoly);
+                    lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
             } else {
-                // Raw drawing
-                QPolygonF currentPoly;
+                // Raw drawing - iterate in place without visT/visY allocations!
+                d_ptr->m_reusablePoly.clear();
                 qint64 prevT = std::numeric_limits<qint64>::min();
+                size_t cap = static_cast<size_t>(d_ptr->m_capacity);
 
                 for (size_t j = 0; j < visibleSamples; ++j) {
-                    double v = visY[j];
-                    qint64 t = visT[j];
+                    size_t idx = (start + firstIdx + j) % cap;
+                    double v = ch.values[idx];
+                    qint64 t = ch.timestamps[idx];
 
                     if (!std::isfinite(v)) {
-                        if (!currentPoly.isEmpty()) {
-                            painter.drawPolyline(currentPoly);
-                            lastDrawnPt = currentPoly.last();
+                        if (!d_ptr->m_reusablePoly.isEmpty()) {
+                            painter.drawPolyline(d_ptr->m_reusablePoly);
+                            lastDrawnPt = d_ptr->m_reusablePoly.last();
                             hasDrawnPt = true;
-                            currentPoly.clear();
+                            d_ptr->m_reusablePoly.clear();
                         }
                         prevT = std::numeric_limits<qint64>::min();
                         continue;
                     }
 
                     if (prevT != std::numeric_limits<qint64>::min() && gapThresh > 0 && (t - prevT > gapThresh)) {
-                        if (!currentPoly.isEmpty()) {
-                            painter.drawPolyline(currentPoly);
-                            lastDrawnPt = currentPoly.last();
+                        if (!d_ptr->m_reusablePoly.isEmpty()) {
+                            painter.drawPolyline(d_ptr->m_reusablePoly);
+                            lastDrawnPt = d_ptr->m_reusablePoly.last();
                             hasDrawnPt = true;
-                            currentPoly.clear();
+                            d_ptr->m_reusablePoly.clear();
                         }
                     }
 
                     QPointF pt = mapPoint(t, v);
-                    if (d_ptr->m_interpolation == Interpolation::Step && !currentPoly.isEmpty()) {
-                        currentPoly << QPointF(pt.x(), currentPoly.last().y());
+                    if (d_ptr->m_interpolation == Interpolation::Step && !d_ptr->m_reusablePoly.isEmpty()) {
+                        d_ptr->m_reusablePoly << QPointF(pt.x(), d_ptr->m_reusablePoly.last().y());
                     }
-                    currentPoly << pt;
+                    d_ptr->m_reusablePoly << pt;
                     prevT = t;
                 }
 
-                if (!currentPoly.isEmpty()) {
-                    painter.drawPolyline(currentPoly);
-                    lastDrawnPt = currentPoly.last();
+                if (!d_ptr->m_reusablePoly.isEmpty()) {
+                    painter.drawPolyline(d_ptr->m_reusablePoly);
+                    lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
             }
@@ -1248,9 +1358,10 @@ void StripChart::paintEvent(QPaintEvent *)
             } else if (d_ptr->m_decimationMode == DecimationMode::Auto) {
                 doDecimate = (ch.count > static_cast<size_t>(W_dev));
             }
+            const_cast<ChannelInternal&>(ch).lastDecimating = doDecimate;
 
             QPen tracePen;
-            if (doDecimate) {
+            if (doDecimate || d_ptr->m_testRawPenCosmetic1px) {
                 tracePen = QPen(ch.color, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
                 tracePen.setCosmetic(true);
                 painter.setRenderHint(QPainter::Antialiasing, false);
@@ -1264,46 +1375,74 @@ void StripChart::paintEvent(QPaintEvent *)
             bool hasDrawnPt = false;
 
             if (doDecimate) {
-                std::vector<qint64> sampleIndices(ch.count);
-                std::vector<double> sampleValues(ch.count);
-                quint64 startCounter = ch.totalSamples >= ch.count ? (ch.totalSamples - ch.count) : 0;
-                for (size_t i = 0; i < ch.count; ++i) {
-                    size_t bufIdx = (start + i) % static_cast<size_t>(d_ptr->m_capacity);
-                    sampleIndices[i] = static_cast<qint64>(startCounter + i);
-                    sampleValues[i] = ch.values[bufIdx];
+                auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
+
+                internal::GeometryKey targetKey;
+                targetKey.axisMode = internal::GeometryAxisMode::SampleIndex;
+                targetKey.bucketWidth = ib.samplesPerBucket;
+                targetKey.widthDev = W_dev;
+                targetKey.ringSize = static_cast<size_t>(std::max(ib.numBuckets + 4, W_dev + 4));
+
+                if (!ch.geometryValid || ch.geometryKey != targetKey) {
+                    d_ptr->rebuildChannelStream(const_cast<ChannelInternal&>(ch), targetKey);
                 }
 
-                auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
-                auto segments = internal::M4Decimator::decimateToSegments(
-                    sampleIndices.data(), sampleValues.data(), ch.count, ib.samplesPerBucket, ib.kStart, ib.numBuckets, 0);
+                qint64 kStartQuery = ib.kStart;
+                int numBucketsQuery = ib.numBuckets;
 
-                for (const auto &seg : segments) {
+                quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
+                if (ch.totalSamples > ch.count && ch.count > 0) {
+                    qint64 firstAbsoluteIndex = static_cast<qint64>(startCounter);
+                    qint64 kOldest = internal::M4Decimator::floorDiv(firstAbsoluteIndex, ib.samplesPerBucket);
+
+                    if (kStartQuery < kOldest) {
+                        qint64 diff = kOldest - kStartQuery;
+                        kStartQuery = kOldest;
+                        numBucketsQuery = std::max(0, numBucketsQuery - static_cast<int>(diff));
+                    }
+
+                    internal::M4Bucket freshBucket;
+                    size_t cap = static_cast<size_t>(d_ptr->m_capacity);
+                    size_t oldestIdx = ch.headIndex;
+                    for (size_t j = 0; j < ch.count; ++j) {
+                        qint64 sIdx = static_cast<qint64>(startCounter + j);
+                        if (internal::M4Decimator::floorDiv(sIdx, ib.samplesPerBucket) != kOldest) {
+                            break;
+                        }
+                        size_t idx = (oldestIdx + j) % cap;
+                        freshBucket.addSample(sIdx, ch.values[idx]);
+                    }
+                    const_cast<ChannelInternal&>(ch).m4Stream.setBucket(kOldest, freshBucket);
+                }
+
+                ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, 0);
+
+                for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
-                    QPolygonF poly;
-                    poly.reserve(static_cast<int>(seg.size()));
+                    d_ptr->m_reusablePoly.clear();
                     for (const auto &pt : seg) {
                         double frac = (ch.count <= 1) ? 0.0 : static_cast<double>(pt.t - startCounter) / (d_ptr->m_capacity - 1);
                         double x = plotRect.left() + frac * plotRect.width();
                         double yNorm = (pt.value - d_ptr->m_yMinimum) / yRange;
                         double y = plotRect.bottom() - yNorm * plotRect.height();
-                        poly << QPointF(x, y);
+                        d_ptr->m_reusablePoly << QPointF(x, y);
                     }
-                    painter.drawPolyline(poly);
-                    lastDrawnPt = poly.last();
+                    painter.drawPolyline(d_ptr->m_reusablePoly);
+                    lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
             } else {
-                QPolygonF currentPoly;
+                d_ptr->m_reusablePoly.clear();
                 for (size_t i = 0; i < ch.count; ++i) {
                     size_t bufIdx = (start + i) % static_cast<size_t>(d_ptr->m_capacity);
                     double val = ch.values[bufIdx];
 
                     if (!std::isfinite(val)) {
-                        if (!currentPoly.isEmpty()) {
-                            painter.drawPolyline(currentPoly);
-                            lastDrawnPt = currentPoly.last();
+                        if (!d_ptr->m_reusablePoly.isEmpty()) {
+                            painter.drawPolyline(d_ptr->m_reusablePoly);
+                            lastDrawnPt = d_ptr->m_reusablePoly.last();
                             hasDrawnPt = true;
-                            currentPoly.clear();
+                            d_ptr->m_reusablePoly.clear();
                         }
                         continue;
                     }
@@ -1315,15 +1454,15 @@ void StripChart::paintEvent(QPaintEvent *)
                     y = std::clamp(y, plotRect.top(), plotRect.bottom());
                     QPointF pt(x, y);
 
-                    if (d_ptr->m_interpolation == Interpolation::Step && !currentPoly.isEmpty()) {
-                        currentPoly << QPointF(pt.x(), currentPoly.last().y());
+                    if (d_ptr->m_interpolation == Interpolation::Step && !d_ptr->m_reusablePoly.isEmpty()) {
+                        d_ptr->m_reusablePoly << QPointF(pt.x(), d_ptr->m_reusablePoly.last().y());
                     }
-                    currentPoly << pt;
+                    d_ptr->m_reusablePoly << pt;
                 }
 
-                if (!currentPoly.isEmpty()) {
-                    painter.drawPolyline(currentPoly);
-                    lastDrawnPt = currentPoly.last();
+                if (!d_ptr->m_reusablePoly.isEmpty()) {
+                    painter.drawPolyline(d_ptr->m_reusablePoly);
+                    lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
             }
@@ -1372,5 +1511,22 @@ void StripChart::paintEvent(QPaintEvent *)
         }
     }
 }
+
+namespace internal {
+
+void StripChartTestAccess::setRawPenCosmetic1px(StripChart &chart, bool enable)
+{
+    chart.d_ptr->m_testRawPenCosmetic1px = enable;
+}
+
+bool StripChartTestAccess::isDecimating(const StripChart &chart, int channelId)
+{
+    if (channelId >= 0 && channelId < static_cast<int>(chart.d_ptr->m_channels.size())) {
+        return chart.d_ptr->m_channels[static_cast<size_t>(channelId)].lastDecimating;
+    }
+    return false;
+}
+
+} // namespace internal
 
 } // namespace QtIndustrialWidgets

@@ -171,19 +171,25 @@ public:
             M4Bucket bucket;
         };
 
-        explicit IncrementalStream(int widthDev = 800);
+        explicit IncrementalStream(int widthDev = 800, size_t ringSize = 0);
 
-        void setWidth(int widthDev);
+        void setWidth(int widthDev, size_t ringSize = 0);
+        void setRingSize(size_t ringSize);
         void reset();
 
         void addSample(qint64 t, double y, qint64 dt_px);
+        void setBucket(qint64 k, const M4Bucket &bucket);
         void rebuild(const qint64 *timestamps, const double *values, size_t count, qint64 dt_px);
 
         [[nodiscard]] const M4Bucket *bucketAt(qint64 k) const;
+        void extractVisibleSegments(
+            std::vector<std::vector<M4Point>> &segments,
+            qint64 kStart, int numBuckets, qint64 gapThreshold) const;
         [[nodiscard]] std::vector<std::vector<M4Point>> extractVisibleSegments(
             qint64 kStart, int numBuckets, qint64 gapThreshold) const;
 
         [[nodiscard]] int widthDev() const noexcept { return m_widthDev; }
+        [[nodiscard]] size_t ringSize() const noexcept { return m_ringSize; }
         [[nodiscard]] qint64 activeBucketIndex() const noexcept { return m_activeBucketIndex; }
         [[nodiscard]] const M4Bucket &activeBucket() const noexcept { return m_activeBucket; }
 

@@ -31,5 +31,32 @@ struct IndexBuckets {
 IndexBuckets computeIndexBuckets(quint64 totalSamples, size_t count,
                                  int capacity, int widthDev);
 
+enum class GeometryAxisMode {
+    SampleIndex,
+    Time
+};
+
+struct GeometryKey {
+    GeometryAxisMode axisMode{GeometryAxisMode::SampleIndex};
+    qint64 bucketWidth{0}; // dtPx in Time mode, samplesPerBucket in SampleIndex mode
+    int widthDev{0};
+    size_t ringSize{0};
+
+    [[nodiscard]] bool isValid() const noexcept {
+        return bucketWidth > 0 && widthDev > 0 && ringSize > 0;
+    }
+
+    bool operator==(const GeometryKey &o) const noexcept {
+        return axisMode == o.axisMode &&
+               bucketWidth == o.bucketWidth &&
+               widthDev == o.widthDev &&
+               ringSize == o.ringSize;
+    }
+
+    bool operator!=(const GeometryKey &o) const noexcept {
+        return !(*this == o);
+    }
+};
+
 } // namespace internal
 } // namespace QtIndustrialWidgets

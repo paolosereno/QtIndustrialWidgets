@@ -23,6 +23,7 @@ private Q_SLOTS:
     void vertexBound();
     void noShimmer();
     void incrementalEqualsBatch();
+    void propertyTestIncrementalEqualsBatch();
 };
 
 void tst_M4Decimator::pixelEquivalence()
@@ -115,6 +116,8 @@ void tst_M4Decimator::pixelEquivalence()
         qInfo() << "Rasterizer difference:" << totalDiffCols << "columns differ, max diff per col:" << maxDiffPerCol;
         QVERIFY2(maxDiffPerCol <= 1,
                  "M4 pixel equivalence: rasterizer differences exceed 1 pixel per column between raw and decimated");
+        QVERIFY2(totalDiffCols <= (width / 100),
+                 "M4 pixel equivalence: differing columns exceed 1% between raw and decimated");
     }
 }
 
@@ -275,6 +278,84 @@ void tst_M4Decimator::incrementalEqualsBatch()
         QCOMPARE(incBucket->count, batchBucket.count);
         QCOMPARE(incBucket->hasFinite, batchBucket.hasFinite);
         QCOMPARE(incBucket->hasNonFinite, batchBucket.hasNonFinite);
+    }
+}
+
+void tst_M4Decimator::propertyTestIncrementalEqualsBatch()
+{
+    std::mt19937_64 rng(42);
+    std::uniform_int_distribution<int> bucketCountDist(10, 150);
+    std::uniform_int_distribution<int> sampleCountDist(50, 1500);
+    std::uniform_int_distribution<qint64> dtPxDist(20, 200);
+    std::uniform_int_distribution<qint64> gapDist(1, 40);
+    std::uniform_real_distribution<double> valDist(-100.0, 100.0);
+    std::bernoulli_distribution nonFiniteDist(0.04);
+    std::bernoulli_distribution infDist(0.5);
+
+    constexpr int totalScenarios = 250;
+
+    for (int scenario = 0; scenario < totalScenarios; ++scenario) {
+        int numBuckets = bucketCountDist(rng);
+        int sampleCount = sampleCountDist(rng);
+        qint64 dt_px = dtPxDist(rng);
+        qint64 gapThreshold = (scenario % 3 == 0) ? (dt_px * 2) : 0;
+
+        std::vector<qint64> timestamps(sampleCount);
+        std::vector<double> values(sampleCount);
+
+        qint64 currentT = (scenario % 2 == 0) ? 0 : 5000000LL;
+        for (int i = 0; i < sampleCount; ++i) {
+            timestamps[i] = currentT;
+            if (nonFiniteDist(rng)) {
+                values[i] = infDist(rng) ? std::numeric_limits<double>::infinity()
+                                         : std::numeric_limits<double>::quiet_NaN();
+            } else {
+                values[i] = valDist(rng);
+            }
+            qint64 step = gapDist(rng);
+            if (scenario % 5 == 0 && i % 25 == 0) {
+                step += dt_px * 3;
+            }
+            currentT += step;
+        }
+
+        qint64 kStart = M4Decimator::floorDiv(timestamps.front(), dt_px);
+        qint64 kEnd = M4Decimator::floorDiv(timestamps.back(), dt_px) + 1;
+        int activeBuckets = static_cast<int>(kEnd - kStart);
+        if (activeBuckets > numBuckets) {
+            kStart = kEnd - numBuckets;
+            activeBuckets = numBuckets;
+        }
+
+        auto batchSegments = M4Decimator::decimateToSegments(
+            timestamps.data(), values.data(), sampleCount, dt_px, kStart, activeBuckets, gapThreshold);
+
+        M4Decimator::IncrementalStream stream(numBuckets, activeBuckets + 4);
+
+        if (scenario % 10 == 0) {
+            stream.setWidth(numBuckets / 2, (numBuckets / 2) + 4);
+            stream.setWidth(numBuckets, activeBuckets + 4);
+        }
+
+        for (int i = 0; i < sampleCount; ++i) {
+            stream.addSample(timestamps[i], values[i], dt_px);
+        }
+
+        auto streamSegments = stream.extractVisibleSegments(kStart, activeBuckets, gapThreshold);
+
+        QCOMPARE(streamSegments.size(), batchSegments.size());
+        for (size_t s = 0; s < streamSegments.size(); ++s) {
+            const auto &streamSeg = streamSegments[s];
+            const auto &batchSeg = batchSegments[s];
+            QCOMPARE(streamSeg.size(), batchSeg.size());
+            for (size_t v = 0; v < streamSeg.size(); ++v) {
+                QCOMPARE(streamSeg[v].t, batchSeg[v].t);
+                if (std::isnan(streamSeg[v].value) && std::isnan(batchSeg[v].value)) {
+                    continue;
+                }
+                QCOMPARE(streamSeg[v].value, batchSeg[v].value);
+            }
+        }
     }
 }
 

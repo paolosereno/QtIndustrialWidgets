@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/StripChart.h>
 #include <internal/StripChartGeometry.h>
 #include <internal/M4Decimator.h>
+#include <internal/StripChartTestAccess.h>
 #include <QtGui/QPixmap>
 #include <QtGui/QImage>
 
@@ -64,6 +65,8 @@ private Q_SLOTS:
     void axisModeRoundTrip();
     void sameAxisModePreservesData();
     void addUniformSamplesSampleIndexMode();
+    void evictionConsistency();
+    void widgetM4Equivalence();
 };
 
 void tst_StripChart::defaultValues()
@@ -874,6 +877,171 @@ void tst_StripChart::autoDecimationThreshold()
     int thickIndexOn = measureLineThickness(StripChart::XAxisMode::SampleIndex, 1001);
     QVERIFY2(thickIndexOff >= 5, qPrintable(QString("SampleIndex mode with 1000 samples should be raw (thick >= 5), got %1").arg(thickIndexOff)));
     QVERIFY2(thickIndexOn <= 2, qPrintable(QString("SampleIndex mode with 1001 samples should be decimated (cosmetic 1px <= 2), got %1").arg(thickIndexOn)));
+}
+
+void tst_StripChart::evictionConsistency()
+{
+    auto testLeftmostColumn = [](StripChart::XAxisMode mode) {
+        StripChart chart;
+        chart.setXAxisMode(mode);
+        chart.setGridVisible(false);
+        chart.setLegendVisible(false);
+        chart.setYRange(0.0, 100.0);
+        chart.setCapacity(400); // capacity < window
+        if (mode == StripChart::XAxisMode::Time) {
+            chart.setTimeSpan(std::chrono::seconds(10));
+        }
+
+        // Plot width = 1000 px, DPR = 1.0 (margins: left 42, right 12 -> 1054)
+        chart.resize(1054, 400);
+        int ch = chart.addChannel(QStringLiteral("Ch0"), Qt::red, 1.0);
+
+        // Add 600 samples (> capacity 400)
+        if (mode == StripChart::XAxisMode::Time) {
+            for (int i = 0; i < 600; ++i) {
+                chart.addSample(ch, std::chrono::nanoseconds(i * 10000000LL), 50.0 + 30.0 * std::sin(i * 0.1));
+            }
+        } else {
+            for (int i = 0; i < 600; ++i) {
+                chart.addDataPoint(ch, 50.0 + 30.0 * std::sin(i * 0.1));
+            }
+        }
+
+        auto isRedPixel = [](QRgb rgb) -> bool {
+            return qRed(rgb) > 180 && qGreen(rgb) < 80 && qBlue(rgb) < 80;
+        };
+
+        auto findLeftmostX = [&](StripChart::DecimationMode decMode) -> int {
+            chart.setDecimationMode(decMode);
+            QImage img(chart.size(), QImage::Format_ARGB32_Premultiplied);
+            img.fill(Qt::black);
+            chart.render(&img);
+
+            for (int x = 0; x < img.width(); ++x) {
+                for (int y = 0; y < img.height(); ++y) {
+                    if (isRedPixel(img.pixel(x, y))) {
+                        return x;
+                    }
+                }
+            }
+            return -1;
+        };
+
+        int xOff = findLeftmostX(StripChart::DecimationMode::Off);
+        int xAlways = findLeftmostX(StripChart::DecimationMode::Always);
+
+        QVERIFY(xOff > 0);
+        QVERIFY(xAlways > 0);
+        QVERIFY2(std::abs(xOff - xAlways) <= 1,
+                 qPrintable(QString("Leftmost column mismatch for mode %1: Off=%2, Always=%3")
+                                .arg(static_cast<int>(mode))
+                                .arg(xOff)
+                                .arg(xAlways)));
+    };
+
+    testLeftmostColumn(StripChart::XAxisMode::Time);
+    testLeftmostColumn(StripChart::XAxisMode::SampleIndex);
+}
+
+void tst_StripChart::widgetM4Equivalence()
+{
+    StripChart chart;
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    chart.setTimeSpan(std::chrono::seconds(10));
+    chart.setGridVisible(false);
+    chart.setLegendVisible(false);
+    chart.setYRange(0.0, 100.0);
+    chart.setCapacity(60000);
+
+    // 1054 x 400 -> plot width = 1000 px
+    chart.resize(1054, 400);
+    int ch = chart.addChannel(QStringLiteral("Ch0"), Qt::red, 1.0);
+
+    // Enable cosmetic 1px unaliased pen for raw path in this test
+    internal::StripChartTestAccess::setRawPenCosmetic1px(chart, true);
+
+    // 200,000 samples over 1000 pixels (200 samples/pixel) with broadband noise
+    const int N = 200000;
+    std::vector<std::chrono::nanoseconds> timestamps(N);
+    std::vector<double> values(N);
+    std::mt19937_64 rng(42);
+    std::uniform_real_distribution<double> dist(10.0, 90.0);
+
+    for (int i = 0; i < N; ++i) {
+        double tSec = i * 10.0 / N;
+        timestamps[i] = std::chrono::nanoseconds(static_cast<qint64>(tSec * 1e9));
+        values[i] = dist(rng);
+    }
+    // Specific spikes to verify extreme preservation
+    values[80000] = 98.0;
+    values[140000] = 2.0;
+
+    chart.setCapacity(250000);
+    chart.addSamples(ch, timestamps.data(), values.data(), N);
+
+    // Render with DecimationMode::Off
+    chart.setDecimationMode(StripChart::DecimationMode::Off);
+    QImage imgOff(chart.size(), QImage::Format_ARGB32_Premultiplied);
+    imgOff.fill(Qt::black);
+    chart.render(&imgOff);
+
+    // Render with DecimationMode::Always
+    chart.setDecimationMode(StripChart::DecimationMode::Always);
+    QImage imgAlways(chart.size(), QImage::Format_ARGB32_Premultiplied);
+    imgAlways.fill(Qt::black);
+    chart.render(&imgAlways);
+
+    auto isRedPixel = [](QRgb rgb) -> bool {
+        return qRed(rgb) > 180 && qGreen(rgb) < 80 && qBlue(rgb) < 80;
+    };
+
+    // Compare first exact equality
+    if (imgOff == imgAlways) {
+        QCOMPARE(imgOff, imgAlways);
+    } else {
+        // Antialiasing difference on raw vs 1px cosmetic pen:
+        // Compare vertical pixel extents per column in the plot area (x in [42, 1041])
+        int maxDiffPerCol = 0;
+        int diffCols = 0;
+        int activeCols = 0;
+
+        for (int x = 42; x < 1042; ++x) {
+            int minYOff = -1, maxYOff = -1;
+            int minYAlways = -1, maxYAlways = -1;
+
+            for (int y = 0; y < chart.height(); ++y) {
+                if (isRedPixel(imgOff.pixel(x, y))) {
+                    if (minYOff < 0) minYOff = y;
+                    maxYOff = y;
+                }
+                if (isRedPixel(imgAlways.pixel(x, y))) {
+                    if (minYAlways < 0) minYAlways = y;
+                    maxYAlways = y;
+                }
+            }
+
+            if (minYOff >= 0 && minYAlways >= 0) {
+                activeCols++;
+                int dMin = std::abs(minYOff - minYAlways);
+                int dMax = std::abs(maxYOff - maxYAlways);
+                int colDiff = std::max(dMin, dMax);
+                if (colDiff > maxDiffPerCol) {
+                    maxDiffPerCol = colDiff;
+                }
+                if (colDiff > 0) {
+                    diffCols++;
+                }
+            }
+        }
+
+        qInfo() << "M4 widget equivalence: activeCols:" << activeCols
+                << "diffCols:" << diffCols << "maxDiffPerCol:" << maxDiffPerCol;
+        QVERIFY(activeCols > 900);
+        QVERIFY2(maxDiffPerCol <= 1,
+                 qPrintable(QString("M4 widget equivalence: max diff per col %1 > 1 px").arg(maxDiffPerCol)));
+        QVERIFY2(diffCols <= (activeCols / 100),
+                 qPrintable(QString("M4 widget equivalence: differing cols %1 exceeds 1% of %2").arg(diffCols).arg(activeCols)));
+    }
 }
 
 QTEST_MAIN(tst_StripChart)

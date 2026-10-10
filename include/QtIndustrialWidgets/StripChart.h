@@ -17,6 +17,9 @@
 namespace QtIndustrialWidgets {
 
 class StripChartPrivate;
+namespace internal {
+class StripChartTestAccess;
+}
 
 /**
  * \class StripChart
@@ -331,6 +334,7 @@ private:
 
     std::unique_ptr<StripChartPrivate> d_ptr;
     Q_DECLARE_PRIVATE(StripChart)
+    friend class internal::StripChartTestAccess;
 };
 
 } // namespace QtIndustrialWidgets

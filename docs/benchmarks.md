@@ -111,3 +111,51 @@ This document tracks rendering and ingestion benchmarks for `QtIndustrialWidgets
 - `QStroker` outline/AET cost has been completely eliminated. Drawing decimated polylines now takes < 1 ms on GPU/rasterizer.
 - The remaining ~58 ms (1 ch 4M) and ~230 ms (4 ch 4M) are purely due to copying visible samples into temporary `std::vector`s and running batch decimation on 16 million points every frame.
 - This will be eliminated in **Step 2** with incremental M4 stream wiring and zero per-frame allocations.
+
+---
+
+## Step 2 — Incremental M4 Stream & Zero Allocations
+
+**Changes implemented:**
+- Ring buffer of `M4Bucket` inside `M4Decimator::IncrementalStream` (`m_ringSize = std::max(numBuckets + 4, W_dev + 4)`).
+- `insertSampleInternal` directly feeds samples into `IncrementalStream` during streaming ($O(1)$ per sample).
+- Cache invalidation via `GeometryKey` (`axisMode`, `bucketWidth`, `widthDev`, `ringSize`) with lazy `rebuildChannelStream` on resize/timeSpan/axisMode changes.
+- Buffer wrap-around eviction handling: clamped query starting at `kOldest` and $O(\text{samples per bucket})$ recomputation of the oldest partial bucket to guarantee exact pixel match with raw retained data.
+- Reusable member buffers (`m_reusableSegments`, `m_reusablePoly`) in `StripChartPrivate` eliminates heap allocations during `paintEvent`.
+- In-place two-span circular buffer iteration for raw path (zero vector copies).
+
+### 1. Ingestion Throughput (Pending Step 3 for autoscale ON)
+
+| Benchmark Case | Samples | Min Time | Median Time | Per-Sample Latency | Notes |
+|---|---|---|---|---|---|
+| `addSample` (autoscale ON, 1M base) | 100k calls | 357,101 ms | **367,341 ms** | **3.673 ms/call** | Synchronous scan (addressed in Step 3) |
+| `addSample` (autoscale OFF, 1M base) | 100k calls | 3.25 ms | **3.27 ms** | **0.033 µs/call** | Incremental M4 feed included |
+| `addUniformSamples` | 1M block | 7.15 ms | **7.20 ms** | **0.007 µs/sample** | Fast block append |
+| `addDataPoint` (legacy, autoscale OFF) | 100k calls | 3.12 ms | **3.15 ms** | **0.032 µs/call** | Incremental M4 feed included |
+
+### 2. Paint Latency Highlights (1920 Device Px)
+
+| Channels | Samples | Signal Type | Axis Mode | Baseline Median | Step 1 Median | Step 2 Median | Speedup vs Baseline |
+|---|---|---|---|---|---|---|---|
+| **1 ch** | **10k** | BroadbandNoise | Time | 2,109 ms | 1.87 ms | **0.23 ms** | **9,169×** |
+| **1 ch** | **100k** | BroadbandNoise | Time | 3,648 ms | 2.78 ms | **0.46 ms** | **7,930×** |
+| **1 ch** | **1M** | BroadbandNoise | Time | 6,916 ms | 10.01 ms | **1.86 ms** | **3,718×** |
+| **1 ch** | **4M** | SmoothSine | Time | 33,426 ms | 58.94 ms | **5.47 ms** | **6,110×** |
+| **1 ch** | **4M** | BroadbandNoise | Time | > 30,000 ms | 59.57 ms | **8.12 ms** | **> 3,700×** |
+| **4 ch** | **1M** | BroadbandNoise | Time | ~28,000 ms | 58.60 ms | **8.24 ms** | **~3,400×** |
+| **4 ch** | **1M** | SpikesAndNaN | SampleIndex | ~15,000 ms | ~45 ms | **7.15 ms** | **~2,100×** |
+| **4 ch** | **4M** | SmoothSine | Time | Timeout | 227.27 ms | **23.67 ms** | **Real-time (42 FPS)** |
+| **4 ch** | **4M** | BroadbandNoise | Time | Timeout | 230.15 ms | **35.18 ms** | **Real-time (~30 FPS)** |
+| **4 ch** | **4M** | BroadbandNoise | SampleIndex | Timeout | 225.40 ms | **18.36 ms** | **Real-time (54 FPS)** |
+
+### 3. Window Resize Latency
+
+| Benchmark Case | Description | Baseline Median | Step 1 Median | Step 2 Median | Speedup vs Baseline |
+|---|---|---|---|---|---|
+| `firstPaintAfterResize` | 4 ch × 1M noisy, 1000×800 to 1974×1080 | 21,467 ms | 68.65 ms | **66.23 ms** | **324×** |
+
+### 4. Analysis
+- Steady-state rendering is now true $O(W)$: frame paint time across 100k to 4M samples scales sub-linearly with buffer size, remaining well below 10 ms for 1 channel and < 10 ms for 4 channels at 1M samples (**full 60 FPS achieved**).
+- Zero per-frame heap allocations: visible traces extract pre-aggregated buckets directly into reusable scratch vectors.
+- Next bottleneck to solve is **Step 3: Lazy Autoscale with Hysteresis**, reducing `addSample` with autoscale ON from 3.67 ms/call to < 1 µs/call.
+

@@ -108,19 +108,28 @@ std::vector<std::vector<M4Point>> M4Decimator::decimateToSegments(
 // IncrementalStream implementation
 // ============================================================================
 
-M4Decimator::IncrementalStream::IncrementalStream(int widthDev)
+M4Decimator::IncrementalStream::IncrementalStream(int widthDev, size_t ringSize)
     : m_widthDev(std::max(1, widthDev))
-    , m_ringSize(static_cast<size_t>(m_widthDev + 2))
+    , m_ringSize((ringSize > 0) ? ringSize : static_cast<size_t>(m_widthDev + 4))
     , m_ring(m_ringSize)
 {
 }
 
-void M4Decimator::IncrementalStream::setWidth(int widthDev)
+void M4Decimator::IncrementalStream::setWidth(int widthDev, size_t ringSize)
 {
     int w = std::max(1, widthDev);
-    if (m_widthDev == w) return;
+    size_t rSize = (ringSize > 0) ? ringSize : static_cast<size_t>(w + 4);
+    if (m_widthDev == w && m_ringSize == rSize) return;
     m_widthDev = w;
-    m_ringSize = static_cast<size_t>(m_widthDev + 2);
+    m_ringSize = rSize;
+    m_ring.assign(m_ringSize, BucketEntry{});
+    reset();
+}
+
+void M4Decimator::IncrementalStream::setRingSize(size_t ringSize)
+{
+    if (ringSize == 0 || ringSize == m_ringSize) return;
+    m_ringSize = ringSize;
     m_ring.assign(m_ringSize, BucketEntry{});
     reset();
 }
@@ -165,6 +174,17 @@ void M4Decimator::IncrementalStream::addSample(qint64 t, double y, qint64 dt_px)
     }
 }
 
+void M4Decimator::IncrementalStream::setBucket(qint64 k, const M4Bucket &bucket)
+{
+    if (k == m_activeBucketIndex) {
+        m_activeBucket = bucket;
+        return;
+    }
+    if (m_ring.empty()) return;
+    size_t slot = slotFor(k);
+    m_ring[slot] = {k, bucket};
+}
+
 void M4Decimator::IncrementalStream::rebuild(
     const qint64 *timestamps, const double *values, size_t count, qint64 dt_px)
 {
@@ -189,30 +209,40 @@ const M4Bucket *M4Decimator::IncrementalStream::bucketAt(qint64 k) const
     return nullptr;
 }
 
-std::vector<std::vector<M4Point>> M4Decimator::IncrementalStream::extractVisibleSegments(
+void M4Decimator::IncrementalStream::extractVisibleSegments(
+    std::vector<std::vector<M4Point>> &segments,
     qint64 kStart, int numBuckets, qint64 gapThreshold) const
 {
-    if (numBuckets <= 0) return {};
+    segments.clear();
+    if (numBuckets <= 0) return;
 
-    std::vector<std::vector<M4Point>> segments;
-    std::vector<M4Point> currentSegment;
+    size_t segIdx = 0;
+    auto getNextSegment = [&]() -> std::vector<M4Point>& {
+        if (segIdx < segments.size()) {
+            segments[segIdx].clear();
+        } else {
+            segments.emplace_back();
+            segments.back().reserve(1024);
+        }
+        return segments[segIdx++];
+    };
+
+    std::vector<M4Point> *currentSegment = nullptr;
     qint64 prevTimestamp = std::numeric_limits<qint64>::min();
 
     for (int i = 0; i < numBuckets; ++i) {
         qint64 k = kStart + i;
         const M4Bucket *b = bucketAt(k);
         if (!b || !b->isValid()) {
-            if (b && b->hasNonFinite && !currentSegment.empty()) {
-                segments.push_back(std::move(currentSegment));
-                currentSegment.clear();
+            if (b && b->hasNonFinite && currentSegment && !currentSegment->empty()) {
+                currentSegment = nullptr;
                 prevTimestamp = std::numeric_limits<qint64>::min();
             }
             continue;
         }
 
-        if (b->hasNonFinite && !currentSegment.empty()) {
-            segments.push_back(std::move(currentSegment));
-            currentSegment.clear();
+        if (b->hasNonFinite && currentSegment && !currentSegment->empty()) {
+            currentSegment = nullptr;
             prevTimestamp = std::numeric_limits<qint64>::min();
         }
 
@@ -222,29 +252,35 @@ std::vector<std::vector<M4Point>> M4Decimator::IncrementalStream::extractVisible
 
         if (prevTimestamp != std::numeric_limits<qint64>::min() && gapThreshold > 0) {
             if (verts[0].t - prevTimestamp > gapThreshold) {
-                if (!currentSegment.empty()) {
-                    segments.push_back(std::move(currentSegment));
-                    currentSegment.clear();
+                if (currentSegment && !currentSegment->empty()) {
+                    currentSegment = nullptr;
                 }
             }
         }
 
+        if (!currentSegment) {
+            currentSegment = &getNextSegment();
+        }
+
         for (int v = 0; v < vCount; ++v) {
-            currentSegment.push_back(verts[v]);
+            currentSegment->push_back(verts[v]);
         }
         prevTimestamp = verts[vCount - 1].t;
 
-        if (b->hasNonFinite && !currentSegment.empty()) {
-            segments.push_back(std::move(currentSegment));
-            currentSegment.clear();
+        if (b->hasNonFinite && currentSegment && !currentSegment->empty()) {
+            currentSegment = nullptr;
             prevTimestamp = std::numeric_limits<qint64>::min();
         }
     }
 
-    if (!currentSegment.empty()) {
-        segments.push_back(std::move(currentSegment));
-    }
+    segments.resize(segIdx);
+}
 
+std::vector<std::vector<M4Point>> M4Decimator::IncrementalStream::extractVisibleSegments(
+    qint64 kStart, int numBuckets, qint64 gapThreshold) const
+{
+    std::vector<std::vector<M4Point>> segments;
+    extractVisibleSegments(segments, kStart, numBuckets, gapThreshold);
     return segments;
 }
 
