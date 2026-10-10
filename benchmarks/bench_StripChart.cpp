@@ -11,6 +11,8 @@
 //    allocations per render / per append are reported.
 //  - First paint after resize: 10 independent trials (cold path).
 //  - Insertion cases: real call counts, never extrapolated.
+//  - Signals are functions of time, so every sample count draws the same waveform in the window;
+//    the number of trace pixels in the rendered frame is reported next to each paint time.
 //
 // Results are printed on stdout as Markdown tables at the end of the run. To keep stdout clean,
 // send the QtTest log elsewhere, e.g.:
@@ -27,6 +29,7 @@
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 #include <QtTest/QtTest>
 #include <QtGui/QGuiApplication>
+#include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 #include <QtCore/QElapsedTimer>
@@ -181,6 +184,7 @@ struct PaintRow {
     QString signal;
     QString axis;
     Stats renderMs;
+    qint64 tracePixels{0};
 };
 
 struct StreamRow {
@@ -194,6 +198,7 @@ struct StreamRow {
     Stats allocsPerRender;
     Stats kibPerRender;
     Stats allocsPerAppend;
+    qint64 tracePixels{0}; // last measured frame
 };
 
 struct TimedRow {
@@ -361,11 +366,11 @@ void printMarkdown()
         out(QStringLiteral("#### Paint at steady state (%1 warm-up + %2 measured renders, ms)")
                 .arg(kWarmupRenders).arg(kMeasuredRenders));
         out(QString());
-        out(QStringLiteral("| Channels | Samples / ch | Signal | X axis | Min | Median | p95 |"));
-        out(QStringLiteral("|---:|---:|---|---|---:|---:|---:|"));
+        out(QStringLiteral("| Channels | Samples / ch | Signal | X axis | Trace px | Min | Median | p95 |"));
+        out(QStringLiteral("|---:|---:|---|---|---:|---:|---:|---:|"));
         for (const PaintRow &r : g_steadyRows) {
-            out(QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 |")
-                    .arg(r.channels).arg(r.samples, r.signal, r.axis)
+            out(QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 | %8 |")
+                    .arg(r.channels).arg(r.samples, r.signal, r.axis).arg(r.tracePixels)
                     .arg(ms(r.renderMs.min), ms(r.renderMs.median), ms(r.renderMs.p95)));
         }
     }
@@ -376,12 +381,12 @@ void printMarkdown()
                            "%1 warm-up + %2 measured frames, ms)")
                 .arg(kWarmupRenders).arg(kMeasuredRenders));
         out(QString());
-        out(QStringLiteral("| Channels | Samples / ch | Signal | X axis | New samples / ch / frame | "
+        out(QStringLiteral("| Channels | Samples / ch | Signal | X axis | New samples / ch / frame | Trace px | "
                            "Render min | Render median | Render p95 | Append median (all ch) |"));
-        out(QStringLiteral("|---:|---:|---|---|---:|---:|---:|---:|---:|"));
+        out(QStringLiteral("|---:|---:|---|---|---:|---:|---:|---:|---:|---:|"));
         for (const StreamRow &r : g_streamRows) {
-            out(QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 | %8 | %9 |")
-                    .arg(r.channels).arg(r.samples, r.signal, r.axis).arg(r.chunkPerChannel)
+            out(QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 | %8 | %9 | %10 |")
+                    .arg(r.channels).arg(r.samples, r.signal, r.axis).arg(r.chunkPerChannel).arg(r.tracePixels)
                     .arg(ms(r.renderMs.min), ms(r.renderMs.median), ms(r.renderMs.p95), ms(r.appendMs.median)));
         }
 
@@ -455,11 +460,21 @@ class BenchStripChart : public QObject {
     Q_OBJECT
 
 private:
-    static std::vector<double> generateSignal(SignalType type, int count, int channelIndex) {
+    // Signals are defined as functions of time t = i * dtNs, so the drawn waveform covers the same
+    // shape in the 10 s window for every sample count N. The reference interval kRefDtNs = 10 µs
+    // (N = 1M in 10 s) reproduces the earlier index-based generator sample for sample, so 1M cases
+    // remain comparable with measurements made with that generator.
+    static std::vector<double> generateSignal(SignalType type, int count, int channelIndex, qint64 dtNs) {
+        constexpr double kRefDtNs = 10000.0;
+        constexpr qint64 kSpikePeriodNs = 100000000;   // one-sample spike every 100 ms
+        constexpr qint64 kDropoutPeriodNs = 250000000; // NaN dropout every 250 ms ...
+        constexpr qint64 kDropoutLengthNs = 50000;     // ... lasting 50 µs
         std::vector<double> data(count);
         double phaseOffset = channelIndex * 1.57079632679;
         for (int i = 0; i < count; ++i) {
-            double baseSine = std::sin(i * 0.001 + phaseOffset) * 50.0 + 50.0;
+            const qint64 tNs = static_cast<qint64>(i) * dtNs;
+            const double phase = 0.001 * (static_cast<double>(tNs) / kRefDtNs);
+            double baseSine = std::sin(phase + phaseOffset) * 50.0 + 50.0;
             switch (type) {
                 case SignalType::SmoothSine:
                     data[i] = baseSine;
@@ -469,13 +484,13 @@ private:
                     uint64_t rng = static_cast<uint64_t>(i + channelIndex * 1000003) * 6364136223846793005ULL + 1442695040888963407ULL;
                     double rand01 = static_cast<double>(rng >> 32) / 4294967296.0;
                     double noise = (rand01 - 0.5) * 10.0 + ((i % 2 == 0) ? 3.0 : -3.0);
-                    data[i] = std::sin(i * 0.001 + phaseOffset) * 30.0 + 50.0 + noise;
+                    data[i] = std::sin(phase + phaseOffset) * 30.0 + 50.0 + noise;
                     break;
                 }
                 case SignalType::SpikesAndNaN:
-                    if (i % 10000 == 0) {
-                        data[i] = 500.0; // Single-sample spike
-                    } else if (i % 25000 < 5) {
+                    if (tNs % kSpikePeriodNs < dtNs) {
+                        data[i] = 500.0; // Single-sample spike (first sample of each period)
+                    } else if (tNs % kDropoutPeriodNs < kDropoutLengthNs) {
                         data[i] = std::numeric_limits<double>::quiet_NaN(); // Dropout
                     } else {
                         data[i] = baseSine;
@@ -484,6 +499,35 @@ private:
             }
         }
         return data;
+    }
+
+    // Trace pixels in the rendered frame: decimated traces are drawn with a cosmetic pen without
+    // antialiasing in the exact channel colour, and clipped to the plot rectangle. Pixels inside the
+    // plot rectangle whose RGB equals one of the channel colours are counted (the legend swatches
+    // sit above the plot rectangle; the glow dot uses a lighter colour and is not counted).
+    static qint64 countTracePixels(const QPixmap &pix, int channels, StripChart::XAxisMode mode)
+    {
+        const QImage img = pix.toImage().convertToFormat(QImage::Format_RGB32);
+        // StripChart::plotArea() margins with the legend visible (identical in 2.0.1 and 2.1.x)
+        const int left = 42;
+        const int right = img.width() - 12;
+        const int top = 30;
+        const int bottom = img.height() - ((mode == StripChart::XAxisMode::Time) ? 26 : 16);
+        std::vector<QRgb> colors;
+        for (int c = 0; c < channels; ++c) {
+            colors.push_back(kColors[c % 4].rgb() & 0x00ffffff);
+        }
+        qint64 count = 0;
+        for (int y = top; y < bottom; ++y) {
+            const QRgb *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+            for (int x = left; x < right; ++x) {
+                const QRgb px = line[x] & 0x00ffffff;
+                if (std::find(colors.begin(), colors.end(), px) != colors.end()) {
+                    ++count;
+                }
+            }
+        }
+        return count;
     }
 
     static void configureChart(StripChart &chart, int samples, StripChart::XAxisMode mode)
@@ -616,7 +660,7 @@ void BenchStripChart::paintSteady()
 
     for (int c = 0; c < channels; ++c) {
         int chId = chart.addChannel(QStringLiteral("Ch%1").arg(c), kColors[c % 4]);
-        std::vector<double> sigData = generateSignal(sig, samples, c);
+        std::vector<double> sigData = generateSignal(sig, samples, c, dtNs);
         chart.addUniformSamples(chId, std::chrono::nanoseconds(0), std::chrono::nanoseconds(dtNs),
                                 sigData.data(), samples);
     }
@@ -643,11 +687,12 @@ void BenchStripChart::paintSteady()
     r.signal = QLatin1String(signalTypeName(sig));
     r.axis = QLatin1String(axisLabel(mode));
     r.renderMs = computeStats(timings);
+    r.tracePixels = countTracePixels(pix, channels, mode);
     g_steadyRows.push_back(r);
 
-    std::fprintf(stderr, "[PAINT_STEADY] %d ch | %4s | %-14s | %-11s | min %8.2f | median %8.2f | p95 %8.2f ms\n",
+    std::fprintf(stderr, "[PAINT_STEADY] %d ch | %4s | %-14s | %-11s | %8lld px | min %8.2f | median %8.2f | p95 %8.2f ms\n",
                  channels, sampleLabel(samples), signalTypeName(sig), axisLabel(mode),
-                 r.renderMs.min, r.renderMs.median, r.renderMs.p95);
+                 static_cast<long long>(r.tracePixels), r.renderMs.min, r.renderMs.median, r.renderMs.p95);
 }
 
 void BenchStripChart::paintStreaming_data()
@@ -679,7 +724,7 @@ void BenchStripChart::paintStreaming()
     std::vector<std::vector<double>> data;
     for (int c = 0; c < channels; ++c) {
         ids.push_back(chart.addChannel(QStringLiteral("Ch%1").arg(c), kColors[c % 4]));
-        data.push_back(generateSignal(sig, totalSamples, c));
+        data.push_back(generateSignal(sig, totalSamples, c, dtNs));
         chart.addUniformSamples(ids.back(), std::chrono::nanoseconds(0), std::chrono::nanoseconds(dtNs),
                                 data.back().data(), samples);
     }
@@ -736,11 +781,13 @@ void BenchStripChart::paintStreaming()
     r.allocsPerRender = computeStats(allocsPerRender);
     r.kibPerRender = computeStats(kibPerRender);
     r.allocsPerAppend = computeStats(allocsPerAppend);
+    r.tracePixels = countTracePixels(pix, channels, mode);
     g_streamRows.push_back(r);
 
-    std::fprintf(stderr, "[PAINT_STREAM] %d ch | %4s | %-14s | %-11s | +%d/ch/frame | min %8.2f | median %8.2f | p95 %8.2f ms"
+    std::fprintf(stderr, "[PAINT_STREAM] %d ch | %4s | %-14s | %-11s | +%d/ch/frame | %8lld px | min %8.2f | median %8.2f | p95 %8.2f ms"
                          " | append %.3f ms | allocs/render %.0f (max %.0f) | allocs/append max %.0f\n",
                  channels, sampleLabel(samples), signalTypeName(sig), axisLabel(mode), chunk,
+                 static_cast<long long>(r.tracePixels),
                  r.renderMs.min, r.renderMs.median, r.renderMs.p95, r.appendMs.median,
                  r.allocsPerRender.median, r.allocsPerRender.max, r.allocsPerAppend.max);
 }
@@ -754,7 +801,7 @@ void BenchStripChart::firstPaintAfterResize()
 
     std::vector<std::vector<double>> data;
     for (int c = 0; c < channels; ++c) {
-        data.push_back(generateSignal(SignalType::BroadbandNoise, samples, c));
+        data.push_back(generateSignal(SignalType::BroadbandNoise, samples, c, dtNs));
     }
 
     std::vector<double> timings;
@@ -813,7 +860,7 @@ void BenchStripChart::runAddSampleCase(bool autoScale)
     chart.setAutoScaleY(autoScale);
 
     int ch = chart.addChannel(QStringLiteral("Ch0"), Qt::cyan);
-    std::vector<double> baseData = generateSignal(SignalType::BroadbandNoise, baseSamples, 0);
+    std::vector<double> baseData = generateSignal(SignalType::BroadbandNoise, baseSamples, 0, dtNs);
     chart.addUniformSamples(ch, std::chrono::nanoseconds(0), std::chrono::nanoseconds(dtNs), baseData.data(), baseSamples);
 
     std::vector<double> timingsMs;
@@ -857,7 +904,7 @@ void BenchStripChart::insertionThroughput_addUniformSamples_1M()
 {
     constexpr int samples = 1000000;
     const int trials = envInt("BENCH_INSERT_TRIALS", 10);
-    std::vector<double> data = generateSignal(SignalType::BroadbandNoise, samples, 0);
+    std::vector<double> data = generateSignal(SignalType::BroadbandNoise, samples, 0, 1000);
 
     std::vector<double> timingsMs;
     timingsMs.reserve(trials);
