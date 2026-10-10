@@ -74,6 +74,8 @@ To guarantee strictly bounded frame times ($O(W)$) even when decimating dense hi
 - **Raw Traces**: When decimation is inactive (via `Off` or when sample count $\le W_{dev}$), user-configured channel pen widths and antialiasing remain active for smooth visual appearance.
 - **Head Glow Dot**: Telemetry head glow dots always retain antialiasing for clean visual indicators.
 
+**Visible thickness switch in `Auto` mode (expected behaviour)**: Because of the rule above, a channel in `DecimationMode::Auto` changes appearance at runtime. While its visible sample count is `≤ W_dev` it is drawn raw, with its `penWidth` (default 1.8 px, set via `addChannel()`) and antialiasing; as soon as the visible sample count exceeds `W_dev` (typically while the buffer fills the time window) it switches to the 1-device-pixel unaliased pen, so the trace becomes visibly thinner. The decision is taken per channel on every frame, so the trace becomes thick again if the visible sample count drops back to `≤ W_dev` (for example after widening the plot or shortening the visible window). To avoid the switch, set `DecimationMode::Always` for a consistent look at all fill levels, or keep the channel `penWidth` close to 1 so both paths look alike.
+
 ---
 
 ## 3. High-Rate Sample Insertion API
