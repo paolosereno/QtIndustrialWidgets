@@ -1129,7 +1129,7 @@ void MainWindow::setupUi()
     daqControlsLayout->addWidget(labelFmtCombo, 2, 1);
 
     // Metrics label
-    m_daqMetricsLabel = new QLabel(QStringLiteral("Streaming: 100 kHz (1,600 samples/frame) | Frame Paint Time: -- ms"), daqControlsBox);
+    m_daqMetricsLabel = new QLabel(QStringLiteral("Streaming: 100 kHz (1,600 samples/frame) | Median Paint Time (last 60): -- ms"), daqControlsBox);
     m_daqMetricsLabel->setStyleSheet(QStringLiteral("font-family: monospace; font-size: 11px; font-weight: bold; color: #00e5ff;"));
     daqControlsLayout->addWidget(m_daqMetricsLabel, 2, 2, 1, 2);
 
@@ -1652,10 +1652,19 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         QApplication::sendEvent(m_daqChart, event);
         m_daqChart->installEventFilter(this);
         qint64 elapsedNs = timer.nsecsElapsed();
-        if (m_daqMetricsLabel) {
-            double ms = static_cast<double>(elapsedNs) / 1e6;
-            m_daqMetricsLabel->setText(QStringLiteral("Streaming: 100 kHz (1,600 samples/frame) | Measured Paint Time: %1 ms")
-                                           .arg(ms, 0, 'f', 2));
+        double ms = static_cast<double>(elapsedNs) / 1e6;
+
+        m_daqPaintTimes.push_back(ms);
+        if (m_daqPaintTimes.size() > 60) {
+            m_daqPaintTimes.erase(m_daqPaintTimes.begin());
+        }
+
+        if (m_daqMetricsLabel && !m_daqPaintTimes.empty()) {
+            std::vector<double> sorted = m_daqPaintTimes;
+            std::sort(sorted.begin(), sorted.end());
+            double median = sorted[sorted.size() / 2];
+            m_daqMetricsLabel->setText(QStringLiteral("Streaming: 100 kHz (1,600 samples/frame) | Median Paint Time (last 60): %1 ms")
+                                           .arg(median, 0, 'f', 2));
         }
         return true;
     }

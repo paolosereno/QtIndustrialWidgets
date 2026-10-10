@@ -116,6 +116,7 @@ private:
     int m_daqChannelSine{0};
     int m_daqChannelSquare{1};
     QLabel *m_daqMetricsLabel{nullptr};
+    std::vector<double> m_daqPaintTimes;
     std::chrono::nanoseconds m_daqCurrentTime{0};
     double m_daqPhase{0.0};
     quint64 m_daqSampleIndex{0};

@@ -9,7 +9,7 @@ import os
 
 class QtIndustrialWidgetsConan(ConanFile):
     name = "qtindustrialwidgets"
-    version = "2.0.1"
+    version = "2.1.0"
     license = "MIT"
     author = "Paolo Sereno <paolomsereno@gmail.com>"
     url = "https://github.com/paolosereno/QtIndustrialWidgets"

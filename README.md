@@ -102,11 +102,12 @@ Precision rotary potentiometer and selector switch.
 
 ### 6. `StripChart` (`qiw::StripChart`)
 Real-time scrolling telemetry strip chart and oscilloscope for high-rate DAQ.
-- **High Performance (60+ FPS at 100+ kHz)**: Real-time acquisition capable of handling millions of samples per channel at 60 FPS using zero-allocation circular SOA ring buffers (up to $2^{24}$ capacity) and Hi-DPI cached reticles.
-- **M4 Min/Max Pixel Decimation**: Zero-aliasing peak preservation engine ensuring transient spikes and sensor anomalies are never lost, bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer.
+- **Measured High Performance**: Benchmarked at 1920 device px (Linux, GCC 13, Qt 6.4.2): ingestion throughput of 0.011 µs/sample with autoscale ON (1.1 ms / 100k samples, 3.6 ms for 1M uniform block), and steady-state paint latency under 10 ms for 4 channels × 1M points (under 2 ms for 1 channel × 1M), comfortably sustaining 60 FPS.
+- **M4 Min/Max Pixel Decimation**: Bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer. Peaks are never lost; intra-pixel waveform shape is not preserved.
+- **Thin Decimated Traces**: When decimation is active, traces render using a cosmetic 1-device-pixel pen without antialiasing to eliminate `QStroker` outline polygon synthesis, accelerating dense waveform rendering by over 1,000×.
 - **Nanosecond Real-Time Axis**: True `std::chrono::nanoseconds` time representation with dynamic 1-2-5 tick grid, relative (`-10 s … 0 s`) or absolute wall-clock (`HH:mm:ss.zzz`) formats.
 - **Robust Telemetry Handling**: Automatic inter-sample gap detection (4x EMA threshold) and resilience to sensor dropouts (raw NaN/±∞ fault preservation without painter errors).
-- **Multi-Channel & Autoscale**: Independent channels, smooth dynamic Y auto-scaling, live telemetry legend overlay, and full backward compatibility. See [StripChart Guide](docs/strip_chart.md).
+- **Multi-Channel & Lazy Autoscale with Hysteresis**: Independent channels, O(W) visible window scanning with grow-on-spike and 30-frame shrink hysteresis, and live telemetry legend overlay. See [StripChart Guide](docs/strip_chart.md) and [Benchmark Report](docs/benchmarks.md).
 
 ### 7. `IndustrialSwitch` (`qiw::IndustrialSwitch`)
 Heavy-duty industrial toggle lever and rocker switch with safety guard.

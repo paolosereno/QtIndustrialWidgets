@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-10-10
+
+### Changed
+- **Cosmetic 1-device-pixel decimated traces**: Decimated waveforms are now rendered with a cosmetic 1-device-pixel pen without antialiasing (`Qt::FlatCap`, `Qt::MiterJoin`). This eliminates `QStroker` outline polygon synthesis across dense M4 zig-zags, reducing polyline rasterization time by over 1,000×.
+- **Auto decimation threshold**: `DecimationMode::Auto` threshold adjusted from `W_dev / 2` to `W_dev` (plot area width in device pixels), ensuring raw rendering is used whenever sample count $\le W_{dev}$.
+- **`yRangeChanged` emission timing**: Autoscale recomputation is now lazy. Signal `yRangeChanged(double, double)` is no longer emitted synchronously inside sample insertion methods (`addDataPoint`, `addSample`, etc.); it is emitted only during frame paint (`paintEvent`) or explicit programmatic queries (`yMinimum()`, `yMaximum()`).
+- **Autoscale hysteresis**: Dynamic Y autoscale now applies hysteresis (`kAutoScaleMargin = 0.10`, `kAutoScaleShrinkThreshold = 0.50`, `kAutoScaleShrinkHysteresisCount = 30`). Range expands immediately on data spikes; range shrinking is deferred until the data span remains below 50% of the current range for 30 consecutive recomputations, completely eliminating cached grid redraw churn.
+
+### Performance
+- **$O(W)$ steady-state rendering**: Wired incremental M4 streaming (`M4Decimator::IncrementalStream`) directly into sample ingestion with cached `GeometryKey` validation and circular buffer eviction handling. Reusable scratch buffers in private d-pointer eliminate per-frame heap allocations.
+- **Ingestion throughput**: Removed synchronous $O(N)$ full-buffer scanning from all six sample insertion APIs, marking autoscale dirty in $O(1)$.
+- **Before / After benchmarks (1920 device px, offscreen)**:
+  | Benchmark Case | Baseline (2.0.1) | 2.1.0 Release | Improvement |
+  |---|---|---|---|
+  | `addSample` (autoscale ON, 1M base) | 365,049 ms (3.65 ms/call) | **1.10 ms (0.011 µs/call)** | **331,862× faster** |
+  | `addSample` (autoscale OFF, 1M base) | 3.25 ms (0.033 µs/call) | **1.13 ms (0.011 µs/call)** | **~3× faster** |
+  | `addUniformSamples` (1M block) | 7.15 ms | **3.62 ms** | **2× faster** |
+  | Offscreen paint 1 ch × 1M noisy | 6,916 ms | **3.40 ms** | **2,034× faster** |
+  | Offscreen paint 4 ch × 1M noisy | ~28,000 ms | **23.38 ms** | **~1,200× faster** |
+  | First paint after resize (4 ch × 1M) | 21,467 ms | **46.43 ms** | **462× faster** |
+
+### Fixed
+- **Documentation claims**: Corrected performance claims to reflect measured benchmark results, clarified that peaks are never lost while intra-pixel waveform shape is not preserved, and documented the 1-device-pixel cosmetic pen design.
+
+---
+
 ## [2.0.1] - 2026-10-10
 
 ### Fixed
