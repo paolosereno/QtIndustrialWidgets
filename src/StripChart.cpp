@@ -71,11 +71,18 @@ public:
 
     bool m_testRawPenCosmetic1px{false};
 
+    // Internal autoscale hysteresis constants
+    static constexpr double kAutoScaleMargin = 0.10; // 10 % margin on data span
+    static constexpr double kAutoScaleShrinkThreshold = 0.50; // shrink when data span < 50 % of current range
+    static constexpr int kAutoScaleShrinkHysteresisCount = 30; // 30 consecutive recomputations before shrinking
+
     int m_capacity{300};
     double m_yMinimum{0.0};
     double m_yMaximum{100.0};
     bool m_autoScaleY{false};
     bool m_autoScaleDirty{false};
+    bool m_autoScaleInitialized{false};
+    int m_shrinkCounter{0};
     bool m_gridVisible{true};
     bool m_legendVisible{true};
     int m_horizontalDivisions{6};
@@ -235,7 +242,9 @@ double StripChart::yMinimum() const
 {
     Q_D(const StripChart);
     if (d->m_autoScaleY && d->m_autoScaleDirty) {
-        const_cast<StripChart*>(this)->updateAutoScaling();
+        // ensureAutoScale() is called from const getters through the const_cast pattern
+        // so that programmatic queries reflect recent data immediately without waiting for paintEvent.
+        const_cast<StripChart*>(this)->ensureAutoScale();
     }
     return d->m_yMinimum;
 }
@@ -244,7 +253,9 @@ double StripChart::yMaximum() const
 {
     Q_D(const StripChart);
     if (d->m_autoScaleY && d->m_autoScaleDirty) {
-        const_cast<StripChart*>(this)->updateAutoScaling();
+        // ensureAutoScale() is called from const getters through the const_cast pattern
+        // so that programmatic queries reflect recent data immediately without waiting for paintEvent.
+        const_cast<StripChart*>(this)->ensureAutoScale();
     }
     return d->m_yMaximum;
 }
@@ -528,10 +539,6 @@ void StripChart::addDataPoint(int channelId, double value)
     bool inserted = d_ptr->insertSampleInternal(ch, channelId, t, value, false);
     if (!inserted) return;
 
-    if (d_ptr->m_autoScaleY) {
-        updateAutoScaling();
-    }
-
     Q_EMIT dataAdded();
     update();
 }
@@ -553,9 +560,6 @@ void StripChart::addDataPoints(const QVector<double> &values)
     }
 
     if (anyInserted) {
-        if (d_ptr->m_autoScaleY) {
-            updateAutoScaling();
-        }
         Q_EMIT dataAdded();
         update();
     }
@@ -576,10 +580,6 @@ void StripChart::addSample(int channelId, std::chrono::nanoseconds t, double val
     qint64 sampleT = isSampleIndex ? static_cast<qint64>(ch.totalSamples) : t.count();
     bool inserted = d_ptr->insertSampleInternal(ch, channelId, sampleT, value, !isSampleIndex);
     if (!inserted) return;
-
-    if (d_ptr->m_autoScaleY) {
-        updateAutoScaling();
-    }
 
     Q_EMIT dataAdded();
     update();
@@ -611,9 +611,6 @@ void StripChart::addSamples(int channelId, const std::chrono::nanoseconds *t,
     }
 
     if (anyInserted) {
-        if (d_ptr->m_autoScaleY) {
-            updateAutoScaling();
-        }
         Q_EMIT dataAdded();
         update();
     }
@@ -650,9 +647,6 @@ void StripChart::addUniformSamples(int channelId, std::chrono::nanoseconds t0,
     }
 
     if (anyInserted) {
-        if (d_ptr->m_autoScaleY) {
-            updateAutoScaling();
-        }
         Q_EMIT dataAdded();
         update();
     }
@@ -679,9 +673,6 @@ void StripChart::addSynchronousSamples(std::chrono::nanoseconds t,
     }
 
     if (anyInserted) {
-        if (d_ptr->m_autoScaleY) {
-            updateAutoScaling();
-        }
         Q_EMIT dataAdded();
         update();
     }
@@ -693,6 +684,8 @@ void StripChart::clear()
         d_ptr->resetChannelData(ch);
     }
     d_ptr->m_autoScaleDirty = true;
+    d_ptr->m_autoScaleInitialized = false;
+    d_ptr->m_shrinkCounter = 0;
     update();
 }
 
@@ -742,7 +735,10 @@ void StripChart::setAutoScaleY(bool autoScale)
     if (d_ptr->m_autoScaleY == autoScale) return;
     d_ptr->m_autoScaleY = autoScale;
     if (d_ptr->m_autoScaleY) {
-        updateAutoScaling();
+        d_ptr->m_autoScaleDirty = true;
+        d_ptr->m_autoScaleInitialized = false;
+        d_ptr->m_shrinkCounter = 0;
+        ensureAutoScale();
     }
     invalidateCache();
     Q_EMIT appearanceChanged();
@@ -835,13 +831,20 @@ void StripChart::setChannelColor(int channelId, const QColor &color)
     }
 }
 
-void StripChart::updateAutoScaling()
+void StripChart::ensureAutoScale()
 {
+    if (!d_ptr->m_autoScaleY || !d_ptr->m_autoScaleDirty) {
+        return;
+    }
+    d_ptr->m_autoScaleDirty = false;
+
     bool hasData = false;
     double minVal = std::numeric_limits<double>::infinity();
     double maxVal = -std::numeric_limits<double>::infinity();
 
-    qint64 timeStart = 0;
+    QRectF pRect = plotArea();
+    int W_dev = std::max(1, static_cast<int>(std::round(pRect.width() * devicePixelRatioF())));
+
     if (d_ptr->m_xAxisMode == XAxisMode::Time) {
         qint64 tLatest = std::numeric_limits<qint64>::min();
         for (const auto &ch : d_ptr->m_channels) {
@@ -852,52 +855,224 @@ void StripChart::updateAutoScaling()
         if (tLatest == std::numeric_limits<qint64>::min()) {
             tLatest = d_ptr->arrivalTimestampNs();
         }
-        QRectF pRect = plotArea();
-        int W_dev = std::max(1, static_cast<int>(std::round(pRect.width() * devicePixelRatioF())));
+
         auto win = internal::computeTimeWindow(tLatest, d_ptr->m_timeSpan.count(), W_dev);
-        timeStart = win.tStart;
-    }
+        qint64 tStart = win.tStart;
+        qint64 dt_px = win.dtPx;
 
-    for (const auto &ch : d_ptr->m_channels) {
-        if (!ch.visible || ch.count == 0) continue;
+        for (auto &ch : d_ptr->m_channels) {
+            if (!ch.visible || ch.count == 0) continue;
 
-        if (d_ptr->m_xAxisMode == XAxisMode::Time) {
             size_t start = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
 
-            for (size_t i = 0; i < ch.count; ++i) {
-                size_t bufIdx = (start + i) % static_cast<size_t>(d_ptr->m_capacity);
-                qint64 t = ch.timestamps[bufIdx];
-                if (t < timeStart) continue;
-                double v = ch.values[bufIdx];
-                if (!std::isfinite(v)) continue;
-                hasData = true;
-                if (v < minVal) minVal = v;
-                if (v > maxVal) maxVal = v;
+            size_t low = 0;
+            size_t high = ch.count - 1;
+            size_t firstIdx = ch.count;
+            while (low <= high) {
+                size_t mid = low + (high - low) / 2;
+                qint64 tMid = ch.timestamps[(start + mid) % static_cast<size_t>(d_ptr->m_capacity)];
+                if (tMid >= tStart) {
+                    firstIdx = mid;
+                    if (mid == 0) break;
+                    high = mid - 1;
+                } else {
+                    low = mid + 1;
+                }
             }
-        } else {
-            for (size_t i = 0; i < ch.count; ++i) {
-                double v = ch.values[i];
-                if (!std::isfinite(v)) continue;
-                hasData = true;
-                if (v < minVal) minVal = v;
-                if (v > maxVal) maxVal = v;
+
+            if (firstIdx > 0) {
+                firstIdx--;
+            }
+
+            size_t visibleSamples = ch.count - firstIdx;
+            if (visibleSamples == 0) continue;
+
+            bool doDecimate = false;
+            if (d_ptr->m_decimationMode == DecimationMode::Always) {
+                doDecimate = true;
+            } else if (d_ptr->m_decimationMode == DecimationMode::Auto) {
+                doDecimate = (visibleSamples > static_cast<size_t>(W_dev));
+            }
+
+            if (doDecimate) {
+                internal::GeometryKey targetKey;
+                targetKey.axisMode = internal::GeometryAxisMode::Time;
+                targetKey.bucketWidth = dt_px;
+                targetKey.widthDev = W_dev;
+                targetKey.ringSize = static_cast<size_t>(std::max(win.numBuckets + 4, W_dev + 4));
+
+                if (!ch.geometryValid || ch.geometryKey != targetKey) {
+                    d_ptr->rebuildChannelStream(ch, targetKey);
+                }
+
+                qint64 kStartQuery = win.kStart;
+                int numBucketsQuery = win.numBuckets;
+
+                if (ch.totalSamples > ch.count && ch.count > 0) {
+                    size_t oldestIdx = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
+                    qint64 tOldest = ch.timestamps[oldestIdx];
+                    qint64 kOldest = internal::M4Decimator::floorDiv(tOldest, dt_px);
+
+                    if (kStartQuery < kOldest) {
+                        qint64 diff = kOldest - kStartQuery;
+                        kStartQuery = kOldest;
+                        numBucketsQuery = std::max(0, numBucketsQuery - static_cast<int>(diff));
+                    }
+
+                    internal::M4Bucket freshBucket;
+                    size_t cap = static_cast<size_t>(d_ptr->m_capacity);
+                    for (size_t j = 0; j < ch.count; ++j) {
+                        size_t idx = (oldestIdx + j) % cap;
+                        qint64 tSample = ch.timestamps[idx];
+                        if (internal::M4Decimator::floorDiv(tSample, dt_px) != kOldest) {
+                            break;
+                        }
+                        freshBucket.addSample(tSample, ch.values[idx]);
+                    }
+                    ch.m4Stream.setBucket(kOldest, freshBucket);
+                }
+
+                for (int i = 0; i < numBucketsQuery; ++i) {
+                    qint64 k = kStartQuery + i;
+                    const internal::M4Bucket *b = ch.m4Stream.bucketAt(k);
+                    if (b && b->isValid()) {
+                        hasData = true;
+                        if (b->yMin < minVal) minVal = b->yMin;
+                        if (b->yMax > maxVal) maxVal = b->yMax;
+                    }
+                }
+            } else {
+                size_t cap = static_cast<size_t>(d_ptr->m_capacity);
+                for (size_t i = firstIdx; i < ch.count; ++i) {
+                    double v = ch.values[(start + i) % cap];
+                    if (!std::isfinite(v)) continue;
+                    hasData = true;
+                    if (v < minVal) minVal = v;
+                    if (v > maxVal) maxVal = v;
+                }
+            }
+        }
+    } else {
+        // SampleIndex Mode
+        for (auto &ch : d_ptr->m_channels) {
+            if (!ch.visible || ch.count == 0) continue;
+
+            size_t start = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
+
+            bool doDecimate = false;
+            if (d_ptr->m_decimationMode == DecimationMode::Always) {
+                doDecimate = true;
+            } else if (d_ptr->m_decimationMode == DecimationMode::Auto) {
+                doDecimate = (ch.count > static_cast<size_t>(W_dev));
+            }
+
+            if (doDecimate) {
+                auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
+
+                internal::GeometryKey targetKey;
+                targetKey.axisMode = internal::GeometryAxisMode::SampleIndex;
+                targetKey.bucketWidth = ib.samplesPerBucket;
+                targetKey.widthDev = W_dev;
+                targetKey.ringSize = static_cast<size_t>(std::max(ib.numBuckets + 4, W_dev + 4));
+
+                if (!ch.geometryValid || ch.geometryKey != targetKey) {
+                    d_ptr->rebuildChannelStream(ch, targetKey);
+                }
+
+                qint64 kStartQuery = ib.kStart;
+                int numBucketsQuery = ib.numBuckets;
+
+                quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
+                if (ch.totalSamples > ch.count && ch.count > 0) {
+                    qint64 firstAbsoluteIndex = static_cast<qint64>(startCounter);
+                    qint64 kOldest = internal::M4Decimator::floorDiv(firstAbsoluteIndex, ib.samplesPerBucket);
+
+                    if (kStartQuery < kOldest) {
+                        qint64 diff = kOldest - kStartQuery;
+                        kStartQuery = kOldest;
+                        numBucketsQuery = std::max(0, numBucketsQuery - static_cast<int>(diff));
+                    }
+
+                    internal::M4Bucket freshBucket;
+                    size_t cap = static_cast<size_t>(d_ptr->m_capacity);
+                    size_t oldestIdx = ch.headIndex;
+                    for (size_t j = 0; j < ch.count; ++j) {
+                        qint64 sIdx = static_cast<qint64>(startCounter + j);
+                        if (internal::M4Decimator::floorDiv(sIdx, ib.samplesPerBucket) != kOldest) {
+                            break;
+                        }
+                        freshBucket.addSample(sIdx, ch.values[(oldestIdx + j) % cap]);
+                    }
+                    ch.m4Stream.setBucket(kOldest, freshBucket);
+                }
+
+                for (int i = 0; i < numBucketsQuery; ++i) {
+                    qint64 k = kStartQuery + i;
+                    const internal::M4Bucket *b = ch.m4Stream.bucketAt(k);
+                    if (b && b->isValid()) {
+                        hasData = true;
+                        if (b->yMin < minVal) minVal = b->yMin;
+                        if (b->yMax > maxVal) maxVal = b->yMax;
+                    }
+                }
+            } else {
+                size_t cap = static_cast<size_t>(d_ptr->m_capacity);
+                for (size_t i = 0; i < ch.count; ++i) {
+                    double v = ch.values[(start + i) % cap];
+                    if (!std::isfinite(v)) continue;
+                    hasData = true;
+                    if (v < minVal) minVal = v;
+                    if (v > maxVal) maxVal = v;
+                }
             }
         }
     }
 
     if (hasData) {
+        double targetMin = minVal;
+        double targetMax = maxVal;
+        double dataSpan = 0.0;
         if (qFuzzyCompare(minVal, maxVal)) {
-            minVal -= 1.0;
-            maxVal += 1.0;
+            targetMin -= 1.0;
+            targetMax += 1.0;
+            dataSpan = 2.0;
         } else {
-            double margin = (maxVal - minVal) * 0.1;
-            minVal -= margin;
-            maxVal += margin;
+            dataSpan = maxVal - minVal;
+            double margin = dataSpan * StripChartPrivate::kAutoScaleMargin;
+            targetMin -= margin;
+            targetMax += margin;
         }
-        setYRange(minVal, maxVal);
-    }
 
-    d_ptr->m_autoScaleDirty = false;
+        if (!d_ptr->m_autoScaleInitialized) {
+            d_ptr->m_autoScaleInitialized = true;
+            d_ptr->m_shrinkCounter = 0;
+            setYRange(targetMin, targetMax);
+        } else {
+            double currentMin = d_ptr->m_yMinimum;
+            double currentMax = d_ptr->m_yMaximum;
+            double currentSpan = currentMax - currentMin;
+
+            if (minVal < currentMin || maxVal > currentMax) {
+                // Grow immediately when data leaves current range
+                d_ptr->m_shrinkCounter = 0;
+                setYRange(targetMin, targetMax);
+            } else if (currentSpan > 0.0 && dataSpan < StripChartPrivate::kAutoScaleShrinkThreshold * currentSpan) {
+                // Shrink only when data span is below 50 % of current range for 30 consecutive recomputations
+                d_ptr->m_shrinkCounter++;
+                if (d_ptr->m_shrinkCounter >= StripChartPrivate::kAutoScaleShrinkHysteresisCount) {
+                    d_ptr->m_shrinkCounter = 0;
+                    setYRange(targetMin, targetMax);
+                }
+            } else {
+                d_ptr->m_shrinkCounter = 0;
+            }
+        }
+    }
+}
+
+void StripChart::updateAutoScaling()
+{
+    ensureAutoScale();
 }
 
 QRectF StripChart::plotArea() const
@@ -1078,7 +1253,7 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
 void StripChart::paintEvent(QPaintEvent *)
 {
     if (d_ptr->m_autoScaleY && d_ptr->m_autoScaleDirty) {
-        updateAutoScaling();
+        ensureAutoScale();
     }
 
     if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {

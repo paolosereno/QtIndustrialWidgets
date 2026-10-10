@@ -330,6 +330,7 @@ private:
     void invalidateCache();
     void renderStaticGrid(const QSize &size);
     void updateAutoScaling();
+    void ensureAutoScale();
     [[nodiscard]] QRectF plotArea() const;
 
     std::unique_ptr<StripChartPrivate> d_ptr;

@@ -67,6 +67,8 @@ private Q_SLOTS:
     void addUniformSamplesSampleIndexMode();
     void evictionConsistency();
     void widgetM4Equivalence();
+    void lazyAutoscale();
+    void hysteresis();
 };
 
 void tst_StripChart::defaultValues()
@@ -1042,6 +1044,70 @@ void tst_StripChart::widgetM4Equivalence()
         QVERIFY2(diffCols <= (activeCols / 100),
                  qPrintable(QString("M4 widget equivalence: differing cols %1 exceeds 1% of %2").arg(diffCols).arg(activeCols)));
     }
+}
+
+void tst_StripChart::lazyAutoscale()
+{
+    StripChart chart;
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    chart.setAutoScaleY(true);
+    int ch = chart.addChannel(QStringLiteral("Ch0"), Qt::cyan);
+
+    QSignalSpy spy(&chart, &StripChart::yRangeChanged);
+
+    // After 1000 addSample calls with autoscale on, spy shows 0 emissions
+    for (int i = 0; i < 1000; ++i) {
+        chart.addSample(ch, std::chrono::nanoseconds((i + 1) * 1000000LL), 10.0 + (i % 20));
+    }
+    QCOMPARE(spy.count(), 0);
+
+    // When yMinimum() is called, range is recomputed and yRangeChanged is emitted at most 1 time
+    double yMin = chart.yMinimum();
+    QVERIFY(yMin < 10.0);
+    QCOMPARE(spy.count(), 1);
+
+    // Subsequent call without new data does not emit again
+    QCOMPARE(chart.yMaximum(), chart.yMaximum());
+    QCOMPARE(spy.count(), 1);
+}
+
+void tst_StripChart::hysteresis()
+{
+    StripChart chart;
+    chart.resize(1000, 500);
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    chart.setTimeSpan(std::chrono::seconds(1)); // 1 s visible window
+    chart.setAutoScaleY(true);
+    int ch = chart.addChannel(QStringLiteral("Ch0"), Qt::yellow);
+
+    // Initial base sample and trigger autoscale
+    chart.addSample(ch, std::chrono::nanoseconds(1000000LL), 10.0);
+    (void)chart.yMaximum(); // initializes autoscale
+
+    // A spike grows the range immediately
+    chart.addSample(ch, std::chrono::nanoseconds(2000000LL), 200.0);
+    // Add sample immediately after spike so spike is not the boundary sample later
+    chart.addSample(ch, std::chrono::nanoseconds(3000000LL), 10.0);
+    double maxAfterSpike = chart.yMaximum();
+    QVERIFY(maxAfterSpike >= 200.0);
+
+    // Move the spike out of the visible window
+    // visible window will be [1.5 s, 2.5 s], spike was at 2 ms (0.002 s)
+    qint64 tBase = 2500000000LL; // 2.5 seconds
+    chart.addSample(ch, std::chrono::nanoseconds(tBase - 500000000LL), 10.0); // 2.0 s
+
+    // 29 consecutive recomputations: range must not shrink
+    for (int i = 1; i <= 29; ++i) {
+        chart.addSample(ch, std::chrono::nanoseconds(tBase + i * 1000000LL), 10.0);
+        QCOMPARE(chart.yMaximum(), maxAfterSpike);
+    }
+
+    // 30th recomputation: range must shrink
+    chart.addSample(ch, std::chrono::nanoseconds(tBase + 30 * 1000000LL), 10.0);
+    double maxAfterHysteresis = chart.yMaximum();
+    QVERIFY2(maxAfterHysteresis < maxAfterSpike,
+             qPrintable(QString("Expected shrink after 30 frames: got %1 vs %2").arg(maxAfterHysteresis).arg(maxAfterSpike)));
+    QVERIFY(maxAfterHysteresis < 50.0);
 }
 
 QTEST_MAIN(tst_StripChart)

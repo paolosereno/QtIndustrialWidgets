@@ -159,3 +159,38 @@ This document tracks rendering and ingestion benchmarks for `QtIndustrialWidgets
 - Zero per-frame heap allocations: visible traces extract pre-aggregated buckets directly into reusable scratch vectors.
 - Next bottleneck to solve is **Step 3: Lazy Autoscale with Hysteresis**, reducing `addSample` with autoscale ON from 3.67 ms/call to < 1 µs/call.
 
+---
+
+## Step 3 — Lazy Autoscale with Hysteresis (Final Release State)
+
+**Changes implemented:**
+- Mark dirty only: All sample ingestion methods (`addDataPoint`, `addDataPoints`, `addSample`, `addSamples`, `addUniformSamples`, `addSynchronousSamples`) set `m_autoScaleDirty = true` in $O(1)$.
+- Single recompute point: `ensureAutoScale()` runs exclusively at the start of `paintEvent` (1 per frame) and in const getters `yMinimum()` / `yMaximum()`.
+- $O(W)$ visible window scanning: autoscale examines only visible samples or pre-aggregated M4 buckets, never scanning the full circular buffer in Time mode.
+- Hysteresis: `kAutoScaleMargin = 0.10`, `kAutoScaleShrinkThreshold = 0.50`, `kAutoScaleShrinkHysteresisCount = 30`. Range grows immediately on spikes; range shrinks only after 30 consecutive frames where data span is < 50% of current range, eliminating frame-to-frame grid redraw churn.
+
+### 1. Ingestion Throughput Comparison
+
+| Benchmark Case | Description | Baseline | Step 3 | Speedup / Reduction |
+|---|---|---|---|---|
+| `addSample` (autoscale ON, 1M base) | 100k calls | 365,049 ms (3.65 ms/call) | **1.10 ms (0.011 µs/call)** | **331,862× faster** |
+| `addSample` (autoscale OFF, 1M base) | 100k calls | 3.25 ms (0.033 µs/call) | **1.13 ms (0.011 µs/call)** | **~3× faster** |
+| `addUniformSamples` | 1M block | 7.15 ms (0.007 µs/sample) | **3.62 ms (0.0036 µs/sample)** | **2× faster** |
+| `addDataPoint` (legacy, autoscale OFF) | 100k calls | 3.12 ms (0.031 µs/call) | **1.18 ms (0.012 µs/call)** | **2.6× faster** |
+
+### 2. Window Resize Latency
+
+| Benchmark Case | Description | Baseline | Step 3 | Speedup |
+|---|---|---|---|---|
+| `firstPaintAfterResize` | 4 ch × 1M noisy, 1000×800 to 1974×1080 | 21,467 ms | **46.43 ms** | **462× faster** |
+
+### 3. Acceptance Targets Evaluation
+
+| Target Requirement | Target Metric | Measured Value | Status |
+|---|---|---|---|
+| Ingestion latency with autoscale ON | $\le 1.0$ µs / call | **0.011 µs / call** (1.10 ms / 100k) | **PASS** (90× better than target) |
+| Offscreen paint latency (1 ch, 1M, 1920 px) | True $O(W)$, < 16.6 ms (60 FPS) | **1.92 ms - 3.40 ms** | **PASS** (> 250 FPS offscreen) |
+| First paint after resize (4 ch × 1M) | Report metric | **46.43 ms** (median) | **Reported** (from 21.5 seconds) |
+| Unit tests & REUSE compliance | 100% green | 11/11 test suites pass, 68/68 REUSE compliant | **PASS** |
+
+
