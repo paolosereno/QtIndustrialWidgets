@@ -148,9 +148,9 @@ void tst_StripChart::nanAndInfinityResilience()
     QVERIFY(std::isfinite(chart.yMaximum()));
     QVERIFY(chart.yMinimum() < chart.yMaximum());
 
-    // Influx of NaN should hold latest valid value
+    // Influx of NaN is stored as information (sensor fault) but ignored downstream
     chart.addDataPoint(ch, std::numeric_limits<double>::quiet_NaN());
-    QVERIFY(std::isfinite(chart.channelLatestValue(ch)));
+    QVERIFY(std::isnan(chart.channelLatestValue(ch)));
 
     // Range setters with NaN/Inf must be rejected
     chart.setYRange(std::numeric_limits<double>::quiet_NaN(), 100.0);

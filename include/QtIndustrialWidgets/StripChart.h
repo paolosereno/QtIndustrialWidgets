@@ -10,6 +10,8 @@
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
 #include <QtCore/QVector>
+#include <QtCore/QDateTime>
+#include <chrono>
 #include <memory>
 
 namespace QtIndustrialWidgets {
@@ -28,16 +30,15 @@ class StripChartPrivate;
  * - Sub-millisecond rendering with Hi-DPI cached background reticle grid and bezel.
  * - Manual Y-range bounds or dynamic smooth auto-scaling.
  * - Multi-channel legend overlay with live telemetry readouts.
+ * - Real-time axis (std::chrono::nanoseconds) and high-speed M4 min/max decimation at 60 FPS.
  *
  * \code
  * auto *chart = new StripChart(parent);
- * chart->setCapacity(300);
- * chart->setYRange(0.0, 100.0);
- * int chRpm = chart->addChannel("RPM %", Qt::cyan, 2.0);
- * int chTemp = chart->addChannel("Temp °C", Qt::red, 2.0);
- *
- * chart->addDataPoint(chRpm, 75.4);
- * chart->addDataPoint(chTemp, 88.2);
+ * chart->setCapacity(1000000);
+ * chart->setXAxisMode(StripChart::XAxisMode::Time);
+ * chart->setTimeSpan(std::chrono::seconds(10));
+ * int ch1 = chart->addChannel("Torque", Qt::cyan);
+ * chart->addSample(ch1, std::chrono::nanoseconds(1000000), 45.2);
  * \endcode
  */
 class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
@@ -55,6 +56,41 @@ class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
     Q_PROPERTY(int horizontalDivisions READ horizontalDivisions WRITE setHorizontalDivisions NOTIFY appearanceChanged)
     Q_PROPERTY(int verticalDivisions READ verticalDivisions WRITE setVerticalDivisions NOTIFY appearanceChanged)
+    Q_PROPERTY(XAxisMode xAxisMode READ xAxisMode WRITE setXAxisMode NOTIFY xAxisModeChanged)
+    Q_PROPERTY(DecimationMode decimationMode READ decimationMode WRITE setDecimationMode NOTIFY decimationModeChanged)
+    Q_PROPERTY(Interpolation interpolation READ interpolation WRITE setInterpolation NOTIFY interpolationChanged)
+    Q_PROPERTY(TimeLabelFormat timeLabelFormat READ timeLabelFormat WRITE setTimeLabelFormat NOTIFY timeLabelFormatChanged)
+    Q_PROPERTY(double timeSpanSeconds READ timeSpanSeconds WRITE setTimeSpanSeconds NOTIFY timeSpanChanged)
+
+public:
+    /** \brief Horizontal X-axis progression mode. */
+    enum class XAxisMode {
+        SampleIndex, ///< Legacy mode: X coordinate mapped to ring buffer sample slot index (default)
+        Time         ///< Real-time mode: X coordinate mapped to nanosecond timestamps
+    };
+    Q_ENUM(XAxisMode)
+
+    /** \brief Waveform decimation mode. */
+    enum class DecimationMode {
+        Off,    ///< Always draw raw samples
+        Auto,   ///< Automatically enable M4 decimation when visible samples exceed 2 * width (default)
+        Always  ///< Always run M4 decimation
+    };
+    Q_ENUM(DecimationMode)
+
+    /** \brief Waveform trace line interpolation style. */
+    enum class Interpolation {
+        Linear, ///< Linear interpolation between consecutive points (default)
+        Step    ///< Sample-and-hold step interpolation
+    };
+    Q_ENUM(Interpolation)
+
+    /** \brief Time axis label formatting convention. */
+    enum class TimeLabelFormat {
+        Relative, ///< Relative negative elapsed time labels (e.g. -10s ... 0s) (default)
+        Absolute  ///< Wall-clock absolute timestamps using timeOrigin (e.g. HH:mm:ss.zzz)
+    };
+    Q_ENUM(TimeLabelFormat)
 
 public:
     /**
@@ -101,6 +137,82 @@ public:
     [[nodiscard]] qsizetype channelSampleCount(int channelId) const;
     /** \brief Returns the most recently streamed telemetry value for a channel. */
     [[nodiscard]] double channelLatestValue(int channelId) const;
+
+    /** \brief Returns the active horizontal X-axis mode. */
+    [[nodiscard]] XAxisMode xAxisMode() const;
+    /** \brief Sets the horizontal X-axis mode. */
+    void setXAxisMode(XAxisMode mode);
+
+    /** \brief Returns the scrolling time window span. Default is 10 seconds. */
+    [[nodiscard]] std::chrono::nanoseconds timeSpan() const;
+    /** \brief Sets the scrolling time window span. */
+    void setTimeSpan(std::chrono::nanoseconds span);
+
+    /** \brief Returns the scrolling time window span in seconds. */
+    [[nodiscard]] double timeSpanSeconds() const;
+    /** \brief Sets the scrolling time window span in seconds. */
+    void setTimeSpanSeconds(double seconds);
+
+    /** \brief Returns the active decimation mode. Default is Auto. */
+    [[nodiscard]] DecimationMode decimationMode() const;
+    /** \brief Sets the decimation mode. */
+    void setDecimationMode(DecimationMode mode);
+
+    /** \brief Returns the active waveform interpolation style. Default is Linear. */
+    [[nodiscard]] Interpolation interpolation() const;
+    /** \brief Sets the waveform interpolation style. */
+    void setInterpolation(Interpolation interp);
+
+    /** \brief Returns the inter-sample gap threshold. 0 nanoseconds means automatic (4x EMA). */
+    [[nodiscard]] std::chrono::nanoseconds gapThreshold() const;
+    /** \brief Sets the inter-sample gap threshold. 0 nanoseconds enables automatic EMA detection. */
+    void setGapThreshold(std::chrono::nanoseconds threshold);
+
+    /** \brief Returns the optional absolute wall-clock reference instant for t = 0. */
+    [[nodiscard]] QDateTime timeOrigin() const;
+    /** \brief Sets the optional absolute wall-clock reference instant for t = 0. */
+    void setTimeOrigin(const QDateTime &origin);
+
+    /** \brief Returns the time axis label formatting convention. Default is Relative. */
+    [[nodiscard]] TimeLabelFormat timeLabelFormat() const;
+    /** \brief Sets the time axis label formatting convention. */
+    void setTimeLabelFormat(TimeLabelFormat format);
+
+    /** \brief Returns the count of out-of-order samples rejected for a channel. */
+    [[nodiscard]] quint64 rejectedSampleCount(int channelId) const;
+    /** \brief Returns true if the ring buffer capacity is sufficient to cover the entire timeSpan. */
+    [[nodiscard]] bool isTimeWindowFullyCovered() const;
+
+    /**
+     * \brief Appends a single timestamped sample to a channel.
+     * \note Must be called from the GUI thread only.
+     * \param channelId Channel ID.
+     * \param t Acquisition timestamp relative to run origin. Must be >= channel's last timestamp.
+     * \param value Telemetry sample value. NaN and +/-Inf are stored as invalid markers.
+     */
+    void addSample(int channelId, std::chrono::nanoseconds t, double value);
+
+    /**
+     * \brief Appends a batch of timestamped samples to a channel.
+     * \note Must be called from the GUI thread only. Emits dataAdded() once per call.
+     */
+    void addSamples(int channelId, const std::chrono::nanoseconds *t,
+                    const double *values, qsizetype count);
+
+    /**
+     * \brief Appends uniformly sampled data points to a channel.
+     * \note Must be called from the GUI thread only. dt must be > 0.
+     */
+    void addUniformSamples(int channelId, std::chrono::nanoseconds t0,
+                           std::chrono::nanoseconds dt,
+                           const double *values, qsizetype count);
+
+    /**
+     * \brief Appends a single synchronized timestamped sample across all channels.
+     * \note Must be called from the GUI thread only. Emits dataAdded() once per call.
+     */
+    void addSynchronousSamples(std::chrono::nanoseconds t,
+                               const QVector<double> &values);
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -159,6 +271,16 @@ Q_SIGNALS:
     void dataAdded();
     /** \brief Emitted when visual appearance styling properties change. */
     void appearanceChanged();
+    /** \brief Emitted when the X-axis mode changes. */
+    void xAxisModeChanged(XAxisMode mode);
+    /** \brief Emitted when the decimation mode changes. */
+    void decimationModeChanged(DecimationMode mode);
+    /** \brief Emitted when the interpolation style changes. */
+    void interpolationChanged(Interpolation interp);
+    /** \brief Emitted when the time label format changes. */
+    void timeLabelFormatChanged(TimeLabelFormat format);
+    /** \brief Emitted when the time span duration changes. */
+    void timeSpanChanged(double seconds);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
