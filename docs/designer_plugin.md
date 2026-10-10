@@ -52,15 +52,15 @@ C:\Qt\6.x.x\msvc2022_64\plugins\designer\QtIndustrialWidgetsPlugin.dll
 
 Once installed, a new category **"Industrial Widgets"** will appear in the Widget Box:
 
-1. `QRadialGauge`
-2. `QLinearGauge`
-3. `QSevenSegmentDisplay`
-4. `QLedIndicator`
-5. `QIndustrialKnob`
-6. `QStripChart`
-7. `QIndustrialSwitch`
-8. `QLevelMeter`
-9. `QAnnunciatorPanel`
-10. `QCompass`
+1. `QtIndustrialWidgets::RadialGauge`
+2. `QtIndustrialWidgets::LinearGauge`
+3. `QtIndustrialWidgets::SevenSegmentDisplay`
+4. `QtIndustrialWidgets::LedIndicator`
+5. `QtIndustrialWidgets::IndustrialKnob`
+6. `QtIndustrialWidgets::StripChart`
+7. `QtIndustrialWidgets::IndustrialSwitch`
+8. `QtIndustrialWidgets::LevelMeter`
+9. `QtIndustrialWidgets::AnnunciatorPanel`
+10. `QtIndustrialWidgets::Compass`
 
 All properties (ranges, thresholds, colors, orientations) can be customized directly within the **Property Editor**!

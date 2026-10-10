@@ -220,7 +220,7 @@ target_link_libraries(my_industrial_app
 ### Option C: Via Prebuilt Native Packages (.deb / .zip)
 
 Download official packages from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
-- **Debian / Ubuntu**: `sudo dpkg -i qtindustrialwidgets_1.0.0_amd64.deb`
+- **Debian / Ubuntu**: `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` (replace `<version>` with the release you downloaded, see [Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases))
 - **Windows / Linux**: Extract `.zip` / `.tar.gz` and point `CMAKE_PREFIX_PATH` to the extracted directory.
 
 ### Option D: Via C++ Package Managers (vcpkg / Conan)
@@ -309,12 +309,14 @@ doxygen docs/Doxyfile
 ## 📝 Usage Example
 
 ```cpp
-#include <QtIndustrialWidgets/QRadialGauge.h>
-#include <QtIndustrialWidgets/QLinearGauge.h>
-#include <QtIndustrialWidgets/QSevenSegmentDisplay.h>
+#include <QtIndustrialWidgets/RadialGauge.h>
+#include <QtIndustrialWidgets/LinearGauge.h>
+#include <QtIndustrialWidgets/SevenSegmentDisplay.h>
+
+// Inside a QWidget-derived class. 'qiw' is the short alias of namespace QtIndustrialWidgets.
 
 // Create a high-performance RPM gauge
-auto *rpmGauge = new QRadialGauge(this);
+auto *rpmGauge = new qiw::RadialGauge(this);
 rpmGauge->setRange(0.0, 8000.0);
 rpmGauge->setValue(3500.0);
 rpmGauge->setUnit("RPM");
@@ -322,14 +324,14 @@ rpmGauge->setWarningThreshold(6000.0);
 rpmGauge->setErrorThreshold(7200.0);
 
 // Create a coolant thermometer with bulb
-auto *coolant = new QLinearGauge(this);
+auto *coolant = new qiw::LinearGauge(this);
 coolant->setThermometerMode(true);
 coolant->setRange(0.0, 120.0);
 coolant->setValue(90.0);
 coolant->setUnit("°C");
 
 // Create a vector 7-segment digital speedometer
-auto *speedometer = new QSevenSegmentDisplay(this);
+auto *speedometer = new qiw::SevenSegmentDisplay(this);
 speedometer->setDigitCount(5);
 speedometer->setDecimalPlaces(1);
 speedometer->setValue(120.4);

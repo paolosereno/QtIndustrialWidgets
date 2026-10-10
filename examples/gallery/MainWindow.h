@@ -102,7 +102,7 @@ private:
     QLabel *m_annunciatorHornLabel{nullptr};
     QLabel *m_annunciatorStatusLabel{nullptr};
 
-    // Navigation / Directional Gyro (QCompass)
+    // Navigation / Directional Gyro (Compass)
     QtIndustrialWidgets::Compass *m_compassHeadingUp{nullptr};
     QtIndustrialWidgets::Compass *m_compassNorthUp{nullptr};
     QSlider *m_headingSlider{nullptr};
