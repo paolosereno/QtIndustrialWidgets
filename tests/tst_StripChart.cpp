@@ -13,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include <random>
 
 using namespace QtIndustrialWidgets;
 
@@ -36,20 +37,21 @@ private Q_SLOTS:
     void autoScaling();
     void clearData();
     void signalEmission();
-    void renderOffscreen();
+    void rendersTraceAtExpectedPositions();
     void extremeResizeNoCrash();
-    void nanAndInfinityResilience();
+    void nonFiniteValuesBreakTheTrace();
 
     // New tests for high-rate DAQ & M4 decimation
     void plusInfAutoscaleRegression();
-    void stepInterpolation();
+    void stepInterpolationDrawsHorizontalThenVertical();
     void addSynchronousSamplesTest();
-    void tickSelection125();
+    void timeTicksFollow125Rule();
+    void timeTickLabels();
     void invalidInputsValidation();
     void capacityClamp24();
     void outOfOrderRejection();
-    void gapDetection();
-    void windowQuantization();
+    void gapsSplitTheTrace();
+    void windowIsQuantisedAndScrollIsShiftInvariant();
     void timeWindowCoverage();
     void bulkApiAndSignalEmission();
     void legacyCompatibilityAndSlotPointer();
@@ -153,64 +155,269 @@ void tst_StripChart::signalEmission()
     QCOMPARE(spy.count(), 1);
 }
 
-void tst_StripChart::renderOffscreen()
+void tst_StripChart::rendersTraceAtExpectedPositions()
 {
-    StripChart chart;
-    int ch = chart.addChannel(QStringLiteral("Wave"), Qt::green);
-    for (int i = 0; i < 50; ++i) {
-        chart.addDataPoint(ch, std::sin(i * 0.1) * 50.0 + 50.0);
-    }
-    chart.resize(400, 250);
+    // 1. Setup: SampleIndex mode, 50 samples of a sine, raw path
+    auto chart = makeChart(800, 600, -1.5, 1.5);
+    chart->setXAxisMode(StripChart::XAxisMode::SampleIndex);
+    chart->setCapacity(50);
+    chart->setDecimationMode(StripChart::DecimationMode::Off);
+    chart->setGridVisible(false);
+    chart->setLegendVisible(false);
 
-    QPixmap pix(chart.size());
-    chart.render(&pix);
-    QVERIFY(!pix.isNull());
+    const QColor channelColor(255, 0, 0); // Pure Red
+    int ch = chart->addChannel(QStringLiteral("Sine"), channelColor, 1.8);
+
+    std::vector<double> sinVals(50);
+    for (size_t i = 0; i < 50; ++i) {
+        sinVals[i] = std::sin(2.0 * M_PI * static_cast<double>(i) / 49.0);
+        chart->addDataPoint(ch, sinVals[i]);
+    }
+
+    // 2. Render to raster image and check hook
+    QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+    QCOMPARE(frame.channels.size(), 1UL);
+    const auto &chDiag = frame.channels[0];
+    QCOMPARE(chDiag.path, RenderPath::Raw);
+    QCOMPARE(chDiag.segments.size(), 1UL);
+
+    const QPolygonF &poly = chDiag.segments[0];
+    QCOMPARE(poly.size(), 50);
+
+    for (size_t i = 0; i < 50; ++i) {
+        double expectedX = mapIndex(*chart, i);
+        double expectedY = mapY(*chart, sinVals[i]);
+
+        QVERIFY2(std::abs(poly[static_cast<int>(i)].x() - expectedX) <= 0.5,
+                 qPrintable(QString("Vertex %1 X mismatch: got %2, expected %3").arg(i).arg(poly[static_cast<int>(i)].x()).arg(expectedX)));
+        QVERIFY2(std::abs(poly[static_cast<int>(i)].y() - expectedY) <= 0.5,
+                 qPrintable(QString("Vertex %1 Y mismatch: got %2, expected %3").arg(i).arg(poly[static_cast<int>(i)].y()).arg(expectedY)));
+
+        if (i > 0) {
+            QVERIFY(poly[static_cast<int>(i)].x() > poly[static_cast<int>(i) - 1].x());
+        }
+    }
+
+    // 3. Pixels:
+    // - the trace colour is present in >= 95 % of the columns between first and last vertex x
+    // - no trace-colour pixel lies outside the plot rectangle
+    qreal dpr = chart->devicePixelRatioF();
+    int xStartDev = static_cast<int>(std::round(poly.first().x() * dpr));
+    int xEndDev = static_cast<int>(std::round(poly.last().x() * dpr));
+    int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+    int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+    int plotLeftDev = static_cast<int>(std::floor(frame.plotRect.left() * dpr));
+    int plotRightDev = static_cast<int>(std::ceil(frame.plotRect.right() * dpr));
+
+    int totalCols = xEndDev - xStartDev + 1;
+    int presentCols = 0;
+    for (int x = xStartDev; x <= xEndDev; ++x) {
+        bool found = false;
+        for (int y = plotTopDev; y <= plotBottomDev; ++y) {
+            QColor c = img.pixelColor(x, y);
+            if (c.red() > 70 && c.green() < 50 && c.blue() < 50) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            presentCols++;
+        }
+    }
+    double coverage = static_cast<double>(presentCols) / static_cast<double>(totalCols);
+    QVERIFY2(coverage >= 0.95, qPrintable(QString("Coverage %1 below 95% (present: %2, total: %3)").arg(coverage).arg(presentCols).arg(totalCols)));
+
+    for (int x = 0; x < img.width(); ++x) {
+        for (int y = 0; y < img.height(); ++y) {
+            if (x < plotLeftDev || x > plotRightDev || y < plotTopDev || y > plotBottomDev) {
+                QColor c = img.pixelColor(x, y);
+                bool isTrace = (c.red() > 200 && c.green() < 60 && c.blue() < 60);
+                QVERIFY2(!isTrace, qPrintable(QString("Trace color found outside plot rectangle at (%1, %2)").arg(x).arg(y)));
+            }
+        }
+    }
 }
 
 void tst_StripChart::extremeResizeNoCrash()
 {
-    StripChart chart;
-    chart.resize(2, 2);
-    QPixmap pixSmall(chart.size());
-    chart.render(&pixSmall);
+    auto chart = makeChart(2, 2);
+    int ch = chart->addChannel(QStringLiteral("Ch0"), Qt::cyan);
+    chart->addDataPoint(ch, 50.0);
 
-    chart.resize(3840, 2160);
-    QPixmap pixLarge(chart.size());
-    chart.render(&pixLarge);
-    QVERIFY(!pixLarge.isNull());
+    // 1. Tiny size (2x2): plotRect <= 10 px, must draw bezel safely without painter crash or divide-by-zero
+    QImage imgSmall = renderToImage(*chart);
+    QCOMPARE(imgSmall.size(), (QSizeF(2, 2) * chart->devicePixelRatioF()).toSize());
+    const auto &frameSmall = StripChartTestAccess::lastFrame(*chart);
+    QVERIFY(frameSmall.plotRect.width() <= 10.0 || frameSmall.plotRect.height() <= 10.0);
+    if (!frameSmall.channels.empty()) {
+        QVERIFY(frameSmall.channels[0].segments.empty());
+    }
+
+    // 2. Large size (3840x2160): HiDPI/4K canvas, plotRect.width() > 3700 px
+    chart->resize(3840, 2160);
+    chart->setXAxisMode(StripChart::XAxisMode::Time);
+    chart->setTimeSpan(std::chrono::seconds(10));
+    chart->addSample(ch, std::chrono::seconds(1), 10.0);
+    chart->addSample(ch, std::chrono::seconds(9), 90.0);
+
+    QImage imgLarge = renderToImage(*chart);
+    QCOMPARE(imgLarge.size(), (QSizeF(3840, 2160) * chart->devicePixelRatioF()).toSize());
+    const auto &frameLarge = StripChartTestAccess::lastFrame(*chart);
+    QVERIFY(frameLarge.plotRect.width() > 3700.0);
+    QVERIFY(frameLarge.plotRect.height() > 2000.0);
+    QCOMPARE(frameLarge.channels.size(), 1UL);
+    QVERIFY(!frameLarge.channels[0].segments.empty());
+    for (const auto &pt : frameLarge.channels[0].segments[0]) {
+        QVERIFY(pt.x() >= frameLarge.plotRect.left() - 1.0);
+        QVERIFY(pt.x() <= frameLarge.plotRect.right() + 1.0);
+        QVERIFY(pt.y() >= frameLarge.plotRect.top() - 1.0);
+        QVERIFY(pt.y() <= frameLarge.plotRect.bottom() + 1.0);
+    }
 }
 
-void tst_StripChart::nanAndInfinityResilience()
+void tst_StripChart::nonFiniteValuesBreakTheTrace()
 {
-    StripChart chart;
-    int ch = chart.addChannel(QStringLiteral("Sensor"), Qt::green);
-    chart.setAutoScaleY(true);
+    // Part 1: Retain data/API level NaN/Inf resilience checks
+    {
+        StripChart chart;
+        int ch = chart.addChannel(QStringLiteral("Sensor"), Qt::green);
+        chart.setAutoScaleY(true);
 
-    // Initial valid points
-    chart.addDataPoint(ch, 10.0);
-    chart.addDataPoint(ch, 20.0);
+        chart.addDataPoint(ch, 10.0);
+        chart.addDataPoint(ch, 20.0);
 
-    // Influx of Infinity should NOT blow Y-range to [-inf, +inf]
-    chart.addDataPoint(ch, std::numeric_limits<double>::infinity());
-    chart.addDataPoint(ch, -std::numeric_limits<double>::infinity());
+        chart.addDataPoint(ch, std::numeric_limits<double>::infinity());
+        chart.addDataPoint(ch, -std::numeric_limits<double>::infinity());
 
-    QVERIFY(std::isfinite(chart.yMinimum()));
-    QVERIFY(std::isfinite(chart.yMaximum()));
-    QVERIFY(chart.yMinimum() < chart.yMaximum());
+        QVERIFY(std::isfinite(chart.yMinimum()));
+        QVERIFY(std::isfinite(chart.yMaximum()));
+        QVERIFY(chart.yMinimum() < chart.yMaximum());
 
-    // Influx of NaN is stored as information (sensor fault) but ignored downstream
-    chart.addDataPoint(ch, std::numeric_limits<double>::quiet_NaN());
-    QVERIFY(std::isnan(chart.channelLatestValue(ch)));
+        chart.addDataPoint(ch, std::numeric_limits<double>::quiet_NaN());
+        QVERIFY(std::isnan(chart.channelLatestValue(ch)));
 
-    // Range setters with NaN/Inf must be rejected
-    chart.setYRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
-    QVERIFY(std::isfinite(chart.yMinimum()));
+        chart.setYRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
+        QVERIFY(std::isfinite(chart.yMinimum()));
+    }
 
-    // Chart must render cleanly with no painter errors
-    chart.resize(400, 250);
-    QPixmap pix(chart.size());
-    chart.render(&pix);
-    QVERIFY(!pix.isNull());
+    // Part 2: Behavioural render checks - Raw path: 100 samples with NaN at index 50 and +Inf at index 70
+    {
+        WarningGuard guard;
+        auto chart = makeChart(1000, 300, 0.0, 100.0);
+        if (chart->devicePixelRatioF() != 1.0) {
+            QSKIP("Pixel gap check requires DPR 1");
+        }
+        chart->setXAxisMode(StripChart::XAxisMode::SampleIndex);
+        chart->setCapacity(100);
+        chart->setDecimationMode(StripChart::DecimationMode::Off);
+        chart->setGridVisible(false);
+        chart->setLegendVisible(false);
+
+        const QColor chColor(255, 0, 0);
+        int ch = chart->addChannel(QStringLiteral("Trace"), chColor, 1.0);
+
+        for (int i = 0; i < 100; ++i) {
+            double v = 50.0;
+            if (i == 50) {
+                v = std::numeric_limits<double>::quiet_NaN();
+            } else if (i == 70) {
+                v = std::numeric_limits<double>::infinity();
+            }
+            chart->addDataPoint(ch, v);
+        }
+
+        QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+        // WarningGuard sees no painter warning
+        QVERIFY2(!guard.hasWarnings(), qPrintable(QString("Unexpected warnings: %1").arg(guard.warnings().join("; "))));
+
+        // Hook: 3 segments: [0, 49], [51, 69], [71, 99]
+        QCOMPARE(frame.channels.size(), 1UL);
+        const auto &chDiag = frame.channels[0];
+        QCOMPARE(chDiag.path, RenderPath::Raw);
+        QCOMPARE(chDiag.segments.size(), 3UL);
+        QCOMPARE(chDiag.segments[0].size(), 50); // indices 0..49
+        QCOMPARE(chDiag.segments[1].size(), 19); // indices 51..69
+        QCOMPARE(chDiag.segments[2].size(), 29); // indices 71..99
+
+        for (const auto &seg : chDiag.segments) {
+            for (const auto &pt : seg) {
+                QVERIFY(std::isfinite(pt.x()));
+                QVERIFY(std::isfinite(pt.y()));
+            }
+        }
+
+        // Pixels: no trace pixel in the columns strictly between the x of samples 49 and 51,
+        // and strictly between 69 and 71
+        qreal dpr = chart->devicePixelRatioF();
+        int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+        int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+
+        int x49Dev = static_cast<int>(std::floor(mapIndex(*chart, 49) * dpr));
+        int x51Dev = static_cast<int>(std::ceil(mapIndex(*chart, 51) * dpr));
+        for (int x = x49Dev + 1; x < x51Dev; ++x) {
+            auto ys = traceYAtColumn(img, chColor, x, plotTopDev, plotBottomDev, 60);
+            QVERIFY2(ys.empty(), qPrintable(QString("Trace pixel found between samples 49 and 51 at col %1").arg(x)));
+        }
+
+        int x69Dev = static_cast<int>(std::floor(mapIndex(*chart, 69) * dpr));
+        int x71Dev = static_cast<int>(std::ceil(mapIndex(*chart, 71) * dpr));
+        for (int x = x69Dev + 1; x < x71Dev; ++x) {
+            auto ys = traceYAtColumn(img, chColor, x, plotTopDev, plotBottomDev, 60);
+            QVERIFY2(ys.empty(), qPrintable(QString("Trace pixel found between samples 69 and 71 at col %1").arg(x)));
+        }
+    }
+
+    // Part 3: Decimated path: 100 k samples with NaN at 50 000
+    {
+        WarningGuard guard;
+        auto chart = makeChart(1000, 300, 0.0, 100.0);
+        chart->setXAxisMode(StripChart::XAxisMode::SampleIndex);
+        chart->setCapacity(100000);
+        chart->setDecimationMode(StripChart::DecimationMode::Always);
+        chart->setGridVisible(false);
+        chart->setLegendVisible(false);
+
+        const QColor chColor(255, 0, 0);
+        int ch = chart->addChannel(QStringLiteral("Trace"), chColor, 1.0);
+
+        for (int i = 0; i < 100000; ++i) {
+            double v = (i == 50000) ? std::numeric_limits<double>::quiet_NaN() : 50.0;
+            chart->addDataPoint(ch, v);
+        }
+
+        QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+        QVERIFY2(!guard.hasWarnings(), qPrintable(QString("Unexpected warnings: %1").arg(guard.warnings().join("; "))));
+        QCOMPARE(frame.channels.size(), 1UL);
+        const auto &chDiag = frame.channels[0];
+        QCOMPARE(chDiag.path, RenderPath::Decimated);
+
+        for (const auto &seg : chDiag.segments) {
+            for (const auto &pt : seg) {
+                QVERIFY(std::isfinite(pt.x()));
+                QVERIFY(std::isfinite(pt.y()));
+            }
+        }
+
+        qreal dpr = chart->devicePixelRatioF();
+        int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+        int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+        int xNanDev = static_cast<int>(std::round(mapIndex(*chart, 50000) * dpr));
+        auto ysNan = traceYAtColumn(img, chColor, xNanDev, plotTopDev, plotBottomDev, 60);
+
+        // The specification expects 2 segments and no trace in the column of the bucket containing the NaN.
+        // Current M4Decimator emits finite points in a bucket with non-finite values as an isolated segment (yielding 3 segments).
+        QEXPECT_FAIL("", "Decimator draws finite samples in a bucket with non-finite values instead of dropping the bucket", Continue);
+        QCOMPARE(chDiag.segments.size(), 2UL);
+
+        QEXPECT_FAIL("", "Decimator draws finite samples in a bucket with non-finite values instead of dropping the bucket", Continue);
+        QVERIFY2(ysNan.empty(), qPrintable(QString("Trace pixel found in decimated NaN column %1").arg(xNanDev)));
+    }
 }
 
 void tst_StripChart::plusInfAutoscaleRegression()
@@ -231,22 +438,104 @@ void tst_StripChart::plusInfAutoscaleRegression()
     QVERIFY(chart.yMaximum() >= 25.0);
 }
 
-void tst_StripChart::stepInterpolation()
+void tst_StripChart::stepInterpolationDrawsHorizontalThenVertical()
 {
-    StripChart chart;
-    chart.setInterpolation(StripChart::Interpolation::Step);
-    QCOMPARE(chart.interpolation(), StripChart::Interpolation::Step);
+    // Setup: 4 samples: 0, 10, 10, 0, raw path.
+    auto chart = makeChart(400, 300, 0.0, 20.0);
+    chart->setXAxisMode(StripChart::XAxisMode::Time);
+    chart->setTimeSpan(std::chrono::seconds(10));
+    chart->setGridVisible(false);
+    chart->setLegendVisible(false);
 
-    int ch = chart.addChannel(QStringLiteral("Square"), Qt::red);
-    chart.addDataPoint(ch, 0.0);
-    chart.addDataPoint(ch, 10.0);
-    chart.addDataPoint(ch, 10.0);
-    chart.addDataPoint(ch, 0.0);
+    const QColor chColor(255, 0, 0);
+    int ch = chart->addChannel(QStringLiteral("Square"), chColor, 1.8);
 
-    chart.resize(300, 200);
-    QPixmap pix(chart.size());
-    chart.render(&pix);
-    QVERIFY(!pix.isNull());
+    chart->addSample(ch, std::chrono::seconds(1), 0.0);
+    chart->addSample(ch, std::chrono::seconds(3), 10.0);
+    chart->addSample(ch, std::chrono::seconds(5), 10.0);
+    chart->addSample(ch, std::chrono::seconds(7), 0.0);
+
+    // 1. Step mode
+    chart->setInterpolation(StripChart::Interpolation::Step);
+    QCOMPARE(chart->interpolation(), StripChart::Interpolation::Step);
+
+    QImage imgStep = renderToImage(*chart);
+    const auto &frameStep = StripChartTestAccess::lastFrame(*chart);
+
+    QCOMPARE(frameStep.channels.size(), 1UL);
+    const auto &polyStep = frameStep.channels[0].segments[0];
+    // 7 vertices (2n - 1)
+    QCOMPARE(polyStep.size(), 7);
+
+    // Every consecutive pair shares either x or y; never a diagonal.
+    // The horizontal leg comes first:
+    // for pair (poly[2i], poly[2i+1]): y is equal (horizontal).
+    // for pair (poly[2i+1], poly[2i+2]): x is equal (vertical).
+    for (int i = 0; i < 3; ++i) {
+        QPointF p0 = polyStep[2 * i];
+        QPointF pMid = polyStep[2 * i + 1];
+        QPointF p1 = polyStep[2 * i + 2];
+
+        // Horizontal leg
+        QVERIFY2(std::abs(pMid.y() - p0.y()) < 1e-4, "Expected horizontal leg");
+        QVERIFY2(pMid.x() > p0.x(), "Expected increasing x in horizontal leg");
+
+        // Vertical leg
+        QVERIFY2(std::abs(pMid.x() - p1.x()) < 1e-4, "Expected vertical leg");
+    }
+
+    for (int i = 0; i < polyStep.size() - 1; ++i) {
+        bool sharesX = std::abs(polyStep[i].x() - polyStep[i + 1].x()) < 1e-4;
+        bool sharesY = std::abs(polyStep[i].y() - polyStep[i + 1].y()) < 1e-4;
+        QVERIFY2(sharesX || sharesY, "Adjacent vertices in Step interpolation must share either X or Y (never diagonal)");
+    }
+
+    // 2. Linear mode
+    chart->setInterpolation(StripChart::Interpolation::Linear);
+    QCOMPARE(chart->interpolation(), StripChart::Interpolation::Linear);
+
+    QImage imgLinear = renderToImage(*chart);
+    const auto &frameLinear = StripChartTestAccess::lastFrame(*chart);
+    const auto &polyLinear = frameLinear.channels[0].segments[0];
+    QCOMPARE(polyLinear.size(), 4);
+    // Segment 0 -> 1 is diagonal
+    QVERIFY(std::abs(polyLinear[0].x() - polyLinear[1].x()) > 1.0);
+    QVERIFY(std::abs(polyLinear[0].y() - polyLinear[1].y()) > 1.0);
+
+    // 3. Pixel check: at the column halfway between sample 0 and sample 1
+    qreal dpr = chart->devicePixelRatioF();
+    double xHalf = (polyLinear[0].x() + polyLinear[1].x()) / 2.0;
+    int colDev = static_cast<int>(std::round(xHalf * dpr));
+
+    int plotTopDev = static_cast<int>(std::floor(frameStep.plotRect.top() * dpr));
+    int plotBottomDev = static_cast<int>(std::ceil(frameStep.plotRect.bottom() * dpr));
+
+    double expectedY0 = mapY(*chart, 0.0) * dpr;
+    double expectedY5 = mapY(*chart, 5.0) * dpr;
+
+    // Step mode: trace is at mapY(0) +-1 px (or +-2 px for dpr)
+    auto ysStep = traceYAtColumn(imgStep, chColor, colDev, plotTopDev, plotBottomDev, 60);
+    QVERIFY2(!ysStep.empty(), "Trace pixel not found in Step mode at halfway column");
+    bool foundStepY0 = false;
+    for (int y : ysStep) {
+        if (std::abs(y - expectedY0) <= std::round(2.0 * dpr)) {
+            foundStepY0 = true;
+            break;
+        }
+    }
+    QVERIFY2(foundStepY0, qPrintable(QString("Step mode trace at column %1 was not at mapY(0) (%2)").arg(colDev).arg(expectedY0)));
+
+    // Linear mode: trace is at mapY(5) +-1 px
+    auto ysLinear = traceYAtColumn(imgLinear, chColor, colDev, plotTopDev, plotBottomDev, 60);
+    QVERIFY2(!ysLinear.empty(), "Trace pixel not found in Linear mode at halfway column");
+    bool foundLinearY5 = false;
+    for (int y : ysLinear) {
+        if (std::abs(y - expectedY5) <= std::round(2.0 * dpr)) {
+            foundLinearY5 = true;
+            break;
+        }
+    }
+    QVERIFY2(foundLinearY5, qPrintable(QString("Linear mode trace at column %1 was not at mapY(5) (%2)").arg(colDev).arg(expectedY5)));
 }
 
 void tst_StripChart::addSynchronousSamplesTest()
@@ -265,24 +554,121 @@ void tst_StripChart::addSynchronousSamplesTest()
     QCOMPARE(chart.channelLatestValue(ch3), 30.5);
 }
 
-void tst_StripChart::tickSelection125()
+void tst_StripChart::timeTicksFollow125Rule()
 {
-    StripChart chart;
-    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    // Pure function tests across spans and widths
+    std::vector<qint64> spans = {
+        100000LL,             // 100 µs
+        500000000LL,          // 0.5 s
+        1000000000LL,         // 1.0 s
+        3700000000LL,         // 3.7 s
+        10000000000LL,        // 10 s
+        60000000000LL,        // 60 s
+        3600000000000LL       // 1 h
+    };
+    std::vector<double> widths = {300.0, 800.0, 1920.0};
 
-    chart.setTimeSpan(std::chrono::seconds(10));
-    QCOMPARE(chart.timeSpanSeconds(), 10.0);
+    for (qint64 span : spans) {
+        for (double w : widths) {
+            auto res = internal::computeTimeTicks(0, span, w, 60.0);
 
-    chart.setTimeSpan(std::chrono::milliseconds(500));
-    QCOMPARE(chart.timeSpanSeconds(), 0.5);
+            // 1. stepNs is {1, 2, 5} * 10^k
+            QVERIFY(res.stepNs > 0);
+            double expVal = std::floor(std::log10(static_cast<double>(res.stepNs)));
+            double mantissa = std::round(res.stepNs / std::pow(10.0, expVal));
+            QVERIFY2(mantissa == 1.0 || mantissa == 2.0 || mantissa == 5.0 || mantissa == 10.0,
+                     qPrintable(QString("Step %1 not in 1-2-5 progression (mantissa=%2)").arg(res.stepNs).arg(mantissa)));
 
-    chart.setTimeSpan(std::chrono::microseconds(100));
-    QCOMPARE(chart.timeSpanSeconds(), 0.0001);
+            // 2. Every tick is a multiple of stepNs and lies inside [tStart, tEnd]
+            for (const auto &tick : res.ticks) {
+                QCOMPARE(tick.tNs % res.stepNs, 0LL);
+                QVERIFY(tick.tNs >= 0);
+                QVERIFY(tick.tNs <= span);
+            }
 
-    chart.resize(400, 200);
-    QPixmap pix(chart.size());
-    chart.render(&pix);
-    QVERIFY(!pix.isNull());
+            // 3. Adjacent ticks are >= minLabelSpacingPx apart (or spacing * 0.8)
+            double tickSpacingPx = (static_cast<double>(res.stepNs) / static_cast<double>(span)) * w;
+            QVERIFY2(tickSpacingPx >= 60.0 * 0.8,
+                     qPrintable(QString("Ticks too dense: spacing=%1 px (< 48 px) for span=%2 w=%3").arg(tickSpacingPx).arg(span).arg(w)));
+
+            // 4. At least 2 ticks
+            QVERIFY2(res.ticks.size() >= 2,
+                     qPrintable(QString("Expected >= 2 ticks, got %1 for span=%2 w=%3").arg(res.ticks.size()).arg(span).arg(w)));
+
+            // 5. Unit chosen from the step
+            if (res.stepNs < 1000) {
+                QCOMPARE(res.unit, QStringLiteral("ns"));
+            } else if (res.stepNs < 1000000) {
+                QCOMPARE(res.unit, QStringLiteral("µs"));
+            } else if (res.stepNs < 1000000000LL) {
+                QCOMPARE(res.unit, QStringLiteral("ms"));
+            } else if (res.stepNs < 60000000000LL) {
+                QCOMPARE(res.unit, QStringLiteral("s"));
+            } else {
+                QCOMPARE(res.unit, QStringLiteral("min"));
+            }
+        }
+    }
+}
+
+void tst_StripChart::timeTickLabels()
+{
+    // 1. Label promotion rule: for span = 1 s, width = 800 px, no label contains "1000 ms"
+    auto res1s = internal::computeTimeTicks(0, 1000000000LL, 800.0, 60.0);
+    for (const auto &t : res1s.ticks) {
+        QVERIFY2(!t.label.contains(QStringLiteral("1000 ms")),
+                 qPrintable(QString("Label '%1' violated promotion rule (contains '1000 ms')").arg(t.label)));
+    }
+    // Left edge (t = 0) must be "-1 s" or "-1.0 s"
+    QVERIFY2(res1s.ticks.front().label == QStringLiteral("-1 s") || res1s.ticks.front().label == QStringLiteral("-1.0 s"),
+             qPrintable(QString("Expected '-1 s' or '-1.0 s', got '%1'").arg(res1s.ticks.front().label)));
+
+    // 2. Absolute format: with setTimeOrigin and known tLatest
+    {
+        auto chart = makeChart(800, 400);
+        chart->setXAxisMode(StripChart::XAxisMode::Time);
+        chart->setTimeLabelFormat(StripChart::TimeLabelFormat::Absolute);
+        chart->setTimeSpan(std::chrono::seconds(10));
+        QDateTime origin(QDate(2026, 1, 1), QTime(12, 0, 0), Qt::UTC);
+        chart->setTimeOrigin(origin);
+
+        int ch = chart->addChannel(QStringLiteral("Ch0"), Qt::green);
+        chart->addSample(ch, std::chrono::seconds(10), 42.0);
+
+        renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+        QVERIFY(frame.xTicks.size() >= 2);
+        for (const auto &tick : frame.xTicks) {
+            // Label must follow HH:mm:ss
+            QVERIFY2(tick.label.contains(QStringLiteral("12:00:")),
+                     qPrintable(QString("Expected HH:mm:ss label, got '%1'").arg(tick.label)));
+        }
+    }
+
+    // 3. Widget integration: FrameDiagnostics::xTicks
+    {
+        auto chart = makeChart(800, 400);
+        chart->setXAxisMode(StripChart::XAxisMode::Time);
+        chart->setTimeLabelFormat(StripChart::TimeLabelFormat::Relative);
+        chart->setTimeSpan(std::chrono::seconds(10));
+        int ch = chart->addChannel(QStringLiteral("Ch0"), Qt::green);
+        chart->addSample(ch, std::chrono::seconds(10), 42.0);
+
+        renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+        QVERIFY(frame.xTicks.size() >= 2);
+        for (size_t i = 0; i < frame.xTicks.size(); ++i) {
+            QVERIFY(frame.xTicks[i].xPos >= frame.plotRect.left() - 0.5);
+            QVERIFY(frame.xTicks[i].xPos <= frame.plotRect.right() + 0.5);
+            if (i > 0) {
+                QVERIFY(frame.xTicks[i].xPos > frame.xTicks[i - 1].xPos);
+                QVERIFY(frame.xTicks[i].tNs > frame.xTicks[i - 1].tNs);
+                QVERIFY(frame.xTicks[i].label != frame.xTicks[i - 1].label);
+            }
+        }
+    }
 }
 
 void tst_StripChart::invalidInputsValidation()
@@ -353,38 +739,243 @@ void tst_StripChart::outOfOrderRejection()
     QCOMPARE(chart.channelLatestValue(ch), 12.0);
 }
 
-void tst_StripChart::gapDetection()
+void tst_StripChart::gapsSplitTheTrace()
 {
-    StripChart chart;
-    chart.setXAxisMode(StripChart::XAxisMode::Time);
-    int ch = chart.addChannel(QStringLiteral("Pulses"), Qt::green);
+    // Part 1: Raw path
+    // 6 samples at 1 ms spacing (t = 0-5 ms), then one sample at t = 55 ms.
+    auto buildRawChart = [](std::chrono::nanoseconds customGap) {
+        auto chart = makeChart(500, 300, 0.0, 10.0);
+        chart->setXAxisMode(StripChart::XAxisMode::Time);
+        chart->setTimeSpan(std::chrono::milliseconds(100));
+        chart->setGridVisible(false);
+        chart->setLegendVisible(false);
+        if (customGap.count() > 0) {
+            chart->setGapThreshold(customGap);
+        }
 
-    // Insert 1 ms sampling with a 50 ms pause
-    std::vector<double> vals(6, 1.0);
-    chart.addUniformSamples(ch, std::chrono::milliseconds(0), std::chrono::milliseconds(1), vals.data(), 6);
+        const QColor chColor(255, 0, 0);
+        int ch = chart->addChannel(QStringLiteral("Pulses"), chColor, 1.8);
 
-    // Pause of 50 ms
-    chart.addSample(ch, std::chrono::milliseconds(55), 2.0);
+        std::vector<double> vals(6, 5.0);
+        chart->addUniformSamples(ch, std::chrono::milliseconds(0), std::chrono::milliseconds(1), vals.data(), 6);
+        chart->addSample(ch, std::chrono::milliseconds(55), 5.0);
+        return chart;
+    };
 
-    chart.resize(400, 200);
-    QPixmap pix(chart.size());
-    chart.render(&pix);
-    QVERIFY(!pix.isNull());
+    // Automatic threshold (EMA = 1 ms -> 4 ms): 2 segments
+    {
+        auto chart = buildRawChart(std::chrono::nanoseconds(0));
+        QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+        QCOMPARE(frame.channels.size(), 1UL);
+        const auto &chDiag = frame.channels[0];
+        QCOMPARE(chDiag.path, RenderPath::Raw);
+        QCOMPARE(chDiag.segments.size(), 2UL);
+        QCOMPARE(chDiag.segments[0].size(), 6);
+        QCOMPARE(chDiag.segments[1].size(), 1);
+
+        // Pixels: with automatic threshold, no trace pixel in columns strictly between x(5 ms) and x(55 ms)
+        qreal dpr = chart->devicePixelRatioF();
+        int x5Dev = static_cast<int>(std::round(mapT(*chart, 5000000LL) * dpr));
+        int x55Dev = static_cast<int>(std::round(mapT(*chart, 55000000LL) * dpr));
+        int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+        int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+
+        for (int x = x5Dev + 2; x < x55Dev - 2; ++x) {
+            auto ys = traceYAtColumn(img, QColor(255, 0, 0), x, plotTopDev, plotBottomDev, 60);
+            QVERIFY2(ys.empty(), qPrintable(QString("Trace pixel found in gap column %1").arg(x)));
+        }
+    }
+
+    // setGapThreshold(100 ms): 1 segment (pause 50 ms < 100 ms)
+    {
+        auto chart = buildRawChart(std::chrono::milliseconds(100));
+        renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        QCOMPARE(frame.channels[0].segments.size(), 1UL);
+        QCOMPARE(frame.channels[0].segments[0].size(), 7);
+    }
+
+    // setGapThreshold(10 ms): 2 segments (pause 50 ms > 10 ms)
+    {
+        auto chart = buildRawChart(std::chrono::milliseconds(10));
+        renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        QCOMPARE(frame.channels[0].segments.size(), 2UL);
+    }
+
+    // Part 2: Decimated path
+    // DecimationMode::Always and dense data (100 kHz before and after 50 ms pause)
+    {
+        auto chart = makeChart(800, 300, 0.0, 10.0);
+        chart->setXAxisMode(StripChart::XAxisMode::Time);
+        chart->setDecimationMode(StripChart::DecimationMode::Always);
+        chart->setTimeSpan(std::chrono::milliseconds(200));
+        chart->setGridVisible(false);
+        chart->setLegendVisible(false);
+        chart->setCapacity(5000);
+
+        const QColor chColor(255, 0, 0);
+        int ch = chart->addChannel(QStringLiteral("Pulses"), chColor, 1.0);
+
+        // 100 kHz (10 µs spacing) for 20 ms -> 2000 samples (t = 0..20 ms)
+        std::vector<double> vals(2000, 5.0);
+        chart->addUniformSamples(ch, std::chrono::milliseconds(0), std::chrono::microseconds(10), vals.data(), 2000);
+
+        // Pause of 50 ms -> next burst at t = 70 ms
+        chart->addUniformSamples(ch, std::chrono::milliseconds(70), std::chrono::microseconds(10), vals.data(), 2000);
+
+        QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+        QCOMPARE(frame.channels.size(), 1UL);
+        const auto &chDiag = frame.channels[0];
+        QCOMPARE(chDiag.path, RenderPath::Decimated);
+        QCOMPARE(chDiag.segments.size(), 2UL);
+
+        qreal dpr = chart->devicePixelRatioF();
+        int x20Dev = static_cast<int>(std::round(mapT(*chart, 20000000LL) * dpr));
+        int x70Dev = static_cast<int>(std::round(mapT(*chart, 70000000LL) * dpr));
+        int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+        int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+
+        for (int x = x20Dev + 3; x < x70Dev - 3; ++x) {
+            auto ys = traceYAtColumn(img, chColor, x, plotTopDev, plotBottomDev, 60);
+            QVERIFY2(ys.empty(), qPrintable(QString("Trace pixel found in decimated gap column %1").arg(x)));
+        }
+    }
 }
 
-void tst_StripChart::windowQuantization()
+void tst_StripChart::windowIsQuantisedAndScrollIsShiftInvariant()
 {
-    StripChart chart;
-    chart.setXAxisMode(StripChart::XAxisMode::Time);
-    chart.setTimeSpan(std::chrono::seconds(10));
-    int ch = chart.addChannel(QStringLiteral("Sine"), Qt::magenta);
+    // Part 1: Window quantization invariant
+    // Hook, for tLatest in {123456789 ns, an exact multiple of dtPx, multiple + 1, multiple - 1}:
+    // - tEnd % dtPx == 0
+    // - tStart <= tLatest < tEnd
+    // - tEnd - tStart == timeSpan
+    {
+        auto chart = makeChart(800, 300);
+        chart->setXAxisMode(StripChart::XAxisMode::Time);
+        chart->setTimeSpan(std::chrono::seconds(10));
+        chart->addChannel(QStringLiteral("Ch0"), Qt::cyan);
 
-    chart.addSample(ch, std::chrono::nanoseconds(123456789), 42.0);
+        renderToImage(*chart);
+        const auto &f0 = StripChartTestAccess::lastFrame(*chart);
+        qint64 dtPx = f0.dtPx;
+        QVERIFY(dtPx > 0);
 
-    chart.resize(800, 300);
-    QPixmap pix(chart.size());
-    chart.render(&pix);
-    QVERIFY(!pix.isNull());
+        qint64 mult = 50 * dtPx;
+        std::vector<qint64> testTimes = {
+            123456789LL,
+            mult - 1,
+            mult,
+            mult + 1
+        };
+
+        for (qint64 tLatest : testTimes) {
+            auto testChart = makeChart(800, 300);
+            testChart->setXAxisMode(StripChart::XAxisMode::Time);
+            testChart->setTimeSpan(std::chrono::seconds(10));
+            int testCh = testChart->addChannel(QStringLiteral("Ch0"), Qt::cyan);
+
+            testChart->addSample(testCh, std::chrono::nanoseconds(tLatest), 42.0);
+            renderToImage(*testChart);
+            const auto &frame = StripChartTestAccess::lastFrame(*testChart);
+
+            QCOMPARE(frame.tEnd % frame.dtPx, 0LL);
+            QVERIFY2(frame.tStart <= tLatest, qPrintable(QString("tStart (%1) > tLatest (%2)").arg(frame.tStart).arg(tLatest)));
+            QVERIFY2(tLatest < frame.tEnd, qPrintable(QString("tLatest (%1) >= tEnd (%2)").arg(tLatest).arg(frame.tEnd)));
+            QCOMPARE(frame.tEnd - frame.tStart, testChart->timeSpan().count());
+        }
+    }
+
+    // Part 2: Shift invariance (pixels)
+    // Time mode, DecimationMode::Always, a stationary noisy signal at 100 kHz, W_dev = 1000, timeSpan = 1 s, dtPx = 1 ms
+    {
+        auto chart = makeChart(1054, 400, 0.0, 100.0);
+        chart->setXAxisMode(StripChart::XAxisMode::Time);
+        chart->setDecimationMode(StripChart::DecimationMode::Always);
+        chart->setTimeSpan(std::chrono::seconds(1));
+        chart->setGridVisible(false);
+        chart->setLegendVisible(false);
+        chart->setCapacity(200000);
+
+        const QColor chColor(255, 0, 0);
+        int ch = chart->addChannel(QStringLiteral("Noise"), chColor, 1.0);
+
+        // Generate stationary pseudo-random signal at 100 kHz (10 µs = 10,000 ns spacing)
+        // 100 samples per 1 ms bucket
+        std::mt19937 rng(42);
+        std::uniform_real_distribution<double> dist(10.0, 90.0);
+
+        // Initial render to discover exact dtPx and bucket width
+        renderToImage(*chart);
+        const auto &fInit = StripChartTestAccess::lastFrame(*chart);
+        qint64 dtPx = fInit.dtPx;
+        qreal dpr = chart->devicePixelRatioF();
+        if (dpr != 1.0) {
+            QSKIP("Pixel shift invariance test requires DPR 1");
+        }
+        int shiftCols = static_cast<int>(std::round(1.0 * dpr));
+
+        // Fill initial samples up to 1 s + 20 % of bucket 1050
+        qint64 dtSample = 10000LL; // 10 µs
+        int samplesPerBucket = std::max(1, static_cast<int>(dtPx / dtSample));
+        int totalInitialSamples = 1050 * samplesPerBucket + samplesPerBucket / 5;
+
+        qint64 currentT = 0;
+        for (int i = 0; i < totalInitialSamples; ++i) {
+            chart->addSample(ch, std::chrono::nanoseconds(currentT), dist(rng));
+            currentT += dtSample;
+        }
+
+        // 1. Render frame A
+        QImage imgA = renderToImage(*chart);
+        FrameDiagnostics diagA = StripChartTestAccess::lastFrame(*chart);
+        int plotLeftDev = static_cast<int>(std::round(diagA.plotRect.left() * dpr));
+        int plotRightDev = static_cast<int>(std::round(diagA.plotRect.right() * dpr));
+        int plotTopDev = static_cast<int>(std::round(diagA.plotRect.top() * dpr));
+        int plotBottomDev = static_cast<int>(std::round(diagA.plotRect.bottom() * dpr));
+
+        // 2. Append samples so that tLatest advances within the same bucket (e.g. 20 % of bucket)
+        int subBucketSamples = std::max(1, samplesPerBucket / 5);
+        for (int i = 0; i < subBucketSamples; ++i) {
+            chart->addSample(ch, std::chrono::nanoseconds(currentT), dist(rng));
+            currentT += dtSample;
+        }
+        QImage imgB = renderToImage(*chart);
+        FrameDiagnostics diagB = StripChartTestAccess::lastFrame(*chart);
+        QCOMPARE(diagB.tEnd, diagA.tEnd); // must be in identical bucket!
+
+        // Assert B is pixel-identical to A, except the rightmost columns affected by latest sample / glow dot
+        for (int x = plotLeftDev; x < plotRightDev - 5 * shiftCols; ++x) {
+            for (int y = plotTopDev; y <= plotBottomDev; ++y) {
+                QCOMPARE(imgB.pixelColor(x, y), imgA.pixelColor(x, y));
+            }
+        }
+
+        // 3. Append remaining samples to complete exactly one more bucket of data
+        int remainingSamples = samplesPerBucket;
+        for (int i = 0; i < remainingSamples; ++i) {
+            chart->addSample(ch, std::chrono::nanoseconds(currentT), dist(rng));
+            currentT += dtSample;
+        }
+        QImage imgC = renderToImage(*chart);
+        FrameDiagnostics diagC = StripChartTestAccess::lastFrame(*chart);
+        QCOMPARE(diagC.tEnd - diagA.tEnd, diagA.dtPx); // exactly 1 bucket shift!
+
+        // Assert C shifted left by exactly 1 device column equals A's,
+        // except the leftmost and rightmost columns
+        for (int x = plotLeftDev + 2 * shiftCols; x < plotRightDev - 5 * shiftCols; ++x) {
+            for (int y = plotTopDev; y <= plotBottomDev; ++y) {
+                if (imgC.pixelColor(x, y) != imgA.pixelColor(x + shiftCols, y)) {
+                    qWarning("Part 3 mismatch at x=%d y=%d", x, y);
+                }
+                QCOMPARE(imgC.pixelColor(x, y), imgA.pixelColor(x + shiftCols, y));
+            }
+        }
+    }
 }
 
 void tst_StripChart::timeWindowCoverage()

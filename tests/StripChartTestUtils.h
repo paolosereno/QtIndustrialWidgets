@@ -31,7 +31,10 @@ inline std::unique_ptr<StripChart> makeChart(int w = 800, int h = 600, double yM
 
 inline QImage renderToImage(StripChart &chart)
 {
-    QImage img(chart.size(), QImage::Format_ARGB32_Premultiplied);
+    qreal dpr = chart.devicePixelRatioF();
+    QSize imgSize = (QSizeF(chart.size()) * dpr).toSize();
+    QImage img(imgSize, QImage::Format_ARGB32_Premultiplied);
+    img.setDevicePixelRatio(dpr);
     img.fill(Qt::black);
     QPainter painter(&img);
     chart.render(&painter);
@@ -94,6 +97,14 @@ inline double mapY(const StripChart &chart, double value)
     if (std::abs(yRange) < 1e-9) yRange = 1.0;
     double yNorm = (value - chart.yMinimum()) / yRange;
     return plotRect.bottom() - yNorm * plotRect.height();
+}
+
+inline double mapIndex(const StripChart &chart, size_t i)
+{
+    QRectF plotRect = StripChartTestAccess::plotArea(chart);
+    int cap = chart.capacity();
+    double frac = (cap <= 1) ? 0.0 : (static_cast<double>(i) / (cap - 1));
+    return plotRect.left() + frac * plotRect.width();
 }
 
 inline double mapT(const StripChart &chart, qint64 t)
