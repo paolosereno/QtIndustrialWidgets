@@ -306,9 +306,20 @@ QString gitDescription()
     if (hash.isEmpty()) {
         return QStringLiteral("unknown (source not in a git checkout)");
     }
+    QString result = hash;
     const QString dirty = runGit(dir, {QStringLiteral("status"), QStringLiteral("--porcelain"),
                                        QStringLiteral("--untracked-files=no")});
-    return dirty.isEmpty() ? hash : hash + QStringLiteral(" (working tree modified)");
+    if (!dirty.isEmpty()) {
+        result += QStringLiteral(" (working tree modified)");
+    }
+    // e.g. this file copied into an older checkout to measure a baseline
+    const QString self = runGit(dir, {QStringLiteral("status"), QStringLiteral("--porcelain"),
+                                      QStringLiteral("--untracked-files=all"), QStringLiteral("--"),
+                                      QStringLiteral(__FILE__)});
+    if (!self.isEmpty()) {
+        result += QStringLiteral(" (bench_StripChart.cpp differs from this commit)");
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------
