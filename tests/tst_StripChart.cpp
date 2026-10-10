@@ -58,6 +58,11 @@ private Q_SLOTS:
     void computeTimeWindowBoundaries();
     void timeBucketBoundarySpikePreservation();
     void timeWindowCoverageConsistency();
+    void axisModeSwitchClearing();
+    void sampleIndexExplicitTimestampIgnored();
+    void axisModeRoundTrip();
+    void sameAxisModePreservesData();
+    void addUniformSamplesSampleIndexMode();
 };
 
 void tst_StripChart::defaultValues()
@@ -321,6 +326,7 @@ void tst_StripChart::capacityClamp24()
 void tst_StripChart::outOfOrderRejection()
 {
     StripChart chart;
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
     int ch = chart.addChannel(QStringLiteral("DAQ"), Qt::cyan);
 
     // 1. Initial sample at t = 100 ns
@@ -699,6 +705,115 @@ void tst_StripChart::timeWindowCoverageConsistency()
     chart.addSamples(ch, t.data(), v.data(), 1000);
 
     QVERIFY(chart.isTimeWindowFullyCovered());
+}
+
+void tst_StripChart::axisModeSwitchClearing()
+{
+    StripChart chart;
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    int ch = chart.addChannel(QStringLiteral("V"), Qt::red);
+
+    for (int i = 0; i < 5; ++i) {
+        chart.addDataPoint(ch, 10.0 + i);
+    }
+    QCOMPARE(chart.channelSampleCount(ch), 5);
+    quint64 rejectedBefore = chart.rejectedSampleCount(ch);
+
+    // Switch to SampleIndex
+    chart.setXAxisMode(StripChart::XAxisMode::SampleIndex);
+    // After switch, data must be cleared
+    QCOMPARE(chart.channelSampleCount(ch), 0);
+
+    for (int i = 0; i < 5; ++i) {
+        chart.addDataPoint(ch, 100.0 + i);
+    }
+    // New batch accepted, not rejected!
+    QCOMPARE(chart.channelSampleCount(ch), 5);
+    QCOMPARE(chart.rejectedSampleCount(ch), rejectedBefore);
+    QCOMPARE(chart.channelLatestValue(ch), 104.0);
+}
+
+void tst_StripChart::sampleIndexExplicitTimestampIgnored()
+{
+    StripChart chart;
+    chart.setXAxisMode(StripChart::XAxisMode::SampleIndex);
+    int ch = chart.addChannel(QStringLiteral("Sig"), Qt::blue);
+
+    // addSample with huge timestamp 100 s
+    chart.addSample(ch, std::chrono::seconds(100), 1.0);
+    // addDataPoint with sample index (totalSamples = 1)
+    chart.addDataPoint(ch, 2.0);
+
+    // Both must be accepted, count 2, 0 rejections
+    QCOMPARE(chart.channelSampleCount(ch), 2);
+    QCOMPARE(chart.rejectedSampleCount(ch), 0ULL);
+    QCOMPARE(chart.channelLatestValue(ch), 2.0);
+}
+
+void tst_StripChart::axisModeRoundTrip()
+{
+    StripChart chart;
+    int ch = chart.addChannel(QStringLiteral("PreservedName"), Qt::magenta, 2.5);
+
+    QSignalSpy spy(&chart, &StripChart::xAxisModeChanged);
+
+    chart.addDataPoint(ch, 50.0);
+    QCOMPARE(chart.channelSampleCount(ch), 1);
+
+    // SampleIndex -> Time
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    QCOMPARE(chart.channelSampleCount(ch), 0);
+    QCOMPARE(chart.channelName(ch), QStringLiteral("PreservedName"));
+    QCOMPARE(chart.channelColor(ch), QColor(Qt::magenta));
+    QCOMPARE(chart.channelPenWidth(ch), 2.5);
+    QVERIFY(chart.isChannelVisible(ch));
+
+    chart.addSample(ch, std::chrono::milliseconds(500), 75.0);
+    QCOMPARE(chart.channelSampleCount(ch), 1);
+
+    // Time -> SampleIndex
+    chart.setXAxisMode(StripChart::XAxisMode::SampleIndex);
+    QCOMPARE(chart.channelSampleCount(ch), 0);
+    QCOMPARE(chart.channelName(ch), QStringLiteral("PreservedName"));
+    QCOMPARE(chart.channelColor(ch), QColor(Qt::magenta));
+
+    QCOMPARE(spy.count(), 2);
+}
+
+void tst_StripChart::sameAxisModePreservesData()
+{
+    StripChart chart;
+    int ch = chart.addChannel(QStringLiteral("Data"), Qt::cyan);
+    chart.addDataPoint(ch, 10.0);
+    chart.addDataPoint(ch, 20.0);
+    QCOMPARE(chart.channelSampleCount(ch), 2);
+
+    QSignalSpy spy(&chart, &StripChart::xAxisModeChanged);
+
+    // Setting same mode again
+    chart.setXAxisMode(StripChart::XAxisMode::SampleIndex);
+    QCOMPARE(chart.channelSampleCount(ch), 2);
+    QCOMPARE(chart.channelLatestValue(ch), 20.0);
+    QCOMPARE(spy.count(), 0);
+}
+
+void tst_StripChart::addUniformSamplesSampleIndexMode()
+{
+    StripChart chart;
+    chart.setCapacity(2000);
+    chart.setXAxisMode(StripChart::XAxisMode::SampleIndex);
+    int ch = chart.addChannel(QStringLiteral("Uniform"), Qt::yellow);
+
+    std::vector<double> vals(1000);
+    for (int i = 0; i < 1000; ++i) {
+        vals[i] = static_cast<double>(i * 2);
+    }
+
+    chart.addUniformSamples(ch, std::chrono::nanoseconds(1000000), std::chrono::nanoseconds(1000), vals.data(), 1000);
+
+    QCOMPARE(chart.channelSampleCount(ch), 1000);
+    QCOMPARE(chart.rejectedSampleCount(ch), 0ULL);
+    QCOMPARE(chart.channelLatestValue(ch), 1998.0);
 }
 
 QTEST_MAIN(tst_StripChart)

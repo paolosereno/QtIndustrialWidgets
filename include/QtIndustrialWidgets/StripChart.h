@@ -140,7 +140,14 @@ public:
 
     /** \brief Returns the active horizontal X-axis mode. */
     [[nodiscard]] XAxisMode xAxisMode() const;
-    /** \brief Sets the horizontal X-axis mode. */
+    /**
+     * \brief Sets the horizontal X-axis mode.
+     * \details When the mode changes, all buffered sample data (rings, counts, latest values,
+     *          timestamps, and decimation states) are cleared across all channels to avoid
+     *          mixing incompatible timebases. Channel metadata (names, colors, pen widths,
+     *          visibility) and the diagnostic rejectedSampleCount() are preserved.
+     * \param mode Desired X-axis mode (SampleIndex or Time).
+     */
     void setXAxisMode(XAxisMode mode);
 
     /** \brief Returns the scrolling time window span. Default is 10 seconds. */
@@ -186,8 +193,12 @@ public:
     /**
      * \brief Appends a single timestamped sample to a channel.
      * \note Must be called from the GUI thread only.
+     * \details In \c Time mode, \p t must be >= the channel's last timestamp (out-of-order samples
+     *          are rejected and increment \c rejectedSampleCount). In \c SampleIndex mode,
+     *          \p t is ignored and the sample is indexed with the running sample index,
+     *          issuing a one-time warning per channel.
      * \param channelId Channel ID.
-     * \param t Acquisition timestamp relative to run origin. Must be >= channel's last timestamp.
+     * \param t Acquisition timestamp relative to run origin (in Time mode).
      * \param value Telemetry sample value. NaN and +/-Inf are stored as invalid markers.
      */
     void addSample(int channelId, std::chrono::nanoseconds t, double value);
@@ -195,13 +206,28 @@ public:
     /**
      * \brief Appends a batch of timestamped samples to a channel.
      * \note Must be called from the GUI thread only. Emits dataAdded() once per call.
+     * \details In \c Time mode, timestamps must be monotonically non-decreasing. In \c SampleIndex mode,
+     *          timestamps in \p t are ignored and samples are indexed sequentially, issuing a
+     *          one-time warning per channel.
+     * \param channelId Channel ID.
+     * \param t Array of timestamps (in Time mode).
+     * \param values Array of sample values.
+     * \param count Number of samples in the batch.
      */
     void addSamples(int channelId, const std::chrono::nanoseconds *t,
                     const double *values, qsizetype count);
 
     /**
      * \brief Appends uniformly sampled data points to a channel.
-     * \note Must be called from the GUI thread only. dt must be > 0.
+     * \note Must be called from the GUI thread only. \p dt must be > 0.
+     * \details In \c Time mode, samples are timestamped starting at \p t0 with step \p dt.
+     *          In \c SampleIndex mode, \p t0 and \p dt are ignored (though \p dt <= 0 is still rejected)
+     *          and samples are indexed sequentially, issuing a one-time warning per channel.
+     * \param channelId Channel ID.
+     * \param t0 Starting timestamp (in Time mode).
+     * \param dt Time interval between consecutive samples (must be > 0).
+     * \param values Array of sample values.
+     * \param count Number of samples.
      */
     void addUniformSamples(int channelId, std::chrono::nanoseconds t0,
                            std::chrono::nanoseconds dt,
@@ -210,6 +236,11 @@ public:
     /**
      * \brief Appends a single synchronized timestamped sample across all channels.
      * \note Must be called from the GUI thread only. Emits dataAdded() once per call.
+     * \details In \c Time mode, \p t must be >= each channel's last timestamp. In \c SampleIndex mode,
+     *          \p t is ignored and each channel is indexed with its running sample index,
+     *          issuing a one-time warning per channel.
+     * \param t Acquisition timestamp (in Time mode).
+     * \param values Vector of sample values matching registered channels.
      */
     void addSynchronousSamples(std::chrono::nanoseconds t,
                                const QVector<double> &values);

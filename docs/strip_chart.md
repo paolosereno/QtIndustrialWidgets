@@ -38,6 +38,11 @@ chart->addSample(ch1, std::chrono::nanoseconds(1000000000), 45.2);
 ### 1-2-5 Tick Selection Rule
 Vertical time grid lines adapt dynamically to the visible span using the standard 1-2-5 decade progression (1, 2, 5, 10, 20, 50, etc.), ensuring intuitive intervals.
 
+### Switching Axis Mode
+Switching `xAxisMode()` between `SampleIndex` and `Time` clears all buffered sample data across all channels (ring contents, sample counts, latest values, timestamps, and decimation states). This prevents mixing incompatible timebases (sample index vs nanoseconds). Channel configuration metadata (name, color, pen width, visibility) and the diagnostic `rejectedSampleCount()` are preserved.
+
+When using explicit-timestamp APIs (`addSample`, `addSamples`, `addUniformSamples`, `addSynchronousSamples`) while in `SampleIndex` mode, timestamps are ignored and samples are stored using the channel's running sample index (`totalSamples`), preventing channel poisoning. A warning is logged on the first occurrence per channel.
+
 ---
 
 ## 2. M4 Pixel-Column Decimation
@@ -141,3 +146,7 @@ Replace previous calls as follows:
 | `chart->channel(id)->penWidth` | `chart->channelPenWidth(id)` |
 | `chart->channel(id)->count` | `chart->channelSampleCount(id)` |
 | `chart->channel(id)->latestValue` | `chart->channelLatestValue(id)` |
+
+### Axis Mode Switching (2.0.1)
+In version 2.0.1, switching `xAxisMode()` explicitly clears all channel sample buffers to prevent timestamp poisoning. If your application dynamically toggles modes, ensure that acquisition buffers are re-streamed or restarted after changing modes.
+

@@ -35,6 +35,7 @@ struct ChannelInternal {
     bool receivedArrivalClock{false};
     bool receivedExplicitTimestamp{false};
     bool warnedMixedClock{false};
+    bool warnedIgnoredTimestamps{false};
 
     std::vector<qint64> timestamps;
     std::vector<double> values;
@@ -45,6 +46,23 @@ struct ChannelInternal {
 
 class StripChartPrivate {
 public:
+    void resetChannelData(ChannelInternal &ch) {
+        ch.headIndex = 0;
+        ch.count = 0;
+        ch.totalSamples = 0;
+        ch.lastTimestamp = std::numeric_limits<qint64>::min();
+        ch.latestValue = 0.0;
+        ch.emaIntervalNs = 0.0;
+        ch.hasEma = false;
+        ch.receivedArrivalClock = false;
+        ch.receivedExplicitTimestamp = false;
+        ch.warnedMixedClock = false;
+        ch.warnedIgnoredTimestamps = false;
+        std::fill(ch.values.begin(), ch.values.end(), 0.0);
+        std::fill(ch.timestamps.begin(), ch.timestamps.end(), 0);
+        ch.m4Stream.reset();
+    }
+
     int m_capacity{300};
     double m_yMinimum{0.0};
     double m_yMaximum{100.0};
@@ -242,6 +260,10 @@ void StripChart::setXAxisMode(XAxisMode mode)
     Q_D(StripChart);
     if (d->m_xAxisMode == mode) return;
     d->m_xAxisMode = mode;
+    for (auto &ch : d->m_channels) {
+        d->resetChannelData(ch);
+    }
+    d->m_autoScaleDirty = true;
     invalidateCache();
     Q_EMIT xAxisModeChanged(mode);
     update();
@@ -480,7 +502,13 @@ void StripChart::addSample(int channelId, std::chrono::nanoseconds t, double val
     }
 
     ChannelInternal &ch = d_ptr->m_channels[channelId];
-    bool inserted = d_ptr->insertSampleInternal(ch, channelId, t.count(), value, true);
+    bool isSampleIndex = (d_ptr->m_xAxisMode == XAxisMode::SampleIndex);
+    if (isSampleIndex && !ch.warnedIgnoredTimestamps) {
+        qWarning("StripChart: Channel %d timestamps ignored in SampleIndex mode.", channelId);
+        ch.warnedIgnoredTimestamps = true;
+    }
+    qint64 sampleT = isSampleIndex ? static_cast<qint64>(ch.totalSamples) : t.count();
+    bool inserted = d_ptr->insertSampleInternal(ch, channelId, sampleT, value, !isSampleIndex);
     if (!inserted) return;
 
     if (d_ptr->m_autoScaleY) {
@@ -502,9 +530,16 @@ void StripChart::addSamples(int channelId, const std::chrono::nanoseconds *t,
     }
 
     ChannelInternal &ch = d_ptr->m_channels[channelId];
+    bool isSampleIndex = (d_ptr->m_xAxisMode == XAxisMode::SampleIndex);
+    if (isSampleIndex && !ch.warnedIgnoredTimestamps) {
+        qWarning("StripChart: Channel %d timestamps ignored in SampleIndex mode.", channelId);
+        ch.warnedIgnoredTimestamps = true;
+    }
+
     bool anyInserted = false;
     for (qsizetype i = 0; i < count; ++i) {
-        if (d_ptr->insertSampleInternal(ch, channelId, t[i].count(), values[i], true)) {
+        qint64 sampleT = isSampleIndex ? static_cast<qint64>(ch.totalSamples) : t[i].count();
+        if (d_ptr->insertSampleInternal(ch, channelId, sampleT, values[i], !isSampleIndex)) {
             anyInserted = true;
         }
     }
@@ -530,12 +565,19 @@ void StripChart::addUniformSamples(int channelId, std::chrono::nanoseconds t0,
     }
 
     ChannelInternal &ch = d_ptr->m_channels[channelId];
+    bool isSampleIndex = (d_ptr->m_xAxisMode == XAxisMode::SampleIndex);
+    if (isSampleIndex && !ch.warnedIgnoredTimestamps) {
+        qWarning("StripChart: Channel %d timestamps ignored in SampleIndex mode.", channelId);
+        ch.warnedIgnoredTimestamps = true;
+    }
+
     bool anyInserted = false;
     qint64 curT = t0.count();
     qint64 step = dt.count();
 
     for (qsizetype i = 0; i < count; ++i) {
-        if (d_ptr->insertSampleInternal(ch, channelId, curT, values[i], true)) {
+        qint64 sampleT = isSampleIndex ? static_cast<qint64>(ch.totalSamples) : curT;
+        if (d_ptr->insertSampleInternal(ch, channelId, sampleT, values[i], !isSampleIndex)) {
             anyInserted = true;
         }
         curT += step;
@@ -556,10 +598,16 @@ void StripChart::addSynchronousSamples(std::chrono::nanoseconds t,
     int limit = std::min(static_cast<int>(values.size()), static_cast<int>(d_ptr->m_channels.size()));
     if (limit <= 0) return;
 
+    bool isSampleIndex = (d_ptr->m_xAxisMode == XAxisMode::SampleIndex);
     bool anyInserted = false;
     for (int i = 0; i < limit; ++i) {
         ChannelInternal &ch = d_ptr->m_channels[i];
-        if (d_ptr->insertSampleInternal(ch, i, t.count(), values[i], true)) {
+        if (isSampleIndex && !ch.warnedIgnoredTimestamps) {
+            qWarning("StripChart: Channel %d timestamps ignored in SampleIndex mode.", i);
+            ch.warnedIgnoredTimestamps = true;
+        }
+        qint64 sampleT = isSampleIndex ? static_cast<qint64>(ch.totalSamples) : t.count();
+        if (d_ptr->insertSampleInternal(ch, i, sampleT, values[i], !isSampleIndex)) {
             anyInserted = true;
         }
     }
@@ -576,16 +624,7 @@ void StripChart::addSynchronousSamples(std::chrono::nanoseconds t,
 void StripChart::clear()
 {
     for (auto &ch : d_ptr->m_channels) {
-        ch.headIndex = 0;
-        ch.count = 0;
-        ch.latestValue = 0.0;
-        ch.lastTimestamp = std::numeric_limits<qint64>::min();
-        ch.totalSamples = 0;
-        ch.hasEma = false;
-        ch.emaIntervalNs = 0.0;
-        std::fill(ch.values.begin(), ch.values.end(), 0.0);
-        std::fill(ch.timestamps.begin(), ch.timestamps.end(), 0);
-        ch.m4Stream.reset();
+        d_ptr->resetChannelData(ch);
     }
     d_ptr->m_autoScaleDirty = true;
     update();
