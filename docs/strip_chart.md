@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 
 `QtIndustrialWidgets::StripChart` is a real-time multi-channel scrolling oscilloscope and strip chart recorder designed for industrial test benches, data acquisition (DAQ) systems, SCADA telemetry, and embedded instrumentation.
 
-In QtIndustrialWidgets 2.1.0, `StripChart` features a true nanosecond time axis, high-throughput bulk insertion APIs (0.011 µs/sample ingestion latency with autoscale ON), and pixel-column M4 decimation capable of displaying data streams sampled at high DAQ rates (up to millions of points per channel, measured at 1.9 ms / frame offscreen on 1920 px at DPR 1) at full 60 FPS.
+In QtIndustrialWidgets 2.1.0, `StripChart` features a true nanosecond time axis, high-throughput bulk insertion APIs, and pixel-column M4 decimation for data streams of up to millions of points per channel. Measured paint and insertion times, with machine and method, are in the [Benchmark Report](benchmarks.md).
 
 ---
 
@@ -47,7 +47,7 @@ When using explicit-timestamp APIs (`addSample`, `addSamples`, `addUniformSample
 
 ## 2. M4 Pixel-Column Decimation
 
-Rendering raw waveforms with millions of data points every frame causes severe CPU/GPU bottlenecking. `StripChart` integrates an internal M4 decimation engine based on the Jugel et al. M4 algorithm with zero per-frame heap allocations in steady state.
+Rendering raw waveforms with millions of data points every frame is CPU-bound and does not scale. `StripChart` integrates an internal M4 decimation engine based on the Jugel et al. M4 algorithm. In the measured streaming cases the number of heap allocations per frame does not depend on the number of samples for continuous signals; with NaN gaps it grows with the number of visible gaps (see the [Benchmark Report](benchmarks.md)).
 
 ### How It Works
 For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF())`):
@@ -70,7 +70,7 @@ For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF()
 
 ### Cosmetic 1-Device-Pixel Trace Rendering
 To guarantee strictly bounded frame times ($O(W)$) even when decimating dense high-frequency noise:
-- **Thin Decimated Traces Rule**: When decimation is active (either via `Always` or triggered by `Auto`), waveforms are drawn with a cosmetic 1-device-pixel pen without antialiasing (`Qt::FlatCap`, `Qt::MiterJoin`). In dense M4 min/max zig-zags (up to ~7,680 vertices on a 1920-px plot), antialiased wide pens force `QPainter`'s rasterizer (`QStroker`) to compute outline polygons for every zig-zag segment, which caused paint times to explode to ~178 ms/frame. Drawing with a cosmetic 1-device-pixel unaliased pen eliminates `QStroker` outline synthesis entirely, dropping draw time to under 1 ms.
+- **Thin Decimated Traces Rule**: When decimation is active (either via `Always` or triggered by `Auto`), waveforms are drawn with a cosmetic 1-device-pixel pen without antialiasing (`Qt::FlatCap`, `Qt::MiterJoin`). In dense M4 min/max zig-zags (up to ~7,680 vertices on a 1920-px plot), antialiased wide pens force `QPainter`'s rasterizer (`QStroker`) to compute outline polygons for every zig-zag segment, which is expensive for dense data. Drawing with a cosmetic 1-device-pixel unaliased pen avoids `QStroker` outline synthesis entirely. Measured paint times are in the [Benchmark Report](benchmarks.md).
 - **Raw Traces**: When decimation is inactive (via `Off` or when sample count $\le W_{dev}$), user-configured channel pen widths and antialiasing remain active for smooth visual appearance.
 - **Head Glow Dot**: Telemetry head glow dots always retain antialiasing for clean visual indicators.
 
