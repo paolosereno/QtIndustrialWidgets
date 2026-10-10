@@ -30,7 +30,7 @@ include(FetchContent)
 FetchContent_Declare(
     QtIndustrialWidgets
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
-    GIT_TAG        main
+    GIT_TAG        v2.1.1
 )
 
 # Optional: Disable examples and designer plugin when fetching
@@ -46,6 +46,8 @@ target_link_libraries(my_app
         QtIndustrialWidgets::QtIndustrialWidgets
 )
 ```
+
+Pinning `GIT_TAG` to a release tag is recommended over `main`, which can change at any time and break reproducible builds.
 
 ### Method 2: find_package (System or Local Install)
 
@@ -73,8 +75,10 @@ target_link_libraries(my_app
 Download the official `.deb` package from the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases) page and install:
 
 ```bash
-sudo dpkg -i qtindustrialwidgets_1.0.0_amd64.deb
+sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb
 ```
+
+Replace `<version>` with the version of the package you downloaded from [Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases).
 
 Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists.txt`.
 

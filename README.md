@@ -220,7 +220,7 @@ target_link_libraries(my_industrial_app
 ### Option C: Via Prebuilt Native Packages (.deb / .zip)
 
 Download official packages from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
-- **Debian / Ubuntu**: `sudo dpkg -i qtindustrialwidgets_1.0.0_amd64.deb`
+- **Debian / Ubuntu**: `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` (replace `<version>` with the release you downloaded, see [Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases))
 - **Windows / Linux**: Extract `.zip` / `.tar.gz` and point `CMAKE_PREFIX_PATH` to the extracted directory.
 
 ### Option D: Via C++ Package Managers (vcpkg / Conan)
