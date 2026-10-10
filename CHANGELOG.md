@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.1] - 2026-10-10
+
+### Fixed
+- **Time-label unit promotion**: Time axis labels whose relative magnitude is $\ge 1000$ in their unit are now properly promoted to the next larger unit (e.g., "−1 s" instead of "−1000 ms" on a 1-second time span).
+
+### Tests
+- **Behavioural test suite**: Replaced legacy "renders without crashing" smoke tests with thorough behavioural assertions checking trace vertex coordinates, pixel coverage, line style (step vs linear), gap splitting, window quantization, and DPR scaling.
+- **Bounded pixel equivalence**: Upgraded `pixelEquivalence` to test multi-signal matrix (uniform noise, pure sine, square wave, sparse spikes, chirp) across multiple resolutions and timestamp alignments with strict bounds on differing columns. Added property test with 250 randomized scenarios validating `IncrementalStream` against batch decimation across ring buffer wrap-arounds, negative timestamps, gaps, and non-finite values.
+
+---
+
 ## [2.1.0] - 2026-10-10
 
 ### Changed
