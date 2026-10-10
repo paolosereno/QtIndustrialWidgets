@@ -157,6 +157,10 @@ void LevelMeter::setValue(double value)
 void LevelMeter::setValue(int channel, double value)
 {
     if (channel < 0 || channel >= d_ptr->m_channels.size()) return;
+    if (std::isnan(value)) return;
+    if (std::isinf(value)) {
+        value = (value > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    }
 
     double clamped = std::clamp(value, d_ptr->m_minimum, d_ptr->m_maximum);
     ChannelData &ch = d_ptr->m_channels[channel];
@@ -248,7 +252,7 @@ void LevelMeter::setChannelCount(int count)
 
 void LevelMeter::setRange(double min, double max)
 {
-    if (min >= max) return;
+    if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
 
@@ -275,7 +279,7 @@ void LevelMeter::setMaximum(double max)
 
 void LevelMeter::setWarningThreshold(double threshold)
 {
-    if (std::abs(d_ptr->m_warningThreshold - threshold) < 1e-4) return;
+    if (!std::isfinite(threshold) || std::abs(d_ptr->m_warningThreshold - threshold) < 1e-4) return;
     d_ptr->m_warningThreshold = threshold;
     d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
@@ -284,7 +288,7 @@ void LevelMeter::setWarningThreshold(double threshold)
 
 void LevelMeter::setErrorThreshold(double threshold)
 {
-    if (std::abs(d_ptr->m_errorThreshold - threshold) < 1e-4) return;
+    if (!std::isfinite(threshold) || std::abs(d_ptr->m_errorThreshold - threshold) < 1e-4) return;
     d_ptr->m_errorThreshold = threshold;
     d_ptr->m_cacheValid = false;
     Q_EMIT appearanceChanged();
@@ -341,7 +345,7 @@ void LevelMeter::setPeakHoldTimeMs(int ms)
 
 void LevelMeter::setPeakDecayRate(double rate)
 {
-    if (std::abs(d_ptr->m_peakDecayRate - rate) < 1e-4) return;
+    if (!std::isfinite(rate) || std::abs(d_ptr->m_peakDecayRate - rate) < 1e-4) return;
     d_ptr->m_peakDecayRate = std::max(0.1, rate);
     Q_EMIT appearanceChanged();
 }
@@ -686,6 +690,9 @@ void LevelMeter::drawSegmentedBar(QPainter &painter, double val, double peakVal,
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
 
+    if (!std::isfinite(val)) val = d_ptr->m_minimum;
+    if (!std::isfinite(peakVal)) peakVal = d_ptr->m_minimum;
+
     double span = d_ptr->m_maximum - d_ptr->m_minimum;
     double normVal = (span > 0) ? std::clamp((val - d_ptr->m_minimum) / span, 0.0, 1.0) : 0.0;
     double normPeak = (span > 0) ? std::clamp((peakVal - d_ptr->m_minimum) / span, 0.0, 1.0) : 0.0;
@@ -772,6 +779,9 @@ void LevelMeter::drawContinuousBar(QPainter &painter, double val, double peakVal
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
+
+    if (!std::isfinite(val)) val = d_ptr->m_minimum;
+    if (!std::isfinite(peakVal)) peakVal = d_ptr->m_minimum;
 
     double span = d_ptr->m_maximum - d_ptr->m_minimum;
     double normVal = (span > 0) ? std::clamp((val - d_ptr->m_minimum) / span, 0.0, 1.0) : 0.0;

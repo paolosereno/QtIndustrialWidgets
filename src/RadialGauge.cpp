@@ -11,6 +11,7 @@
 #include <QtGui/QFontMetricsF>
 #include <QtCore/QtMath>
 #include <algorithm>
+#include <cmath>
 
 namespace QtIndustrialWidgets {
 
@@ -101,6 +102,13 @@ QSize RadialGauge::minimumSizeHint() const
 
 void RadialGauge::setValue(double val)
 {
+    if (std::isnan(val)) {
+        return;
+    }
+    if (std::isinf(val)) {
+        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    }
+
     double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
     if (qFuzzyCompare(clamped, d_ptr->m_value)) {
         return;
@@ -136,7 +144,7 @@ void RadialGauge::setMaximum(double max)
 
 void RadialGauge::setRange(double min, double max)
 {
-    if (min >= max) {
+    if (!std::isfinite(min) || !std::isfinite(max) || min >= max) {
         return;
     }
     if (qFuzzyCompare(min, d_ptr->m_minimum) && qFuzzyCompare(max, d_ptr->m_maximum)) {
@@ -173,7 +181,7 @@ void RadialGauge::setUnit(const QString &unit)
 
 void RadialGauge::setStartAngle(double angle)
 {
-    if (qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
+    if (!std::isfinite(angle) || qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
     d_ptr->m_startAngle = angle;
     invalidateCache();
     Q_EMIT appearanceChanged();
@@ -182,7 +190,7 @@ void RadialGauge::setStartAngle(double angle)
 
 void RadialGauge::setSpanAngle(double span)
 {
-    if (qFuzzyCompare(d_ptr->m_spanAngle, span) || span <= 0.0) return;
+    if (!std::isfinite(span) || span <= 0.0 || qFuzzyCompare(d_ptr->m_spanAngle, span)) return;
     d_ptr->m_spanAngle = span;
     invalidateCache();
     Q_EMIT appearanceChanged();
@@ -209,7 +217,7 @@ void RadialGauge::setMinorTicks(int count)
 
 void RadialGauge::setWarningThreshold(double threshold)
 {
-    if (qFuzzyCompare(d_ptr->m_warningThreshold, threshold)) return;
+    if (!std::isfinite(threshold) || qFuzzyCompare(d_ptr->m_warningThreshold, threshold)) return;
     d_ptr->m_warningThreshold = threshold;
     invalidateCache();
     Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
@@ -219,7 +227,7 @@ void RadialGauge::setWarningThreshold(double threshold)
 
 void RadialGauge::setErrorThreshold(double threshold)
 {
-    if (qFuzzyCompare(d_ptr->m_errorThreshold, threshold)) return;
+    if (!std::isfinite(threshold) || qFuzzyCompare(d_ptr->m_errorThreshold, threshold)) return;
     d_ptr->m_errorThreshold = threshold;
     invalidateCache();
     Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);

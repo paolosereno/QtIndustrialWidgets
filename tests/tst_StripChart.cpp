@@ -6,6 +6,9 @@
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtGui/QPixmap>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_StripChart : public QObject
@@ -21,6 +24,7 @@ private Q_SLOTS:
     void signalEmission();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
 };
 
 void tst_StripChart::defaultValues()
@@ -128,6 +132,40 @@ void tst_StripChart::extremeResizeNoCrash()
     QPixmap pixLarge(chart.size());
     chart.render(&pixLarge);
     QVERIFY(!pixLarge.isNull());
+}
+
+void tst_StripChart::nanAndInfinityResilience()
+{
+    StripChart chart;
+    int ch = chart.addChannel(QStringLiteral("Sensor"), Qt::green);
+    chart.setAutoScaleY(true);
+
+    // Initial valid points
+    chart.addDataPoint(ch, 10.0);
+    chart.addDataPoint(ch, 20.0);
+
+    // Influx of Infinity should NOT blow Y-range to [-inf, +inf]
+    chart.addDataPoint(ch, std::numeric_limits<double>::infinity());
+    chart.addDataPoint(ch, -std::numeric_limits<double>::infinity());
+
+    QVERIFY(std::isfinite(chart.yMinimum()));
+    QVERIFY(std::isfinite(chart.yMaximum()));
+    QVERIFY(chart.yMinimum() < chart.yMaximum());
+
+    // Influx of NaN should hold latest valid value
+    chart.addDataPoint(ch, std::numeric_limits<double>::quiet_NaN());
+    QVERIFY(chart.channel(ch) != nullptr);
+    QVERIFY(std::isfinite(chart.channel(ch)->latestValue));
+
+    // Range setters with NaN/Inf must be rejected
+    chart.setYRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
+    QVERIFY(std::isfinite(chart.yMinimum()));
+
+    // Chart must render cleanly with no painter errors
+    chart.resize(400, 250);
+    QPixmap pix(chart.size());
+    chart.render(&pix);
+    QVERIFY(!pix.isNull());
 }
 
 QTEST_MAIN(tst_StripChart)

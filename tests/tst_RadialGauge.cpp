@@ -6,6 +6,9 @@
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtGui/QPixmap>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_RadialGauge : public QObject
@@ -22,6 +25,7 @@ private Q_SLOTS:
     void thresholdZones();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -129,6 +133,38 @@ void tst_RadialGauge::extremeResizeNoCrash()
     QPixmap pix4k(gauge.size());
     gauge.render(&pix4k);
     QVERIFY(!pix4k.isNull());
+}
+
+void tst_RadialGauge::nanAndInfinityResilience()
+{
+    RadialGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setValue(50.0);
+    QCOMPARE(gauge.value(), 50.0);
+
+    // NaN input must be ignored (fail-safe hold)
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(gauge.value(), 50.0);
+
+    // +Infinity must clamp to maximum
+    gauge.setValue(std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 100.0);
+
+    // -Infinity must clamp to minimum
+    gauge.setValue(-std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 0.0);
+
+    // Invalid range setters with NaN or Inf must be ignored
+    gauge.setRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
+    QCOMPARE(gauge.minimum(), 0.0);
+    gauge.setRange(0.0, std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.maximum(), 100.0);
+
+    // Render offscreen to ensure no NaN warnings or painter faults occur
+    gauge.resize(200, 200);
+    QPixmap pix(gauge.size());
+    gauge.render(&pix);
+    QVERIFY(!pix.isNull());
 }
 
 QTEST_MAIN(tst_RadialGauge)

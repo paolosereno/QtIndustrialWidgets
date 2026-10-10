@@ -6,6 +6,9 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtGui/QPixmap>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_IndustrialKnob : public QObject
@@ -20,6 +23,7 @@ private Q_SLOTS:
     void signalEmission();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -118,6 +122,41 @@ void tst_IndustrialKnob::extremeResizeNoCrash()
     QPixmap pixLarge(knob.size());
     knob.render(&pixLarge);
     QVERIFY(!pixLarge.isNull());
+}
+
+void tst_IndustrialKnob::nanAndInfinityResilience()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValue(50.0);
+    QCOMPARE(knob.value(), 50.0);
+
+    // Continuous mode: NaN ignored
+    knob.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(knob.value(), 50.0);
+
+    // +Inf and -Inf clamped
+    knob.setValue(std::numeric_limits<double>::infinity());
+    QCOMPARE(knob.value(), 100.0);
+    knob.setValue(-std::numeric_limits<double>::infinity());
+    QCOMPARE(knob.value(), 0.0);
+
+    // Discrete mode: NaN must not cause undefined behavior / crash
+    knob.setMode(IndustrialKnob::KnobMode::Discrete);
+    knob.setDiscreteSteps(5);
+    knob.setValue(50.0);
+    knob.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(knob.value(), 50.0);
+
+    // Range with NaN/Inf ignored
+    knob.setRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
+    QCOMPARE(knob.minimum(), 0.0);
+
+    // Offscreen render check
+    knob.resize(150, 150);
+    QPixmap pix(knob.size());
+    knob.render(&pix);
+    QVERIFY(!pix.isNull());
 }
 
 QTEST_MAIN(tst_IndustrialKnob)

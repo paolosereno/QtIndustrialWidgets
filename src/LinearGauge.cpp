@@ -12,6 +12,7 @@
 #include <QtGui/QLinearGradient>
 #include <QtCore/QtMath>
 #include <algorithm>
+#include <cmath>
 
 namespace QtIndustrialWidgets {
 
@@ -118,6 +119,13 @@ void LinearGauge::setThermometerMode(bool thermometer)
 
 void LinearGauge::setValue(double val)
 {
+    if (std::isnan(val)) {
+        return;
+    }
+    if (std::isinf(val)) {
+        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    }
+
     double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
     if (qFuzzyCompare(clamped, d_ptr->m_value)) {
         return;
@@ -140,7 +148,7 @@ void LinearGauge::setMaximum(double max)
 
 void LinearGauge::setRange(double min, double max)
 {
-    if (min >= max) return;
+    if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     if (qFuzzyCompare(min, d_ptr->m_minimum) && qFuzzyCompare(max, d_ptr->m_maximum)) return;
 
     d_ptr->m_minimum = min;
@@ -191,7 +199,7 @@ void LinearGauge::setMinorTicks(int count)
 
 void LinearGauge::setWarningThreshold(double threshold)
 {
-    if (qFuzzyCompare(d_ptr->m_warningThreshold, threshold)) return;
+    if (!std::isfinite(threshold) || qFuzzyCompare(d_ptr->m_warningThreshold, threshold)) return;
     d_ptr->m_warningThreshold = threshold;
     invalidateCache();
     Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
@@ -201,7 +209,7 @@ void LinearGauge::setWarningThreshold(double threshold)
 
 void LinearGauge::setErrorThreshold(double threshold)
 {
-    if (qFuzzyCompare(d_ptr->m_errorThreshold, threshold)) return;
+    if (!std::isfinite(threshold) || qFuzzyCompare(d_ptr->m_errorThreshold, threshold)) return;
     d_ptr->m_errorThreshold = threshold;
     invalidateCache();
     Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);

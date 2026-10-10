@@ -83,6 +83,9 @@ QSize Compass::minimumSizeHint() const
 
 double Compass::normalizeDegrees(double deg)
 {
+    if (!std::isfinite(deg)) {
+        return 0.0;
+    }
     double r = std::fmod(deg, 360.0);
     if (r < 0.0) {
         r += 360.0;
@@ -98,6 +101,9 @@ double Compass::courseDeviation() const
 
 void Compass::setHeading(double heading)
 {
+    if (!std::isfinite(heading)) {
+        return;
+    }
     double norm = normalizeDegrees(heading);
     if (std::abs(d_ptr->m_heading - norm) > 0.001) {
         d_ptr->m_heading = norm;
@@ -108,6 +114,9 @@ void Compass::setHeading(double heading)
 
 void Compass::setTargetHeading(double target)
 {
+    if (!std::isfinite(target)) {
+        return;
+    }
     double norm = normalizeDegrees(target);
     if (std::abs(d_ptr->m_targetHeading - norm) > 0.001) {
         d_ptr->m_targetHeading = norm;

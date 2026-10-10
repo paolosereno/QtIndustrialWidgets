@@ -8,6 +8,7 @@
 #include <QtGui/QPaintEvent>
 #include <QtCore/QtMath>
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -71,7 +72,8 @@ QSize SevenSegmentDisplay::minimumSizeHint() const
 void SevenSegmentDisplay::setValue(double val)
 {
     d_ptr->m_isTextExplicit = false;
-    if (qFuzzyCompare(val, d_ptr->m_value)) return;
+    if (std::isnan(val) && std::isnan(d_ptr->m_value)) return;
+    if (std::isfinite(val) && std::isfinite(d_ptr->m_value) && qFuzzyCompare(val, d_ptr->m_value)) return;
     d_ptr->m_value = val;
     updateFormattedText();
     Q_EMIT valueChanged(d_ptr->m_value);
@@ -208,6 +210,17 @@ void SevenSegmentDisplay::setBezelVisible(bool visible)
 void SevenSegmentDisplay::updateFormattedText()
 {
     if (d_ptr->m_isTextExplicit) return;
+
+    if (std::isnan(d_ptr->m_value)) {
+        d_ptr->m_text = QStringLiteral(" Err ");
+        Q_EMIT textChanged(d_ptr->m_text);
+        return;
+    }
+    if (std::isinf(d_ptr->m_value)) {
+        d_ptr->m_text = (d_ptr->m_value > 0.0) ? QStringLiteral(" oFL ") : QStringLiteral("-oFL ");
+        Q_EMIT textChanged(d_ptr->m_text);
+        return;
+    }
 
     QString s;
     if (d_ptr->m_decimalPlaces >= 0) {

@@ -6,6 +6,9 @@
 #include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtGui/QPixmap>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_LevelMeter : public QObject
@@ -21,6 +24,7 @@ private Q_SLOTS:
     void signalEmission();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
 };
 
 void tst_LevelMeter::defaultValues()
@@ -143,6 +147,34 @@ void tst_LevelMeter::extremeResizeNoCrash()
     QPixmap pixLarge(meter.size());
     meter.render(&pixLarge);
     QVERIFY(!pixLarge.isNull());
+}
+
+void tst_LevelMeter::nanAndInfinityResilience()
+{
+    LevelMeter meter;
+    meter.setRange(-60.0, 6.0);
+    meter.setValue(0, -10.0);
+    QCOMPARE(meter.value(0), -10.0);
+
+    // NaN input ignored
+    meter.setValue(0, std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(meter.value(0), -10.0);
+
+    // +Inf and -Inf clamped
+    meter.setValue(0, std::numeric_limits<double>::infinity());
+    QCOMPARE(meter.value(0), 6.0);
+    meter.setValue(0, -std::numeric_limits<double>::infinity());
+    QCOMPARE(meter.value(0), -60.0);
+
+    // Range with NaN/Inf ignored
+    meter.setRange(std::numeric_limits<double>::quiet_NaN(), 10.0);
+    QCOMPARE(meter.minimum(), -60.0);
+
+    // Render offscreen
+    meter.resize(100, 300);
+    QPixmap pix(meter.size());
+    meter.render(&pix);
+    QVERIFY(!pix.isNull());
 }
 
 QTEST_MAIN(tst_LevelMeter)

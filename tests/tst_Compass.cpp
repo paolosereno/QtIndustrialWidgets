@@ -7,6 +7,9 @@
 #include <QtGui/QPixmap>
 #include <QtGui/QPainter>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_Compass : public QObject
@@ -24,6 +27,7 @@ private Q_SLOTS:
     void mouseInteractionBug();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
     void cleanupTestCase();
 };
 
@@ -276,6 +280,45 @@ void tst_Compass::extremeResizeNoCrash()
             compass.render(&pixmap);
         }
     }
+}
+
+void tst_Compass::nanAndInfinityResilience()
+{
+    Compass compass;
+    compass.setHeading(90.0);
+    QCOMPARE(compass.heading(), 90.0);
+
+    // NaN input ignored
+    compass.setHeading(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(compass.heading(), 90.0);
+
+    // Inf input ignored
+    compass.setHeading(std::numeric_limits<double>::infinity());
+    QCOMPARE(compass.heading(), 90.0);
+    compass.setHeading(-std::numeric_limits<double>::infinity());
+    QCOMPARE(compass.heading(), 90.0);
+
+    // Target heading NaN/Inf ignored
+    compass.setTargetHeading(45.0);
+    compass.setTargetHeading(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(compass.targetHeading(), 45.0);
+    compass.setTargetHeading(std::numeric_limits<double>::infinity());
+    QCOMPARE(compass.targetHeading(), 45.0);
+
+    // normalizeDegrees static helper test
+    QCOMPARE(Compass::normalizeDegrees(std::numeric_limits<double>::quiet_NaN()), 0.0);
+    QCOMPARE(Compass::normalizeDegrees(std::numeric_limits<double>::infinity()), 0.0);
+
+    // Offscreen render in both display modes
+    compass.resize(200, 200);
+    QPixmap pix(compass.size());
+    compass.render(&pix);
+    QVERIFY(!pix.isNull());
+
+    compass.setDisplayMode(Compass::DisplayMode::NorthUp);
+    QPixmap pixNorth(compass.size());
+    compass.render(&pixNorth);
+    QVERIFY(!pixNorth.isNull());
 }
 
 QTEST_MAIN(tst_Compass)

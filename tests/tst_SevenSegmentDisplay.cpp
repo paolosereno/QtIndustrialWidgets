@@ -6,6 +6,9 @@
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtGui/QPixmap>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_SevenSegmentDisplay : public QObject
@@ -20,6 +23,7 @@ private Q_SLOTS:
     void signalEmission();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
 };
 
 void tst_SevenSegmentDisplay::defaultValues()
@@ -97,6 +101,29 @@ void tst_SevenSegmentDisplay::extremeResizeNoCrash()
     QPixmap pixLarge(disp.size());
     disp.render(&pixLarge);
     QVERIFY(!pixLarge.isNull());
+}
+
+void tst_SevenSegmentDisplay::nanAndInfinityResilience()
+{
+    SevenSegmentDisplay disp;
+
+    // NaN must format to " Err "
+    disp.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(disp.text(), QStringLiteral(" Err "));
+
+    // +Inf must format to " oFL "
+    disp.setValue(std::numeric_limits<double>::infinity());
+    QCOMPARE(disp.text(), QStringLiteral(" oFL "));
+
+    // -Inf must format to "-oFL "
+    disp.setValue(-std::numeric_limits<double>::infinity());
+    QCOMPARE(disp.text(), QStringLiteral("-oFL "));
+
+    // Offscreen render of diagnostic messages
+    disp.resize(200, 60);
+    QPixmap pix(disp.size());
+    disp.render(&pix);
+    QVERIFY(!pix.isNull());
 }
 
 QTEST_MAIN(tst_SevenSegmentDisplay)

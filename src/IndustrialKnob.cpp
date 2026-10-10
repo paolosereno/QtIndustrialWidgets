@@ -14,6 +14,7 @@
 #include <QtGui/QFontMetricsF>
 #include <QtCore/QtMath>
 #include <algorithm>
+#include <cmath>
 
 namespace QtIndustrialWidgets {
 
@@ -94,6 +95,13 @@ QSize IndustrialKnob::minimumSizeHint() const
 
 void IndustrialKnob::setValue(double val)
 {
+    if (std::isnan(val)) {
+        return;
+    }
+    if (std::isinf(val)) {
+        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    }
+
     double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
     if (d_ptr->m_mode == KnobMode::Discrete && d_ptr->m_discreteSteps > 1) {
         double stepSize = (d_ptr->m_maximum - d_ptr->m_minimum) / (d_ptr->m_discreteSteps - 1);
@@ -122,7 +130,7 @@ void IndustrialKnob::setMaximum(double max)
 
 void IndustrialKnob::setRange(double min, double max)
 {
-    if (min >= max) return;
+    if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     if (qFuzzyCompare(min, d_ptr->m_minimum) && qFuzzyCompare(max, d_ptr->m_maximum)) return;
 
     d_ptr->m_minimum = min;
@@ -137,7 +145,7 @@ void IndustrialKnob::setRange(double min, double max)
 
 void IndustrialKnob::setStep(double step)
 {
-    if (step <= 0.0 || qFuzzyCompare(d_ptr->m_step, step)) return;
+    if (!std::isfinite(step) || step <= 0.0 || qFuzzyCompare(d_ptr->m_step, step)) return;
     d_ptr->m_step = step;
     Q_EMIT appearanceChanged();
 }
@@ -161,7 +169,7 @@ void IndustrialKnob::setUnit(const QString &unit)
 
 void IndustrialKnob::setStartAngle(double angle)
 {
-    if (qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
+    if (!std::isfinite(angle) || qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
     d_ptr->m_startAngle = angle;
     invalidateCache();
     Q_EMIT appearanceChanged();
@@ -170,7 +178,7 @@ void IndustrialKnob::setStartAngle(double angle)
 
 void IndustrialKnob::setSpanAngle(double span)
 {
-    if (span <= 0.0 || qFuzzyCompare(d_ptr->m_spanAngle, span)) return;
+    if (!std::isfinite(span) || span <= 0.0 || qFuzzyCompare(d_ptr->m_spanAngle, span)) return;
     d_ptr->m_spanAngle = span;
     invalidateCache();
     Q_EMIT appearanceChanged();

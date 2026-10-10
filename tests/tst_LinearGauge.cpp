@@ -6,6 +6,9 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtGui/QPixmap>
 
+#include <cmath>
+#include <limits>
+
 using namespace QtIndustrialWidgets;
 
 class tst_LinearGauge : public QObject
@@ -20,6 +23,7 @@ private Q_SLOTS:
     void signalEmission();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void nanAndInfinityResilience();
 };
 
 void tst_LinearGauge::defaultValues()
@@ -116,6 +120,44 @@ void tst_LinearGauge::extremeResizeNoCrash()
     QPixmap pixLarge(gauge.size());
     gauge.render(&pixLarge);
     QVERIFY(!pixLarge.isNull());
+}
+
+void tst_LinearGauge::nanAndInfinityResilience()
+{
+    LinearGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setValue(50.0);
+    QCOMPARE(gauge.value(), 50.0);
+
+    // NaN input must be ignored (fail-safe hold)
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(gauge.value(), 50.0);
+
+    // +Infinity must clamp to maximum
+    gauge.setValue(std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 100.0);
+
+    // -Infinity must clamp to minimum
+    gauge.setValue(-std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 0.0);
+
+    // Invalid range setters with NaN or Inf must be ignored
+    gauge.setRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
+    QCOMPARE(gauge.minimum(), 0.0);
+    gauge.setRange(0.0, std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.maximum(), 100.0);
+
+    // Render offscreen in both orientations
+    gauge.resize(80, 250);
+    QPixmap pixV(gauge.size());
+    gauge.render(&pixV);
+    QVERIFY(!pixV.isNull());
+
+    gauge.setOrientation(Qt::Horizontal);
+    gauge.resize(250, 80);
+    QPixmap pixH(gauge.size());
+    gauge.render(&pixH);
+    QVERIFY(!pixH.isNull());
 }
 
 QTEST_MAIN(tst_LinearGauge)

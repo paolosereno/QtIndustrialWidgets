@@ -12,6 +12,7 @@
 #include <QtGui/QPixmap>
 #include <QtCore/QtMath>
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -115,6 +116,12 @@ void StripChart::addDataPoint(int channelId, double value)
         ch.buffer.resize(d_ptr->m_capacity, 0.0);
     }
 
+    if (std::isnan(value)) {
+        value = (ch.info.count > 0 && std::isfinite(ch.info.latestValue)) ? ch.info.latestValue : 0.0;
+    } else if (std::isinf(value)) {
+        value = (value > 0.0) ? d_ptr->m_yMaximum : d_ptr->m_yMinimum;
+    }
+
     ch.buffer[ch.headIndex] = value;
     ch.headIndex = (ch.headIndex + 1) % d_ptr->m_capacity;
     if (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) {
@@ -139,6 +146,12 @@ void StripChart::addDataPoints(const QVector<double> &values)
             ch.buffer.resize(d_ptr->m_capacity, 0.0);
         }
         double val = values[i];
+        if (std::isnan(val)) {
+            val = (ch.info.count > 0 && std::isfinite(ch.info.latestValue)) ? ch.info.latestValue : 0.0;
+        } else if (std::isinf(val)) {
+            val = (val > 0.0) ? d_ptr->m_yMaximum : d_ptr->m_yMinimum;
+        }
+
         ch.buffer[ch.headIndex] = val;
         ch.headIndex = (ch.headIndex + 1) % d_ptr->m_capacity;
         if (ch.info.count < static_cast<size_t>(d_ptr->m_capacity)) {
@@ -194,7 +207,7 @@ void StripChart::setYMaximum(double max)
 
 void StripChart::setYRange(double min, double max)
 {
-    if (min >= max) return;
+    if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     if (qFuzzyCompare(min, d_ptr->m_yMinimum) && qFuzzyCompare(max, d_ptr->m_yMaximum)) return;
 
     d_ptr->m_yMinimum = min;
@@ -307,9 +320,10 @@ void StripChart::updateAutoScaling()
 
     for (const auto &ch : d_ptr->m_channels) {
         if (!ch.info.visible || ch.info.count == 0) continue;
-        hasData = true;
         for (size_t i = 0; i < ch.info.count; ++i) {
             double v = ch.buffer[i];
+            if (!std::isfinite(v)) continue;
+            hasData = true;
             if (v < minVal) minVal = v;
             if (v > maxVal) maxVal = v;
         }
@@ -325,6 +339,8 @@ void StripChart::updateAutoScaling()
             maxVal += margin;
         }
         setYRange(minVal, maxVal);
+    } else {
+        setYRange(0.0, 100.0);
     }
 }
 
@@ -468,9 +484,11 @@ void StripChart::paintEvent(QPaintEvent *)
         for (size_t i = 0; i < ch.info.count; ++i) {
             size_t bufIdx = (start + i) % d_ptr->m_capacity;
             double val = ch.buffer[bufIdx];
+            if (!std::isfinite(val)) continue;
 
             double x = plotRect.left() + (static_cast<double>(i) / (d_ptr->m_capacity - 1)) * plotRect.width();
             double yNorm = (val - d_ptr->m_yMinimum) / yRange;
+            if (!std::isfinite(yNorm)) continue;
             double y = plotRect.bottom() - yNorm * plotRect.height();
             y = std::clamp(y, plotRect.top(), plotRect.bottom());
 
