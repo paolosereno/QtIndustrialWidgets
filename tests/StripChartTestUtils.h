@@ -1,0 +1,137 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#pragma once
+
+#include <QtIndustrialWidgets/StripChart.h>
+#include "StripChartTestAccess.h"
+
+#include <QtGui/QImage>
+#include <QtGui/QPainter>
+#include <QtCore/QStringList>
+#include <QtCore/QLoggingCategory>
+#include <memory>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
+namespace QtIndustrialWidgets {
+
+inline std::unique_ptr<StripChart> makeChart(int w = 800, int h = 600, double yMin = 0.0, double yMax = 100.0)
+{
+    auto chart = std::make_unique<StripChart>();
+    chart->resize(w, h);
+    chart->setYRange(yMin, yMax);
+    StripChartTestAccess::enableDiagnostics(*chart, true);
+    return chart;
+}
+
+inline QImage renderToImage(StripChart &chart)
+{
+    QImage img(chart.size(), QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::black);
+    QPainter painter(&img);
+    chart.render(&painter);
+    return img;
+}
+
+inline std::vector<int> columnsWithColour(const QImage &img, const QColor &colour,
+                                         int xMin = -1, int xMax = -1,
+                                         int yMin = -1, int yMax = -1,
+                                         int tolerance = 30)
+{
+    if (xMin < 0) xMin = 0;
+    if (xMax < 0 || xMax >= img.width()) xMax = img.width() - 1;
+    if (yMin < 0) yMin = 0;
+    if (yMax < 0 || yMax >= img.height()) yMax = img.height() - 1;
+
+    std::vector<int> cols;
+    for (int x = xMin; x <= xMax; ++x) {
+        bool found = false;
+        for (int y = yMin; y <= yMax; ++y) {
+            QColor c = img.pixelColor(x, y);
+            if (std::abs(c.red() - colour.red()) <= tolerance &&
+                std::abs(c.green() - colour.green()) <= tolerance &&
+                std::abs(c.blue() - colour.blue()) <= tolerance) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            cols.push_back(x);
+        }
+    }
+    return cols;
+}
+
+inline std::vector<int> traceYAtColumn(const QImage &img, const QColor &colour, int x,
+                                      int yMin = -1, int yMax = -1, int tolerance = 30)
+{
+    if (yMin < 0) yMin = 0;
+    if (yMax < 0 || yMax >= img.height()) yMax = img.height() - 1;
+
+    std::vector<int> yCoords;
+    if (x < 0 || x >= img.width()) return yCoords;
+
+    for (int y = yMin; y <= yMax; ++y) {
+        QColor c = img.pixelColor(x, y);
+        if (std::abs(c.red() - colour.red()) <= tolerance &&
+            std::abs(c.green() - colour.green()) <= tolerance &&
+            std::abs(c.blue() - colour.blue()) <= tolerance) {
+            yCoords.push_back(y);
+        }
+    }
+    return yCoords;
+}
+
+inline double mapY(const StripChart &chart, double value)
+{
+    QRectF plotRect = StripChartTestAccess::plotArea(chart);
+    double yRange = chart.yMaximum() - chart.yMinimum();
+    if (std::abs(yRange) < 1e-9) yRange = 1.0;
+    double yNorm = (value - chart.yMinimum()) / yRange;
+    return plotRect.bottom() - yNorm * plotRect.height();
+}
+
+inline double mapT(const StripChart &chart, qint64 t)
+{
+    const auto &frame = StripChartTestAccess::lastFrame(chart);
+    qint64 spanNs = chart.timeSpan().count();
+    if (spanNs <= 0) return frame.plotRect.left();
+    double frac = static_cast<double>(t - frame.tStart) / static_cast<double>(spanNs);
+    return frame.plotRect.left() + frac * frame.plotRect.width();
+}
+
+class WarningGuard {
+public:
+    WarningGuard() {
+        s_instance = this;
+        s_oldHandler = qInstallMessageHandler(messageHandler);
+    }
+    ~WarningGuard() {
+        qInstallMessageHandler(s_oldHandler);
+        s_instance = nullptr;
+    }
+    [[nodiscard]] const QStringList &warnings() const { return m_warnings; }
+    [[nodiscard]] bool hasWarnings() const { return !m_warnings.isEmpty(); }
+    void clear() { m_warnings.clear(); }
+
+private:
+    static void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
+        if (type == QtWarningMsg && s_instance) {
+            s_instance->m_warnings.append(msg);
+        }
+        if (s_oldHandler) {
+            s_oldHandler(type, context, msg);
+        }
+    }
+
+    static inline WarningGuard *s_instance{nullptr};
+    static inline QtMessageHandler s_oldHandler{nullptr};
+    QStringList m_warnings;
+};
+
+} // namespace QtIndustrialWidgets

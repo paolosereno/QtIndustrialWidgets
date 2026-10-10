@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtIndustrialWidgets/StripChart.h>
+#include "internal/StripChart_p.h"
 #include "internal/M4Decimator.h"
 #include "internal/StripChartGeometry.h"
-#include "internal/StripChartTestAccess.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -20,210 +20,6 @@
 #include <vector>
 
 namespace QtIndustrialWidgets {
-
-struct ChannelInternal {
-    QString name;
-    QColor color;
-    bool visible{true};
-    double penWidth{1.8};
-    size_t count{0};
-    double latestValue{0.0};
-    quint64 totalSamples{0};
-    qint64 lastTimestamp{std::numeric_limits<qint64>::min()};
-    quint64 rejectedSamples{0};
-    double emaIntervalNs{0.0};
-    bool hasEma{false};
-    bool receivedArrivalClock{false};
-    bool receivedExplicitTimestamp{false};
-    bool warnedMixedClock{false};
-    bool warnedIgnoredTimestamps{false};
-
-    std::vector<qint64> timestamps;
-    std::vector<double> values;
-    size_t headIndex{0};
-
-    internal::M4Decimator::IncrementalStream m4Stream;
-    internal::GeometryKey geometryKey;
-    bool geometryValid{false};
-    bool lastDecimating{false};
-};
-
-class StripChartPrivate {
-public:
-    void resetChannelData(ChannelInternal &ch) {
-        ch.headIndex = 0;
-        ch.count = 0;
-        ch.totalSamples = 0;
-        ch.lastTimestamp = std::numeric_limits<qint64>::min();
-        ch.latestValue = 0.0;
-        ch.emaIntervalNs = 0.0;
-        ch.hasEma = false;
-        ch.receivedArrivalClock = false;
-        ch.receivedExplicitTimestamp = false;
-        ch.warnedMixedClock = false;
-        ch.warnedIgnoredTimestamps = false;
-        std::fill(ch.values.begin(), ch.values.end(), 0.0);
-        std::fill(ch.timestamps.begin(), ch.timestamps.end(), 0);
-        ch.geometryValid = false;
-        ch.lastDecimating = false;
-        ch.m4Stream.reset();
-    }
-
-    bool m_testRawPenCosmetic1px{false};
-
-    // Internal autoscale hysteresis constants
-    static constexpr double kAutoScaleMargin = 0.10; // 10 % margin on data span
-    static constexpr double kAutoScaleShrinkThreshold = 0.50; // shrink when data span < 50 % of current range
-    static constexpr int kAutoScaleShrinkHysteresisCount = 30; // 30 consecutive recomputations before shrinking
-
-    int m_capacity{300};
-    double m_yMinimum{0.0};
-    double m_yMaximum{100.0};
-    bool m_autoScaleY{false};
-    bool m_autoScaleDirty{false};
-    bool m_autoScaleInitialized{false};
-    int m_shrinkCounter{0};
-    bool m_gridVisible{true};
-    bool m_legendVisible{true};
-    int m_horizontalDivisions{6};
-    int m_verticalDivisions{8};
-
-    StripChart::XAxisMode m_xAxisMode{StripChart::XAxisMode::SampleIndex};
-    StripChart::DecimationMode m_decimationMode{StripChart::DecimationMode::Auto};
-    StripChart::Interpolation m_interpolation{StripChart::Interpolation::Linear};
-    StripChart::TimeLabelFormat m_timeLabelFormat{StripChart::TimeLabelFormat::Relative};
-    std::chrono::nanoseconds m_timeSpan{std::chrono::seconds(10)};
-    std::chrono::nanoseconds m_gapThreshold{0};
-    QDateTime m_timeOrigin;
-    QElapsedTimer m_arrivalTimer;
-    bool m_warnedCapacityFull{false};
-
-    QColor m_gridColor{QColor(42, 54, 70)};
-    QColor m_backgroundColor{QColor(14, 18, 25)};
-    QColor m_bezelColor{QColor(38, 46, 60)};
-    QColor m_textColor{QColor(210, 220, 235)};
-
-    std::vector<ChannelInternal> m_channels;
-
-    std::vector<std::vector<internal::M4Point>> m_reusableSegments;
-    QPolygonF m_reusablePoly;
-
-    QPixmap m_cachePixmap;
-    bool m_cacheDirty{true};
-    double m_cachedDpr{1.0};
-
-    void invalidateGeometry() {
-        for (auto &ch : m_channels) {
-            ch.geometryValid = false;
-        }
-    }
-
-    void rebuildChannelStream(ChannelInternal &ch, const internal::GeometryKey &key) {
-        ch.m4Stream.setWidth(key.widthDev, key.ringSize);
-        ch.m4Stream.reset();
-        ch.geometryKey = key;
-        ch.geometryValid = true;
-
-        if (ch.count == 0) return;
-
-        size_t start = (ch.count < static_cast<size_t>(m_capacity)) ? 0 : ch.headIndex;
-        size_t cap = static_cast<size_t>(m_capacity);
-
-        if (key.axisMode == internal::GeometryAxisMode::Time) {
-            size_t span1 = std::min(ch.count, cap - start);
-            for (size_t i = 0; i < span1; ++i) {
-                ch.m4Stream.addSample(ch.timestamps[start + i], ch.values[start + i], key.bucketWidth);
-            }
-            size_t span2 = ch.count - span1;
-            for (size_t i = 0; i < span2; ++i) {
-                ch.m4Stream.addSample(ch.timestamps[i], ch.values[i], key.bucketWidth);
-            }
-        } else {
-            quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
-            size_t span1 = std::min(ch.count, cap - start);
-            for (size_t i = 0; i < span1; ++i) {
-                qint64 sampleIdx = static_cast<qint64>(startCounter + i);
-                ch.m4Stream.addSample(sampleIdx, ch.values[start + i], key.bucketWidth);
-            }
-            size_t span2 = ch.count - span1;
-            for (size_t i = 0; i < span2; ++i) {
-                qint64 sampleIdx = static_cast<qint64>(startCounter + span1 + i);
-                ch.m4Stream.addSample(sampleIdx, ch.values[i], key.bucketWidth);
-            }
-        }
-    }
-
-    [[nodiscard]] qint64 arrivalTimestampNs() {
-        return m_arrivalTimer.nsecsElapsed();
-    }
-
-    bool insertSampleInternal(ChannelInternal &ch, int channelId, qint64 t, double value, bool isExplicit) {
-        if (isExplicit) {
-            ch.receivedExplicitTimestamp = true;
-            if (ch.receivedArrivalClock && !ch.warnedMixedClock) {
-                qWarning("StripChart: Channel %d received both arrival-clock (addDataPoint) and explicit timestamps (addSample). Arrival-clock timestamps reflect GUI arrival time, not acquisition time.", channelId);
-                ch.warnedMixedClock = true;
-            }
-        } else {
-            ch.receivedArrivalClock = true;
-            if (ch.receivedExplicitTimestamp && !ch.warnedMixedClock) {
-                qWarning("StripChart: Channel %d received both arrival-clock (addDataPoint) and explicit timestamps (addSample). Arrival-clock timestamps reflect GUI arrival time, not acquisition time.", channelId);
-                ch.warnedMixedClock = true;
-            }
-        }
-
-        // Monotonic non-decreasing check
-        if (ch.totalSamples > 0 && t < ch.lastTimestamp) {
-            ch.rejectedSamples++;
-            if (ch.rejectedSamples == 1 || (ch.rejectedSamples % 1000) == 0) {
-                qWarning("StripChart: Channel %d rejected out-of-order sample (t = %lld < lastT = %lld, total rejected: %llu)",
-                         channelId, static_cast<long long>(t), static_cast<long long>(ch.lastTimestamp),
-                         static_cast<unsigned long long>(ch.rejectedSamples));
-            }
-            return false;
-        }
-
-        if (ch.timestamps.size() != static_cast<size_t>(m_capacity)) {
-            ch.timestamps.resize(static_cast<size_t>(m_capacity), 0);
-            ch.values.resize(static_cast<size_t>(m_capacity), 0.0);
-        }
-
-        // Update Exponential Moving Average interval
-        if (ch.totalSamples > 0 && t > ch.lastTimestamp) {
-            qint64 dt = t - ch.lastTimestamp;
-            if (!ch.hasEma) {
-                ch.emaIntervalNs = static_cast<double>(dt);
-                ch.hasEma = true;
-            } else {
-                ch.emaIntervalNs = 0.9 * ch.emaIntervalNs + 0.1 * static_cast<double>(dt);
-            }
-        }
-
-        ch.timestamps[ch.headIndex] = t;
-        ch.values[ch.headIndex] = value;
-        ch.headIndex = (ch.headIndex + 1) % static_cast<size_t>(m_capacity);
-        if (ch.count < static_cast<size_t>(m_capacity)) {
-            ch.count++;
-        }
-        ch.totalSamples++;
-        ch.lastTimestamp = t;
-        ch.latestValue = value;
-
-        if (ch.geometryValid && ch.visible) {
-            if (m_xAxisMode == StripChart::XAxisMode::Time) {
-                ch.m4Stream.addSample(t, value, ch.geometryKey.bucketWidth);
-            } else {
-                qint64 sampleIdx = static_cast<qint64>(ch.totalSamples - 1);
-                ch.m4Stream.addSample(sampleIdx, value, ch.geometryKey.bucketWidth);
-            }
-        } else if (!ch.visible) {
-            ch.geometryValid = false;
-        }
-
-        m_autoScaleDirty = true;
-        return true;
-    }
-};
 
 StripChart::StripChart(QWidget *parent)
     : QWidget(parent)
@@ -1114,29 +910,6 @@ void StripChart::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
 }
 
-static qint64 calculate125TickStep(qint64 spanNs, int targetDivs)
-{
-    if (spanNs <= 0 || targetDivs <= 0) return 1;
-    double rawStep = static_cast<double>(spanNs) / targetDivs;
-    double expVal = std::floor(std::log10(rawStep));
-    double base = std::pow(10.0, expVal);
-    double fraction = rawStep / base;
-
-    double mult = 1.0;
-    if (fraction < 1.5) {
-        mult = 1.0;
-    } else if (fraction < 3.5) {
-        mult = 2.0;
-    } else if (fraction < 7.5) {
-        mult = 5.0;
-    } else {
-        mult = 10.0;
-    }
-
-    qint64 step = static_cast<qint64>(mult * base);
-    return std::max(qint64(1), step);
-}
-
 void StripChart::renderStaticGrid(const QSize &targetSize)
 {
     qreal dpr = devicePixelRatioF();
@@ -1191,41 +964,18 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
         } else if (d_ptr->m_xAxisMode == XAxisMode::Time && d_ptr->m_timeLabelFormat == TimeLabelFormat::Relative) {
             // 1-2-5 Tick Selection for Relative Time
             qint64 spanNs = d_ptr->m_timeSpan.count();
-            qint64 tickStepNs = calculate125TickStep(spanNs, 8);
+            auto tickResult = internal::computeTimeTicks(0, spanNs, plotRect.width(), 60.0);
 
-            QString unit = QStringLiteral("s");
-            double divisor = 1e9;
-            if (spanNs < 2000) {
-                unit = QStringLiteral("ns");
-                divisor = 1.0;
-            } else if (spanNs < 2000000) {
-                unit = QStringLiteral("µs");
-                divisor = 1e3;
-            } else if (spanNs < 2000000000LL) {
-                unit = QStringLiteral("ms");
-                divisor = 1e6;
-            } else if (spanNs < 120000000000LL) {
-                unit = QStringLiteral("s");
-                divisor = 1e9;
-            } else {
-                unit = QStringLiteral("min");
-                divisor = 60e9;
-            }
-
-            for (qint64 tOffset = 0; tOffset <= spanNs; tOffset += tickStepNs) {
-                double frac = 1.0 - (static_cast<double>(tOffset) / static_cast<double>(spanNs));
+            for (const auto &tick : tickResult.ticks) {
+                double frac = static_cast<double>(tick.tNs) / static_cast<double>(spanNs);
                 double x = plotRect.left() + frac * plotRect.width();
 
                 painter.setPen(fineGridPen);
                 painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
 
-                double relVal = -static_cast<double>(tOffset) / divisor;
-                QString labelStr = QString::number(relVal, 'f', (std::abs(relVal) >= 10.0 || qFuzzyIsNull(std::remainder(relVal, 1.0))) ? 0 : 1)
-                                   + QLatin1Char(' ') + unit;
-
                 QRectF labelRect(x - 30.0, plotRect.bottom() + 3.0, 60.0, fontSize * 1.4);
                 painter.setPen(d_ptr->m_textColor);
-                painter.drawText(labelRect, Qt::AlignCenter, labelStr);
+                painter.drawText(labelRect, Qt::AlignCenter, tick.label);
             }
         }
 
@@ -1269,17 +1019,88 @@ void StripChart::paintEvent(QPaintEvent *)
     painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
     const QRectF plotRect = plotArea();
-    if (plotRect.width() <= 10.0 || plotRect.height() <= 10.0) return;
-
     qreal dpr = devicePixelRatioF();
+    int W_dev = std::max(1, static_cast<int>(std::round(plotRect.width() * dpr)));
+
+    if (d_ptr->recordDiagnostics) {
+        d_ptr->lastFrame = FrameDiagnostics();
+        d_ptr->lastFrame.plotRect = plotRect;
+        d_ptr->lastFrame.widthDev = W_dev;
+        d_ptr->lastFrame.dpr = dpr;
+    }
+
+    if (plotRect.width() <= 10.0 || plotRect.height() <= 10.0) {
+        if (d_ptr->recordDiagnostics) {
+            d_ptr->lastFrame.channels.resize(d_ptr->m_channels.size());
+        }
+        return;
+    }
+
     if (!qFuzzyCompare(dpr, d_ptr->m_cachedDpr)) {
         d_ptr->m_cachedDpr = dpr;
         d_ptr->invalidateGeometry();
     }
-    int W_dev = std::max(1, static_cast<int>(std::round(plotRect.width() * dpr)));
 
     double yRange = d_ptr->m_yMaximum - d_ptr->m_yMinimum;
     if (qFuzzyIsNull(yRange)) yRange = 1.0;
+
+    // Diagnostics: record xTicks and yTicks
+    if (d_ptr->recordDiagnostics) {
+        if (d_ptr->m_xAxisMode == XAxisMode::Time) {
+            qint64 spanNs = d_ptr->m_timeSpan.count();
+            if (d_ptr->m_timeLabelFormat == TimeLabelFormat::Relative) {
+                auto tickResult = internal::computeTimeTicks(0, spanNs, plotRect.width(), 60.0);
+                d_ptr->lastFrame.xTicks.reserve(tickResult.ticks.size());
+                for (const auto &tick : tickResult.ticks) {
+                    double frac = static_cast<double>(tick.tNs) / static_cast<double>(spanNs);
+                    double x = plotRect.left() + frac * plotRect.width();
+                    d_ptr->lastFrame.xTicks.push_back({tick.tNs, x, tick.label});
+                }
+            } else {
+                qint64 tLatest = std::numeric_limits<qint64>::min();
+                for (const auto &ch : d_ptr->m_channels) {
+                    if (ch.visible && ch.count > 0 && ch.lastTimestamp > tLatest) {
+                        tLatest = ch.lastTimestamp;
+                    }
+                }
+                if (tLatest == std::numeric_limits<qint64>::min()) {
+                    tLatest = d_ptr->arrivalTimestampNs();
+                }
+                auto win = internal::computeTimeWindow(tLatest, spanNs, W_dev);
+                auto tickResult = internal::computeTimeTicks(win.tStart, win.tEnd, plotRect.width(), 60.0);
+                d_ptr->lastFrame.xTicks.reserve(tickResult.ticks.size());
+                for (const auto &tick : tickResult.ticks) {
+                    double frac = static_cast<double>(tick.tNs - win.tStart) / static_cast<double>(spanNs);
+                    double x = plotRect.left() + frac * plotRect.width();
+                    QString labelStr;
+                    if (d_ptr->m_timeOrigin.isValid()) {
+                        QDateTime dt = d_ptr->m_timeOrigin.addMSecs(tick.tNs / 1000000);
+                        labelStr = dt.toString(spanNs < 10000000000LL ? QStringLiteral("HH:mm:ss.zzz") : QStringLiteral("HH:mm:ss"));
+                    } else {
+                        labelStr = QStringLiteral("%1 s").arg(static_cast<double>(tick.tNs) / 1e9, 0, 'f', 1);
+                    }
+                    d_ptr->lastFrame.xTicks.push_back({tick.tNs, x, labelStr});
+                }
+            }
+        } else {
+            d_ptr->lastFrame.xTicks.reserve(d_ptr->m_verticalDivisions + 1);
+            for (int i = 0; i <= d_ptr->m_verticalDivisions; ++i) {
+                double frac = static_cast<double>(i) / d_ptr->m_verticalDivisions;
+                double x = plotRect.left() + frac * plotRect.width();
+                qint64 sIdx = static_cast<qint64>(std::round(frac * (d_ptr->m_capacity - 1)));
+                d_ptr->lastFrame.xTicks.push_back({sIdx, x, QString::number(sIdx)});
+            }
+        }
+
+        d_ptr->lastFrame.yTicks.reserve(d_ptr->m_horizontalDivisions + 1);
+        for (int i = 0; i <= d_ptr->m_horizontalDivisions; ++i) {
+            double frac = static_cast<double>(i) / d_ptr->m_horizontalDivisions;
+            double y = plotRect.bottom() - frac * plotRect.height();
+            double val = d_ptr->m_yMinimum + frac * (d_ptr->m_yMaximum - d_ptr->m_yMinimum);
+            QString labelStr = QString::number(val, 'f', (std::abs(val) >= 100.0) ? 0 : 1);
+            d_ptr->lastFrame.yTicks.push_back({val, y, labelStr});
+        }
+    }
 
     // Dynamic layer for Absolute Time grid lines & labels
     if (d_ptr->m_gridVisible && d_ptr->m_xAxisMode == XAxisMode::Time && d_ptr->m_timeLabelFormat == TimeLabelFormat::Absolute) {
@@ -1298,8 +1119,7 @@ void StripChart::paintEvent(QPaintEvent *)
         qint64 tEnd = win.tEnd;
         qint64 tStart = win.tStart;
 
-        qint64 tickStepNs = calculate125TickStep(spanNs, 8);
-        qint64 firstTick = internal::M4Decimator::floorDiv(tStart + tickStepNs - 1, tickStepNs) * tickStepNs;
+        auto tickResult = internal::computeTimeTicks(tStart, tEnd, plotRect.width(), 60.0);
 
         QPen fineGridPen(d_ptr->m_gridColor, 1.0, Qt::DotLine);
         int fontSize = 9;
@@ -1307,8 +1127,8 @@ void StripChart::paintEvent(QPaintEvent *)
         font.setPixelSize(fontSize);
         painter.setFont(font);
 
-        for (qint64 tick = firstTick; tick <= tEnd; tick += tickStepNs) {
-            double frac = static_cast<double>(tick - tStart) / static_cast<double>(spanNs);
+        for (const auto &tick : tickResult.ticks) {
+            double frac = static_cast<double>(tick.tNs - tStart) / static_cast<double>(spanNs);
             double x = plotRect.left() + frac * plotRect.width();
 
             painter.setPen(fineGridPen);
@@ -1316,10 +1136,10 @@ void StripChart::paintEvent(QPaintEvent *)
 
             QString labelStr;
             if (d_ptr->m_timeOrigin.isValid()) {
-                QDateTime dt = d_ptr->m_timeOrigin.addMSecs(tick / 1000000);
+                QDateTime dt = d_ptr->m_timeOrigin.addMSecs(tick.tNs / 1000000);
                 labelStr = dt.toString(spanNs < 10000000000LL ? QStringLiteral("HH:mm:ss.zzz") : QStringLiteral("HH:mm:ss"));
             } else {
-                labelStr = QStringLiteral("%1 s").arg(static_cast<double>(tick) / 1e9, 0, 'f', 1);
+                labelStr = QStringLiteral("%1 s").arg(static_cast<double>(tick.tNs) / 1e9, 0, 'f', 1);
             }
 
             QRectF labelRect(x - 40.0, plotRect.bottom() + 3.0, 80.0, fontSize * 1.4);
@@ -1351,8 +1171,24 @@ void StripChart::paintEvent(QPaintEvent *)
         qint64 tStart = win.tStart;
         qint64 dt_px = win.dtPx;
 
+        if (d_ptr->recordDiagnostics) {
+            d_ptr->lastFrame.tStart = win.tStart;
+            d_ptr->lastFrame.tEnd = win.tEnd;
+            d_ptr->lastFrame.dtPx = win.dtPx;
+            d_ptr->lastFrame.timeKStart = win.kStart;
+            d_ptr->lastFrame.timeNumBuckets = win.numBuckets;
+            d_ptr->lastFrame.kStart = win.kStart;
+            d_ptr->lastFrame.numBuckets = win.numBuckets;
+        }
+
         for (const auto &ch : d_ptr->m_channels) {
-            if (!ch.visible || ch.count < 1) continue;
+            ChannelFrameDiagnostics chDiag;
+            if (!ch.visible || ch.count < 1) {
+                if (d_ptr->recordDiagnostics) {
+                    d_ptr->lastFrame.channels.push_back(chDiag);
+                }
+                continue;
+            }
 
             size_t start = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
 
@@ -1377,7 +1213,12 @@ void StripChart::paintEvent(QPaintEvent *)
             }
 
             size_t visibleSamples = ch.count - firstIdx;
-            if (visibleSamples == 0) continue;
+            if (visibleSamples == 0) {
+                if (d_ptr->recordDiagnostics) {
+                    d_ptr->lastFrame.channels.push_back(chDiag);
+                }
+                continue;
+            }
 
             bool doDecimate = false;
             if (d_ptr->m_decimationMode == DecimationMode::Always) {
@@ -1410,6 +1251,13 @@ void StripChart::paintEvent(QPaintEvent *)
                 painter.setRenderHint(QPainter::Antialiasing, true);
             }
             painter.setPen(tracePen);
+
+            if (d_ptr->recordDiagnostics) {
+                chDiag.path = doDecimate ? RenderPath::Decimated : RenderPath::Raw;
+                chDiag.penWidth = tracePen.widthF();
+                chDiag.cosmetic = tracePen.isCosmetic();
+                chDiag.antialiasing = (!doDecimate && !d_ptr->m_testRawPenCosmetic1px);
+            }
 
             QPointF lastDrawnPt;
             bool hasDrawnPt = false;
@@ -1461,6 +1309,9 @@ void StripChart::paintEvent(QPaintEvent *)
                         d_ptr->m_reusablePoly << mapPoint(pt.t, pt.value);
                     }
                     painter.drawPolyline(d_ptr->m_reusablePoly);
+                    if (d_ptr->recordDiagnostics) {
+                        chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                    }
                     lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
@@ -1478,6 +1329,9 @@ void StripChart::paintEvent(QPaintEvent *)
                     if (!std::isfinite(v)) {
                         if (!d_ptr->m_reusablePoly.isEmpty()) {
                             painter.drawPolyline(d_ptr->m_reusablePoly);
+                            if (d_ptr->recordDiagnostics) {
+                                chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                            }
                             lastDrawnPt = d_ptr->m_reusablePoly.last();
                             hasDrawnPt = true;
                             d_ptr->m_reusablePoly.clear();
@@ -1489,6 +1343,9 @@ void StripChart::paintEvent(QPaintEvent *)
                     if (prevT != std::numeric_limits<qint64>::min() && gapThresh > 0 && (t - prevT > gapThresh)) {
                         if (!d_ptr->m_reusablePoly.isEmpty()) {
                             painter.drawPolyline(d_ptr->m_reusablePoly);
+                            if (d_ptr->recordDiagnostics) {
+                                chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                            }
                             lastDrawnPt = d_ptr->m_reusablePoly.last();
                             hasDrawnPt = true;
                             d_ptr->m_reusablePoly.clear();
@@ -1505,6 +1362,9 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 if (!d_ptr->m_reusablePoly.isEmpty()) {
                     painter.drawPolyline(d_ptr->m_reusablePoly);
+                    if (d_ptr->recordDiagnostics) {
+                        chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                    }
                     lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
@@ -1519,11 +1379,38 @@ void StripChart::paintEvent(QPaintEvent *)
                 painter.setBrush(ch.color.lighter(150));
                 painter.drawEllipse(lastDrawnPt, 2.5, 2.5);
             }
+
+            if (d_ptr->recordDiagnostics) {
+                d_ptr->lastFrame.channels.push_back(chDiag);
+            }
         }
     } else {
         // SampleIndex Mode (Legacy compatibility)
+        if (d_ptr->recordDiagnostics) {
+            quint64 maxTotal = 0;
+            size_t maxCount = 0;
+            for (const auto &ch : d_ptr->m_channels) {
+                if (ch.visible) {
+                    maxTotal = std::max(maxTotal, ch.totalSamples);
+                    maxCount = std::max(maxCount, ch.count);
+                }
+            }
+            auto ib = internal::computeIndexBuckets(maxTotal, maxCount, d_ptr->m_capacity, W_dev);
+            d_ptr->lastFrame.samplesPerBucket = ib.samplesPerBucket;
+            d_ptr->lastFrame.indexKStart = ib.kStart;
+            d_ptr->lastFrame.indexNumBuckets = ib.numBuckets;
+            d_ptr->lastFrame.kStart = ib.kStart;
+            d_ptr->lastFrame.numBuckets = ib.numBuckets;
+        }
+
         for (const auto &ch : d_ptr->m_channels) {
-            if (!ch.visible || ch.count < 1) continue;
+            ChannelFrameDiagnostics chDiag;
+            if (!ch.visible || ch.count < 1) {
+                if (d_ptr->recordDiagnostics) {
+                    d_ptr->lastFrame.channels.push_back(chDiag);
+                }
+                continue;
+            }
 
             size_t start = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
 
@@ -1545,6 +1432,13 @@ void StripChart::paintEvent(QPaintEvent *)
                 painter.setRenderHint(QPainter::Antialiasing, true);
             }
             painter.setPen(tracePen);
+
+            if (d_ptr->recordDiagnostics) {
+                chDiag.path = doDecimate ? RenderPath::Decimated : RenderPath::Raw;
+                chDiag.penWidth = tracePen.widthF();
+                chDiag.cosmetic = tracePen.isCosmetic();
+                chDiag.antialiasing = (!doDecimate && !d_ptr->m_testRawPenCosmetic1px);
+            }
 
             QPointF lastDrawnPt;
             bool hasDrawnPt = false;
@@ -1603,6 +1497,9 @@ void StripChart::paintEvent(QPaintEvent *)
                         d_ptr->m_reusablePoly << QPointF(x, y);
                     }
                     painter.drawPolyline(d_ptr->m_reusablePoly);
+                    if (d_ptr->recordDiagnostics) {
+                        chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                    }
                     lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
@@ -1615,6 +1512,9 @@ void StripChart::paintEvent(QPaintEvent *)
                     if (!std::isfinite(val)) {
                         if (!d_ptr->m_reusablePoly.isEmpty()) {
                             painter.drawPolyline(d_ptr->m_reusablePoly);
+                            if (d_ptr->recordDiagnostics) {
+                                chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                            }
                             lastDrawnPt = d_ptr->m_reusablePoly.last();
                             hasDrawnPt = true;
                             d_ptr->m_reusablePoly.clear();
@@ -1637,6 +1537,9 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 if (!d_ptr->m_reusablePoly.isEmpty()) {
                     painter.drawPolyline(d_ptr->m_reusablePoly);
+                    if (d_ptr->recordDiagnostics) {
+                        chDiag.segments.push_back(d_ptr->m_reusablePoly);
+                    }
                     lastDrawnPt = d_ptr->m_reusablePoly.last();
                     hasDrawnPt = true;
                 }
@@ -1649,6 +1552,10 @@ void StripChart::paintEvent(QPaintEvent *)
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(ch.color.lighter(150));
                 painter.drawEllipse(lastDrawnPt, 2.5, 2.5);
+            }
+
+            if (d_ptr->recordDiagnostics) {
+                d_ptr->lastFrame.channels.push_back(chDiag);
             }
         }
     }
@@ -1686,22 +1593,5 @@ void StripChart::paintEvent(QPaintEvent *)
         }
     }
 }
-
-namespace internal {
-
-void StripChartTestAccess::setRawPenCosmetic1px(StripChart &chart, bool enable)
-{
-    chart.d_ptr->m_testRawPenCosmetic1px = enable;
-}
-
-bool StripChartTestAccess::isDecimating(const StripChart &chart, int channelId)
-{
-    if (channelId >= 0 && channelId < static_cast<int>(chart.d_ptr->m_channels.size())) {
-        return chart.d_ptr->m_channels[static_cast<size_t>(channelId)].lastDecimating;
-    }
-    return false;
-}
-
-} // namespace internal
 
 } // namespace QtIndustrialWidgets

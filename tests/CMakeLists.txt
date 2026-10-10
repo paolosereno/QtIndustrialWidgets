@@ -48,6 +48,8 @@ set_target_properties(tst_StripChart PROPERTIES
     AUTOMOC ON
 )
 add_test(NAME tst_StripChart COMMAND tst_StripChart)
+add_test(NAME tst_StripChart_hidpi COMMAND tst_StripChart)
+set_tests_properties(tst_StripChart_hidpi PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
 
 add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)

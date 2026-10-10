@@ -6,7 +6,7 @@
 #include <QtIndustrialWidgets/StripChart.h>
 #include <internal/StripChartGeometry.h>
 #include <internal/M4Decimator.h>
-#include <internal/StripChartTestAccess.h>
+#include "StripChartTestUtils.h"
 #include <QtGui/QPixmap>
 #include <QtGui/QImage>
 
@@ -866,19 +866,19 @@ void tst_StripChart::autoDecimationThreshold()
         return coloredPixels;
     };
 
-    // W_dev is 1000 device pixels.
-    // At 1000 samples (<= W_dev): Decimation is OFF, penWidth 7.0 is preserved (thickness >= 5 px).
-    // At 1001 samples (> W_dev): Decimation is ON, cosmetic 1px pen is used (thickness <= 2 px).
+    StripChart dummy;
+    dummy.resize(1054, 400);
+    int wDev = std::max(1, static_cast<int>(std::round(StripChartTestAccess::plotArea(dummy).width() * dummy.devicePixelRatioF())));
 
-    int thickTimeOff = measureLineThickness(StripChart::XAxisMode::Time, 1000);
-    int thickTimeOn = measureLineThickness(StripChart::XAxisMode::Time, 1001);
-    QVERIFY2(thickTimeOff >= 5, qPrintable(QString("Time mode with 1000 samples should be raw (thick >= 5), got %1").arg(thickTimeOff)));
-    QVERIFY2(thickTimeOn <= 2, qPrintable(QString("Time mode with 1001 samples should be decimated (cosmetic 1px <= 2), got %1").arg(thickTimeOn)));
+    int thickTimeOff = measureLineThickness(StripChart::XAxisMode::Time, wDev);
+    int thickTimeOn = measureLineThickness(StripChart::XAxisMode::Time, wDev + 1);
+    QVERIFY2(thickTimeOff >= 5, qPrintable(QString("Time mode with %1 samples should be raw (thick >= 5), got %2").arg(wDev).arg(thickTimeOff)));
+    QVERIFY2(thickTimeOn <= 2, qPrintable(QString("Time mode with %1 samples should be decimated (cosmetic 1px <= 2), got %2").arg(wDev + 1).arg(thickTimeOn)));
 
-    int thickIndexOff = measureLineThickness(StripChart::XAxisMode::SampleIndex, 1000);
-    int thickIndexOn = measureLineThickness(StripChart::XAxisMode::SampleIndex, 1001);
-    QVERIFY2(thickIndexOff >= 5, qPrintable(QString("SampleIndex mode with 1000 samples should be raw (thick >= 5), got %1").arg(thickIndexOff)));
-    QVERIFY2(thickIndexOn <= 2, qPrintable(QString("SampleIndex mode with 1001 samples should be decimated (cosmetic 1px <= 2), got %1").arg(thickIndexOn)));
+    int thickIndexOff = measureLineThickness(StripChart::XAxisMode::SampleIndex, wDev);
+    int thickIndexOn = measureLineThickness(StripChart::XAxisMode::SampleIndex, wDev + 1);
+    QVERIFY2(thickIndexOff >= 5, qPrintable(QString("SampleIndex mode with %1 samples should be raw (thick >= 5), got %2").arg(wDev).arg(thickIndexOff)));
+    QVERIFY2(thickIndexOn <= 2, qPrintable(QString("SampleIndex mode with %1 samples should be decimated (cosmetic 1px <= 2), got %2").arg(wDev + 1).arg(thickIndexOn)));
 }
 
 void tst_StripChart::evictionConsistency()

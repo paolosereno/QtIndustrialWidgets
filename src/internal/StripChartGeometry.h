@@ -7,7 +7,9 @@
 #pragma once
 
 #include <QtCore/qglobal.h>
+#include <QtCore/QString>
 #include <cstddef>
+#include <vector>
 
 namespace QtIndustrialWidgets {
 namespace internal {
@@ -57,6 +59,19 @@ struct GeometryKey {
         return !(*this == o);
     }
 };
+
+struct TimeTick {
+    qint64 tNs{0};
+    QString label;
+};
+
+struct TimeTicksResult {
+    qint64 stepNs{1};
+    QString unit;
+    std::vector<TimeTick> ticks;
+};
+
+TimeTicksResult computeTimeTicks(qint64 tStart, qint64 tEnd, double plotWidthPx, double minLabelSpacingPx = 60.0);
 
 } // namespace internal
 } // namespace QtIndustrialWidgets
