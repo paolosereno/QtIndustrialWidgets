@@ -520,7 +520,12 @@ private Q_SLOTS:
 
 void BenchStripChart::initTestCase()
 {
-    qputenv("QTEST_FUNCTION_TIMEOUT", "0");
+    // QtTest's default watchdog aborts a test function after 5 minutes, and Qt treats 0 as
+    // "use the default". A slow baseline (e.g. 2.0.1) needs much longer, so keep a value set by
+    // the caller and otherwise allow 24 h.
+    if (qEnvironmentVariableIsEmpty("QTEST_FUNCTION_TIMEOUT")) {
+        qputenv("QTEST_FUNCTION_TIMEOUT", "86400000");
+    }
 
     // Verify environment: offscreen, DPR 1
     StripChart testChart;
