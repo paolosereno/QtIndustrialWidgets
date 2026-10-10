@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(QtIndustrialWidgets
-    VERSION 2.0.0
+    VERSION 2.0.1
     DESCRIPTION "Modern, high-performance industrial instruments and SCADA widgets for Qt"
     HOMEPAGE_URL "https://github.com/paolosereno/QtIndustrialWidgets"
     LANGUAGES CXX

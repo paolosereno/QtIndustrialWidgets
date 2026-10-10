@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.1] - 2026-10-10
+
+### Fixed
+- **SampleIndex decimation dropping recent samples**: Fixed integer floor division and missing bucket coverage in `computeIndexBuckets` that caused the most recent samples (up to 20% of the buffer) to never be drawn in decimated SampleIndex mode.
+- **Time mode bucket boundary spike drop**: Fixed `computeTimeWindow` boundary formula where `tLatest == tEnd` excluded the leading sample point landing on bucket boundaries from decimation and window coverage checks.
+- **Axis mode switching timestamp incompatibility**: Fixed channel buffer poisoning when switching between `Time` and `SampleIndex` modes or calling explicit-timestamp APIs in `SampleIndex` mode.
+
+### Changed
+- **Axis mode reset**: `setXAxisMode()` now clears all channel sample buffers when the mode changes to prevent mixing incompatible timebases, while preserving channel configuration metadata and `rejectedSampleCount()`.
+- **Ignored timestamps in SampleIndex mode**: Explicit-timestamp insertion APIs (`addSample()`, `addSamples()`, `addUniformSamples()`, `addSynchronousSamples()`) in `SampleIndex` mode now record samples sequentially using the channel's running sample index (`totalSamples`), ignoring supplied timestamps and logging a one-time diagnostic warning per channel.
+
+---
+
 ## [2.0.0] - 2026-10-10
 
 ### Breaking Changes & Migration from 1.x
