@@ -58,6 +58,7 @@ private Q_SLOTS:
     void computeTimeWindowBoundaries();
     void timeBucketBoundarySpikePreservation();
     void timeWindowCoverageConsistency();
+    void autoDecimationThreshold();
     void axisModeSwitchClearing();
     void sampleIndexExplicitTimestampIgnored();
     void axisModeRoundTrip();
@@ -814,6 +815,65 @@ void tst_StripChart::addUniformSamplesSampleIndexMode()
     QCOMPARE(chart.channelSampleCount(ch), 1000);
     QCOMPARE(chart.rejectedSampleCount(ch), 0ULL);
     QCOMPARE(chart.channelLatestValue(ch), 1998.0);
+}
+
+void tst_StripChart::autoDecimationThreshold()
+{
+    auto measureLineThickness = [](StripChart::XAxisMode axisMode, int sampleCount) -> int {
+        StripChart chart;
+        chart.setXAxisMode(axisMode);
+        chart.setDecimationMode(StripChart::DecimationMode::Auto);
+        chart.setGridVisible(false);
+        chart.setLegendVisible(false);
+        chart.setYRange(0.0, 10.0);
+        chart.setCapacity(sampleCount + 100);
+        if (axisMode == StripChart::XAxisMode::Time) {
+            chart.setTimeSpan(std::chrono::seconds(10));
+        }
+
+        // Plot width = 1000 px, DPR = 1.0 (margins: left 42, right 12 -> 1054)
+        chart.resize(1054, 400);
+
+        int ch = chart.addChannel(QStringLiteral("Ch0"), Qt::red, 7.0);
+
+        if (axisMode == StripChart::XAxisMode::Time) {
+            qint64 dtNs = 10000000000LL / sampleCount;
+            std::vector<double> vals(sampleCount, 5.0);
+            chart.addUniformSamples(ch, std::chrono::nanoseconds(0), std::chrono::nanoseconds(dtNs), vals.data(), sampleCount);
+        } else {
+            for (int i = 0; i < sampleCount; ++i) {
+                chart.addDataPoint(ch, 5.0);
+            }
+        }
+
+        QImage img(chart.size(), QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::black);
+        chart.render(&img);
+
+        int x = 500;
+        int coloredPixels = 0;
+        for (int y = 0; y < img.height(); ++y) {
+            QRgb px = img.pixel(x, y);
+            if (qRed(px) > 100) {
+                coloredPixels++;
+            }
+        }
+        return coloredPixels;
+    };
+
+    // W_dev is 1000 device pixels.
+    // At 1000 samples (<= W_dev): Decimation is OFF, penWidth 7.0 is preserved (thickness >= 5 px).
+    // At 1001 samples (> W_dev): Decimation is ON, cosmetic 1px pen is used (thickness <= 2 px).
+
+    int thickTimeOff = measureLineThickness(StripChart::XAxisMode::Time, 1000);
+    int thickTimeOn = measureLineThickness(StripChart::XAxisMode::Time, 1001);
+    QVERIFY2(thickTimeOff >= 5, qPrintable(QString("Time mode with 1000 samples should be raw (thick >= 5), got %1").arg(thickTimeOff)));
+    QVERIFY2(thickTimeOn <= 2, qPrintable(QString("Time mode with 1001 samples should be decimated (cosmetic 1px <= 2), got %1").arg(thickTimeOn)));
+
+    int thickIndexOff = measureLineThickness(StripChart::XAxisMode::SampleIndex, 1000);
+    int thickIndexOn = measureLineThickness(StripChart::XAxisMode::SampleIndex, 1001);
+    QVERIFY2(thickIndexOff >= 5, qPrintable(QString("SampleIndex mode with 1000 samples should be raw (thick >= 5), got %1").arg(thickIndexOff)));
+    QVERIFY2(thickIndexOn <= 2, qPrintable(QString("SampleIndex mode with 1001 samples should be decimated (cosmetic 1px <= 2), got %1").arg(thickIndexOn)));
 }
 
 QTEST_MAIN(tst_StripChart)

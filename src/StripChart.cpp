@@ -1136,7 +1136,7 @@ void StripChart::paintEvent(QPaintEvent *)
             if (d_ptr->m_decimationMode == DecimationMode::Always) {
                 doDecimate = true;
             } else if (d_ptr->m_decimationMode == DecimationMode::Auto) {
-                doDecimate = (visibleSamples > static_cast<size_t>(2 * W_dev));
+                doDecimate = (visibleSamples > static_cast<size_t>(W_dev));
             }
 
             qint64 gapThresh = d_ptr->m_gapThreshold.count();
@@ -1152,7 +1152,15 @@ void StripChart::paintEvent(QPaintEvent *)
                 return QPointF(x, y);
             };
 
-            QPen tracePen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+            QPen tracePen;
+            if (doDecimate) {
+                tracePen = QPen(ch.color, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+                tracePen.setCosmetic(true);
+                painter.setRenderHint(QPainter::Antialiasing, false);
+            } else {
+                tracePen = QPen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+                painter.setRenderHint(QPainter::Antialiasing, true);
+            }
             painter.setPen(tracePen);
 
             QPointF lastDrawnPt;
@@ -1217,6 +1225,9 @@ void StripChart::paintEvent(QPaintEvent *)
                 }
             }
 
+            // Restore antialiasing for downstream elements (glow dot, legend)
+            painter.setRenderHint(QPainter::Antialiasing, true);
+
             // Glow dot on latest point if finite
             if (hasDrawnPt && std::isfinite(ch.latestValue)) {
                 painter.setPen(Qt::NoPen);
@@ -1235,10 +1246,18 @@ void StripChart::paintEvent(QPaintEvent *)
             if (d_ptr->m_decimationMode == DecimationMode::Always) {
                 doDecimate = true;
             } else if (d_ptr->m_decimationMode == DecimationMode::Auto) {
-                doDecimate = (ch.count > static_cast<size_t>(2 * W_dev));
+                doDecimate = (ch.count > static_cast<size_t>(W_dev));
             }
 
-            QPen tracePen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+            QPen tracePen;
+            if (doDecimate) {
+                tracePen = QPen(ch.color, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+                tracePen.setCosmetic(true);
+                painter.setRenderHint(QPainter::Antialiasing, false);
+            } else {
+                tracePen = QPen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+                painter.setRenderHint(QPainter::Antialiasing, true);
+            }
             painter.setPen(tracePen);
 
             QPointF lastDrawnPt;
@@ -1308,6 +1327,9 @@ void StripChart::paintEvent(QPaintEvent *)
                     hasDrawnPt = true;
                 }
             }
+
+            // Restore antialiasing for downstream elements (glow dot, legend)
+            painter.setRenderHint(QPainter::Antialiasing, true);
 
             if (hasDrawnPt && std::isfinite(ch.latestValue)) {
                 painter.setPen(Qt::NoPen);

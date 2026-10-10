@@ -1,0 +1,113 @@
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+SPDX-License-Identifier: MIT
+-->
+
+# StripChart Performance Benchmarks
+
+This document tracks rendering and ingestion benchmarks for `QtIndustrialWidgets::StripChart`.
+
+## Test Environment
+
+- **CPU**: 13th Gen Intel Core i5-13600KF (24 threads, up to 5.1 GHz)
+- **RAM**: 32 GB DDR5
+- **OS**: Ubuntu 24.04 LTS (Linux 6.8.0-52-generic x86_64)
+- **Compiler**: GCC 13.2.0 (`-O3 -DNDEBUG`)
+- **Qt Version**: Qt 6.4.2 (Offscreen QPA, Device Pixel Ratio 1.0)
+- **Benchmark Resolution**: Plot area = 1920 × 1000 device px (Widget size: 1974 × 1080 px)
+
+---
+
+## Baseline (v2.0.1 Unmodified)
+
+### 1. Ingestion Throughput
+
+| Benchmark Case | Samples | Min Time | Median Time | Per-Sample Latency | Notes |
+|---|---|---|---|---|---|
+| `addSample` (autoscale ON, 1M base) | 100k calls | 357,432 ms | **365,402 ms** | **3.654 ms/call** | Synchronous $O(N)$ scan per sample |
+| `addSample` (autoscale OFF, 1M base) | 100k calls | 3.14 ms | **3.14 ms** | **0.031 µs/call** | Fast ring-buffer append |
+| `addUniformSamples` | 1M block | 7.21 ms | **7.21 ms** | **0.007 µs/sample** | Direct block append |
+| `addDataPoint` (legacy, autoscale OFF) | 100k calls | 2.77 ms | **3.13 ms** | **0.031 µs/call** | Legacy sample index append |
+
+### 2. Paint Latency Matrix (1 Channel, 1920 Device Px)
+
+| Samples | Signal Type | Axis Mode | Min Frame Time | Median Frame Time | Dominant Overhead |
+|---|---|---|---|---|---|
+| **10k** | SmoothSine | Time | 9.74 ms | **9.81 ms** | Batch M4 decimation |
+| **10k** | SmoothSine | SampleIndex | 8.24 ms | **8.37 ms** | Batch M4 decimation |
+| **10k** | BroadbandNoise | Time | 2,109 ms | **2,109 ms** | `QStroker` (pen 1.8 + AA) |
+| **10k** | BroadbandNoise | SampleIndex | 1,479 ms | **1,479 ms** | `QStroker` (pen 1.8 + AA) |
+| **10k** | SpikesAndNaN | Time | 27.79 ms | **27.90 ms** | NaN segmentation |
+| **10k** | SpikesAndNaN | SampleIndex | 14.09 ms | **25.81 ms** | NaN segmentation |
+| **100k** | SmoothSine | Time | 105.4 ms | **118.5 ms** | Per-frame vector alloc + batch M4 |
+| **100k** | SmoothSine | SampleIndex | 108.1 ms | **116.2 ms** | Per-frame vector alloc + batch M4 |
+| **100k** | BroadbandNoise | Time | 3,648 ms | **3,648 ms** | `QStroker` on dense zigzag |
+| **100k** | BroadbandNoise | SampleIndex | 3,710 ms | **3,710 ms** | `QStroker` on dense zigzag |
+| **100k** | SpikesAndNaN | Time | 322.7 ms | **322.7 ms** | Per-frame vector alloc + batch M4 |
+| **100k** | SpikesAndNaN | SampleIndex | 328.7 ms | **328.7 ms** | Per-frame vector alloc + batch M4 |
+| **1M** | SmoothSine | Time | 2,913 ms | **2,913 ms** | 64 MB copy + batch M4 |
+| **1M** | SmoothSine | SampleIndex | 1,472 ms | **2,666 ms** | 64 MB copy + batch M4 |
+| **1M** | BroadbandNoise | Time | 4,617 ms | **6,916 ms** | 64 MB copy + `QStroker` |
+| **1M** | BroadbandNoise | SampleIndex | 6,387 ms | **5,266 ms** | 64 MB copy + `QStroker` |
+| **1M** | SpikesAndNaN | Time | 2,358 ms | **2,077 ms** | 64 MB copy + batch M4 |
+| **1M** | SpikesAndNaN | SampleIndex | 2,572 ms | **1,843 ms** | 64 MB copy + batch M4 |
+| **4M** | SmoothSine | Time | 21,851 ms | **33,426 ms** | 256 MB copy + batch M4 |
+| **4M** | SmoothSine | SampleIndex | 21,598 ms | **22,097 ms** | 256 MB copy + batch M4 |
+
+### 3. Window Resize Latency
+
+| Benchmark Case | Description | Min Time | Median Time | Notes |
+|---|---|---|---|---|
+| `firstPaintAfterResize` | 4 ch × 1M noisy, initial 1000×800 to 1974×1080 | 18,445 ms | **21,467 ms** | 4 channels re-decimated and stroked |
+
+---
+
+## Acceptance Targets for Optimization
+
+1. **`paintMatrix` (4 ch, 1M samples, 1920 px, any signal, any axis mode)**: median frame time **< 16.6 ms (60 FPS)**.
+2. **`paintMatrix` (4 ch, 4M samples, 1920 px, any signal, any axis mode)**: median frame time **< 33.3 ms (30 FPS)**.
+3. **`firstPaintAfterResize` (4 × 1M noisy)**: median frame time **< 20 ms**.
+4. **`addSample` (autoscale ON, 1M in buffer)**: median latency **< 1 µs/call**.
+5. **`addUniformSamples` (1M block)**: median time **< 15 ms**.
+
+---
+
+## Step 1 — Thin Decimated Traces + W_dev Threshold
+
+**Changes implemented:**
+- Cosmetic 1-device-pixel pen (`QPen(ch.color, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin)`) without antialiasing for decimated polylines.
+- Antialiasing restored for glow dot, legend, and non-decimated waveforms.
+- `DecimationMode::Auto` threshold adjusted from `2 * W_dev` to `W_dev`.
+
+### 1. Ingestion Throughput (Unchanged, pending Step 3)
+
+| Benchmark Case | Samples | Min Time | Median Time | Per-Sample Latency |
+|---|---|---|---|---|
+| `addSample` (autoscale ON, 1M base) | 100k calls | 357,101 ms | **367,341 ms** | **3.673 ms/call** |
+| `addSample` (autoscale OFF, 1M base) | 100k calls | 3.18 ms | **3.19 ms** | **0.032 µs/call** |
+| `addUniformSamples` | 1M block | 7.19 ms | **7.25 ms** | **0.007 µs/sample** |
+| `addDataPoint` (legacy, autoscale OFF) | 100k calls | 3.10 ms | **3.20 ms** | **0.032 µs/call** |
+
+### 2. Paint Latency Highlights (1920 Device Px)
+
+| Channels | Samples | Signal Type | Axis Mode | Baseline Median | Step 1 Median | Speedup |
+|---|---|---|---|---|---|---|
+| **1 ch** | **10k** | BroadbandNoise | Time | 2,109 ms | **1.87 ms** | **1,127×** |
+| **1 ch** | **100k** | BroadbandNoise | Time | 3,648 ms | **2.78 ms** | **1,312×** |
+| **1 ch** | **1M** | BroadbandNoise | Time | 6,916 ms | **10.01 ms** | **690×** |
+| **1 ch** | **4M** | BroadbandNoise | Time | > 30,000 ms | **59.57 ms** | **> 500×** |
+| **1 ch** | **4M** | SmoothSine | Time | 33,426 ms | **58.94 ms** | **567×** |
+| **4 ch** | **1M** | BroadbandNoise | Time | ~28,000 ms | **58.60 ms** | **~470×** |
+| **4 ch** | **4M** | BroadbandNoise | Time | Timeout | **230.15 ms** | Completed |
+| **4 ch** | **4M** | SmoothSine | Time | Timeout | **227.27 ms** | Completed |
+
+### 3. Window Resize Latency
+
+| Benchmark Case | Description | Baseline Median | Step 1 Median | Speedup |
+|---|---|---|---|---|
+| `firstPaintAfterResize` | 4 ch × 1M noisy, 1000×800 to 1974×1080 | 21,467 ms | **68.65 ms** | **312×** |
+
+### 4. Analysis
+- `QStroker` outline/AET cost has been completely eliminated. Drawing decimated polylines now takes < 1 ms on GPU/rasterizer.
+- The remaining ~58 ms (1 ch 4M) and ~230 ms (4 ch 4M) are purely due to copying visible samples into temporary `std::vector`s and running batch decimation on 16 million points every frame.
+- This will be eliminated in **Step 2** with incremental M4 stream wiring and zero per-frame allocations.

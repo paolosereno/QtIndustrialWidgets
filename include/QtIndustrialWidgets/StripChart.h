@@ -73,7 +73,7 @@ public:
     /** \brief Waveform decimation mode. */
     enum class DecimationMode {
         Off,    ///< Always draw raw samples
-        Auto,   ///< Automatically enable M4 decimation when visible samples exceed 2 * width (default)
+        Auto,   ///< Automatically enable M4 decimation when visible samples exceed plot width in device pixels (default)
         Always  ///< Always run M4 decimation
     };
     Q_ENUM(DecimationMode)
@@ -162,7 +162,12 @@ public:
 
     /** \brief Returns the active decimation mode. Default is Auto. */
     [[nodiscard]] DecimationMode decimationMode() const;
-    /** \brief Sets the decimation mode. */
+    /** \brief Sets the decimation mode.
+     *
+     * When decimation is active, traces are rendered using a cosmetic 1-device-pixel pen
+     * without antialiasing to guarantee bounded frame time (O(W)). Custom channel pen
+     * widths and antialiasing apply when decimation is inactive.
+     */
     void setDecimationMode(DecimationMode mode);
 
     /** \brief Returns the active waveform interpolation style. Default is Linear. */

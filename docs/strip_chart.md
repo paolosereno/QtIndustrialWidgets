@@ -65,9 +65,15 @@ For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF()
 - **Trace Shimmer Prevention**: Bucket indices are anchored to absolute time (`k = floor(t / Δt_px)`), and the visible window boundary `t_end` is quantized to the next bucket boundary (`ceil(t_latest / Δt_px) * Δt_px`). This guarantees zero pixel shimmer during scrolling.
 
 ### Decimation Modes
-- `DecimationMode::Auto`: Automatically activates M4 decimation when the visible sample count exceeds `2 · W_dev`; otherwise renders raw samples (default).
+- `DecimationMode::Auto`: Automatically activates M4 decimation when the visible sample count exceeds `W_dev` (plot width in device pixels); otherwise renders raw samples (default).
 - `DecimationMode::Always`: Forces M4 decimation regardless of sample count.
 - `DecimationMode::Off`: Renders raw samples directly.
+
+### Cosmetic 1-Device-Pixel Trace Rendering
+To guarantee strictly bounded frame times ($O(W)$) even when decimating dense high-frequency noise:
+- **Decimated Traces**: When decimation is active (either via `Always` or triggered by `Auto`), waveforms are drawn with a cosmetic 1-device-pixel pen without antialiasing (`Qt::FlatCap`, `Qt::MiterJoin`). This completely eliminates `QStroker` active-edge polygon generation across thousands of zig-zag segments.
+- **Raw Traces**: When decimation is inactive (via `Off` or when sample count $\le W_{dev}$), user-configured channel pen widths and antialiasing remain active for smooth visual appearance.
+- **Head Glow Dot**: Telemetry head glow dots always retain antialiasing for clean visual indicators.
 
 ---
 

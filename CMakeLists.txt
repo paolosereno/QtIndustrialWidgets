@@ -79,6 +79,13 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Benchmarks suite (independent of ctest)
+option(BUILD_BENCHMARKS "Build benchmark targets" OFF)
+if(BUILD_BENCHMARKS)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+    add_subdirectory(benchmarks)
+endif()
+
 # Doxygen documentation target
 if(BUILD_DOCS)
     find_package(Doxygen OPTIONAL_COMPONENTS dot)
