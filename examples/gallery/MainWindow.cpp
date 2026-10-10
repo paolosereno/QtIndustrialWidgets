@@ -1039,6 +1039,103 @@ void MainWindow::setupUi()
     navLayout->addWidget(navControlsBox);
     tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (Compass)"));
 
+    // ------------------------------------------------------------------------
+    // TAB 5: High-Rate DAQ Telemetry (StripChart)
+    // ------------------------------------------------------------------------
+    auto *daqTab = new QWidget(tabWidget);
+    auto *daqLayout = new QVBoxLayout(daqTab);
+    daqLayout->setContentsMargins(14, 14, 14, 14);
+    daqLayout->setSpacing(12);
+
+    m_daqChart = new StripChart(daqTab);
+    m_daqChart->setCapacity(1000000);
+    m_daqChart->setXAxisMode(StripChart::XAxisMode::Time);
+    m_daqChart->setTimeSpan(std::chrono::seconds(10));
+    m_daqChart->setDecimationMode(StripChart::DecimationMode::Auto);
+    m_daqChart->setInterpolation(StripChart::Interpolation::Linear);
+    m_daqChart->setTimeLabelFormat(StripChart::TimeLabelFormat::Relative);
+    m_daqChart->setTimeOrigin(QDateTime::currentDateTime());
+    m_daqChart->setYRange(-30.0, 160.0);
+    m_daqChannelSine = m_daqChart->addChannel(QStringLiteral("Ch1: 100 kHz Sine + Glitches"), QColor(0, 229, 255), 1.8);
+    m_daqChannelSquare = m_daqChart->addChannel(QStringLiteral("Ch2: Telemetry Pulse"), QColor(255, 170, 0), 1.8);
+    m_daqChart->installEventFilter(this);
+
+    daqLayout->addWidget(m_daqChart, 1);
+
+    // Controls panel
+    auto *daqControlsBox = new QGroupBox(QStringLiteral("High-Rate Acquisition Controls & Real-Time Performance"), daqTab);
+    auto *daqControlsLayout = new QGridLayout(daqControlsBox);
+    daqControlsLayout->setContentsMargins(12, 16, 12, 12);
+    daqControlsLayout->setHorizontalSpacing(16);
+    daqControlsLayout->setVerticalSpacing(10);
+
+    // Decimation Mode
+    auto *decimLbl = new QLabel(QStringLiteral("Decimation Mode:"), daqControlsBox);
+    auto *decimCombo = new QComboBox(daqControlsBox);
+    decimCombo->addItem(QStringLiteral("Auto (M4 Min/Max)"), static_cast<int>(StripChart::DecimationMode::Auto));
+    decimCombo->addItem(QStringLiteral("Off (Raw Samples)"), static_cast<int>(StripChart::DecimationMode::Off));
+    decimCombo->addItem(QStringLiteral("Always (Force M4)"), static_cast<int>(StripChart::DecimationMode::Always));
+    connect(decimCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_daqChart->setDecimationMode(static_cast<StripChart::DecimationMode>(decimCombo->itemData(idx).toInt()));
+    });
+    daqControlsLayout->addWidget(decimLbl, 0, 0);
+    daqControlsLayout->addWidget(decimCombo, 0, 1);
+
+    // X-Axis Mode
+    auto *xAxisLbl = new QLabel(QStringLiteral("X-Axis Mode:"), daqControlsBox);
+    auto *xAxisCombo = new QComboBox(daqControlsBox);
+    xAxisCombo->addItem(QStringLiteral("Time Axis (Real-Time)"), static_cast<int>(StripChart::XAxisMode::Time));
+    xAxisCombo->addItem(QStringLiteral("Sample Index (Legacy)"), static_cast<int>(StripChart::XAxisMode::SampleIndex));
+    connect(xAxisCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_daqChart->setXAxisMode(static_cast<StripChart::XAxisMode>(xAxisCombo->itemData(idx).toInt()));
+    });
+    daqControlsLayout->addWidget(xAxisLbl, 0, 2);
+    daqControlsLayout->addWidget(xAxisCombo, 0, 3);
+
+    // Time Span
+    auto *spanLbl = new QLabel(QStringLiteral("Time Span:"), daqControlsBox);
+    auto *spanCombo = new QComboBox(daqControlsBox);
+    spanCombo->addItem(QStringLiteral("1 Second"), 1.0);
+    spanCombo->addItem(QStringLiteral("5 Seconds"), 5.0);
+    spanCombo->addItem(QStringLiteral("10 Seconds (Default)"), 10.0);
+    spanCombo->addItem(QStringLiteral("30 Seconds"), 30.0);
+    spanCombo->setCurrentIndex(2);
+    connect(spanCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_daqChart->setTimeSpanSeconds(spanCombo->itemData(idx).toDouble());
+    });
+    daqControlsLayout->addWidget(spanLbl, 1, 0);
+    daqControlsLayout->addWidget(spanCombo, 1, 1);
+
+    // Interpolation
+    auto *interpLbl = new QLabel(QStringLiteral("Interpolation:"), daqControlsBox);
+    auto *interpCombo = new QComboBox(daqControlsBox);
+    interpCombo->addItem(QStringLiteral("Linear"), static_cast<int>(StripChart::Interpolation::Linear));
+    interpCombo->addItem(QStringLiteral("Step (Sample & Hold)"), static_cast<int>(StripChart::Interpolation::Step));
+    connect(interpCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_daqChart->setInterpolation(static_cast<StripChart::Interpolation>(interpCombo->itemData(idx).toInt()));
+    });
+    daqControlsLayout->addWidget(interpLbl, 1, 2);
+    daqControlsLayout->addWidget(interpCombo, 1, 3);
+
+    // Time Label Format
+    auto *labelFmtLbl = new QLabel(QStringLiteral("Label Format:"), daqControlsBox);
+    auto *labelFmtCombo = new QComboBox(daqControlsBox);
+    labelFmtCombo->addItem(QStringLiteral("Relative (-10s ... 0s)"), static_cast<int>(StripChart::TimeLabelFormat::Relative));
+    labelFmtCombo->addItem(QStringLiteral("Absolute (HH:mm:ss)"), static_cast<int>(StripChart::TimeLabelFormat::Absolute));
+    connect(labelFmtCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_daqChart->setTimeLabelFormat(static_cast<StripChart::TimeLabelFormat>(labelFmtCombo->itemData(idx).toInt()));
+    });
+    daqControlsLayout->addWidget(labelFmtLbl, 2, 0);
+    daqControlsLayout->addWidget(labelFmtCombo, 2, 1);
+
+    // Metrics label
+    m_daqMetricsLabel = new QLabel(QStringLiteral("Streaming: 100 kHz (1,600 samples/frame) | Frame Paint Time: -- ms"), daqControlsBox);
+    m_daqMetricsLabel->setStyleSheet(QStringLiteral("font-family: monospace; font-size: 11px; font-weight: bold; color: #00e5ff;"));
+    daqControlsLayout->addWidget(m_daqMetricsLabel, 2, 2, 1, 2);
+
+    daqLayout->addWidget(daqControlsBox);
+    tabWidget->addTab(daqTab, QStringLiteral("⚡ High-Rate DAQ (StripChart)"));
+
     rootLayout->addWidget(tabWidget);
 }
 
@@ -1214,6 +1311,48 @@ void MainWindow::onSimulationTick()
     m_stripChart->addDataPoint(m_chRpm, (currentRpm / 8000.0) * 100.0);
     m_stripChart->addDataPoint(m_chBoost, boostBase * 35.0);
     m_stripChart->addDataPoint(m_chTemp, coolantTemp);
+
+    // High-Rate DAQ Streaming (100 kHz)
+    if (m_daqChart) {
+        constexpr int blockSamples = 1600;
+        std::vector<double> sineBlock(blockSamples);
+        std::vector<double> squareBlock(blockSamples);
+
+        const auto dt = std::chrono::nanoseconds(10000); // 10 us = 100 kHz
+        const auto t0 = m_daqCurrentTime;
+        m_daqCurrentTime += std::chrono::nanoseconds(blockSamples * 10000);
+
+        for (int i = 0; i < blockSamples; ++i) {
+            m_daqSampleIndex++;
+            m_daqPhase += 0.005;
+
+            // Sine wave + noise
+            double noise = (static_cast<double>(std::rand()) / RAND_MAX - 0.5) * 4.0;
+            double sVal = std::sin(m_daqPhase) * 40.0 + 50.0 + noise;
+
+            // Rare single-sample spike
+            if (m_daqSampleIndex % 4137 == 0) {
+                sVal = 145.0;
+            }
+
+            // Occasional NaN dropout (sensor fault)
+            if (m_daqSampleIndex % 8251 < 6) {
+                sVal = std::numeric_limits<double>::quiet_NaN();
+            }
+
+            sineBlock[i] = sVal;
+
+            // Square / pulse signal
+            double sqVal = (std::sin(m_daqPhase * 0.2) >= 0.0) ? 80.0 : 20.0;
+            if (m_daqSampleIndex % 5519 == 0) {
+                sqVal = -15.0;
+            }
+            squareBlock[i] = sqVal;
+        }
+
+        m_daqChart->addUniformSamples(m_daqChannelSine, t0, dt, sineBlock.data(), blockSamples);
+        m_daqChart->addUniformSamples(m_daqChannelSquare, t0, dt, squareBlock.data(), blockSamples);
+    }
 
     // Dynamic multi-channel vibration levels (LevelMeter)
     if (m_vibrationMeter) {
@@ -1502,4 +1641,23 @@ void MainWindow::applyTheme(bool dark)
             m_compassNorthUp->setTextColor(QColor(30, 39, 46));
         }
     }
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_daqChart && event->type() == QEvent::Paint) {
+        QElapsedTimer timer;
+        timer.start();
+        m_daqChart->removeEventFilter(this);
+        QApplication::sendEvent(m_daqChart, event);
+        m_daqChart->installEventFilter(this);
+        qint64 elapsedNs = timer.nsecsElapsed();
+        if (m_daqMetricsLabel) {
+            double ms = static_cast<double>(elapsedNs) / 1e6;
+            m_daqMetricsLabel->setText(QStringLiteral("Streaming: 100 kHz (1,600 samples/frame) | Measured Paint Time: %1 ms")
+                                           .arg(ms, 0, 'f', 2));
+        }
+        return true;
+    }
+    return QMainWindow::eventFilter(watched, event);
 }

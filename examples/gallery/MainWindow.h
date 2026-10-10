@@ -111,6 +111,15 @@ private:
     QPushButton *m_autopilotButton{nullptr};
     bool m_isAutopilotActive{false};
 
+    // High-Rate DAQ Showcase (StripChart)
+    QtIndustrialWidgets::StripChart *m_daqChart{nullptr};
+    int m_daqChannelSine{0};
+    int m_daqChannelSquare{1};
+    QLabel *m_daqMetricsLabel{nullptr};
+    std::chrono::nanoseconds m_daqCurrentTime{0};
+    double m_daqPhase{0.0};
+    quint64 m_daqSampleIndex{0};
+
     // Simulation & UI state
     QPushButton *m_simButton{nullptr};
     QPushButton *m_tourButton{nullptr};
@@ -129,4 +138,7 @@ private:
     bool m_isDarkTheme{true};
     bool m_isSimulating{false};
     bool m_isAutoTourActive{false};
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 };

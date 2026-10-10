@@ -101,11 +101,12 @@ Precision rotary potentiometer and selector switch.
 - **Ergonomic Controls**: Rotary drag, linear drag, mouse wheel fine adjustment, and full keyboard navigation (arrows, PageUp/PageDown, Home/End).
 
 ### 6. `StripChart` (`qiw::StripChart`)
-Real-time scrolling telemetry strip chart and oscilloscope.
-- **High Performance (60+ FPS)**: Built for high-frequency streaming using preallocated circular ring buffers (`O(1)` amortized point insertion) and Hi-DPI reticle grid background caching.
-- **Multi-Channel**: Independent channels with individual trace colors, pen widths, styles, and names.
-- **Flexible Axis Scaling**: Manual Y-range or automatic dynamic scaling with margin padding.
-- **Oscilloscope Reticle & Legend**: Configurable grid subdivisions, zero-baseline highlighting, live values legend overlay, and real-time numeric readouts.
+Real-time scrolling telemetry strip chart and oscilloscope for high-rate DAQ.
+- **High Performance (60+ FPS at 100+ kHz)**: Real-time acquisition capable of handling millions of samples per channel at 60 FPS using zero-allocation circular SOA ring buffers (up to $2^{24}$ capacity) and Hi-DPI cached reticles.
+- **M4 Min/Max Pixel Decimation**: Zero-aliasing peak preservation engine ensuring transient spikes and sensor anomalies are never lost, bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer.
+- **Nanosecond Real-Time Axis**: True `std::chrono::nanoseconds` time representation with dynamic 1-2-5 tick grid, relative (`-10 s … 0 s`) or absolute wall-clock (`HH:mm:ss.zzz`) formats.
+- **Robust Telemetry Handling**: Automatic inter-sample gap detection (4x EMA threshold) and resilience to sensor dropouts (raw NaN/±∞ fault preservation without painter errors).
+- **Multi-Channel & Autoscale**: Independent channels, smooth dynamic Y auto-scaling, live telemetry legend overlay, and full backward compatibility. See [StripChart Guide](docs/strip_chart.md).
 
 ### 7. `IndustrialSwitch` (`qiw::IndustrialSwitch`)
 Heavy-duty industrial toggle lever and rocker switch with safety guard.
