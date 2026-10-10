@@ -15,14 +15,14 @@
 
 /**
  * \class AnnunciatorPanel
- * \brief Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 standard.
+ * \brief Industrial alarm annunciator window matrix implementing ISA-18.1 sequences A and M.
  *
  * AnnunciatorPanel emulates hardwired and SCADA alarm annunciator light panels used in
  * process control rooms, power generation stations, maritime vessels, and industrial plants.
  *
  * Features include:
  * - Configurable N x M grid of backlit acrylic indicator tiles with engraved legends.
- * - Conformance with ANSI/ISA-18.1 alarm sequences (Sequence A: Automatic Reset, Sequence M: Manual Reset).
+ * - Implementation of ISA-18.1 alarm sequences (Sequence A: Automatic Reset, Sequence M: Manual Reset).
  * - Multi-stage tile states: Normal (dark), Unacknowledged (rapid flash), Acknowledged (solid on), and Ringback (slow flash).
  * - Alarm severity classification: Critical (Red), Warning (Amber), Advisory (Cyan/White).
  * - Global operations: Acknowledge (ACK), Silence (Mute horn), Reset, and Lamp Test (simultaneous bulb check).

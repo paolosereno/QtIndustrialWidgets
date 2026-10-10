@@ -25,7 +25,7 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 - **REUSE Compliant**: 100% compliant with the REUSE specification (ISO/IEC 5962:2021) for accurate, machine-readable licensing.
 - **Automated SBOM**: An updated Software Bill of Materials (SBOM in SPDX/CycloneDX format) is automatically built and attached as an asset to every official GitHub release.
 - **Zero Third-Party Dependencies**: Self-contained library requiring only official Qt modules, eliminating supply-chain attack vectors and external dependency drift.
-- **Continuous Quality Assurance**: Multi-platform automated CI/CD pipeline covering Linux, Windows, and macOS with 100% passing test coverage.
+- **Continuous Quality Assurance**: Multi-platform automated CI/CD pipeline covering Linux, Windows, and macOS with 100% test pass rate.
 
 ---
 
@@ -124,9 +124,9 @@ Multi-channel industrial VU and level meter with peak hold.
 - **Dual Orientation & Scale**: Vertical and horizontal mounting with graduated dB or engineering units scale.
 
 ### 9. `AnnunciatorPanel` (`qiw::AnnunciatorPanel`)
-Industrial alarm annunciator window matrix conforming to the ANSI/ISA-18.1 standard.
+Industrial alarm annunciator window matrix implementing ISA-18.1 sequences A and M.
 - **Configurable Matrix**: Flexible N x M grid of backlit acrylic indicator tiles with engraved multi-line legends.
-- **ANSI/ISA-18.1 Sequences**: Sequence A (Automatic Reset) and Sequence M (Manual Reset) logic handling Normal, Unacknowledged (rapid flash), Acknowledged (steady lit), and Ringback (slow flash) alarm states.
+- **ISA-18.1 Sequences A and M**: Sequence A (Automatic Reset) and Sequence M (Manual Reset) logic handling Normal, Unacknowledged (rapid flash), Acknowledged (steady lit), and Ringback (slow flash) alarm states.
 - **Alarm Classification**: Tri-level priority grading: Critical (Red), Warning (Amber), and Advisory (Cyan).
 - **Control Station Operations**: Dedicated Acknowledge (ACK), Silence (horn mute), Reset, and Lamp Test functionality with `audibleHornChanged(bool)` horn signal.
 - **Interactive Operator Action**: Click directly on individual tiles to acknowledge alarms, with Hi-DPI frame caching for zero-overhead rendering.
