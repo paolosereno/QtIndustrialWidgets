@@ -2,6 +2,29 @@
 #
 # SPDX-License-Identifier: MIT
 
+add_library(M4Decimator OBJECT
+    internal/M4Decimator.cpp
+    internal/M4Decimator.h
+)
+
+target_include_directories(M4Decimator
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(M4Decimator
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+)
+
+set_target_properties(M4Decimator PROPERTIES
+    AUTOMOC ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(QtIndustrialWidgets SHARED
     RadialGauge.cpp
     LinearGauge.cpp
@@ -13,6 +36,7 @@ add_library(QtIndustrialWidgets SHARED
     LevelMeter.cpp
     AnnunciatorPanel.cpp
     Compass.cpp
+    $<TARGET_OBJECTS:M4Decimator>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h

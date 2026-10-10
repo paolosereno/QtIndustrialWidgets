@@ -32,3 +32,25 @@ add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
 add_industrial_widget_test(tst_AnnunciatorPanel)
 add_industrial_widget_test(tst_Compass)
+
+add_executable(tst_M4Decimator
+    tst_M4Decimator.cpp
+    $<TARGET_OBJECTS:M4Decimator>
+)
+target_link_libraries(tst_M4Decimator
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_M4Decimator
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_M4Decimator PROPERTIES
+    AUTOMOC ON
+)
+add_test(NAME tst_M4Decimator COMMAND tst_M4Decimator)
