@@ -12,8 +12,8 @@ SPDX-License-Identifier: MIT
 [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
-[![Tests Defined](https://img.shields.io/badge/tests%20defined-80-blue.svg)](tests/)
-[![Tests Passed](https://img.shields.io/badge/tests%20passed-80%20%2F%2080%20(100%25)-brightgreen.svg)](tests/)
+[![Tests Defined](https://img.shields.io/badge/tests%20defined-122-blue.svg)](tests/)
+[![Tests Passed](https://img.shields.io/badge/tests%20passed-122%20%2F%20122%20(100%25)-brightgreen.svg)](tests/)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
@@ -183,7 +183,7 @@ include(FetchContent)
 FetchContent_Declare(
     QtIndustrialWidgets
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
-    GIT_TAG        v1.0.0
+    GIT_TAG        v2.1.1
 )
 
 # Optional: Disable examples and designer plugin when fetching as a dependency
