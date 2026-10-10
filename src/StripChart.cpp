@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/StripChart.h>
 #include "internal/M4Decimator.h"
+#include "internal/StripChartGeometry.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -370,7 +371,10 @@ bool StripChart::isTimeWindowFullyCovered() const
 
     if (tLatest == std::numeric_limits<qint64>::min()) return true;
 
-    qint64 tStart = tLatest - d->m_timeSpan.count();
+    QRectF pRect = plotArea();
+    int W_dev = std::max(1, static_cast<int>(std::round(pRect.width() * devicePixelRatioF())));
+    auto win = internal::computeTimeWindow(tLatest, d->m_timeSpan.count(), W_dev);
+    qint64 tStart = win.tStart;
 
     for (const auto &ch : d->m_channels) {
         if (!ch.visible || ch.count == 0) continue;
@@ -728,19 +732,33 @@ void StripChart::updateAutoScaling()
     double minVal = std::numeric_limits<double>::infinity();
     double maxVal = -std::numeric_limits<double>::infinity();
 
+    qint64 timeStart = 0;
+    if (d_ptr->m_xAxisMode == XAxisMode::Time) {
+        qint64 tLatest = std::numeric_limits<qint64>::min();
+        for (const auto &ch : d_ptr->m_channels) {
+            if (ch.visible && ch.count > 0 && ch.lastTimestamp > tLatest) {
+                tLatest = ch.lastTimestamp;
+            }
+        }
+        if (tLatest == std::numeric_limits<qint64>::min()) {
+            tLatest = d_ptr->arrivalTimestampNs();
+        }
+        QRectF pRect = plotArea();
+        int W_dev = std::max(1, static_cast<int>(std::round(pRect.width() * devicePixelRatioF())));
+        auto win = internal::computeTimeWindow(tLatest, d_ptr->m_timeSpan.count(), W_dev);
+        timeStart = win.tStart;
+    }
+
     for (const auto &ch : d_ptr->m_channels) {
         if (!ch.visible || ch.count == 0) continue;
 
         if (d_ptr->m_xAxisMode == XAxisMode::Time) {
-            qint64 timeSpanNs = d_ptr->m_timeSpan.count();
-            qint64 tLatest = ch.lastTimestamp;
-            qint64 tStart = tLatest - timeSpanNs;
             size_t start = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
 
             for (size_t i = 0; i < ch.count; ++i) {
                 size_t bufIdx = (start + i) % static_cast<size_t>(d_ptr->m_capacity);
                 qint64 t = ch.timestamps[bufIdx];
-                if (t < tStart) continue;
+                if (t < timeStart) continue;
                 double v = ch.values[bufIdx];
                 if (!std::isfinite(v)) continue;
                 hasData = true;
@@ -982,9 +1000,9 @@ void StripChart::paintEvent(QPaintEvent *)
         }
 
         qint64 spanNs = d_ptr->m_timeSpan.count();
-        qint64 dt_px = std::max(qint64(1), spanNs / W_dev);
-        qint64 tEnd = internal::M4Decimator::floorDiv(tLatest + dt_px - 1, dt_px) * dt_px;
-        qint64 tStart = tEnd - spanNs;
+        auto win = internal::computeTimeWindow(tLatest, spanNs, W_dev);
+        qint64 tEnd = win.tEnd;
+        qint64 tStart = win.tStart;
 
         qint64 tickStepNs = calculate125TickStep(spanNs, 8);
         qint64 firstTick = internal::M4Decimator::floorDiv(tStart + tickStepNs - 1, tickStepNs) * tickStepNs;
@@ -1033,11 +1051,11 @@ void StripChart::paintEvent(QPaintEvent *)
         }
 
         qint64 timeSpanNs = d_ptr->m_timeSpan.count();
-        qint64 dt_px = std::max(qint64(1), timeSpanNs / W_dev);
 
         // TODO: Display-clock-driven scrolling with fixed latency for block-delivered DAQ data
-        qint64 tEnd = internal::M4Decimator::floorDiv(tLatest + dt_px - 1, dt_px) * dt_px;
-        qint64 tStart = tEnd - timeSpanNs;
+        auto win = internal::computeTimeWindow(tLatest, timeSpanNs, W_dev);
+        qint64 tStart = win.tStart;
+        qint64 dt_px = win.dtPx;
 
         for (const auto &ch : d_ptr->m_channels) {
             if (!ch.visible || ch.count < 1) continue;
@@ -1102,9 +1120,8 @@ void StripChart::paintEvent(QPaintEvent *)
             bool hasDrawnPt = false;
 
             if (doDecimate) {
-                qint64 kStart = internal::M4Decimator::floorDiv(tStart, dt_px);
                 auto segments = internal::M4Decimator::decimateToSegments(
-                    visT.data(), visY.data(), visibleSamples, dt_px, kStart, W_dev, gapThresh);
+                    visT.data(), visY.data(), visibleSamples, dt_px, win.kStart, win.numBuckets, gapThresh);
 
                 for (const auto &seg : segments) {
                     if (seg.empty()) continue;
@@ -1198,10 +1215,9 @@ void StripChart::paintEvent(QPaintEvent *)
                     sampleValues[i] = ch.values[bufIdx];
                 }
 
-                qint64 samplesPerBucket = std::max(qint64(1), static_cast<qint64>(d_ptr->m_capacity) / W_dev);
-                qint64 kStart = internal::M4Decimator::floorDiv(sampleIndices[0], samplesPerBucket);
+                auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
                 auto segments = internal::M4Decimator::decimateToSegments(
-                    sampleIndices.data(), sampleValues.data(), ch.count, samplesPerBucket, kStart, W_dev, 0);
+                    sampleIndices.data(), sampleValues.data(), ch.count, ib.samplesPerBucket, ib.kStart, ib.numBuckets, 0);
 
                 for (const auto &seg : segments) {
                     if (seg.empty()) continue;

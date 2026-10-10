@@ -27,7 +27,28 @@ add_industrial_widget_test(tst_LinearGauge)
 add_industrial_widget_test(tst_SevenSegmentDisplay)
 add_industrial_widget_test(tst_LedIndicator)
 add_industrial_widget_test(tst_IndustrialKnob)
-add_industrial_widget_test(tst_StripChart)
+add_executable(tst_StripChart
+    tst_StripChart.cpp
+    $<TARGET_OBJECTS:M4Decimator>
+)
+target_link_libraries(tst_StripChart
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_StripChart
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_StripChart PROPERTIES
+    AUTOMOC ON
+)
+add_test(NAME tst_StripChart COMMAND tst_StripChart)
+
 add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
 add_industrial_widget_test(tst_AnnunciatorPanel)

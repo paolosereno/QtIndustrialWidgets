@@ -5,6 +5,8 @@
 add_library(M4Decimator OBJECT
     internal/M4Decimator.cpp
     internal/M4Decimator.h
+    internal/StripChartGeometry.cpp
+    internal/StripChartGeometry.h
 )
 
 target_include_directories(M4Decimator
