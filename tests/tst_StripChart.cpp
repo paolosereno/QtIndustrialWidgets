@@ -4,7 +4,10 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/StripChart.h>
+#include <internal/StripChartGeometry.h>
+#include <internal/M4Decimator.h>
 #include <QtGui/QPixmap>
+#include <QtGui/QImage>
 
 #include <cmath>
 #include <limits>
@@ -50,6 +53,8 @@ private Q_SLOTS:
     void bulkApiAndSignalEmission();
     void legacyCompatibilityAndSlotPointer();
     void benchmarkHighRatePaint();
+    void computeIndexBucketsGrid();
+    void sampleIndexDecimationRecentSamples();
 };
 
 void tst_StripChart::defaultValues()
@@ -449,6 +454,109 @@ void tst_StripChart::benchmarkHighRatePaint()
     QBENCHMARK {
         chart.render(&pix);
     }
+}
+
+void tst_StripChart::computeIndexBucketsGrid()
+{
+    struct TestCase {
+        int capacity;
+        int widthDev;
+        quint64 totalSamples;
+        size_t count;
+    };
+
+    std::vector<TestCase> cases = {
+        {2500, 1000, 2500, 2500},            // capacity = 2500, W = 1000
+        {2000, 1000, 2000, 2000},            // capacity an exact multiple of W
+        {2001, 1000, 2001, 2001},            // capacity = 2W + 1
+        {2500, 1000, 500, 500},              // totalSamples < capacity
+        {2500, 1000, 100003, 2500},          // totalSamples >> capacity with non-aligned start
+        {300, 800, 300, 300},                // capacity < W
+        {10000, 1000, 50000, 10000}          // large capacity
+    };
+
+    for (const auto &tc : cases) {
+        auto ib = internal::computeIndexBuckets(tc.totalSamples, tc.count, tc.capacity, tc.widthDev);
+        QVERIFY(ib.samplesPerBucket >= 1);
+        QVERIFY(ib.numBuckets <= tc.widthDev + 1);
+
+        quint64 startCounter = (tc.totalSamples >= tc.count) ? (tc.totalSamples - tc.count) : 0;
+        for (size_t j = 0; j < tc.count; ++j) {
+            qint64 idx = static_cast<qint64>(startCounter + j);
+            qint64 bucket = internal::M4Decimator::floorDiv(idx, ib.samplesPerBucket);
+            QVERIFY2(bucket >= ib.kStart, qPrintable(QString("bucket %1 < kStart %2").arg(bucket).arg(ib.kStart)));
+            QVERIFY2(bucket < ib.kStart + ib.numBuckets,
+                     qPrintable(QString("bucket %1 >= kStart+numBuckets %2 in case cap=%3, W=%4, total=%5, count=%6, spb=%7, numB=%8")
+                               .arg(bucket).arg(ib.kStart + ib.numBuckets).arg(tc.capacity).arg(tc.widthDev).arg(tc.totalSamples).arg(tc.count).arg(ib.samplesPerBucket).arg(ib.numBuckets)));
+        }
+    }
+}
+
+void tst_StripChart::sampleIndexDecimationRecentSamples()
+{
+    auto testMode = [](StripChart::DecimationMode mode) -> double {
+        StripChart chart;
+        chart.setGridVisible(false);
+        chart.setLegendVisible(false);
+        chart.setYRange(0.0, 10.0);
+        chart.setCapacity(2500);
+        chart.setDecimationMode(mode);
+
+        // Compute widget dimensions for W_dev == 1000 with DPR == 1.0
+        // plotArea formula: leftMargin = 42.0, rightMargin = 12.0 -> width = 1000 + 54 = 1054
+        // topMargin = 12.0 (legend off), bottomMargin = 16.0 (SampleIndex mode) -> height = 400
+        constexpr double pLeft = 42.0;
+        constexpr double pTop = 12.0;
+        constexpr double pWidth = 1000.0;
+        chart.resize(1054, 400);
+
+        int ch = chart.addChannel(QStringLiteral("TestTrace"), Qt::red, 1.0);
+        for (int i = 0; i < 1900; ++i) {
+            chart.addDataPoint(ch, 0.0);
+        }
+        for (int i = 0; i < 600; ++i) {
+            chart.addDataPoint(ch, 10.0);
+        }
+
+        QImage img(chart.size(), QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::black);
+        chart.render(&img);
+
+        // Sample 1900 x position: frac = 1900 / 2499
+        double frac1900 = 1900.0 / 2499.0;
+        double x1900 = pLeft + frac1900 * pWidth;
+        int xStart = static_cast<int>(std::ceil(x1900));
+        int xEnd = static_cast<int>(std::floor(pLeft + pWidth));
+
+        int totalColumns = xEnd - xStart + 1;
+        int matchedColumns = 0;
+
+        // Top band of the plot: value 10.0 maps to pTop
+        int yTopMin = static_cast<int>(pTop);
+        int yTopMax = static_cast<int>(pTop + 10.0);
+
+        for (int x = xStart; x <= xEnd; ++x) {
+            bool foundTrace = false;
+            for (int y = yTopMin; y <= yTopMax; ++y) {
+                QRgb px = img.pixel(x, y);
+                if (qRed(px) > 60 && qRed(px) > qGreen(px) + 30 && qRed(px) > qBlue(px) + 30) {
+                    foundTrace = true;
+                    break;
+                }
+            }
+            if (foundTrace) {
+                matchedColumns++;
+            }
+        }
+
+        return static_cast<double>(matchedColumns) / static_cast<double>(totalColumns);
+    };
+
+    double ratioOff = testMode(StripChart::DecimationMode::Off);
+    QVERIFY2(ratioOff >= 0.95, qPrintable(QString("DecimationMode::Off ratio %1 < 0.95").arg(ratioOff)));
+
+    double ratioAlways = testMode(StripChart::DecimationMode::Always);
+    QVERIFY2(ratioAlways >= 0.95, qPrintable(QString("DecimationMode::Always ratio %1 < 0.95").arg(ratioAlways)));
 }
 
 QTEST_MAIN(tst_StripChart)

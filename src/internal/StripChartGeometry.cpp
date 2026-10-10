@@ -30,11 +30,21 @@ IndexBuckets computeIndexBuckets(quint64 totalSamples, size_t count,
     IndexBuckets ib;
     int w = std::max(1, widthDev);
     int cap = std::max(1, capacity);
-    ib.samplesPerBucket = std::max(qint64(1), static_cast<qint64>(cap) / w);
+    ib.samplesPerBucket = std::max(qint64(1), static_cast<qint64>(cap + w - 1) / w);
+
+    if (count == 0) {
+        quint64 startCounter = totalSamples;
+        ib.kStart = M4Decimator::floorDiv(static_cast<qint64>(startCounter), ib.samplesPerBucket);
+        ib.numBuckets = 1;
+        return ib;
+    }
+
     quint64 startCounter = (totalSamples >= count) ? (totalSamples - count) : 0;
     qint64 firstAbsoluteIndex = static_cast<qint64>(startCounter);
+    qint64 lastAbsoluteIndex = static_cast<qint64>(startCounter + count - 1);
     ib.kStart = M4Decimator::floorDiv(firstAbsoluteIndex, ib.samplesPerBucket);
-    ib.numBuckets = w;
+    qint64 kLast = M4Decimator::floorDiv(lastAbsoluteIndex, ib.samplesPerBucket);
+    ib.numBuckets = static_cast<int>(kLast - ib.kStart + 1);
     return ib;
 }
 
