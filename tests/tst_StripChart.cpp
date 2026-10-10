@@ -55,6 +55,9 @@ private Q_SLOTS:
     void benchmarkHighRatePaint();
     void computeIndexBucketsGrid();
     void sampleIndexDecimationRecentSamples();
+    void computeTimeWindowBoundaries();
+    void timeBucketBoundarySpikePreservation();
+    void timeWindowCoverageConsistency();
 };
 
 void tst_StripChart::defaultValues()
@@ -557,6 +560,145 @@ void tst_StripChart::sampleIndexDecimationRecentSamples()
 
     double ratioAlways = testMode(StripChart::DecimationMode::Always);
     QVERIFY2(ratioAlways >= 0.95, qPrintable(QString("DecimationMode::Always ratio %1 < 0.95").arg(ratioAlways)));
+}
+
+void tst_StripChart::computeTimeWindowBoundaries()
+{
+    struct Config {
+        qint64 spanNs;
+        int widthDev;
+    };
+
+    std::vector<Config> configs = {
+        {10000000000LL, 1000}, // 10 s, W=1000 -> dtPx = 10 ms (exact multiple)
+        {10000000000LL, 800},  // 10 s, W=800 -> dtPx = 12.5 ms
+        {7000000000LL, 1000},  // 7 s, W=1000 -> dtPx = 7 ms
+        {1000000007LL, 1000},  // span not a multiple of W_dev: dtPx = 1 ms
+        {1000000LL, 500}       // 1 ms, W=500 -> dtPx = 2000 ns
+    };
+
+    for (const auto &cfg : configs) {
+        qint64 dtPx = std::max(qint64(1), cfg.spanNs / cfg.widthDev);
+
+        std::vector<qint64> testValues = {
+            0,
+            dtPx - 1,
+            dtPx,
+            10 * dtPx,
+            10 * dtPx + 1,
+            1000000000000000000LL, // ~10^18
+            -100000000LL           // negative timestamp
+        };
+
+        for (qint64 tLatest : testValues) {
+            auto win = internal::computeTimeWindow(tLatest, cfg.spanNs, cfg.widthDev);
+
+            QVERIFY2(win.tEnd % win.dtPx == 0,
+                     qPrintable(QString("tEnd %1 not multiple of dtPx %2 (tLatest=%3)").arg(win.tEnd).arg(win.dtPx).arg(tLatest)));
+            QVERIFY2(win.tStart <= tLatest && tLatest < win.tEnd,
+                     qPrintable(QString("tLatest %1 not in [tStart %2, tEnd %3) (dtPx=%4)").arg(tLatest).arg(win.tStart).arg(win.tEnd).arg(win.dtPx)));
+            QCOMPARE(win.tEnd - win.tStart, cfg.spanNs);
+
+            qint64 kLatest = internal::M4Decimator::floorDiv(tLatest, win.dtPx);
+            QVERIFY2(kLatest >= win.kStart && kLatest < win.kStart + win.numBuckets,
+                     qPrintable(QString("kLatest %1 not in [kStart %2, %3) (tLatest=%4)").arg(kLatest).arg(win.kStart).arg(win.kStart + win.numBuckets).arg(tLatest)));
+            QVERIFY2(win.numBuckets <= cfg.widthDev + 1,
+                     qPrintable(QString("numBuckets %1 > W_dev+1 %2").arg(win.numBuckets).arg(cfg.widthDev + 1)));
+        }
+    }
+}
+
+void tst_StripChart::timeBucketBoundarySpikePreservation()
+{
+    auto testSpike = [](StripChart::DecimationMode mode, qint64 spikeTimeNs) -> bool {
+        StripChart chart;
+        chart.setXAxisMode(StripChart::XAxisMode::Time);
+        chart.setTimeSpan(std::chrono::seconds(1)); // 1 s span
+        chart.setGapThreshold(std::chrono::seconds(10));
+        chart.setCapacity(25000);
+        chart.setDecimationMode(mode);
+        chart.setGridVisible(false);
+        chart.setLegendVisible(false);
+        chart.setYRange(0.0, 10.0);
+
+        // Widget sizing for W_dev == 1000 (DPR 1.0)
+        // Time mode: leftMargin = 42.0, rightMargin = 12.0 -> width = 1054
+        // topMargin = 12.0, bottomMargin = 26.0 -> height = 400
+        chart.resize(1054, 400);
+
+        int ch = chart.addChannel(QStringLiteral("SpikeChannel"), Qt::red, 1.0);
+
+        // Feed 20 000 samples of 0.0 at 100 us steps from t = 0
+        std::vector<std::chrono::nanoseconds> t(20000);
+        std::vector<double> v(20000, 0.0);
+        for (int i = 0; i < 20000; ++i) {
+            t[i] = std::chrono::nanoseconds(static_cast<qint64>(i) * 100000LL); // 100 us
+        }
+        chart.addSamples(ch, t.data(), v.data(), 20000);
+
+        // Spike of 10.0 at spikeTimeNs
+        chart.addSample(ch, std::chrono::nanoseconds(spikeTimeNs), 10.0);
+
+        QImage img(chart.size(), QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::black);
+        chart.render(&img);
+
+        constexpr double pLeft = 42.0;
+        constexpr double pTop = 12.0;
+        constexpr double pWidth = 1000.0;
+
+        int xEnd = static_cast<int>(std::floor(pLeft + pWidth));
+        int xStart = xEnd - 5;
+        int yTopMin = static_cast<int>(pTop);
+        int yTopMax = static_cast<int>(pTop + 10.0);
+
+        bool foundSpike = false;
+        for (int x = xStart; x <= xEnd; ++x) {
+            for (int y = yTopMin; y <= yTopMax; ++y) {
+                QRgb px = img.pixel(x, y);
+                if (qRed(px) > 60 && qRed(px) > qGreen(px) + 30 && qRed(px) > qBlue(px) + 30) {
+                    foundSpike = true;
+                    break;
+                }
+            }
+            if (foundSpike) break;
+        }
+        return foundSpike;
+    };
+
+    // Control case: spike at t = 2s + 1ns should pass even on older code
+    bool controlOff = testSpike(StripChart::DecimationMode::Off, 2000000001LL);
+    QVERIFY(controlOff);
+    bool controlAlways = testSpike(StripChart::DecimationMode::Always, 2000000001LL);
+    QVERIFY(controlAlways);
+
+    // Defect case: spike at exactly t = 2s (exact multiple of dtPx = 1ms)
+    bool spikeAlways = testSpike(StripChart::DecimationMode::Always, 2000000000LL);
+    QVERIFY2(spikeAlways, "Spike at exact bucket boundary t=2.0s was dropped in DecimationMode::Always");
+
+    bool spikeOff = testSpike(StripChart::DecimationMode::Off, 2000000000LL);
+    QVERIFY2(spikeOff, "Spike at exact bucket boundary t=2.0s was dropped in DecimationMode::Off");
+}
+
+void tst_StripChart::timeWindowCoverageConsistency()
+{
+    StripChart chart;
+    chart.setXAxisMode(StripChart::XAxisMode::Time);
+    chart.setTimeSpan(std::chrono::seconds(1)); // 1 s span
+    chart.setCapacity(1000);
+    int ch = chart.addChannel(QStringLiteral("Trace"), Qt::yellow);
+
+    chart.resize(1054, 400); // W_dev = 1000 -> dtPx = 1 ms
+
+    std::vector<std::chrono::nanoseconds> t(1000);
+    std::vector<double> v(1000, 1.0);
+    for (int i = 0; i < 1000; ++i) {
+        t[i] = std::chrono::nanoseconds(1000500000LL + static_cast<qint64>(i) * 1000500LL);
+    }
+    t[999] = std::chrono::nanoseconds(2000000000LL);
+    chart.addSamples(ch, t.data(), v.data(), 1000);
+
+    QVERIFY(chart.isTimeWindowFullyCovered());
 }
 
 QTEST_MAIN(tst_StripChart)

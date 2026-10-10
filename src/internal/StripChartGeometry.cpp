@@ -17,10 +17,11 @@ TimeWindow computeTimeWindow(qint64 tLatest, qint64 timeSpanNs, int widthDev)
     int w = std::max(1, widthDev);
     qint64 span = std::max(qint64(1), timeSpanNs);
     win.dtPx = std::max(qint64(1), span / w);
-    win.tEnd = M4Decimator::floorDiv(tLatest + win.dtPx - 1, win.dtPx) * win.dtPx;
+    win.tEnd = (M4Decimator::floorDiv(tLatest, win.dtPx) + 1) * win.dtPx;
     win.tStart = win.tEnd - span;
     win.kStart = M4Decimator::floorDiv(win.tStart, win.dtPx);
-    win.numBuckets = w;
+    qint64 kEnd = win.tEnd / win.dtPx;
+    win.numBuckets = static_cast<int>(kEnd - win.kStart);
     return win;
 }
 
