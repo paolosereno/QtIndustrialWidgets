@@ -71,6 +71,17 @@ private Q_SLOTS:
     void widgetM4Equivalence();
     void lazyAutoscale();
     void hysteresis();
+    void decimatedSingleDropout_data();
+    void decimatedSingleDropout();
+    void decimatedDropoutAtWindowEdges_data();
+    void decimatedDropoutAtWindowEdges();
+    void decimatedConsecutiveDropouts_data();
+    void decimatedConsecutiveDropouts();
+    void decimatedDropoutStreaming_data();
+    void decimatedDropoutStreaming();
+    void decimatedDropoutEviction_data();
+    void decimatedDropoutEviction();
+    void autoscaleUsesFiniteValuesOfBlankedBucket();
 };
 
 void tst_StripChart::defaultValues()
@@ -410,12 +421,9 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
         int xNanDev = static_cast<int>(std::round(mapIndex(*chart, 50000) * dpr));
         auto ysNan = traceYAtColumn(img, chColor, xNanDev, plotTopDev, plotBottomDev, 60);
 
-        // The specification expects 2 segments and no trace in the column of the bucket containing the NaN.
-        // Current M4Decimator emits finite points in a bucket with non-finite values as an isolated segment (yielding 3 segments).
-        QEXPECT_FAIL("", "Decimator draws finite samples in a bucket with non-finite values instead of dropping the bucket", Continue);
+        // The bucket containing the NaN is not drawn: 2 segments and no trace in its column.
         QCOMPARE(chDiag.segments.size(), 2UL);
 
-        QEXPECT_FAIL("", "Decimator draws finite samples in a bucket with non-finite values instead of dropping the bucket", Continue);
         QVERIFY2(ysNan.empty(), qPrintable(QString("Trace pixel found in decimated NaN column %1").arg(xNanDev)));
     }
 }
@@ -1699,6 +1707,469 @@ void tst_StripChart::hysteresis()
     QVERIFY2(maxAfterHysteresis < maxAfterSpike,
              qPrintable(QString("Expected shrink after 30 frames: got %1 vs %2").arg(maxAfterHysteresis).arg(maxAfterSpike)));
     QVERIFY(maxAfterHysteresis < 50.0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sensor dropouts in decimated traces: a decimation bucket that contains a non-finite sample is
+// not drawn, so its pixel column stays blank and the trace is broken on both sides.
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+const QColor kDropoutColour(255, 0, 0);
+
+double smoothValue(qint64 i, qint64 n)
+{
+    return 50.0 + 30.0 * std::sin(6.283185307179586 * static_cast<double>(i) / static_cast<double>(n));
+}
+
+std::unique_ptr<StripChart> makeDropoutChart(StripChart::XAxisMode mode, int widgetWidth, qint64 spanNs, int capacity)
+{
+    auto chart = makeChart(widgetWidth, 300, 0.0, 100.0);
+    chart->setXAxisMode(mode);
+    if (mode == StripChart::XAxisMode::Time) {
+        chart->setTimeSpan(std::chrono::nanoseconds(spanNs));
+    }
+    chart->setCapacity(capacity);
+    chart->setDecimationMode(StripChart::DecimationMode::Always);
+    chart->setGridVisible(false);
+    chart->setLegendVisible(false);
+    return chart;
+}
+
+// Appends samples with absolute indices [first, first + count): a smooth signal (period `shapeN`
+// samples), with NaN at the indices listed in `nanIndices`. Time mode uses t = index * sampleDtNs.
+void appendDropoutSamples(StripChart &chart, int ch, qint64 first, qint64 count, qint64 sampleDtNs,
+                          qint64 shapeN, const std::vector<qint64> &nanIndices)
+{
+    std::vector<double> values(static_cast<size_t>(count));
+    for (qint64 j = 0; j < count; ++j) {
+        values[static_cast<size_t>(j)] = smoothValue(first + j, shapeN);
+    }
+    for (qint64 n : nanIndices) {
+        if (n >= first && n < first + count) {
+            values[static_cast<size_t>(n - first)] = std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    if (chart.xAxisMode() == StripChart::XAxisMode::Time) {
+        chart.addUniformSamples(ch, std::chrono::nanoseconds(first * sampleDtNs),
+                                std::chrono::nanoseconds(sampleDtNs), values.data(), count);
+    } else {
+        for (double v : values) {
+            chart.addDataPoint(ch, v);
+        }
+    }
+}
+
+// Decimation bucket that holds the sample with absolute index `index` in the last frame.
+qint64 bucketOfSample(const StripChart &chart, qint64 index, qint64 sampleDtNs)
+{
+    const auto &f = StripChartTestAccess::lastFrame(chart);
+    if (chart.xAxisMode() == StripChart::XAxisMode::Time) {
+        return internal::M4Decimator::floorDiv(index * sampleDtNs, f.dtPx);
+    }
+    return internal::M4Decimator::floorDiv(index, f.samplesPerBucket);
+}
+
+// Logical x range [x0, x1) of decimation bucket k in the last frame, computed with the same
+// formula as the paint code. `firstRetained` is the absolute index of the oldest retained sample
+// (SampleIndex mode positions samples relative to it).
+std::pair<double, double> bucketXRange(const StripChart &chart, qint64 k, qint64 firstRetained = 0)
+{
+    const auto &f = StripChartTestAccess::lastFrame(chart);
+    if (chart.xAxisMode() == StripChart::XAxisMode::Time) {
+        return {mapT(chart, k * f.dtPx), mapT(chart, (k + 1) * f.dtPx)};
+    }
+    auto xOf = [&](qint64 i) {
+        double frac = static_cast<double>(i - firstRetained) / (chart.capacity() - 1);
+        return f.plotRect.left() + frac * f.plotRect.width();
+    };
+    return {xOf(k * f.samplesPerBucket), xOf((k + 1) * f.samplesPerBucket)};
+}
+
+// True when both bucket edges fall on device pixel boundaries, so the bucket covers exactly one
+// device column.
+bool bucketAlignedToDeviceColumn(double x0, double x1, double dpr)
+{
+    const double a = x0 * dpr;
+    const double b = x1 * dpr;
+    return std::abs(a - std::round(a)) < 0.01 && std::abs(b - std::round(b)) < 0.01
+        && std::round(b) - std::round(a) == 1.0;
+}
+
+// Device column of a bucket: the column that contains the bucket's centre.
+int bucketColumn(double x0, double x1, double dpr)
+{
+    return static_cast<int>(std::floor((x0 + x1) * 0.5 * dpr));
+}
+
+int verticesInRange(const ChannelFrameDiagnostics &d, double x0, double x1)
+{
+    int n = 0;
+    for (const auto &seg : d.segments) {
+        for (const auto &pt : seg) {
+            if (pt.x() >= x0 && pt.x() < x1) {
+                ++n;
+            }
+        }
+    }
+    return n;
+}
+
+bool columnHasTrace(const QImage &img, const StripChart &chart, int xDev)
+{
+    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const double dpr = chart.devicePixelRatioF();
+    const int top = static_cast<int>(std::floor(f.plotRect.top() * dpr));
+    const int bottom = static_cast<int>(std::ceil(f.plotRect.bottom() * dpr));
+    return !traceYAtColumn(img, kDropoutColour, xDev, top, bottom, 60).empty();
+}
+
+// TODO(#?): replace "#?" with the number of the issue on aligning decimation buckets to device
+// pixel columns, once it exists.
+const char *const kBucketNotPixelAligned =
+    "Bucket edges are not aligned to device pixel columns, so the blank bucket does not cover a whole "
+    "device column (see issue #? on bucket/pixel-column alignment)";
+
+} // namespace
+
+void tst_StripChart::decimatedSingleDropout_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<int>("widgetWidth");
+    QTest::addColumn<qint64>("spanNs");
+    QTest::addColumn<qint64>("sampleDtNs");
+    QTest::addColumn<int>("sampleCount");
+    QTest::addColumn<qint64>("nanIndex");
+    QTest::addColumn<bool>("aligned");
+
+    const int time = static_cast<int>(StripChart::XAxisMode::Time);
+    const int index = static_cast<int>(StripChart::XAxisMode::SampleIndex);
+
+    // 1000 px plot: 1 s span and 1M samples give buckets on device pixel boundaries (DPR 1 and 2).
+    QTest::newRow("Time, aligned") << time << 1054 << qint64(1000000000) << qint64(1000) << 1000000 << qint64(500300) << true;
+    QTest::newRow("SampleIndex, aligned") << index << 1054 << qint64(0) << qint64(0) << 1000000 << qint64(500300) << true;
+    // Geometries where bucket edges fall 0.25-0.75 px inside a device column (DPR 1 and 2).
+    QTest::newRow("Time, misaligned") << time << 1974 << qint64(1000000) << qint64(10) << 100000 << qint64(55362) << false;
+    QTest::newRow("SampleIndex, misaligned") << index << 1000 << qint64(0) << qint64(0) << 1000000 << qint64(400268) << false;
+}
+
+void tst_StripChart::decimatedSingleDropout()
+{
+    QFETCH(int, axisMode);
+    QFETCH(int, widgetWidth);
+    QFETCH(qint64, spanNs);
+    QFETCH(qint64, sampleDtNs);
+    QFETCH(int, sampleCount);
+    QFETCH(qint64, nanIndex);
+    QFETCH(bool, aligned);
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), widgetWidth, spanNs, sampleCount);
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, sampleCount, sampleDtNs, sampleCount, {nanIndex});
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const double dpr = chart->devicePixelRatioF();
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+    QCOMPARE(frame.channels.size(), 1UL);
+    const auto &chDiag = frame.channels[0];
+    QCOMPARE(chDiag.path, RenderPath::Decimated);
+
+    const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+    const auto [x0, x1] = bucketXRange(*chart, k);
+    // The row really has the geometry it claims
+    QCOMPARE(bucketAlignedToDeviceColumn(x0, x1, dpr), aligned);
+
+    // Hook: no vertex in the NaN bucket, trace split into exactly two segments around it
+    QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+    QCOMPARE(chDiag.segments.size(), 2UL);
+    QVERIFY(chDiag.segments[0].last().x() < x0);
+    QVERIFY(chDiag.segments[1].first().x() >= x1);
+
+    // Pixels: the bucket's column is blank, its neighbours are drawn
+    const int col = bucketColumn(x0, x1, dpr);
+    QVERIFY2(columnHasTrace(img, *chart, col - 1), qPrintable(QStringLiteral("no trace left of col %1").arg(col)));
+    QVERIFY2(columnHasTrace(img, *chart, col + 1), qPrintable(QStringLiteral("no trace right of col %1").arg(col)));
+    QVERIFY2(!columnHasTrace(img, *chart, col),
+             qPrintable(QStringLiteral("trace pixel in NaN column %1 (bucket x %2-%3 px)").arg(col).arg(x0 * dpr).arg(x1 * dpr)));
+}
+
+void tst_StripChart::decimatedDropoutAtWindowEdges_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<bool>("lastBucket");
+
+    const int time = static_cast<int>(StripChart::XAxisMode::Time);
+    const int index = static_cast<int>(StripChart::XAxisMode::SampleIndex);
+    QTest::newRow("Time, first visible bucket") << time << false;
+    QTest::newRow("Time, last (active) bucket") << time << true;
+    QTest::newRow("SampleIndex, first visible bucket") << index << false;
+    QTest::newRow("SampleIndex, last (active) bucket") << index << true;
+}
+
+void tst_StripChart::decimatedDropoutAtWindowEdges()
+{
+    QFETCH(int, axisMode);
+    QFETCH(bool, lastBucket);
+
+    // Aligned geometry: 1000 px plot, 1 s span, 1M samples at 1 us
+    constexpr int n = 1000000;
+    constexpr qint64 sampleDtNs = 1000;
+    const qint64 nanIndex = lastBucket ? 999700 : 300;
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), 1054, 1000000000, n);
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, {nanIndex});
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const double dpr = chart->devicePixelRatioF();
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+    const auto &chDiag = frame.channels[0];
+    QCOMPARE(chDiag.path, RenderPath::Decimated);
+
+    const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+    QCOMPARE(k, lastBucket ? frame.kStart + frame.numBuckets - 1 : frame.kStart);
+    const auto [x0, x1] = bucketXRange(*chart, k);
+    QVERIFY(bucketAlignedToDeviceColumn(x0, x1, dpr));
+
+    QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+    QCOMPARE(chDiag.segments.size(), 1UL);
+    if (lastBucket) {
+        QVERIFY(chDiag.segments[0].last().x() < x0);
+    } else {
+        QVERIFY(chDiag.segments[0].first().x() >= x1);
+    }
+
+    const int col = bucketColumn(x0, x1, dpr);
+    QVERIFY(columnHasTrace(img, *chart, lastBucket ? col - 1 : col + 1));
+    QVERIFY2(!columnHasTrace(img, *chart, col), qPrintable(QStringLiteral("trace pixel in NaN column %1").arg(col)));
+}
+
+void tst_StripChart::decimatedConsecutiveDropouts_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::newRow("Time") << static_cast<int>(StripChart::XAxisMode::Time);
+    QTest::newRow("SampleIndex") << static_cast<int>(StripChart::XAxisMode::SampleIndex);
+}
+
+void tst_StripChart::decimatedConsecutiveDropouts()
+{
+    QFETCH(int, axisMode);
+
+    // Aligned geometry: 1000 px plot, 1 s span, 1M samples at 1 us; 1M / W_dev samples per bucket
+    constexpr int n = 1000000;
+    constexpr qint64 sampleDtNs = 1000;
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), 1054, 1000000000, n);
+    const double dpr = chart->devicePixelRatioF();
+    const int widthDev = qRound(1000 * dpr);
+    const qint64 perBucket = n / widthDev;
+    const qint64 k0 = widthDev / 2;
+    std::vector<qint64> nans;
+    for (qint64 j = 0; j < 3; ++j) {
+        nans.push_back((k0 + j) * perBucket + perBucket / 2); // one NaN in each of 3 adjacent buckets
+    }
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, nans);
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+    const auto &chDiag = frame.channels[0];
+    QCOMPARE(chDiag.path, RenderPath::Decimated);
+
+    std::vector<int> cols;
+    for (qint64 j = 0; j < 3; ++j) {
+        const qint64 k = bucketOfSample(*chart, nans[static_cast<size_t>(j)], sampleDtNs);
+        QCOMPARE(k, k0 + j);
+        const auto [x0, x1] = bucketXRange(*chart, k);
+        QVERIFY(bucketAlignedToDeviceColumn(x0, x1, dpr));
+        QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+        cols.push_back(bucketColumn(x0, x1, dpr));
+    }
+    const auto first = bucketXRange(*chart, k0);
+    const auto last = bucketXRange(*chart, k0 + 2);
+    QCOMPARE(chDiag.segments.size(), 2UL);
+    QVERIFY(chDiag.segments[0].last().x() < first.first);
+    QVERIFY(chDiag.segments[1].first().x() >= last.second);
+
+    // One blank run of exactly 3 device columns
+    QCOMPARE(cols[1], cols[0] + 1);
+    QCOMPARE(cols[2], cols[0] + 2);
+    QVERIFY(columnHasTrace(img, *chart, cols[0] - 1));
+    QVERIFY(columnHasTrace(img, *chart, cols[2] + 1));
+    for (int c : cols) {
+        QVERIFY2(!columnHasTrace(img, *chart, c), qPrintable(QStringLiteral("trace pixel in NaN column %1").arg(c)));
+    }
+}
+
+void tst_StripChart::decimatedDropoutStreaming_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::newRow("Time") << static_cast<int>(StripChart::XAxisMode::Time);
+    QTest::newRow("SampleIndex") << static_cast<int>(StripChart::XAxisMode::SampleIndex);
+}
+
+void tst_StripChart::decimatedDropoutStreaming()
+{
+    QFETCH(int, axisMode);
+
+    // Aligned geometry (1000 px, 1 s span, capacity 1M, 1 us samples). The buffer never wraps,
+    // so SampleIndex positions stay aligned too.
+    constexpr int capacity = 1000000;
+    constexpr qint64 sampleDtNs = 1000;
+    constexpr qint64 n0 = 998000;
+    const qint64 nanIndex = n0 + 4;
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), 1054, 1000000000, capacity);
+    const double dpr = chart->devicePixelRatioF();
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, n0, sampleDtNs, capacity, {});
+    renderToImage(*chart);
+
+    // 1. A NaN arrives in the active (still open) bucket: its column is blank on the next frame
+    appendDropoutSamples(*chart, ch, n0, 10, sampleDtNs, capacity, {nanIndex});
+    {
+        const QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &chDiag = frame.channels[0];
+        QCOMPARE(chDiag.path, RenderPath::Decimated);
+        const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+        QCOMPARE(k, bucketOfSample(*chart, n0 + 9, sampleDtNs)); // the NaN is in the active bucket
+        const auto [x0, x1] = bucketXRange(*chart, k);
+        QVERIFY(bucketAlignedToDeviceColumn(x0, x1, dpr));
+        QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+        QCOMPARE(chDiag.segments.size(), 1UL);
+        QVERIFY(chDiag.segments[0].last().x() < x0);
+        const int col = bucketColumn(x0, x1, dpr);
+        QVERIFY(columnHasTrace(img, *chart, col - 1));
+        QVERIFY2(!columnHasTrace(img, *chart, col), qPrintable(QStringLiteral("active NaN column %1 drawn").arg(col)));
+    }
+
+    // 2. Further finite samples close the bucket: the column stays blank
+    appendDropoutSamples(*chart, ch, n0 + 10, 1500, sampleDtNs, capacity, {});
+    {
+        const QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &chDiag = frame.channels[0];
+        const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+        QVERIFY(k < bucketOfSample(*chart, n0 + 1509, sampleDtNs)); // the NaN bucket is closed
+        const auto [x0, x1] = bucketXRange(*chart, k);
+        QVERIFY(bucketAlignedToDeviceColumn(x0, x1, dpr));
+        QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+        QCOMPARE(chDiag.segments.size(), 2UL);
+        QVERIFY(chDiag.segments[0].last().x() < x0);
+        QVERIFY(chDiag.segments[1].first().x() >= x1);
+        const int col = bucketColumn(x0, x1, dpr);
+        QVERIFY(columnHasTrace(img, *chart, col - 1));
+        QVERIFY(columnHasTrace(img, *chart, col + 1));
+        QVERIFY2(!columnHasTrace(img, *chart, col), qPrintable(QStringLiteral("closed NaN column %1 drawn").arg(col)));
+    }
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+}
+
+void tst_StripChart::decimatedDropoutEviction_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<int>("capacity");
+    // Time: 5000 samples (50 ms) inside a 1 s window, so the oldest retained bucket is visible.
+    // SampleIndex: capacity = W_dev * 100 / (W_dev / 1000) keeps 1e5 / W_dev samples per bucket.
+    QTest::newRow("Time") << static_cast<int>(StripChart::XAxisMode::Time) << 5000;
+    QTest::newRow("SampleIndex") << static_cast<int>(StripChart::XAxisMode::SampleIndex) << 100000;
+}
+
+void tst_StripChart::decimatedDropoutEviction()
+{
+    QFETCH(int, axisMode);
+    QFETCH(int, capacity);
+
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
+    constexpr qint64 sampleDtNs = 10000; // 10 us
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(mode, 1054, 1000000000, capacity);
+    const double dpr = chart->devicePixelRatioF();
+    const qint64 perBucket = 100000 / qRound(1000 * dpr); // samples per bucket in both modes
+    const qint64 nanIndex = perBucket + perBucket / 2;    // middle of bucket 1
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, capacity, sampleDtNs, capacity, {nanIndex});
+
+    // 1. Evict part of bucket 1, keeping the NaN: bucket 1 is the oldest retained bucket and stays blank
+    qint64 added = capacity;
+    const qint64 firstEviction = perBucket + perBucket / 4;
+    appendDropoutSamples(*chart, ch, added, firstEviction, sampleDtNs, capacity, {});
+    added += firstEviction;
+    {
+        const QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &chDiag = frame.channels[0];
+        QCOMPARE(chDiag.path, RenderPath::Decimated);
+        const qint64 firstRetained = added - capacity;
+        QVERIFY(firstRetained < nanIndex);
+        const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+        QCOMPARE(k, bucketOfSample(*chart, firstRetained, sampleDtNs)); // oldest retained bucket
+        const auto [x0, x1] = bucketXRange(*chart, k, firstRetained);
+        QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+        QCOMPARE(chDiag.segments.size(), 1UL);
+        QVERIFY(chDiag.segments[0].first().x() >= x1);
+        const int col = bucketColumn(x0, x1, dpr);
+        QVERIFY(columnHasTrace(img, *chart, col + 1));
+        QVERIFY2(!columnHasTrace(img, *chart, col), qPrintable(QStringLiteral("NaN column %1 drawn before eviction").arg(col)));
+    }
+
+    // 2. Evict the NaN itself: the recomputed oldest bucket holds only finite samples and is drawn again
+    const qint64 secondEviction = perBucket / 2;
+    appendDropoutSamples(*chart, ch, added, secondEviction, sampleDtNs, capacity, {});
+    added += secondEviction;
+    {
+        const QImage img = renderToImage(*chart);
+        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &chDiag = frame.channels[0];
+        const qint64 firstRetained = added - capacity;
+        QVERIFY(firstRetained > nanIndex);
+        const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+        QCOMPARE(k, bucketOfSample(*chart, firstRetained, sampleDtNs));
+        const auto [x0, x1] = bucketXRange(*chart, k, firstRetained);
+        QVERIFY(verticesInRange(chDiag, x0, x1) > 0);
+        QCOMPARE(chDiag.segments.size(), 1UL);
+        QVERIFY(chDiag.segments[0].first().x() >= x0);
+        QVERIFY(chDiag.segments[0].first().x() < x1);
+        const int firstCol = static_cast<int>(std::floor(chDiag.segments[0].first().x() * dpr));
+        QVERIFY2(columnHasTrace(img, *chart, firstCol),
+                 qPrintable(QStringLiteral("evicted-NaN bucket not drawn at col %1").arg(firstCol)));
+    }
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+}
+
+void tst_StripChart::autoscaleUsesFiniteValuesOfBlankedBucket()
+{
+    // A bucket with a NaN and a finite spike is not drawn, but autoscale keeps using the spike.
+    constexpr int n = 100000;
+    auto chart = makeDropoutChart(StripChart::XAxisMode::SampleIndex, 1054, 0, n);
+    chart->setAutoScaleY(true);
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    const qint64 nanIndex = 50000;
+    for (qint64 i = 0; i < n; ++i) {
+        double v = 50.0;
+        if (i == nanIndex) {
+            v = std::numeric_limits<double>::quiet_NaN();
+        } else if (i == nanIndex + 1) {
+            v = 90.0; // finite spike in the same bucket as the NaN
+        }
+        chart->addDataPoint(ch, v);
+    }
+    renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
+    QCOMPARE(bucketOfSample(*chart, nanIndex, 0), bucketOfSample(*chart, nanIndex + 1, 0));
+
+    QVERIFY2(chart->yMaximum() >= 90.0, qPrintable(QStringLiteral("yMaximum %1").arg(chart->yMaximum())));
+    QVERIFY(chart->yMinimum() <= 50.0);
 }
 
 QTEST_MAIN(tst_StripChart)
