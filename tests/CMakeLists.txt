@@ -67,6 +67,7 @@ add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
 add_industrial_widget_test(tst_AnnunciatorPanel)
 add_industrial_widget_test(tst_Compass)
+add_industrial_widget_test(tst_CircularBargraph)
 
 add_executable(tst_M4Decimator
     tst_M4Decimator.cpp
