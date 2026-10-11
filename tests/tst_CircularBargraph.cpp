@@ -4,12 +4,81 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/CircularBargraph.h>
+#include "internal/CircularBargraphSegments.h"
+#include <QtGui/QImage>
 #include <QtGui/QPixmap>
 
 #include <cmath>
 #include <limits>
 
 using namespace QtIndustrialWidgets;
+
+namespace {
+
+// Encodes segment states as a string ('.' Off, 'L' Lit, 'P' Peak), index 0 first,
+// so that QCOMPARE prints the whole arc on failure.
+QString encodeStates(const std::vector<internal::SegmentState> &states)
+{
+    QString out;
+    for (const internal::SegmentState st : states) {
+        switch (st) {
+        case internal::SegmentState::Off: out += QLatin1Char('.'); break;
+        case internal::SegmentState::Lit: out += QLatin1Char('L'); break;
+        case internal::SegmentState::Peak: out += QLatin1Char('P'); break;
+        }
+    }
+    return out;
+}
+
+QString statesFor(double value, double peak, int n, bool dot, bool peakHold = true,
+                  double minimum = 0.0, double maximum = 100.0)
+{
+    internal::SegmentInput in;
+    in.value = value;
+    in.minimum = minimum;
+    in.maximum = maximum;
+    in.peakValue = peak;
+    in.segmentCount = n;
+    in.dotMode = dot;
+    in.peakHoldEnabled = peakHold;
+    return encodeStates(internal::computeSegmentStates(in));
+}
+
+// Expected arc: `lit` Lit segments starting at `litFrom`, an optional Peak at `peakAt`.
+QString arc(int n, int litFrom, int lit, int peakAt = -1)
+{
+    QString out(n, QLatin1Char('.'));
+    for (int i = litFrom; i < litFrom + lit; ++i) {
+        out[i] = QLatin1Char('L');
+    }
+    if (peakAt >= 0) {
+        out[peakAt] = QLatin1Char('P');
+    }
+    return out;
+}
+
+// Counts pixels exactly equal to `color` (antialiased edges are blends, never exact).
+int countExact(const QImage &img, const QColor &color)
+{
+    const QRgb target = color.rgb();
+    int count = 0;
+    for (int y = 0; y < img.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            if ((line[x] | 0xff000000u) == target && qAlpha(line[x]) == 255) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+QImage grabImage(CircularBargraph &w)
+{
+    return w.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+}
+
+} // namespace
 
 class tst_CircularBargraph : public QObject
 {
@@ -25,6 +94,11 @@ private Q_SLOTS:
     void digitalDisplay();
     void extremeResizing();
     void offscreenRendering();
+    void segmentStatesAtMinimum();
+    void segmentStatesAtMaximum();
+    void segmentStatesIntermediate();
+    void segmentStatesPeak();
+    void noPeakSegmentAtMinimum();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -241,6 +315,79 @@ void tst_CircularBargraph::offscreenRendering()
     pixmap.setDevicePixelRatio(2.0);
     bargraph.render(&pixmap);
     QVERIFY(!pixmap.isNull());
+}
+
+void tst_CircularBargraph::segmentStatesAtMinimum()
+{
+    // Bar: value and peak at minimum -> nothing lit, no peak segment.
+    QCOMPARE(statesFor(0.0, 0.0, 24, false), arc(24, 0, 0));
+    QCOMPARE(statesFor(0.0, 0.0, 24, false, false), arc(24, 0, 0));
+    QCOMPARE(statesFor(-5.0, -5.0, 16, false, true, -5.0, 5.0), arc(16, 0, 0));
+
+    // Dot: a valid value always lights one segment, in the zone color (Lit, not Peak).
+    QCOMPARE(statesFor(0.0, 0.0, 24, true), arc(24, 0, 1));
+    QCOMPARE(statesFor(0.0, 0.0, 24, true, false), arc(24, 0, 1));
+}
+
+void tst_CircularBargraph::segmentStatesAtMaximum()
+{
+    QCOMPARE(statesFor(100.0, 100.0, 24, false), arc(24, 0, 24));
+    QCOMPARE(statesFor(100.0, 100.0, 24, true), arc(24, 23, 1));
+    QCOMPARE(statesFor(5.0, 5.0, 16, false, true, -5.0, 5.0), arc(16, 0, 16));
+}
+
+void tst_CircularBargraph::segmentStatesIntermediate()
+{
+    // Bar: n = round(f * N) lit segments.
+    QCOMPARE(statesFor(50.0, 50.0, 24, false), arc(24, 0, 12));
+    QCOMPARE(statesFor(10.0, 10.0, 24, false), arc(24, 0, 2));   // 2.4
+    QCOMPARE(statesFor(2.5, 2.5, 24, false), arc(24, 0, 1));     // 0.6
+    QCOMPARE(statesFor(1.0, 1.0, 24, false), arc(24, 0, 0));     // 0.24
+    QCOMPARE(statesFor(75.0, 75.0, 16, false), arc(16, 0, 12));
+
+    // Dot: the last segment the bar would light, max(n - 1, 0).
+    QCOMPARE(statesFor(50.0, 50.0, 24, true), arc(24, 11, 1));
+    QCOMPARE(statesFor(30.0, 30.0, 24, true), arc(24, 6, 1));    // n = round(7.2) = 7
+    QCOMPARE(statesFor(1.0, 1.0, 24, true), arc(24, 0, 1));      // n = 0
+    QCOMPARE(statesFor(75.0, 75.0, 16, true), arc(16, 11, 1));
+}
+
+void tst_CircularBargraph::segmentStatesPeak()
+{
+    // Peak segment = last segment the bar would light for the peak value: 50% -> 12/24.
+    QCOMPARE(statesFor(30.0, 50.0, 24, false), arc(24, 0, 7, 11));
+    QCOMPARE(statesFor(50.0, 80.0, 24, false), arc(24, 0, 12, 18)); // round(19.2) = 19
+    QCOMPARE(statesFor(0.0, 100.0, 24, false), arc(24, 0, 0, 23));
+
+    // Peak at or below the bar top is not drawn.
+    QCOMPARE(statesFor(50.0, 50.0, 24, false), arc(24, 0, 12));
+    QCOMPARE(statesFor(50.0, 51.0, 24, false), arc(24, 0, 12));     // round(12.24) = 12
+
+    // Peak hold disabled: never a peak segment.
+    QCOMPARE(statesFor(30.0, 50.0, 24, false, false), arc(24, 0, 7));
+
+    // Dot: peak drawn only above the dot; the dot keeps its zone color.
+    QCOMPARE(statesFor(30.0, 50.0, 24, true), arc(24, 6, 1, 11));
+    QCOMPARE(statesFor(0.0, 3.0, 24, true), arc(24, 0, 1));         // round(0.72) = 1 -> idx 0 == dot
+    QCOMPARE(statesFor(0.0, 10.0, 24, true), arc(24, 0, 1, 1));     // round(2.4) = 2 -> idx 1
+}
+
+void tst_CircularBargraph::noPeakSegmentAtMinimum()
+{
+    CircularBargraph bargraph;
+    bargraph.setDigitalDisplayVisible(false);
+    bargraph.setPeakColor(QColor(255, 0, 255));
+    bargraph.setPeakHoldEnabled(true);
+    bargraph.resize(200, 200);
+    bargraph.setValue(0.0);
+
+    QCOMPARE(bargraph.peakValue(), 0.0);
+    QCOMPARE(countExact(grabImage(bargraph), QColor(255, 0, 255)), 0);
+
+    // Control: a held peak above the bar is painted with the peak color.
+    bargraph.setValue(60.0);
+    bargraph.setValue(10.0);
+    QVERIFY(countExact(grabImage(bargraph), QColor(255, 0, 255)) > 50);
 }
 
 QTEST_MAIN(tst_CircularBargraph)
