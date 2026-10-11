@@ -89,6 +89,8 @@ private Q_SLOTS:
     void decimatedDropoutEviction_data();
     void decimatedDropoutEviction();
     void autoscaleUsesFiniteValuesOfBlankedBucket();
+    void glowDotNeverDrawnInBlankColumn_data();
+    void glowDotNeverDrawnInBlankColumn();
 };
 
 void tst_StripChart::defaultValues()
@@ -2174,6 +2176,90 @@ void tst_StripChart::autoscaleUsesFiniteValuesOfBlankedBucket()
 
     QVERIFY2(chart->yMaximum() >= 90.0, qPrintable(QStringLiteral("yMaximum %1").arg(chart->yMaximum())));
     QVERIFY(chart->yMinimum() <= 50.0);
+}
+
+void tst_StripChart::glowDotNeverDrawnInBlankColumn_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<bool>("nanInLatestBucket");
+
+    const int time = static_cast<int>(StripChart::XAxisMode::Time);
+    const int index = static_cast<int>(StripChart::XAxisMode::SampleIndex);
+    QTest::newRow("Time, NaN in latest bucket") << time << true;
+    QTest::newRow("Time, NaN in penultimate bucket") << time << false;
+    QTest::newRow("SampleIndex, NaN in latest bucket") << index << true;
+    QTest::newRow("SampleIndex, NaN in penultimate bucket") << index << false;
+}
+
+void tst_StripChart::glowDotNeverDrawnInBlankColumn()
+{
+    QFETCH(int, axisMode);
+    QFETCH(bool, nanInLatestBucket);
+
+    // Aligned geometry: 1000 px plot, 1 s span, 1M samples at 1 us; the latest sample is finite.
+    constexpr int n = 1000000;
+    constexpr qint64 sampleDtNs = 1000;
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), 1054, 1000000000, n);
+    const double dpr = chart->devicePixelRatioF();
+    const qint64 perBucket = n / qRound(1000 * dpr);
+    const qint64 latestBucket = (n - 1) / perBucket;
+    const qint64 nanBucket = nanInLatestBucket ? latestBucket : latestBucket - 1;
+    const qint64 nanIndex = nanBucket * perBucket + perBucket / 2;
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, {nanIndex});
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+    const auto &chDiag = frame.channels[0];
+    QCOMPARE(chDiag.path, RenderPath::Decimated);
+    QVERIFY(std::isfinite(chart->channelLatestValue(ch)));
+
+    const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
+    QCOMPARE(k, nanBucket);
+    QCOMPARE(bucketOfSample(*chart, n - 1, sampleDtNs), latestBucket);
+    const auto [x0, x1] = bucketXRange(*chart, k);
+    QVERIFY(bucketAlignedToDeviceColumn(x0, x1, dpr));
+    QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
+
+    const int top = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+    const int bottom = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+    // Any reddish pixel: the trace colour, the glow colour or an antialiased blend of either.
+    auto reddishRows = [&](int x) {
+        std::vector<int> rows;
+        for (int y = top; y <= bottom && y < img.height(); ++y) {
+            const QColor c = img.pixelColor(x, y);
+            if (c.red() >= 100 && c.red() - c.green() >= 40 && c.red() - c.blue() >= 40) {
+                rows.push_back(y);
+            }
+        }
+        return rows;
+    };
+    const QColor glow = kDropoutColour.lighter(150);
+    auto hasGlow = [&](int x) { return !traceYAtColumn(img, glow, x, top, bottom, 60).empty(); };
+
+    // The dropout column contains neither the trace nor the glow dot
+    const int col = bucketColumn(x0, x1, dpr);
+    QVERIFY2(reddishRows(col).empty(),
+             qPrintable(QStringLiteral("trace or glow pixel in NaN column %1 (first at y %2)").arg(col).arg(reddishRows(col).empty() ? -1 : reddishRows(col).front())));
+
+    const int left = static_cast<int>(std::floor(frame.plotRect.left() * dpr));
+    const int right = static_cast<int>(std::ceil(frame.plotRect.right() * dpr));
+    if (nanInLatestBucket) {
+        // The latest bucket is blank: no glow dot at all (the legend keeps the latest value)
+        for (int x = left; x < right; ++x) {
+            QVERIFY2(!hasGlow(x), qPrintable(QStringLiteral("glow pixel at col %1").arg(x)));
+        }
+    } else {
+        // The glow dot is drawn on the last point, which lies in the latest bucket
+        const QPointF last = chDiag.segments.back().last();
+        const auto latest = bucketXRange(*chart, latestBucket);
+        QVERIFY(last.x() >= latest.first && last.x() < latest.second);
+        const int lastCol = static_cast<int>(std::floor(last.x() * dpr));
+        QVERIFY2(hasGlow(lastCol), qPrintable(QStringLiteral("no glow at the last point, col %1").arg(lastCol)));
+    }
 }
 
 QTEST_MAIN(tst_StripChart)
