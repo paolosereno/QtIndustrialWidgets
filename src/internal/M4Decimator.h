@@ -126,6 +126,67 @@ struct M4Bucket {
 };
 
 /**
+ * \brief Exact floor(a * b / c) for b > 0 and c > 0, without overflow in the intermediate product.
+ *
+ * The product is formed in 128 bits from 64-bit halves (no compiler extensions). If \p remainder
+ * is not null it receives a * b - result * c, in [0, c). A result outside the qint64 range is
+ * saturated (the remainder is then unspecified).
+ */
+qint64 mulDivFloor(qint64 a, qint64 b, qint64 c, qint64 *remainder = nullptr) noexcept;
+
+/** \brief Exact ceil(a * b / c) for b > 0 and c > 0 (see mulDivFloor()). */
+qint64 mulDivCeil(qint64 a, qint64 b, qint64 c) noexcept;
+
+/**
+ * \struct BucketGrid
+ * \brief Assigns axis positions (ns or sample indices) to decimation buckets.
+ *
+ * Bucket k = floor(x * num / den), so `num` buckets cover `den` axis units; bucket widths are
+ * floor or ceil of den / num and need not be uniform. Bucket indices are anchored to the absolute
+ * axis position. A uniform grid of width w is {1, w}. Bucket assignment is exact integer
+ * arithmetic; |x| * num / den must fit in qint64 (always true when num <= den).
+ */
+struct BucketGrid {
+    constexpr BucketGrid() noexcept = default;
+    /** \brief num buckets per den axis units; both must be > 0. */
+    constexpr BucketGrid(qint64 num, qint64 den) noexcept
+        : m_num(num > 0 ? num : 1)
+        , m_den(den > 0 ? den : 1)
+        , m_fastLimit(std::numeric_limits<qint64>::max() / (num > 0 ? num : 1))
+    {
+    }
+
+    [[nodiscard]] constexpr qint64 num() const noexcept { return m_num; }
+    [[nodiscard]] constexpr qint64 den() const noexcept { return m_den; }
+
+    /** \brief Bucket that contains axis position x. */
+    [[nodiscard]] qint64 bucketOf(qint64 x) const noexcept {
+        if (x <= m_fastLimit && x >= -m_fastLimit) { // x * num cannot overflow
+            const qint64 p = x * m_num;
+            qint64 q = p / m_den;
+            if ((p % m_den) != 0 && p < 0) {
+                --q;
+            }
+            return q;
+        }
+        return mulDivFloor(x, m_num, m_den);
+    }
+
+    /** \brief First axis position of bucket k (smallest x with bucketOf(x) >= k). */
+    [[nodiscard]] qint64 boundary(qint64 k) const noexcept {
+        return mulDivCeil(k, m_den, m_num);
+    }
+
+    bool operator==(const BucketGrid &o) const noexcept { return m_num == o.m_num && m_den == o.m_den; }
+    bool operator!=(const BucketGrid &o) const noexcept { return !(*this == o); }
+
+private:
+    qint64 m_num{1};
+    qint64 m_den{1};
+    qint64 m_fastLimit{std::numeric_limits<qint64>::max()};
+};
+
+/**
  * \class M4Decimator
  * \brief Min/max pixel-column decimator providing batch and incremental O(1) decimation.
  */
@@ -149,9 +210,22 @@ public:
         const qint64 *timestamps,
         const double *values,
         size_t count,
-        qint64 dt_px,
+        const BucketGrid &grid,
         qint64 kStart,
         int numBuckets);
+
+    /** \brief Uniform-width overload: buckets of dt_px axis units. */
+    static std::vector<M4Bucket> decimateToBuckets(
+        const qint64 *timestamps,
+        const double *values,
+        size_t count,
+        qint64 dt_px,
+        qint64 kStart,
+        int numBuckets)
+    {
+        if (dt_px <= 0) return {};
+        return decimateToBuckets(timestamps, values, count, BucketGrid(1, dt_px), kStart, numBuckets);
+    }
 
     /**
      * \brief Runs batch decimation and returns vertices grouped by contiguous segments.
@@ -160,10 +234,24 @@ public:
         const qint64 *timestamps,
         const double *values,
         size_t count,
-        qint64 dt_px,
+        const BucketGrid &grid,
         qint64 kStart,
         int numBuckets,
         qint64 gapThreshold);
+
+    /** \brief Uniform-width overload: buckets of dt_px axis units. */
+    static std::vector<std::vector<M4Point>> decimateToSegments(
+        const qint64 *timestamps,
+        const double *values,
+        size_t count,
+        qint64 dt_px,
+        qint64 kStart,
+        int numBuckets,
+        qint64 gapThreshold)
+    {
+        if (dt_px <= 0) return {};
+        return decimateToSegments(timestamps, values, count, BucketGrid(1, dt_px), kStart, numBuckets, gapThreshold);
+    }
 
     /**
      * \class IncrementalStream
@@ -182,9 +270,21 @@ public:
         void setRingSize(size_t ringSize);
         void reset();
 
-        void addSample(qint64 t, double y, qint64 dt_px);
+        void addSample(qint64 t, double y, const BucketGrid &grid);
+        /** \brief Uniform-width overload: buckets of dt_px axis units. */
+        void addSample(qint64 t, double y, qint64 dt_px) {
+            if (dt_px > 0) addSample(t, y, BucketGrid(1, dt_px));
+        }
         void setBucket(qint64 k, const M4Bucket &bucket);
-        void rebuild(const qint64 *timestamps, const double *values, size_t count, qint64 dt_px);
+        void rebuild(const qint64 *timestamps, const double *values, size_t count, const BucketGrid &grid);
+        /** \brief Uniform-width overload: buckets of dt_px axis units. */
+        void rebuild(const qint64 *timestamps, const double *values, size_t count, qint64 dt_px) {
+            if (dt_px > 0) {
+                rebuild(timestamps, values, count, BucketGrid(1, dt_px));
+            } else {
+                reset();
+            }
+        }
 
         [[nodiscard]] const M4Bucket *bucketAt(qint64 k) const;
         void extractVisibleSegments(

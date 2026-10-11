@@ -744,7 +744,7 @@ void StripChart::ensureAutoScale()
             if (doDecimate) {
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::Time;
-                targetKey.bucketWidth = dt_px;
+                targetKey.grid = win.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(win.numBuckets + 4, W_dev + 4));
 
@@ -818,7 +818,7 @@ void StripChart::ensureAutoScale()
 
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::SampleIndex;
-                targetKey.bucketWidth = ib.samplesPerBucket;
+                targetKey.grid = ib.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(ib.numBuckets + 4, W_dev + 4));
 
@@ -1230,6 +1230,9 @@ void StripChart::paintEvent(QPaintEvent *)
             d_ptr->lastFrame.timeNumBuckets = win.numBuckets;
             d_ptr->lastFrame.kStart = win.kStart;
             d_ptr->lastFrame.numBuckets = win.numBuckets;
+            d_ptr->lastFrame.gridNum = win.grid.num();
+            d_ptr->lastFrame.gridDen = win.grid.den();
+            d_ptr->lastFrame.plotLeftDev = plotRect.left() * dpr;
         }
 
         for (const auto &ch : d_ptr->m_channels) {
@@ -1318,7 +1321,7 @@ void StripChart::paintEvent(QPaintEvent *)
             if (doDecimate) {
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::Time;
-                targetKey.bucketWidth = dt_px;
+                targetKey.grid = win.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(win.numBuckets + 4, W_dev + 4));
 
@@ -1470,6 +1473,9 @@ void StripChart::paintEvent(QPaintEvent *)
             d_ptr->lastFrame.indexNumBuckets = ib.numBuckets;
             d_ptr->lastFrame.kStart = ib.kStart;
             d_ptr->lastFrame.numBuckets = ib.numBuckets;
+            d_ptr->lastFrame.gridNum = ib.grid.num();
+            d_ptr->lastFrame.gridDen = ib.grid.den();
+            d_ptr->lastFrame.plotLeftDev = plotRect.left() * dpr;
         }
 
         for (const auto &ch : d_ptr->m_channels) {
@@ -1519,7 +1525,7 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::SampleIndex;
-                targetKey.bucketWidth = ib.samplesPerBucket;
+                targetKey.grid = ib.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(ib.numBuckets + 4, W_dev + 4));
 

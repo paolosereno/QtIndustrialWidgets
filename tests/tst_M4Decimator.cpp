@@ -25,6 +25,8 @@ private Q_SLOTS:
     void bucketAggregatesAreIndependentOfWindowStart();
     void incrementalEqualsBatch();
     void propertyTestIncrementalEqualsBatch();
+    void mulDivExact();
+    void bucketGridBoundaries();
 };
 
 void tst_M4Decimator::pixelEquivalence()
@@ -600,6 +602,86 @@ void tst_M4Decimator::propertyTestIncrementalEqualsBatch()
 
     // The scenarios must actually exercise buckets that mix finite and non-finite samples
     QVERIFY2(mixedBuckets > 0, "no mixed finite/non-finite bucket generated");
+}
+
+void tst_M4Decimator::mulDivExact()
+{
+    // Reference values computed with arbitrary-precision integers
+    struct Ref {
+        qint64 a, b, c, floor, rem, ceil;
+    };
+    const Ref refs[] = {
+        {1000000000000000000LL, 16384LL, 10000000007LL, 1638399998853LL, 1200008029LL, 1638399998854LL},
+        {-1000000000000000000LL, 16384LL, 10000000007LL, -1638399998854LL, 8799991978LL, -1638399998853LL},
+        {1000000000000000000LL, 16384LL, 999999937LL, 16384001032192LL, 65028096LL, 16384001032193LL},
+        {999999999999999999LL, 16383LL, 4611686018427387909LL, 3552LL, 2291262545918130849LL, 3553LL},
+        {-999999999999999997LL, 16384LL, 9223372036854775807LL, -1777LL, 5932109490936658191LL, -1776LL},
+        {123456789012345678LL, 9999LL, 1000003LL, 1234440730012254LL, 397560LL, 1234440730012255LL},
+        {-1LL, 16384LL, 1000000000000000000LL, -1LL, 999999999999983616LL, 0LL},
+        {7, 3, 2, 10, 1, 11},
+        {-7, 3, 2, -11, 1, -10},
+        {0, 16384, 7, 0, 0, 0},
+    };
+    for (const Ref &r : refs) {
+        qint64 rem = -1;
+        QCOMPARE(mulDivFloor(r.a, r.b, r.c, &rem), r.floor);
+        QCOMPARE(rem, r.rem);
+        QCOMPARE(mulDivCeil(r.a, r.b, r.c), r.ceil);
+    }
+
+    // Saturation when the exact result does not fit in qint64
+    QCOMPARE(mulDivFloor(std::numeric_limits<qint64>::max(), 2, 1), std::numeric_limits<qint64>::max());
+    QCOMPARE(mulDivFloor(-999999999999999989LL, 8191, 3), std::numeric_limits<qint64>::min());
+
+#if defined(__SIZEOF_INT128__)
+    // Randomised comparison against the compiler's 128-bit integers where available
+    std::mt19937_64 rng(20261011);
+    std::uniform_int_distribution<qint64> aDist(-1000000000000000000LL, 1000000000000000000LL);
+    std::uniform_int_distribution<qint64> bDist(1, 16384);
+    std::uniform_int_distribution<qint64> cDist(1, std::numeric_limits<qint64>::max());
+    std::uniform_int_distribution<qint64> cSmallDist(1, 100000);
+    for (int i = 0; i < 200000; ++i) {
+        const qint64 a = aDist(rng);
+        const qint64 b = bDist(rng);
+        const qint64 c = (i % 2 == 0) ? cDist(rng) : cSmallDist(rng);
+        __extension__ typedef __int128 i128;
+        const i128 p = static_cast<i128>(a) * b;
+        i128 f = p / c;
+        if ((p % c) != 0 && p < 0) --f;
+        if (f > std::numeric_limits<qint64>::max() || f < std::numeric_limits<qint64>::min()) {
+            continue; // saturation is checked above
+        }
+        qint64 rem = -1;
+        const qint64 got = mulDivFloor(a, b, c, &rem);
+        QVERIFY2(got == static_cast<qint64>(f), qPrintable(QString("floor(%1*%2/%3)").arg(a).arg(b).arg(c)));
+        QCOMPARE(rem, static_cast<qint64>(p - f * c));
+    }
+#endif
+}
+
+void tst_M4Decimator::bucketGridBoundaries()
+{
+    // boundary(k) is the first position of bucket k, for non-uniform grids and large positions
+    std::mt19937_64 rng(12);
+    std::uniform_int_distribution<qint64> numDist(1, 16384);
+    std::uniform_int_distribution<qint64> extraDist(0, 1000000000000LL);
+    std::uniform_int_distribution<qint64> xDist(-1000000000000000000LL, 1000000000000000000LL);
+    for (int i = 0; i < 20000; ++i) {
+        const qint64 num = numDist(rng);
+        const qint64 den = num + extraDist(rng); // den >= num: at most one bucket per axis unit
+        const BucketGrid grid(num, den);
+        const qint64 x = xDist(rng);
+        const qint64 k = grid.bucketOf(x);
+        QVERIFY2(grid.boundary(k) <= x && x < grid.boundary(k + 1),
+                 qPrintable(QString("x %1 not in bucket %2 of grid %3/%4").arg(x).arg(k).arg(num).arg(den)));
+        QCOMPARE(grid.bucketOf(grid.boundary(k)), k);
+        QCOMPARE(grid.bucketOf(grid.boundary(k) - 1), k - 1);
+    }
+    // A uniform grid matches floorDiv
+    const BucketGrid uniform(1, 1000);
+    for (qint64 x : {-2001LL, -1000LL, -1LL, 0LL, 999LL, 1000LL, 123456789LL}) {
+        QCOMPARE(uniform.bucketOf(x), M4Decimator::floorDiv(x, 1000));
+    }
 }
 
 QTEST_MAIN(tst_M4Decimator)

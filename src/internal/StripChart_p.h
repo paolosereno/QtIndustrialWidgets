@@ -57,7 +57,7 @@ struct FrameDiagnostics {
     // Window - Time mode
     qint64 tStart{0};
     qint64 tEnd{0};
-    qint64 dtPx{0};
+    qint64 dtPx{0};          // nominal bucket width (ns)
     qint64 timeKStart{0};
     int timeNumBuckets{0};
 
@@ -69,6 +69,9 @@ struct FrameDiagnostics {
     // Common window accessors
     qint64 kStart{0};
     int numBuckets{0};
+    qint64 gridNum{1};       // bucket k = floor(x * gridNum / gridDen)
+    qint64 gridDen{1};
+    double plotLeftDev{0.0}; // device x of the plot's left edge used for traces
 
     // Per channel diagnostics (indexed by channelId)
     std::vector<ChannelFrameDiagnostics> channels;
@@ -193,23 +196,23 @@ public:
         if (key.axisMode == internal::GeometryAxisMode::Time) {
             size_t span1 = std::min(ch.count, cap - start);
             for (size_t i = 0; i < span1; ++i) {
-                ch.m4Stream.addSample(ch.timestamps[start + i], ch.values[start + i], key.bucketWidth);
+                ch.m4Stream.addSample(ch.timestamps[start + i], ch.values[start + i], key.grid);
             }
             size_t span2 = ch.count - span1;
             for (size_t i = 0; i < span2; ++i) {
-                ch.m4Stream.addSample(ch.timestamps[i], ch.values[i], key.bucketWidth);
+                ch.m4Stream.addSample(ch.timestamps[i], ch.values[i], key.grid);
             }
         } else {
             quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
             size_t span1 = std::min(ch.count, cap - start);
             for (size_t i = 0; i < span1; ++i) {
                 qint64 sampleIdx = static_cast<qint64>(startCounter + i);
-                ch.m4Stream.addSample(sampleIdx, ch.values[start + i], key.bucketWidth);
+                ch.m4Stream.addSample(sampleIdx, ch.values[start + i], key.grid);
             }
             size_t span2 = ch.count - span1;
             for (size_t i = 0; i < span2; ++i) {
                 qint64 sampleIdx = static_cast<qint64>(startCounter + span1 + i);
-                ch.m4Stream.addSample(sampleIdx, ch.values[i], key.bucketWidth);
+                ch.m4Stream.addSample(sampleIdx, ch.values[i], key.grid);
             }
         }
     }
@@ -272,10 +275,10 @@ public:
 
         if (ch.geometryValid && ch.visible) {
             if (m_xAxisMode == StripChart::XAxisMode::Time) {
-                ch.m4Stream.addSample(t, value, ch.geometryKey.bucketWidth);
+                ch.m4Stream.addSample(t, value, ch.geometryKey.grid);
             } else {
                 qint64 sampleIdx = static_cast<qint64>(ch.totalSamples - 1);
-                ch.m4Stream.addSample(sampleIdx, value, ch.geometryKey.bucketWidth);
+                ch.m4Stream.addSample(sampleIdx, value, ch.geometryKey.grid);
             }
         } else if (!ch.visible) {
             ch.geometryValid = false;

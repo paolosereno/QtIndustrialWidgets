@@ -22,6 +22,7 @@ TimeWindow computeTimeWindow(qint64 tLatest, qint64 timeSpanNs, int widthDev)
     win.kStart = M4Decimator::floorDiv(win.tStart, win.dtPx);
     qint64 kEnd = win.tEnd / win.dtPx;
     win.numBuckets = static_cast<int>(kEnd - win.kStart);
+    win.grid = BucketGrid(1, win.dtPx);
     return win;
 }
 
@@ -32,6 +33,8 @@ IndexBuckets computeIndexBuckets(quint64 totalSamples, size_t count,
     int w = std::max(1, widthDev);
     int cap = std::max(1, capacity);
     ib.samplesPerBucket = std::max(qint64(1), static_cast<qint64>(cap + w - 1) / w);
+
+    ib.grid = BucketGrid(1, ib.samplesPerBucket);
 
     if (count == 0) {
         quint64 startCounter = totalSamples;
@@ -47,6 +50,15 @@ IndexBuckets computeIndexBuckets(quint64 totalSamples, size_t count,
     qint64 kLast = M4Decimator::floorDiv(lastAbsoluteIndex, ib.samplesPerBucket);
     ib.numBuckets = static_cast<int>(kLast - ib.kStart + 1);
     return ib;
+}
+
+PlotXMapping makePlotXMapping(const BucketGrid &grid, qint64 kStart, double plotLeftDevExact)
+{
+    PlotXMapping m;
+    m.grid = grid;
+    m.kStart = kStart;
+    m.leftDev = plotLeftDevExact;
+    return m;
 }
 
 static qint64 next125(qint64 s)
