@@ -709,7 +709,9 @@ void tst_M4Decimator::bucketGridMoreBucketsThanUnits()
             default: x = static_cast<qint64>((unit(rng) * 2.0 - 1.0) * static_cast<double>(limit)); break;
         }
         const qint64 k = grid.bucketOf(x);
-        QVERIFY2(grid.boundary(k) <= x && x < grid.boundary(k + 1),
+        // At the top of the range k can be INT64_MAX, whose next boundary does not exist
+        const bool lastBucket = (k == std::numeric_limits<qint64>::max());
+        QVERIFY2(grid.boundary(k) <= x && (lastBucket || x < grid.boundary(k + 1)),
                  qPrintable(QString("x %1 not in bucket %2 of grid %3/%4 (limit %5)").arg(x).arg(k).arg(num).arg(den).arg(limit)));
 #if defined(__SIZEOF_INT128__)
         __extension__ typedef __int128 i128;
