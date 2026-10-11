@@ -142,10 +142,10 @@ Marine gyrocompass and aeronautical directional heading indicator instrument.
 High-contrast circular arc indicator composed of discrete curved LED segments.
 - **Operating Modes**: Progressive illuminated LED stack (`DisplayMode::Bar`) or single active cursor pointer (`DisplayMode::Dot`).
 - **Configurable Geometry**: Adjustable angular arc sweep (e.g. 180°, 270°, or 360°) and discrete curved LED segment resolution (e.g. 16, 24, 32, 48 segments).
-- **Global Threshold Zones**: 3-stage colored threshold bands (Normal green, Warning amber, Critical red) with customizable unlit "ghost" LED segment colors.
+- **Threshold Zones by Position**: Each segment takes the color of the zone (Normal green, Warning amber, Critical red) containing its centre; unlit segments show a dimmed tint of their zone over the customizable "ghost" color. `warningThreshold <= errorThreshold` is kept by the setters.
 - **Ballistic Peak Hold**: Built-in peak indicator segment with configurable hold duration and smooth ballistic decay falloff.
 - **Centered Digital Pod**: Integrated optional digital readout pod with decimal precision and measurement unit display.
-- **Non-finite input**: `±Inf` is clamped to the range bound; a `NaN` is ignored and the widget keeps the last valid value. Known limitation: a `NaN` (e.g. a sensor dropout) is therefore not shown as invalid.
+- **Value State**: `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`. Out-of-range inputs (including `±Inf`) are shown at the range bound with the end segment blinking (~2 Hz) and a `<` / `>` readout; a `NaN` input is shown as `Invalid` (all segments ghost, readout `---`). `rawValue()` keeps the unclamped input, and the state is recomputed when the range changes.
 
 ---
 

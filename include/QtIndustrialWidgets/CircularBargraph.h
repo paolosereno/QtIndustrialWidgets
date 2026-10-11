@@ -25,7 +25,9 @@ class CircularBargraphPrivate;
  *
  * Key features:
  * - Operating modes: progressive illuminated LED stack (\c DisplayMode::Bar) or single cursor LED (\c DisplayMode::Dot).
- * - Global threshold color stages: Normal (green), Warning (amber), and Critical (red).
+ * - Colour zones by position: each segment takes the colour of the zone (Normal, Warning,
+ *   Critical) containing its centre; unlit segments show a dimmed tint of their zone, and the
+ *   Dot cursor takes the colour of its own zone.
  * - Peak-hold indicator segment with configurable hold duration and ballistic decay falloff.
  * - Optional centered digital readout pod with unit label.
  * - Value state (valueState()): out-of-range inputs (including ±Inf) are shown at the range
