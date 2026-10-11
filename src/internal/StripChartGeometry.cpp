@@ -12,6 +12,11 @@
 namespace QtIndustrialWidgets {
 namespace internal {
 
+qint64 effectiveTimeSpan(qint64 timeSpanNs, int widthDev)
+{
+    return std::max<qint64>(std::max(1, widthDev), timeSpanNs);
+}
+
 TimeWindow computeTimeWindow(qint64 tLatest, qint64 timeSpanNs, int widthDev)
 {
     // widthDev buckets cover the span: bucket k = floor(t * W / span), anchored to absolute time.
@@ -19,7 +24,7 @@ TimeWindow computeTimeWindow(qint64 tLatest, qint64 timeSpanNs, int widthDev)
     // widthDev ns use 1 ns buckets.
     TimeWindow win;
     const int w = std::max(1, widthDev);
-    const qint64 span = std::max<qint64>(w, timeSpanNs);
+    const qint64 span = effectiveTimeSpan(timeSpanNs, w);
     win.grid = BucketGrid(w, span);
     win.dtPx = std::max<qint64>(1, span / w);
     const qint64 kEnd = win.grid.bucketOf(tLatest) + 1;
