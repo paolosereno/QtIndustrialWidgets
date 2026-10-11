@@ -29,23 +29,36 @@ constexpr double kGlowRadius = 2.5; // glow dot radius on the latest point, logi
 using BlankColumns = QVarLengthArray<QRectF, 16>;
 
 // Collects the device columns (in logical coordinates) of blank buckets - buckets with a
-// non-finite sample - that a glow dot centred in bucket kCentre could reach. A bucket's column is
-// the device column that contains the bucket's centre. The glow dot is clipped so it never draws
-// inside a column left blank for a sensor dropout.
-template <typename BucketXRange>
+// non-finite sample - that a glow dot centred in bucket kCentre could reach. Every bucket occupies
+// exactly one device column; \p columnX returns its logical [left, right). The glow dot is clipped
+// so it never draws inside a column left blank for a sensor dropout.
+template <typename ColumnX>
 void collectBlankColumnsNearGlow(const internal::M4Decimator::IncrementalStream &stream, qint64 kCentre,
-                                 qint64 kFirst, qint64 kEnd, double bucketWidthDev, double dpr,
-                                 const QRectF &plotRect, BucketXRange bucketXRange, BlankColumns &out)
+                                 qint64 kFirst, qint64 kEnd, double dpr,
+                                 const QRectF &plotRect, ColumnX columnX, BlankColumns &out)
 {
-    if (bucketWidthDev <= 0.0) return;
-    const qint64 reach = static_cast<qint64>(std::ceil(kGlowRadius * dpr / bucketWidthDev)) + 1;
+    const qint64 reach = static_cast<qint64>(std::ceil(kGlowRadius * dpr)) + 1;
     for (qint64 k = std::max(kFirst, kCentre - reach); k <= std::min(kEnd - 1, kCentre + reach); ++k) {
         const internal::M4Bucket *b = stream.bucketAt(k);
         if (!b || !b->hasNonFinite) continue;
-        const std::pair<double, double> x = bucketXRange(k);
-        const double column = std::floor((x.first + x.second) * 0.5 * dpr);
-        out.append(QRectF(column / dpr, plotRect.top(), 1.0 / dpr, plotRect.height()));
+        const std::pair<double, double> x = columnX(k);
+        out.append(QRectF(x.first, plotRect.top(), x.second - x.first, plotRect.height()));
     }
+}
+
+// An aliased cosmetic line can leave out the first or last pixel of a polyline (for instance when
+// a decimated segment starts with a vertical stretch shorter than a pixel, or consists of a single
+// bucket). The end pixels of each decimated segment are therefore drawn explicitly; a point at
+// 0.25 device px inside a column lights exactly that column.
+template <typename ToLogicalX>
+void drawSegmentEndPixels(QPainter &painter, const internal::PlotXMapping &xmap,
+                          const std::vector<internal::M4Point> &segment, const QPolygonF &poly,
+                          ToLogicalX toLogicalX)
+{
+    const qint64 kFirst = xmap.grid.bucketOf(segment.front().t);
+    const qint64 kLast = xmap.grid.bucketOf(segment.back().t);
+    painter.drawPoint(QPointF(toLogicalX(xmap.columnLeftDev(kFirst) + 0.25), poly.first().y()));
+    painter.drawPoint(QPointF(toLogicalX(xmap.columnLeftDev(kLast) + 0.25), poly.last().y()));
 }
 
 void drawGlowDot(QPainter &painter, const QPointF &centre, const QColor &colour,
@@ -705,7 +718,7 @@ void StripChart::ensureAutoScale()
 
         auto win = internal::computeTimeWindow(tLatest, d_ptr->m_timeSpan.count(), W_dev);
         qint64 tStart = win.tStart;
-        qint64 dt_px = win.dtPx;
+        const internal::BucketGrid &grid = win.grid;
 
         for (auto &ch : d_ptr->m_channels) {
             if (!ch.visible || ch.count == 0) continue;
@@ -744,7 +757,7 @@ void StripChart::ensureAutoScale()
             if (doDecimate) {
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::Time;
-                targetKey.bucketWidth = dt_px;
+                targetKey.grid = win.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(win.numBuckets + 4, W_dev + 4));
 
@@ -758,7 +771,7 @@ void StripChart::ensureAutoScale()
                 if (ch.totalSamples > ch.count && ch.count > 0) {
                     size_t oldestIdx = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
                     qint64 tOldest = ch.timestamps[oldestIdx];
-                    qint64 kOldest = internal::M4Decimator::floorDiv(tOldest, dt_px);
+                    qint64 kOldest = grid.bucketOf(tOldest);
 
                     if (kStartQuery < kOldest) {
                         qint64 diff = kOldest - kStartQuery;
@@ -771,7 +784,7 @@ void StripChart::ensureAutoScale()
                     for (size_t j = 0; j < ch.count; ++j) {
                         size_t idx = (oldestIdx + j) % cap;
                         qint64 tSample = ch.timestamps[idx];
-                        if (internal::M4Decimator::floorDiv(tSample, dt_px) != kOldest) {
+                        if (grid.bucketOf(tSample) != kOldest) {
                             break;
                         }
                         freshBucket.addSample(tSample, ch.values[idx]);
@@ -818,7 +831,7 @@ void StripChart::ensureAutoScale()
 
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::SampleIndex;
-                targetKey.bucketWidth = ib.samplesPerBucket;
+                targetKey.grid = ib.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(ib.numBuckets + 4, W_dev + 4));
 
@@ -832,7 +845,7 @@ void StripChart::ensureAutoScale()
                 quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
                 if (ch.totalSamples > ch.count && ch.count > 0) {
                     qint64 firstAbsoluteIndex = static_cast<qint64>(startCounter);
-                    qint64 kOldest = internal::M4Decimator::floorDiv(firstAbsoluteIndex, ib.samplesPerBucket);
+                    qint64 kOldest = ib.grid.bucketOf(firstAbsoluteIndex);
 
                     if (kStartQuery < kOldest) {
                         qint64 diff = kOldest - kStartQuery;
@@ -845,7 +858,7 @@ void StripChart::ensureAutoScale()
                     size_t oldestIdx = ch.headIndex;
                     for (size_t j = 0; j < ch.count; ++j) {
                         qint64 sIdx = static_cast<qint64>(startCounter + j);
-                        if (internal::M4Decimator::floorDiv(sIdx, ib.samplesPerBucket) != kOldest) {
+                        if (ib.grid.bucketOf(sIdx) != kOldest) {
                             break;
                         }
                         freshBucket.addSample(sIdx, ch.values[(oldestIdx + j) % cap]);
@@ -1073,6 +1086,21 @@ void StripChart::paintEvent(QPaintEvent *)
     qreal dpr = devicePixelRatioF();
     int W_dev = std::max(1, static_cast<int>(std::round(plotRect.width() * dpr)));
 
+    // Device-space placement of traces and time ticks. The painter's device transform gives the
+    // device x of widget coordinates, so the plot's left edge is snapped to a device pixel boundary
+    // even when the widget sits at a fractional device position; every decimation bucket then covers
+    // exactly one device column. Rotated or sheared painters fall back to the widget's own scale.
+    const QTransform deviceTransform = painter.deviceTransform();
+    const bool deviceAxisAligned = deviceTransform.type() <= QTransform::TxScale
+                                && std::abs(deviceTransform.m11() - dpr) < 1e-9;
+    const double devScale = deviceAxisAligned ? deviceTransform.m11() : dpr;
+    const double devOffsetX = deviceAxisAligned ? deviceTransform.dx() : 0.0;
+    auto toLogicalX = [devScale, devOffsetX](double xDev) { return (xDev - devOffsetX) / devScale; };
+    const double plotLeftDevExact = plotRect.left() * devScale + devOffsetX;
+    const double plotLeftDev = std::round(plotLeftDevExact);
+    // Traces are clipped to whole device columns [plotLeftDev, plotLeftDev + W_dev)
+    const QRectF traceClipRect(toLogicalX(plotLeftDev), plotRect.top(), W_dev / devScale, plotRect.height());
+
     if (d_ptr->recordDiagnostics) {
         d_ptr->lastFrame = FrameDiagnostics();
         d_ptr->lastFrame.plotRect = plotRect;
@@ -1118,11 +1146,11 @@ void StripChart::paintEvent(QPaintEvent *)
                     tLatest = d_ptr->arrivalTimestampNs();
                 }
                 auto win = internal::computeTimeWindow(tLatest, spanNs, W_dev);
+                const internal::PlotXMapping tickMap = internal::makePlotXMapping(win.grid, win.kStart, plotLeftDevExact);
                 auto tickResult = internal::computeTimeTicks(win.tStart, win.tEnd, plotRect.width(), 60.0);
                 d_ptr->lastFrame.xTicks.reserve(tickResult.ticks.size());
                 for (const auto &tick : tickResult.ticks) {
-                    double frac = static_cast<double>(tick.tNs - win.tStart) / static_cast<double>(spanNs);
-                    double x = plotRect.left() + frac * plotRect.width();
+                    double x = toLogicalX(tickMap.positionDev(tick.tNs));
                     QString labelStr;
                     if (d_ptr->m_timeOrigin.isValid()) {
                         QDateTime dt = d_ptr->m_timeOrigin.addMSecs(tick.tNs / 1000000);
@@ -1167,6 +1195,7 @@ void StripChart::paintEvent(QPaintEvent *)
 
         qint64 spanNs = d_ptr->m_timeSpan.count();
         auto win = internal::computeTimeWindow(tLatest, spanNs, W_dev);
+        const internal::PlotXMapping tickMap = internal::makePlotXMapping(win.grid, win.kStart, plotLeftDevExact);
         qint64 tEnd = win.tEnd;
         qint64 tStart = win.tStart;
 
@@ -1179,8 +1208,7 @@ void StripChart::paintEvent(QPaintEvent *)
         painter.setFont(font);
 
         for (const auto &tick : tickResult.ticks) {
-            double frac = static_cast<double>(tick.tNs - tStart) / static_cast<double>(spanNs);
-            double x = plotRect.left() + frac * plotRect.width();
+            double x = toLogicalX(tickMap.positionDev(tick.tNs));
 
             painter.setPen(fineGridPen);
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
@@ -1201,7 +1229,7 @@ void StripChart::paintEvent(QPaintEvent *)
 
     // 2. Plot Real-Time Channel Waveforms
     painter.save();
-    painter.setClipRect(plotRect);
+    painter.setClipRect(traceClipRect);
 
     if (d_ptr->m_xAxisMode == XAxisMode::Time) {
         // Find latest timestamp across visible channels
@@ -1220,7 +1248,8 @@ void StripChart::paintEvent(QPaintEvent *)
         // TODO: Display-clock-driven scrolling with fixed latency for block-delivered DAQ data
         auto win = internal::computeTimeWindow(tLatest, timeSpanNs, W_dev);
         qint64 tStart = win.tStart;
-        qint64 dt_px = win.dtPx;
+        const internal::BucketGrid &grid = win.grid;
+        const internal::PlotXMapping xmap = internal::makePlotXMapping(grid, win.kStart, plotLeftDevExact);
 
         if (d_ptr->recordDiagnostics) {
             d_ptr->lastFrame.tStart = win.tStart;
@@ -1230,6 +1259,9 @@ void StripChart::paintEvent(QPaintEvent *)
             d_ptr->lastFrame.timeNumBuckets = win.numBuckets;
             d_ptr->lastFrame.kStart = win.kStart;
             d_ptr->lastFrame.numBuckets = win.numBuckets;
+            d_ptr->lastFrame.gridNum = win.grid.num();
+            d_ptr->lastFrame.gridDen = win.grid.den();
+            d_ptr->lastFrame.plotLeftDev = plotLeftDev;
         }
 
         for (const auto &ch : d_ptr->m_channels) {
@@ -1284,12 +1316,17 @@ void StripChart::paintEvent(QPaintEvent *)
                 gapThresh = static_cast<qint64>(4.0 * ch.emaIntervalNs);
             }
 
-            auto mapPoint = [&](qint64 t, double val) -> QPointF {
-                double xFrac = static_cast<double>(t - tStart) / static_cast<double>(timeSpanNs);
-                double x = plotRect.left() + xFrac * plotRect.width();
+            auto mapY = [&](double val) {
                 double yNorm = (val - d_ptr->m_yMinimum) / yRange;
-                double y = plotRect.bottom() - yNorm * plotRect.height();
-                return QPointF(x, y);
+                return plotRect.bottom() - yNorm * plotRect.height();
+            };
+            // Raw samples: continuous position in the window
+            auto mapPoint = [&](qint64 t, double val) -> QPointF {
+                return QPointF(toLogicalX(xmap.positionDev(t)), mapY(val));
+            };
+            // Decimated vertices: centre of their bucket's device column
+            auto mapVertex = [&](qint64 t, double val) -> QPointF {
+                return QPointF(toLogicalX(xmap.vertexDev(grid.bucketOf(t))), mapY(val));
             };
 
             QPen tracePen;
@@ -1318,7 +1355,7 @@ void StripChart::paintEvent(QPaintEvent *)
             if (doDecimate) {
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::Time;
-                targetKey.bucketWidth = dt_px;
+                targetKey.grid = win.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(win.numBuckets + 4, W_dev + 4));
 
@@ -1332,7 +1369,7 @@ void StripChart::paintEvent(QPaintEvent *)
                 if (ch.totalSamples > ch.count && ch.count > 0) {
                     size_t oldestIdx = (ch.count < static_cast<size_t>(d_ptr->m_capacity)) ? 0 : ch.headIndex;
                     qint64 tOldest = ch.timestamps[oldestIdx];
-                    qint64 kOldest = internal::M4Decimator::floorDiv(tOldest, dt_px);
+                    qint64 kOldest = grid.bucketOf(tOldest);
 
                     if (kStartQuery < kOldest) {
                         qint64 diff = kOldest - kStartQuery;
@@ -1345,7 +1382,7 @@ void StripChart::paintEvent(QPaintEvent *)
                     for (size_t j = 0; j < ch.count; ++j) {
                         size_t idx = (oldestIdx + j) % cap;
                         qint64 tSample = ch.timestamps[idx];
-                        if (internal::M4Decimator::floorDiv(tSample, dt_px) != kOldest) {
+                        if (grid.bucketOf(tSample) != kOldest) {
                             break;
                         }
                         freshBucket.addSample(tSample, ch.values[idx]);
@@ -1357,17 +1394,15 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 // The glow dot must never draw inside a column left blank for a dropout
                 {
-                    const internal::M4Bucket *latest = ch.m4Stream.bucketAt(
-                        internal::M4Decimator::floorDiv(ch.lastTimestamp, dt_px));
+                    const internal::M4Bucket *latest = ch.m4Stream.bucketAt(grid.bucketOf(ch.lastTimestamp));
                     suppressGlow = latest && latest->hasNonFinite;
                     if (!suppressGlow && !d_ptr->m_reusableSegments.empty() && !d_ptr->m_reusableSegments.back().empty()) {
-                        const qint64 kLastDrawn = internal::M4Decimator::floorDiv(d_ptr->m_reusableSegments.back().back().t, dt_px);
-                        const double bucketWidthDev = static_cast<double>(dt_px) / static_cast<double>(timeSpanNs) * plotRect.width() * dpr;
+                        const qint64 kLastDrawn = grid.bucketOf(d_ptr->m_reusableSegments.back().back().t);
                         collectBlankColumnsNearGlow(ch.m4Stream, kLastDrawn, kStartQuery, kStartQuery + numBucketsQuery,
-                                                    bucketWidthDev, dpr, plotRect,
+                                                    dpr, plotRect,
                                                     [&](qint64 k) {
-                                                        return std::make_pair(mapPoint(k * dt_px, 0.0).x(),
-                                                                              mapPoint((k + 1) * dt_px, 0.0).x());
+                                                        return std::make_pair(toLogicalX(xmap.columnLeftDev(k)),
+                                                                              toLogicalX(xmap.columnLeftDev(k) + 1.0));
                                                     },
                                                     glowBlankColumns);
                     }
@@ -1377,9 +1412,10 @@ void StripChart::paintEvent(QPaintEvent *)
                     if (seg.empty()) continue;
                     d_ptr->m_reusablePoly.clear();
                     for (const auto &pt : seg) {
-                        d_ptr->m_reusablePoly << mapPoint(pt.t, pt.value);
+                        d_ptr->m_reusablePoly << mapVertex(pt.t, pt.value);
                     }
                     painter.drawPolyline(d_ptr->m_reusablePoly);
+                    drawSegmentEndPixels(painter, xmap, seg, d_ptr->m_reusablePoly, toLogicalX);
                     if (d_ptr->recordDiagnostics) {
                         chDiag.segments.push_back(d_ptr->m_reusablePoly);
                     }
@@ -1470,6 +1506,9 @@ void StripChart::paintEvent(QPaintEvent *)
             d_ptr->lastFrame.indexNumBuckets = ib.numBuckets;
             d_ptr->lastFrame.kStart = ib.kStart;
             d_ptr->lastFrame.numBuckets = ib.numBuckets;
+            d_ptr->lastFrame.gridNum = ib.grid.num();
+            d_ptr->lastFrame.gridDen = ib.grid.den();
+            d_ptr->lastFrame.plotLeftDev = plotLeftDev;
         }
 
         for (const auto &ch : d_ptr->m_channels) {
@@ -1514,12 +1553,16 @@ void StripChart::paintEvent(QPaintEvent *)
             bool suppressGlow = false;   // the latest bucket is blank (dropout): no glow dot
             BlankColumns glowBlankColumns;
 
+            // Window and x mapping shared by the raw and decimated paths
+            const auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
+            const internal::PlotXMapping xmap = internal::makePlotXMapping(ib.grid, ib.kStart, plotLeftDevExact);
+            const quint64 firstRetainedIndex = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
+
             if (doDecimate) {
-                auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
 
                 internal::GeometryKey targetKey;
                 targetKey.axisMode = internal::GeometryAxisMode::SampleIndex;
-                targetKey.bucketWidth = ib.samplesPerBucket;
+                targetKey.grid = ib.grid;
                 targetKey.widthDev = W_dev;
                 targetKey.ringSize = static_cast<size_t>(std::max(ib.numBuckets + 4, W_dev + 4));
 
@@ -1533,7 +1576,7 @@ void StripChart::paintEvent(QPaintEvent *)
                 quint64 startCounter = (ch.totalSamples >= ch.count) ? (ch.totalSamples - ch.count) : 0;
                 if (ch.totalSamples > ch.count && ch.count > 0) {
                     qint64 firstAbsoluteIndex = static_cast<qint64>(startCounter);
-                    qint64 kOldest = internal::M4Decimator::floorDiv(firstAbsoluteIndex, ib.samplesPerBucket);
+                    qint64 kOldest = ib.grid.bucketOf(firstAbsoluteIndex);
 
                     if (kStartQuery < kOldest) {
                         qint64 diff = kOldest - kStartQuery;
@@ -1546,7 +1589,7 @@ void StripChart::paintEvent(QPaintEvent *)
                     size_t oldestIdx = ch.headIndex;
                     for (size_t j = 0; j < ch.count; ++j) {
                         qint64 sIdx = static_cast<qint64>(startCounter + j);
-                        if (internal::M4Decimator::floorDiv(sIdx, ib.samplesPerBucket) != kOldest) {
+                        if (ib.grid.bucketOf(sIdx) != kOldest) {
                             break;
                         }
                         size_t idx = (oldestIdx + j) % cap;
@@ -1559,21 +1602,17 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 // The glow dot must never draw inside a column left blank for a dropout
                 {
-                    const qint64 spb = ib.samplesPerBucket;
                     const internal::M4Bucket *latest = ch.m4Stream.bucketAt(
-                        internal::M4Decimator::floorDiv(static_cast<qint64>(ch.totalSamples) - 1, spb));
+                        ib.grid.bucketOf(static_cast<qint64>(ch.totalSamples) - 1));
                     suppressGlow = latest && latest->hasNonFinite;
                     if (!suppressGlow && !d_ptr->m_reusableSegments.empty() && !d_ptr->m_reusableSegments.back().empty()) {
-                        const qint64 kLastDrawn = internal::M4Decimator::floorDiv(d_ptr->m_reusableSegments.back().back().t, spb);
-                        const double denom = static_cast<double>(d_ptr->m_capacity - 1);
-                        const double bucketWidthDev = (denom > 0.0) ? static_cast<double>(spb) / denom * plotRect.width() * dpr : 0.0;
-                        auto xOfIndex = [&](qint64 i) {
-                            const double frac = (ch.count <= 1) ? 0.0 : static_cast<double>(i - static_cast<qint64>(startCounter)) / denom;
-                            return plotRect.left() + frac * plotRect.width();
-                        };
+                        const qint64 kLastDrawn = ib.grid.bucketOf(d_ptr->m_reusableSegments.back().back().t);
                         collectBlankColumnsNearGlow(ch.m4Stream, kLastDrawn, kStartQuery, kStartQuery + numBucketsQuery,
-                                                    bucketWidthDev, dpr, plotRect,
-                                                    [&](qint64 k) { return std::make_pair(xOfIndex(k * spb), xOfIndex((k + 1) * spb)); },
+                                                    dpr, plotRect,
+                                                    [&](qint64 k) {
+                                                        return std::make_pair(toLogicalX(xmap.columnLeftDev(k)),
+                                                                              toLogicalX(xmap.columnLeftDev(k) + 1.0));
+                                                    },
                                                     glowBlankColumns);
                     }
                 }
@@ -1582,13 +1621,14 @@ void StripChart::paintEvent(QPaintEvent *)
                     if (seg.empty()) continue;
                     d_ptr->m_reusablePoly.clear();
                     for (const auto &pt : seg) {
-                        double frac = (ch.count <= 1) ? 0.0 : static_cast<double>(pt.t - startCounter) / (d_ptr->m_capacity - 1);
-                        double x = plotRect.left() + frac * plotRect.width();
+                        // Decimated vertices: centre of their bucket's device column
+                        double x = toLogicalX(xmap.vertexDev(ib.grid.bucketOf(pt.t)));
                         double yNorm = (pt.value - d_ptr->m_yMinimum) / yRange;
                         double y = plotRect.bottom() - yNorm * plotRect.height();
                         d_ptr->m_reusablePoly << QPointF(x, y);
                     }
                     painter.drawPolyline(d_ptr->m_reusablePoly);
+                    drawSegmentEndPixels(painter, xmap, seg, d_ptr->m_reusablePoly, toLogicalX);
                     if (d_ptr->recordDiagnostics) {
                         chDiag.segments.push_back(d_ptr->m_reusablePoly);
                     }
@@ -1614,8 +1654,8 @@ void StripChart::paintEvent(QPaintEvent *)
                         continue;
                     }
 
-                    double frac = (d_ptr->m_capacity <= 1) ? 0.0 : (static_cast<double>(i) / (d_ptr->m_capacity - 1));
-                    double x = plotRect.left() + frac * plotRect.width();
+                    // Raw samples: continuous position of the absolute sample index in the window
+                    double x = toLogicalX(xmap.positionDev(static_cast<qint64>(firstRetainedIndex + i)));
                     double yNorm = (val - d_ptr->m_yMinimum) / yRange;
                     double y = plotRect.bottom() - yNorm * plotRect.height();
                     y = std::clamp(y, plotRect.top(), plotRect.bottom());

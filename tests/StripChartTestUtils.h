@@ -8,6 +8,7 @@
 
 #include <QtIndustrialWidgets/StripChart.h>
 #include "StripChartTestAccess.h"
+#include "internal/StripChartGeometry.h"
 
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -99,21 +100,27 @@ inline double mapY(const StripChart &chart, double value)
     return plotRect.bottom() - yNorm * plotRect.height();
 }
 
-inline double mapIndex(const StripChart &chart, size_t i)
+// x mapping of the last rendered frame (see internal::PlotXMapping), for images rendered with
+// renderToImage() (device origin at the widget origin).
+inline internal::PlotXMapping frameXMapping(const StripChart &chart)
 {
-    QRectF plotRect = StripChartTestAccess::plotArea(chart);
-    int cap = chart.capacity();
-    double frac = (cap <= 1) ? 0.0 : (static_cast<double>(i) / (cap - 1));
-    return plotRect.left() + frac * plotRect.width();
+    const auto &f = StripChartTestAccess::lastFrame(chart);
+    return internal::makePlotXMapping(internal::BucketGrid(f.gridNum, f.gridDen), f.kStart, f.plotLeftDev);
 }
 
+// Logical x of raw sample i (SampleIndex mode; i is the absolute sample index, equal to the buffer
+// index while the buffer has not wrapped) in the last rendered frame.
+inline double mapIndex(const StripChart &chart, size_t i)
+{
+    const auto &f = StripChartTestAccess::lastFrame(chart);
+    return frameXMapping(chart).positionDev(static_cast<qint64>(i)) / f.dpr;
+}
+
+// Logical x of a raw sample at time t in the last rendered frame.
 inline double mapT(const StripChart &chart, qint64 t)
 {
-    const auto &frame = StripChartTestAccess::lastFrame(chart);
-    qint64 spanNs = chart.timeSpan().count();
-    if (spanNs <= 0) return frame.plotRect.left();
-    double frac = static_cast<double>(t - frame.tStart) / static_cast<double>(spanNs);
-    return frame.plotRect.left() + frac * frame.plotRect.width();
+    const auto &f = StripChartTestAccess::lastFrame(chart);
+    return frameXMapping(chart).positionDev(t) / f.dpr;
 }
 
 class WarningGuard {

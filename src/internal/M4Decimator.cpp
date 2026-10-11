@@ -10,15 +10,92 @@
 namespace QtIndustrialWidgets {
 namespace internal {
 
+namespace {
+
+// Unsigned 64 x 64 -> 128-bit product from 32-bit halves.
+void mul64x64(quint64 a, quint64 b, quint64 &hi, quint64 &lo) noexcept
+{
+    const quint64 aLo = a & 0xffffffffULL;
+    const quint64 aHi = a >> 32;
+    const quint64 bLo = b & 0xffffffffULL;
+    const quint64 bHi = b >> 32;
+    const quint64 p0 = aLo * bLo;
+    const quint64 p1 = aLo * bHi;
+    const quint64 p2 = aHi * bLo;
+    const quint64 p3 = aHi * bHi;
+    const quint64 mid = (p0 >> 32) + (p1 & 0xffffffffULL) + (p2 & 0xffffffffULL);
+    lo = (p0 & 0xffffffffULL) | (mid << 32);
+    hi = p3 + (p1 >> 32) + (p2 >> 32) + (mid >> 32);
+}
+
+// (hi:lo) / d for hi < d (the quotient fits in 64 bits), by binary long division.
+void div128by64(quint64 hi, quint64 lo, quint64 d, quint64 &quotient, quint64 &remainder) noexcept
+{
+    quint64 rem = hi;
+    quint64 quot = 0;
+    for (int i = 63; i >= 0; --i) {
+        const bool carry = (rem >> 63) != 0;
+        rem = (rem << 1) | ((lo >> i) & 1ULL);
+        quot <<= 1;
+        if (carry || rem >= d) {
+            rem -= d;
+            quot |= 1ULL;
+        }
+    }
+    quotient = quot;
+    remainder = rem;
+}
+
+} // namespace
+
+qint64 mulDivFloor(qint64 a, qint64 b, qint64 c, qint64 *remainder) noexcept
+{
+    constexpr qint64 kMax = std::numeric_limits<qint64>::max();
+    constexpr qint64 kMin = std::numeric_limits<qint64>::min();
+    if (b <= 0 || c <= 0) {
+        if (remainder) *remainder = 0;
+        return 0;
+    }
+    // a = q * c + r with 0 <= r < c, then a * b / c = q * b + (r * b) / c
+    qint64 q = a / c;
+    qint64 r = a % c;
+    if (r < 0) {
+        r += c;
+        --q;
+    }
+    quint64 hi = 0;
+    quint64 lo = 0;
+    mul64x64(static_cast<quint64>(r), static_cast<quint64>(b), hi, lo);
+    quint64 frac = 0;
+    quint64 rem = 0;
+    div128by64(hi, lo, static_cast<quint64>(c), frac, rem); // r * b / c < b, fits
+    if (remainder) *remainder = static_cast<qint64>(rem);
+
+    // q * b + frac, saturated
+    if (q > 0 && q > (kMax - static_cast<qint64>(frac)) / b) return kMax;
+    if (q < 0 && q < kMin / b) return kMin;
+    return q * b + static_cast<qint64>(frac);
+}
+
+qint64 mulDivCeil(qint64 a, qint64 b, qint64 c) noexcept
+{
+    qint64 rem = 0;
+    const qint64 f = mulDivFloor(a, b, c, &rem);
+    if (rem != 0 && f != std::numeric_limits<qint64>::max()) {
+        return f + 1;
+    }
+    return f;
+}
+
 std::vector<M4Bucket> M4Decimator::decimateToBuckets(
     const qint64 *timestamps,
     const double *values,
     size_t count,
-    qint64 dt_px,
+    const BucketGrid &grid,
     qint64 kStart,
     int numBuckets)
 {
-    if (numBuckets <= 0 || dt_px <= 0 || !timestamps || !values) {
+    if (numBuckets <= 0 || !timestamps || !values) {
         return {};
     }
 
@@ -27,7 +104,7 @@ std::vector<M4Bucket> M4Decimator::decimateToBuckets(
 
     for (size_t i = 0; i < count; ++i) {
         qint64 t = timestamps[i];
-        qint64 k = floorDiv(t, dt_px);
+        qint64 k = grid.bucketOf(t);
         if (k >= kStart && k < kEnd) {
             buckets[static_cast<size_t>(k - kStart)].addSample(t, values[i]);
         }
@@ -40,16 +117,16 @@ std::vector<std::vector<M4Point>> M4Decimator::decimateToSegments(
     const qint64 *timestamps,
     const double *values,
     size_t count,
-    qint64 dt_px,
+    const BucketGrid &grid,
     qint64 kStart,
     int numBuckets,
     qint64 gapThreshold)
 {
-    if (numBuckets <= 0 || dt_px <= 0 || !timestamps || !values || count == 0) {
+    if (numBuckets <= 0 || !timestamps || !values || count == 0) {
         return {};
     }
 
-    std::vector<M4Bucket> buckets = decimateToBuckets(timestamps, values, count, dt_px, kStart, numBuckets);
+    std::vector<M4Bucket> buckets = decimateToBuckets(timestamps, values, count, grid, kStart, numBuckets);
 
     std::vector<std::vector<M4Point>> segments;
     std::vector<M4Point> currentSegment;
@@ -152,10 +229,9 @@ size_t M4Decimator::IncrementalStream::slotFor(qint64 k) const noexcept
     return static_cast<size_t>(rem);
 }
 
-void M4Decimator::IncrementalStream::addSample(qint64 t, double y, qint64 dt_px)
+void M4Decimator::IncrementalStream::addSample(qint64 t, double y, const BucketGrid &grid)
 {
-    if (dt_px <= 0) return;
-    qint64 k = floorDiv(t, dt_px);
+    qint64 k = grid.bucketOf(t);
 
     if (m_activeBucketIndex == std::numeric_limits<qint64>::min()) {
         m_activeBucketIndex = k;
@@ -186,13 +262,13 @@ void M4Decimator::IncrementalStream::setBucket(qint64 k, const M4Bucket &bucket)
 }
 
 void M4Decimator::IncrementalStream::rebuild(
-    const qint64 *timestamps, const double *values, size_t count, qint64 dt_px)
+    const qint64 *timestamps, const double *values, size_t count, const BucketGrid &grid)
 {
     reset();
-    if (!timestamps || !values || count == 0 || dt_px <= 0) return;
+    if (!timestamps || !values || count == 0) return;
 
     for (size_t i = 0; i < count; ++i) {
-        addSample(timestamps[i], values[i], dt_px);
+        addSample(timestamps[i], values[i], grid);
     }
 }
 

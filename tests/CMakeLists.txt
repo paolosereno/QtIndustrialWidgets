@@ -51,6 +51,19 @@ add_test(NAME tst_StripChart COMMAND tst_StripChart)
 add_test(NAME tst_StripChart_hidpi COMMAND tst_StripChart)
 set_tests_properties(tst_StripChart_hidpi PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
 
+# Fractional device pixel ratios: only the bucket/pixel-column alignment and scroll tests
+set(STRIPCHART_ALIGNMENT_TESTS
+    bucketGridProperty
+    scrollIsShiftInvariantAtAnyDpr
+    decimatedDropoutVisibleAtAnyPosition
+    spikeLitInExactlyOneColumn
+    rawDecimatedContinuity
+    segmentEndColumnsAreDrawn)
+add_test(NAME tst_StripChart_dpr125 COMMAND tst_StripChart ${STRIPCHART_ALIGNMENT_TESTS})
+set_tests_properties(tst_StripChart_dpr125 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.25")
+add_test(NAME tst_StripChart_dpr150 COMMAND tst_StripChart ${STRIPCHART_ALIGNMENT_TESTS})
+set_tests_properties(tst_StripChart_dpr150 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.5")
+
 add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
 add_industrial_widget_test(tst_AnnunciatorPanel)

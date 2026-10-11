@@ -91,6 +91,16 @@ private Q_SLOTS:
     void autoscaleUsesFiniteValuesOfBlankedBucket();
     void glowDotNeverDrawnInBlankColumn_data();
     void glowDotNeverDrawnInBlankColumn();
+    void bucketGridProperty();
+    void scrollIsShiftInvariantAtAnyDpr();
+    void decimatedDropoutVisibleAtAnyPosition_data();
+    void decimatedDropoutVisibleAtAnyPosition();
+    void spikeLitInExactlyOneColumn_data();
+    void spikeLitInExactlyOneColumn();
+    void rawDecimatedContinuity_data();
+    void rawDecimatedContinuity();
+    void segmentEndColumnsAreDrawn_data();
+    void segmentEndColumnsAreDrawn();
 };
 
 void tst_StripChart::defaultValues()
@@ -433,9 +443,6 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
         // The bucket containing the NaN is not drawn: 2 segments and no trace in its column.
         QCOMPARE(chDiag.segments.size(), 2UL);
 
-        // At DPR 1 the NaN bucket (samples 49926-50031) spans x 514.305-515.307 px and the next
-        // segment starts at x 515.308 (sample 50032), inside device column 515.
-        QEXPECT_FAIL("", kBucketNotPixelAligned, Continue);
         QVERIFY2(ysNan.empty(), qPrintable(QString("Trace pixel found in decimated NaN column %1").arg(xNanDev)));
     }
 }
@@ -903,7 +910,8 @@ void tst_StripChart::windowIsQuantisedAndScrollIsShiftInvariant()
             renderToImage(*testChart);
             const auto &frame = StripChartTestAccess::lastFrame(*testChart);
 
-            QCOMPARE(frame.tEnd % frame.dtPx, 0LL);
+            // tEnd is the boundary of the bucket after the window (non-uniform grid, #12)
+            QCOMPARE(frame.tEnd, internal::BucketGrid(frame.gridNum, frame.gridDen).boundary(frame.kStart + frame.numBuckets));
             QVERIFY2(frame.tStart <= tLatest, qPrintable(QString("tStart (%1) > tLatest (%2)").arg(frame.tStart).arg(tLatest)));
             QVERIFY2(tLatest < frame.tEnd, qPrintable(QString("tLatest (%1) >= tEnd (%2)").arg(tLatest).arg(frame.tEnd)));
             QCOMPARE(frame.tEnd - frame.tStart, testChart->timeSpan().count());
@@ -1104,16 +1112,18 @@ void tst_StripChart::computeIndexBucketsGrid()
     for (const auto &tc : cases) {
         auto ib = internal::computeIndexBuckets(tc.totalSamples, tc.count, tc.capacity, tc.widthDev);
         QVERIFY(ib.samplesPerBucket >= 1);
-        QVERIFY(ib.numBuckets <= tc.widthDev + 1);
+        QCOMPARE(ib.numBuckets, tc.widthDev);
 
         quint64 startCounter = (tc.totalSamples >= tc.count) ? (tc.totalSamples - tc.count) : 0;
         for (size_t j = 0; j < tc.count; ++j) {
             qint64 idx = static_cast<qint64>(startCounter + j);
-            qint64 bucket = internal::M4Decimator::floorDiv(idx, ib.samplesPerBucket);
-            QVERIFY2(bucket >= ib.kStart, qPrintable(QString("bucket %1 < kStart %2").arg(bucket).arg(ib.kStart)));
+            qint64 bucket = ib.grid.bucketOf(idx);
+            // With a wrapped buffer only the oldest, partial bucket may fall out on the left
+            QVERIFY2(bucket >= ib.kStart || (bucket == ib.kStart - 1 && bucket == ib.grid.bucketOf(static_cast<qint64>(startCounter))),
+                     qPrintable(QString("bucket %1 < kStart %2").arg(bucket).arg(ib.kStart)));
             QVERIFY2(bucket < ib.kStart + ib.numBuckets,
-                     qPrintable(QString("bucket %1 >= kStart+numBuckets %2 in case cap=%3, W=%4, total=%5, count=%6, spb=%7, numB=%8")
-                               .arg(bucket).arg(ib.kStart + ib.numBuckets).arg(tc.capacity).arg(tc.widthDev).arg(tc.totalSamples).arg(tc.count).arg(ib.samplesPerBucket).arg(ib.numBuckets)));
+                     qPrintable(QString("bucket %1 >= kStart+numBuckets %2 in case cap=%3, W=%4, total=%5, count=%6, numB=%7")
+                               .arg(bucket).arg(ib.kStart + ib.numBuckets).arg(tc.capacity).arg(tc.widthDev).arg(tc.totalSamples).arg(tc.count).arg(ib.numBuckets)));
         }
     }
 }
@@ -1216,17 +1226,17 @@ void tst_StripChart::computeTimeWindowBoundaries()
         for (qint64 tLatest : testValues) {
             auto win = internal::computeTimeWindow(tLatest, cfg.spanNs, cfg.widthDev);
 
-            QVERIFY2(win.tEnd % win.dtPx == 0,
-                     qPrintable(QString("tEnd %1 not multiple of dtPx %2 (tLatest=%3)").arg(win.tEnd).arg(win.dtPx).arg(tLatest)));
+            QVERIFY2(win.tEnd == win.grid.boundary(win.kStart + win.numBuckets),
+                     qPrintable(QString("tEnd %1 not the boundary of bucket kStart + numBuckets (tLatest=%2)").arg(win.tEnd).arg(tLatest)));
             QVERIFY2(win.tStart <= tLatest && tLatest < win.tEnd,
                      qPrintable(QString("tLatest %1 not in [tStart %2, tEnd %3) (dtPx=%4)").arg(tLatest).arg(win.tStart).arg(win.tEnd).arg(win.dtPx)));
             QCOMPARE(win.tEnd - win.tStart, cfg.spanNs);
 
-            qint64 kLatest = internal::M4Decimator::floorDiv(tLatest, win.dtPx);
+            qint64 kLatest = win.grid.bucketOf(tLatest);
             QVERIFY2(kLatest >= win.kStart && kLatest < win.kStart + win.numBuckets,
                      qPrintable(QString("kLatest %1 not in [kStart %2, %3) (tLatest=%4)").arg(kLatest).arg(win.kStart).arg(win.kStart + win.numBuckets).arg(tLatest)));
-            QVERIFY2(win.numBuckets <= cfg.widthDev + 1,
-                     qPrintable(QString("numBuckets %1 > W_dev+1 %2").arg(win.numBuckets).arg(cfg.widthDev + 1)));
+            QVERIFY2(win.numBuckets == cfg.widthDev,
+                     qPrintable(QString("numBuckets %1 != W_dev %2").arg(win.numBuckets).arg(cfg.widthDev)));
         }
     }
 }
@@ -1592,69 +1602,120 @@ void tst_StripChart::widgetM4Equivalence()
     chart.setCapacity(250000);
     chart.addSamples(ch, timestamps.data(), values.data(), N);
 
-    // Render with DecimationMode::Off
+    // Oracle (#12): every decimated column is checked against the data of its own bucket, not
+    // against the raw rendering. The raw rendering draws transitions with continuous x and can
+    // put the rising edge of a spike in the previous column, while decimated buckets are confined
+    // to one device column; the raw comparison is therefore informational only.
+    internal::StripChartTestAccess::enableDiagnostics(chart, true);
+
+    // Render with DecimationMode::Off (informational comparison)
     chart.setDecimationMode(StripChart::DecimationMode::Off);
-    QImage imgOff(chart.size(), QImage::Format_ARGB32_Premultiplied);
-    imgOff.fill(Qt::black);
-    chart.render(&imgOff);
+    const QImage imgOff = renderToImage(chart);
 
     // Render with DecimationMode::Always
     chart.setDecimationMode(StripChart::DecimationMode::Always);
-    QImage imgAlways(chart.size(), QImage::Format_ARGB32_Premultiplied);
-    imgAlways.fill(Qt::black);
-    chart.render(&imgAlways);
+    const QImage imgAlways = renderToImage(chart);
+    const FrameDiagnostics frame = internal::StripChartTestAccess::lastFrame(chart);
+    QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
 
     auto isRedPixel = [](QRgb rgb) -> bool {
         return qRed(rgb) > 180 && qGreen(rgb) < 80 && qBlue(rgb) < 80;
     };
 
-    // Compare first exact equality
-    if (imgOff == imgAlways) {
-        QCOMPARE(imgOff, imgAlways);
-    } else {
-        // Antialiasing difference on raw vs 1px cosmetic pen:
-        // Compare vertical pixel extents per column in the plot area (x in [42, 1041])
-        int maxDiffPerCol = 0;
-        int diffCols = 0;
-        int activeCols = 0;
+    const double dpr = chart.devicePixelRatioF();
+    const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
+    const int widthDev = frame.widthDev;
+    const int leftDev = static_cast<int>(frame.plotLeftDev);
+    const int rowTop = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
+    const int rowBottom = std::min(imgAlways.height() - 1, static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr)));
 
-        for (int x = 42; x < 1042; ++x) {
-            int minYOff = -1, maxYOff = -1;
-            int minYAlways = -1, maxYAlways = -1;
+    // Bucket data: min, max, first and last sample value of every bucket in the window
+    struct BucketData {
+        double min{std::numeric_limits<double>::infinity()};
+        double max{-std::numeric_limits<double>::infinity()};
+        double first{0.0};
+        double last{0.0};
+        bool any{false};
+    };
+    std::vector<BucketData> buckets(static_cast<size_t>(widthDev));
+    for (int i = 0; i < N; ++i) {
+        const qint64 c = grid.bucketOf(timestamps[i].count()) - frame.kStart;
+        if (c < 0 || c >= widthDev) continue;
+        BucketData &b = buckets[static_cast<size_t>(c)];
+        if (!b.any) b.first = values[i];
+        b.last = values[i];
+        b.min = std::min(b.min, values[i]);
+        b.max = std::max(b.max, values[i]);
+        b.any = true;
+    }
 
-            for (int y = 0; y < chart.height(); ++y) {
-                if (isRedPixel(imgOff.pixel(x, y))) {
-                    if (minYOff < 0) minYOff = y;
-                    maxYOff = y;
-                }
-                if (isRedPixel(imgAlways.pixel(x, y))) {
-                    if (minYAlways < 0) minYAlways = y;
-                    maxYAlways = y;
-                }
-            }
+    // Device y of a value. An aliased cosmetic pen puts a coordinate y in pixel row round(y)
+    // (Qt draws aliased pixels to the right of and below the mathematical point), and a line end
+    // can be left out by one pixel: tolerance of 1 row for the rounding of the y mapping.
+    auto rowOf = [&](double v) { return static_cast<int>(std::lround(mapY(chart, v) * dpr)); };
+    constexpr int kRowTolerance = 1;
+    // The glow dot on the latest point covers the trace in the last columns
+    const int glowColumns = static_cast<int>(std::ceil(4.0 * dpr)) + 1;
 
-            if (minYOff >= 0 && minYAlways >= 0) {
-                activeCols++;
-                int dMin = std::abs(minYOff - minYAlways);
-                int dMax = std::abs(maxYOff - maxYAlways);
-                int colDiff = std::max(dMin, dMax);
-                if (colDiff > maxDiffPerCol) {
-                    maxDiffPerCol = colDiff;
-                }
-                if (colDiff > 0) {
-                    diffCols++;
-                }
+    int checked = 0;
+    for (int c = 0; c < widthDev - glowColumns; ++c) {
+        const BucketData &b = buckets[static_cast<size_t>(c)];
+        if (!b.any) continue;
+        const int x = leftDev + c;
+        int top = -1;
+        int bottom = -1;
+        for (int y = rowTop; y <= rowBottom; ++y) {
+            if (isRedPixel(imgAlways.pixel(x, y))) {
+                if (top < 0) top = y;
+                bottom = y;
             }
         }
+        QVERIFY2(top >= 0, qPrintable(QString("column %1 has samples but no trace").arg(x)));
 
-        qInfo() << "M4 widget equivalence: activeCols:" << activeCols
-                << "diffCols:" << diffCols << "maxDiffPerCol:" << maxDiffPerCol;
-        QVERIFY(activeCols > 900);
-        QVERIFY2(maxDiffPerCol <= 1,
-                 qPrintable(QString("M4 widget equivalence: max diff per col %1 > 1 px").arg(maxDiffPerCol)));
-        QVERIFY2(diffCols <= (activeCols / 100),
-                 qPrintable(QString("M4 widget equivalence: differing cols %1 exceeds 1% of %2").arg(diffCols).arg(activeCols)));
+        // 1. No lost peak: the lit rows contain the rows of the bucket's max and min
+        QVERIFY2(top <= rowOf(b.max) + kRowTolerance && bottom >= rowOf(b.min) - kRowTolerance,
+                 qPrintable(QString("column %1: lit rows [%2, %3] miss the bucket's max/min rows [%4, %5]")
+                                .arg(x).arg(top).arg(bottom).arg(rowOf(b.max)).arg(rowOf(b.min))));
+
+        // 2. Nothing invented: lit rows stay inside the bucket's range extended to the connecting
+        //    segments (last point of the previous bucket, first point of the next)
+        double lo = b.min;
+        double hi = b.max;
+        if (c > 0 && buckets[static_cast<size_t>(c - 1)].any) {
+            lo = std::min(lo, buckets[static_cast<size_t>(c - 1)].last);
+            hi = std::max(hi, buckets[static_cast<size_t>(c - 1)].last);
+        }
+        if (c + 1 < widthDev && buckets[static_cast<size_t>(c + 1)].any) {
+            lo = std::min(lo, buckets[static_cast<size_t>(c + 1)].first);
+            hi = std::max(hi, buckets[static_cast<size_t>(c + 1)].first);
+        }
+        QVERIFY2(top >= rowOf(hi) - kRowTolerance && bottom <= rowOf(lo) + kRowTolerance,
+                 qPrintable(QString("column %1: lit rows [%2, %3] outside the allowed rows [%4, %5]")
+                                .arg(x).arg(top).arg(bottom).arg(rowOf(hi)).arg(rowOf(lo))));
+        ++checked;
     }
+    QVERIFY(checked > (widthDev - glowColumns) * 9 / 10);
+
+    // Informational: per-column vertical extents of the raw (cosmetic 1 px) and decimated renderings
+    int maxDiffPerCol = 0;
+    int diffCols = 0;
+    for (int c = 0; c < widthDev; ++c) {
+        const int x = leftDev + c;
+        int a0 = -1, a1 = -1, b0 = -1, b1 = -1;
+        for (int y = rowTop; y <= rowBottom; ++y) {
+            if (isRedPixel(imgOff.pixel(x, y))) { if (a0 < 0) a0 = y; a1 = y; }
+            if (isRedPixel(imgAlways.pixel(x, y))) { if (b0 < 0) b0 = y; b1 = y; }
+        }
+        if (a0 < 0 || b0 < 0) continue;
+        const int d = std::max(std::abs(a0 - b0), std::abs(a1 - b1));
+        maxDiffPerCol = std::max(maxDiffPerCol, d);
+        if (d > 1) {
+            ++diffCols;
+            qInfo("raw vs decimated: column %d raw rows [%d, %d], decimated rows [%d, %d]", x, a0, a1, b0, b1);
+        }
+    }
+    qInfo() << "M4 widget equivalence (informational): columns differing by > 1 row:" << diffCols
+            << "max difference:" << maxDiffPerCol << "rows; checked columns:" << checked;
 }
 
 void tst_StripChart::lazyAutoscale()
@@ -1776,26 +1837,16 @@ void appendDropoutSamples(StripChart &chart, int ch, qint64 first, qint64 count,
 qint64 bucketOfSample(const StripChart &chart, qint64 index, qint64 sampleDtNs)
 {
     const auto &f = StripChartTestAccess::lastFrame(chart);
-    if (chart.xAxisMode() == StripChart::XAxisMode::Time) {
-        return internal::M4Decimator::floorDiv(index * sampleDtNs, f.dtPx);
-    }
-    return internal::M4Decimator::floorDiv(index, f.samplesPerBucket);
+    const internal::BucketGrid grid(f.gridNum, f.gridDen);
+    return grid.bucketOf(chart.xAxisMode() == StripChart::XAxisMode::Time ? index * sampleDtNs : index);
 }
 
-// Logical x range [x0, x1) of decimation bucket k in the last frame, computed with the same
-// formula as the paint code. `firstRetained` is the absolute index of the oldest retained sample
-// (SampleIndex mode positions samples relative to it).
-std::pair<double, double> bucketXRange(const StripChart &chart, qint64 k, qint64 firstRetained = 0)
+// Logical x range [x0, x1) of decimation bucket k in the last frame: its device column (#12).
+std::pair<double, double> bucketXRange(const StripChart &chart, qint64 k, qint64 /*firstRetained*/ = 0)
 {
     const auto &f = StripChartTestAccess::lastFrame(chart);
-    if (chart.xAxisMode() == StripChart::XAxisMode::Time) {
-        return {mapT(chart, k * f.dtPx), mapT(chart, (k + 1) * f.dtPx)};
-    }
-    auto xOf = [&](qint64 i) {
-        double frac = static_cast<double>(i - firstRetained) / (chart.capacity() - 1);
-        return f.plotRect.left() + frac * f.plotRect.width();
-    };
-    return {xOf(k * f.samplesPerBucket), xOf((k + 1) * f.samplesPerBucket)};
+    const double left = frameXMapping(chart).columnLeftDev(k);
+    return {left / f.dpr, (left + 1.0) / f.dpr};
 }
 
 // True when both bucket edges fall on device pixel boundaries, so the bucket covers exactly one
@@ -1866,9 +1917,10 @@ void tst_StripChart::decimatedSingleDropout_data()
     // 1000 px plot: 1 s span and 1M samples give buckets on device pixel boundaries (DPR 1 and 2).
     QTest::newRow("Time, aligned") << time << 1054 << qint64(1000000000) << qint64(1000) << 1000000 << qint64(500300) << true;
     QTest::newRow("SampleIndex, aligned") << index << 1054 << qint64(0) << qint64(0) << 1000000 << qint64(500300) << true;
-    // Geometries where bucket edges fall 0.25-0.75 px inside a device column (DPR 1 and 2).
-    QTest::newRow("Time, misaligned") << time << 1974 << qint64(1000000) << qint64(10) << 100000 << qint64(55362) << false;
-    QTest::newRow("SampleIndex, misaligned") << index << 1000 << qint64(0) << qint64(0) << 1000000 << qint64(400268) << false;
+    // Geometries whose buckets were 0.25-0.75 px off the device columns before #12; buckets are
+    // now aligned to device columns in every geometry.
+    QTest::newRow("Time, misaligned") << time << 1974 << qint64(1000000) << qint64(10) << 100000 << qint64(55362) << true;
+    QTest::newRow("SampleIndex, misaligned") << index << 1000 << qint64(0) << qint64(0) << 1000000 << qint64(400268) << true;
 }
 
 void tst_StripChart::decimatedSingleDropout()
@@ -2133,6 +2185,13 @@ void tst_StripChart::decimatedDropoutEviction()
         QVERIFY(firstRetained < nanIndex);
         const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
         QCOMPARE(k, bucketOfSample(*chart, firstRetained, sampleDtNs)); // oldest retained bucket
+        if (mode == StripChart::XAxisMode::SampleIndex) {
+            // SampleIndex windows hold the W_dev newest buckets: with a wrapped buffer the oldest,
+            // partial bucket falls out on the left (#12), so there is nothing to draw for it.
+            QCOMPARE(k, frame.kStart - 1);
+            QVERIFY(chDiag.segments[0].first().x() >= bucketXRange(*chart, k).second);
+            return;
+        }
         const auto [x0, x1] = bucketXRange(*chart, k, firstRetained);
         QCOMPARE(verticesInRange(chDiag, x0, x1), 0);
         QCOMPARE(chDiag.segments.size(), 1UL);
@@ -2283,6 +2342,471 @@ void tst_StripChart::glowDotNeverDrawnInBlankColumn()
         }
         QVERIFY2(glowColumns > 0, qPrintable(QStringLiteral("no glow around the last point (x %1)").arg(last.x() * dpr)));
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Decimation buckets aligned to device pixel columns (issue #12)
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+internal::PlotXMapping frameMapping(const FrameDiagnostics &f)
+{
+    return internal::makePlotXMapping(internal::BucketGrid(f.gridNum, f.gridDen), f.kStart, f.plotLeftDev);
+}
+
+// Device column of bucket k in the last frame
+int deviceColumnOfBucket(const FrameDiagnostics &f, qint64 k)
+{
+    return static_cast<int>(std::floor(frameMapping(f).columnLeftDev(k) + 1e-9));
+}
+
+int plotTopDev(const FrameDiagnostics &f) { return static_cast<int>(std::floor(f.plotRect.top() * f.dpr)); }
+int plotBottomDev(const FrameDiagnostics &f) { return static_cast<int>(std::ceil(f.plotRect.bottom() * f.dpr)); }
+
+} // namespace
+
+void tst_StripChart::bucketGridProperty()
+{
+    std::mt19937_64 rng(20261012);
+    const double dprs[] = {1.0, 1.25, 1.5, 2.0};
+    std::uniform_int_distribution<int> widthLogicalDist(1, 4000);
+    std::uniform_real_distribution<double> leftDist(0.0, 100.0);
+    std::uniform_real_distribution<double> unit(0.0, 1.0);
+
+    auto checkWindow = [&](const internal::BucketGrid &grid, qint64 kStart, int widthDev, const internal::PlotXMapping &m,
+                           qint64 xFirst, qint64 xLast, const QString &where) {
+        // Integer device boundary for the plot's left edge
+        QVERIFY2(m.leftDev == std::round(m.leftDev), qPrintable("plot left not on a device pixel boundary: " + where));
+        // Bucket k occupies device column k - kStart; its first position lands at that column's left edge
+        const qint64 ks[] = {kStart, kStart + 1, kStart + widthDev / 2, kStart + widthDev - 1};
+        for (qint64 k : ks) {
+            QVERIFY2(m.columnLeftDev(k) == m.leftDev + static_cast<double>(k - kStart), qPrintable(where));
+            const qint64 b = grid.boundary(k);
+            if (grid.bucketOf(b) != k) {
+                continue; // empty bucket (fewer positions than buckets, e.g. capacity < W_dev)
+            }
+            const double pos = m.positionDev(b);
+            QVERIFY2(pos >= m.columnLeftDev(k) && pos < m.columnLeftDev(k) + 1.0,
+                     qPrintable(QString("bucket %1 boundary at device x %2, column [%3, +1) %4").arg(k).arg(pos, 0, 'f', 6).arg(m.columnLeftDev(k)).arg(where)));
+            QVERIFY2(m.positionDev(b - 1) <= m.columnLeftDev(k), // < in exact arithmetic; a double can round it to the edge
+                     qPrintable(QString("position before bucket %1 not left of its column %2").arg(k).arg(where)));
+        }
+        // Every position in the window belongs to exactly one bucket and lies inside its column
+        if (xLast < xFirst) return;
+        for (int s = 0; s < 8; ++s) {
+            const qint64 x = xFirst + static_cast<qint64>(unit(rng) * static_cast<double>(xLast - xFirst));
+            const qint64 k = grid.bucketOf(x);
+            QVERIFY2(k >= kStart && k < kStart + widthDev, qPrintable(QString("x %1 in bucket %2 outside window %3").arg(x).arg(k).arg(where)));
+            QVERIFY2(grid.boundary(k) <= x && x < grid.boundary(k + 1), qPrintable(where));
+            const double pos = m.positionDev(x);
+            QVERIFY2(pos >= m.columnLeftDev(k) && pos < m.columnLeftDev(k) + 1.0,
+                     qPrintable(QString("x %1 at device x %2 outside its column %3").arg(x).arg(pos, 0, 'f', 6).arg(where)));
+        }
+    };
+
+    for (int i = 0; i < 4000; ++i) {
+        const double dpr = dprs[i % 4];
+        const int widthDev = std::max(1, static_cast<int>(std::lround(widthLogicalDist(rng) * dpr))); // 1 .. 8000
+        const double leftDevExact = leftDist(rng) * dpr;
+
+        // Time mode
+        {
+            qint64 span = widthDev;
+            switch (i % 3) {
+                case 0: span += static_cast<qint64>(unit(rng) * 1e6); break;
+                case 1: span += static_cast<qint64>(unit(rng) * 1e11); break;
+                default: span += static_cast<qint64>(unit(rng) * 1e15); break;
+            }
+            qint64 tLatest = 0;
+            switch (i % 4) {
+                case 0: tLatest = 1000000000000000000LL - static_cast<qint64>(unit(rng) * 1e15); break;
+                case 1: tLatest = -1000000000000000000LL + static_cast<qint64>(unit(rng) * 1e15) + span; break;
+                default: tLatest = static_cast<qint64>((unit(rng) - 0.5) * 2e12); break;
+            }
+            const QString where = QString("(Time case %1: W_dev %2, dpr %3, left %4, span %5, tLatest %6)")
+                                      .arg(i).arg(widthDev).arg(dpr).arg(leftDevExact).arg(span).arg(tLatest);
+            const auto win = internal::computeTimeWindow(tLatest, span, widthDev);
+            QVERIFY2(win.numBuckets == widthDev, qPrintable(QString("numBuckets %1 ").arg(win.numBuckets) + where));
+            QVERIFY2(win.tStart <= tLatest && tLatest < win.tEnd, qPrintable(where));
+            QVERIFY2(win.tEnd - win.tStart == span, qPrintable(where));
+            QVERIFY2(win.tStart == win.grid.boundary(win.kStart), qPrintable(where));
+            QVERIFY2(win.tEnd == win.grid.boundary(win.kStart + widthDev), qPrintable(where));
+            const auto m = internal::makePlotXMapping(win.grid, win.kStart, leftDevExact);
+            checkWindow(win.grid, win.kStart, widthDev, m, win.tStart, win.tEnd - 1, where);
+            if (QTest::currentTestFailed()) return;
+        }
+
+        // SampleIndex mode
+        {
+            int capacity = 1;
+            switch (i % 3) {
+                case 0: capacity = 1 + static_cast<int>(unit(rng) * 3000); break;
+                case 1: capacity = 3000 + static_cast<int>(unit(rng) * 1e6); break;
+                default: capacity = 1000000 + static_cast<int>(unit(rng) * 1e7); break;
+            }
+            quint64 total = static_cast<quint64>(unit(rng) * 5.0 * capacity);
+            if (i % 4 == 0 && capacity >= widthDev) {
+                total = 1000000000000000000ULL - static_cast<quint64>(unit(rng) * 1e15);
+            }
+            const size_t count = static_cast<size_t>(std::min<quint64>(total, static_cast<quint64>(capacity)));
+            const QString where = QString("(SampleIndex case %1: W_dev %2, dpr %3, left %4, capacity %5, total %6)")
+                                      .arg(i).arg(widthDev).arg(dpr).arg(leftDevExact).arg(capacity).arg(total);
+            const auto ib = internal::computeIndexBuckets(total, count, capacity, widthDev);
+            QVERIFY2(ib.numBuckets == widthDev, qPrintable(QString("numBuckets %1 ").arg(ib.numBuckets) + where));
+            const auto m = internal::makePlotXMapping(ib.grid, ib.kStart, leftDevExact);
+            if (count == 0) {
+                continue;
+            }
+            const qint64 oldest = static_cast<qint64>(total - count);
+            const qint64 newest = static_cast<qint64>(total - 1);
+            const qint64 kOldest = ib.grid.bucketOf(oldest);
+            const qint64 kNewest = ib.grid.bucketOf(newest);
+            QVERIFY2(ib.kStart == std::max(kOldest, kNewest + 1 - widthDev), qPrintable(where));
+            if (count == static_cast<size_t>(capacity) && capacity >= widthDev) {
+                QVERIFY2(kNewest == ib.kStart + widthDev - 1, qPrintable("buffer full but trace not at the right edge " + where));
+            }
+            // Retained samples left of the window: only the oldest partial bucket
+            if (ib.kStart > kOldest) {
+                QVERIFY2(ib.kStart == kOldest + 1, qPrintable("more than the oldest bucket dropped " + where));
+            }
+            checkWindow(ib.grid, ib.kStart, widthDev, m, std::max(oldest, ib.grid.boundary(ib.kStart)), newest, where);
+            if (QTest::currentTestFailed()) return;
+        }
+    }
+}
+
+void tst_StripChart::scrollIsShiftInvariantAtAnyDpr()
+{
+    // As Part 2 of windowIsQuantisedAndScrollIsShiftInvariant, at whatever DPR the test runs:
+    // advancing within a bucket changes no pixel, advancing by one bucket shifts the trace by
+    // exactly one device column.
+    auto chart = makeChart(1054, 400, 0.0, 100.0);
+    chart->setXAxisMode(StripChart::XAxisMode::Time);
+    chart->setDecimationMode(StripChart::DecimationMode::Always);
+    chart->setTimeSpan(std::chrono::seconds(1));
+    chart->setGridVisible(false);
+    chart->setLegendVisible(false);
+    chart->setCapacity(300000);
+    const QColor chColor(255, 0, 0);
+    const int ch = chart->addChannel(QStringLiteral("Noise"), chColor, 1.0);
+
+    renderToImage(*chart);
+    const FrameDiagnostics f0 = StripChartTestAccess::lastFrame(*chart);
+    const internal::BucketGrid grid(f0.gridNum, f0.gridDen);
+    const double dpr = chart->devicePixelRatioF();
+
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<double> dist(10.0, 90.0);
+    const qint64 dtSample = 10000; // 10 us
+    qint64 t = 0;
+    auto appendUntil = [&](qint64 tStop) {
+        while (t < tStop) {
+            chart->addSample(ch, std::chrono::nanoseconds(t), dist(rng));
+            t += dtSample;
+        }
+    };
+    auto inBucket = [&](qint64 k, double frac) {
+        const qint64 b0 = grid.boundary(k);
+        return b0 + static_cast<qint64>(static_cast<double>(grid.boundary(k + 1) - b0) * frac);
+    };
+    const qint64 k0 = grid.bucketOf(1050000000LL); // t = 1.05 s: the 1 s window is full of data
+
+    appendUntil(inBucket(k0, 0.2));
+    const QImage imgA = renderToImage(*chart);
+    const FrameDiagnostics fA = StripChartTestAccess::lastFrame(*chart);
+    const int left = static_cast<int>(std::floor(fA.plotLeftDev + 1e-9));
+    const int right = left + fA.widthDev;
+    const int margin = static_cast<int>(std::ceil(4.0 * dpr)) + 1; // glow dot and latest sample
+    const int top = plotTopDev(fA);
+    const int bottom = std::min(plotBottomDev(fA), imgA.height() - 1);
+
+    appendUntil(inBucket(k0, 0.6));
+    const QImage imgB = renderToImage(*chart);
+    const FrameDiagnostics fB = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(fB.kStart, fA.kStart); // same window
+    for (int x = left; x < right - margin; ++x) {
+        for (int y = top; y <= bottom; ++y) {
+            if (imgB.pixelColor(x, y) != imgA.pixelColor(x, y)) {
+                QFAIL(qPrintable(QString("frame changed within a bucket at x %1 y %2").arg(x).arg(y)));
+            }
+        }
+    }
+
+    appendUntil(inBucket(k0 + 1, 0.2));
+    const QImage imgC = renderToImage(*chart);
+    const FrameDiagnostics fC = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(fC.kStart, fA.kStart + 1); // exactly one bucket
+    for (int x = left + 2; x < right - margin; ++x) {
+        for (int y = top; y <= bottom; ++y) {
+            if (imgC.pixelColor(x, y) != imgA.pixelColor(x + 1, y)) {
+                QFAIL(qPrintable(QString("one-bucket scroll is not a one-column shift at x %1 y %2").arg(x).arg(y)));
+            }
+        }
+    }
+}
+
+void tst_StripChart::decimatedDropoutVisibleAtAnyPosition_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<int>("widgetWidth");
+    QTest::addColumn<qint64>("spanNs");
+    QTest::addColumn<qint64>("sampleDtNs");
+    QTest::addColumn<int>("sampleCount");
+    QTest::addColumn<qint64>("nanIndex");
+
+    const int time = static_cast<int>(StripChart::XAxisMode::Time);
+    const int index = static_cast<int>(StripChart::XAxisMode::SampleIndex);
+    // Time: 10 s window on a 1920 px plot, 1M samples at 10 us
+    for (qint64 nan : {5003LL, 123457LL, 300011LL, 500000LL, 777777LL, 998765LL}) {
+        QTest::newRow(qPrintable(QString("Time 10 s / 1920 px, NaN at %1").arg(nan)))
+            << time << 1974 << qint64(10000000000LL) << qint64(10000) << 1000000 << nan;
+    }
+    // SampleIndex: 946 px plot, capacity 100k (the #11 case at 50 000, and other positions)
+    for (qint64 nan : {50000LL, 1234LL, 33333LL, 66667LL, 98765LL}) {
+        QTest::newRow(qPrintable(QString("SampleIndex 946 px / 100k, NaN at %1").arg(nan)))
+            << index << 1000 << qint64(0) << qint64(0) << 100000 << nan;
+    }
+}
+
+void tst_StripChart::decimatedDropoutVisibleAtAnyPosition()
+{
+    QFETCH(int, axisMode);
+    QFETCH(int, widgetWidth);
+    QFETCH(qint64, spanNs);
+    QFETCH(qint64, sampleDtNs);
+    QFETCH(int, sampleCount);
+    QFETCH(qint64, nanIndex);
+
+    WarningGuard guard;
+    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), widgetWidth, spanNs, sampleCount);
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    appendDropoutSamples(*chart, ch, 0, sampleCount, sampleDtNs, sampleCount, {nanIndex});
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
+    const auto &chDiag = frame.channels[0];
+    QCOMPARE(chDiag.path, RenderPath::Decimated);
+    QCOMPARE(chDiag.segments.size(), 2UL);
+
+    const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
+    const qint64 k = grid.bucketOf(axisMode == static_cast<int>(StripChart::XAxisMode::Time) ? nanIndex * sampleDtNs : nanIndex);
+    const int col = deviceColumnOfBucket(frame, k);
+    QVERIFY2(!columnHasTrace(img, *chart, col), qPrintable(QStringLiteral("trace pixel in NaN column %1").arg(col)));
+    QVERIFY(columnHasTraceOrGlow(img, *chart, col - 1));
+    QVERIFY(columnHasTraceOrGlow(img, *chart, col + 1));
+}
+
+void tst_StripChart::spikeLitInExactlyOneColumn_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<int>("widgetWidth");
+    QTest::addColumn<qint64>("spanNs");
+    QTest::addColumn<qint64>("sampleDtNs");
+    QTest::addColumn<int>("sampleCount");
+    QTest::addColumn<qint64>("spikeIndex");
+
+    const int time = static_cast<int>(StripChart::XAxisMode::Time);
+    const int index = static_cast<int>(StripChart::XAxisMode::SampleIndex);
+    QTest::newRow("Time 1 ms / 1920 px") << time << 1974 << qint64(1000000) << qint64(10) << 100000 << qint64(55362);
+    QTest::newRow("Time 10 s / 1920 px") << time << 1974 << qint64(10000000000LL) << qint64(10000) << 1000000 << qint64(123457);
+    QTest::newRow("SampleIndex 946 px / 100k") << index << 1000 << qint64(0) << qint64(0) << 100000 << qint64(50003);
+    QTest::newRow("SampleIndex 946 px / 1M") << index << 1000 << qint64(0) << qint64(0) << 1000000 << qint64(400268);
+}
+
+void tst_StripChart::spikeLitInExactlyOneColumn()
+{
+    QFETCH(int, axisMode);
+    QFETCH(int, widgetWidth);
+    QFETCH(qint64, spanNs);
+    QFETCH(qint64, sampleDtNs);
+    QFETCH(int, sampleCount);
+    QFETCH(qint64, spikeIndex);
+
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
+    auto chart = makeDropoutChart(mode, widgetWidth, spanNs, sampleCount);
+    const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
+    std::vector<double> values(static_cast<size_t>(sampleCount), 50.0);
+    values[static_cast<size_t>(spikeIndex)] = 90.0; // single-sample spike
+    if (mode == StripChart::XAxisMode::Time) {
+        chart->addUniformSamples(ch, std::chrono::nanoseconds(0), std::chrono::nanoseconds(sampleDtNs), values.data(), sampleCount);
+    } else {
+        for (double v : values) {
+            chart->addDataPoint(ch, v);
+        }
+    }
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
+    const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
+    const qint64 k = grid.bucketOf(mode == StripChart::XAxisMode::Time ? spikeIndex * sampleDtNs : spikeIndex);
+    const int col = deviceColumnOfBucket(frame, k);
+
+    // Columns with trace pixels clearly above the 50.0 baseline
+    const double dpr = chart->devicePixelRatioF();
+    const int baselineDev = static_cast<int>(std::floor(mapY(*chart, 50.0) * dpr));
+    const int top = plotTopDev(frame);
+    const int left = static_cast<int>(std::floor(frame.plotLeftDev + 1e-9));
+    std::vector<int> spikeCols;
+    for (int x = left; x < left + frame.widthDev; ++x) {
+        if (!traceYAtColumn(img, kDropoutColour, x, top, baselineDev - static_cast<int>(std::ceil(3 * dpr)), 60).empty()) {
+            spikeCols.push_back(x);
+        }
+    }
+    QString cols;
+    for (int c : spikeCols) cols += QString::number(c) + QLatin1Char(' ');
+    QVERIFY2(spikeCols.size() == 1 && spikeCols.front() == col,
+             qPrintable(QString("spike columns [%1], expected only %2").arg(cols.trimmed()).arg(col)));
+}
+
+void tst_StripChart::rawDecimatedContinuity_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::newRow("Time") << static_cast<int>(StripChart::XAxisMode::Time);
+    QTest::newRow("SampleIndex") << static_cast<int>(StripChart::XAxisMode::SampleIndex);
+}
+
+void tst_StripChart::rawDecimatedContinuity()
+{
+    QFETCH(int, axisMode);
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
+
+    // A ramp: every sample has a unique value, so a vertex's y identifies its sample.
+    auto build = [&](StripChart::DecimationMode dm, int n, int capacity) {
+        auto chart = makeChart(1054, 300, 0.0, 100.0);
+        chart->setXAxisMode(mode);
+        chart->setTimeSpan(std::chrono::seconds(1));
+        chart->setCapacity(capacity);
+        chart->setDecimationMode(dm);
+        chart->setGridVisible(false);
+        chart->setLegendVisible(false);
+        const int ch = chart->addChannel(QStringLiteral("Ramp"), kDropoutColour, 1.0);
+        const qint64 dt = 1000000000LL / n; // the samples fill the window
+        for (int i = 0; i < n; ++i) {
+            const double v = 10.0 + 80.0 * i / capacity;
+            if (mode == StripChart::XAxisMode::Time) {
+                chart->addSample(ch, std::chrono::nanoseconds(i * dt), v);
+            } else {
+                chart->addDataPoint(ch, v);
+            }
+        }
+        renderToImage(*chart);
+        return chart;
+    };
+    // Points (x, y) of the trace, keyed by y
+    auto points = [](const StripChart &chart) {
+        std::vector<QPointF> pts;
+        for (const auto &seg : StripChartTestAccess::lastFrame(chart).channels[0].segments) {
+            pts.insert(pts.end(), seg.begin(), seg.end());
+        }
+        return pts;
+    };
+    auto compare = [&](const StripChart &rawChart, const StripChart &decChart) {
+        const auto raw = points(rawChart);
+        auto dec = points(decChart);
+        const double dpr = rawChart.devicePixelRatioF();
+        QVERIFY(!dec.empty());
+        // Ramp: samples drawn only in the decimated chart (part 2) have a value above the raw maximum
+        double rawTop = raw.front().y();
+        for (const QPointF &r : raw) rawTop = std::min(rawTop, r.y());
+        dec.erase(std::remove_if(dec.begin(), dec.end(), [&](const QPointF &d) { return d.y() < rawTop - 1e-9; }), dec.end());
+        int matched = 0;
+        double worst = 0.0;
+        for (const QPointF &d : dec) {
+            for (const QPointF &r : raw) {
+                if (std::abs(r.y() - d.y()) < 1e-9) {
+                    worst = std::max(worst, std::abs(r.x() - d.x()) * dpr);
+                    ++matched;
+                    break;
+                }
+            }
+        }
+        QVERIFY2(matched == static_cast<int>(dec.size()), qPrintable(QString("matched %1 of %2 vertices").arg(matched).arg(dec.size())));
+        QVERIFY2(worst <= 1.0, qPrintable(QString("raw and decimated positions of the same sample differ by %1 device px").arg(worst)));
+    };
+
+    auto probe = makeChart(1054, 300);
+    const int widthDev = qRound(1000 * probe->devicePixelRatioF());
+
+    // 1. The same data drawn raw (Off) and decimated (Always)
+    {
+        const int n = widthDev + 50;
+        auto rawChart = build(StripChart::DecimationMode::Off, n, n);
+        auto decChart = build(StripChart::DecimationMode::Always, n, n);
+        QCOMPARE(StripChartTestAccess::lastFrame(*rawChart).channels[0].path, RenderPath::Raw);
+        QCOMPARE(StripChartTestAccess::lastFrame(*decChart).channels[0].path, RenderPath::Decimated);
+        compare(*rawChart, *decChart);
+    }
+    // 2. Auto just below and just above W_dev visible samples (SampleIndex: the window does not move)
+    if (mode == StripChart::XAxisMode::SampleIndex) {
+        const int capacity = 4 * widthDev;
+        auto below = build(StripChart::DecimationMode::Auto, widthDev, capacity);
+        auto above = build(StripChart::DecimationMode::Auto, widthDev + 1, capacity);
+        QCOMPARE(StripChartTestAccess::lastFrame(*below).channels[0].path, RenderPath::Raw);
+        QCOMPARE(StripChartTestAccess::lastFrame(*above).channels[0].path, RenderPath::Decimated);
+        compare(*below, *above);
+    }
+}
+
+void tst_StripChart::segmentEndColumnsAreDrawn_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::newRow("Time") << static_cast<int>(StripChart::XAxisMode::Time);
+    QTest::newRow("SampleIndex") << static_cast<int>(StripChart::XAxisMode::SampleIndex);
+}
+
+void tst_StripChart::segmentEndColumnsAreDrawn()
+{
+    // A flat signal gives every bucket zero vertical extent, the case where an aliased cosmetic
+    // polyline leaves out its first or last pixel. The columns at both ends of every segment, and
+    // a segment made of a single bucket, must still be drawn.
+    QFETCH(int, axisMode);
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
+    constexpr int n = 1000000;
+    constexpr qint64 sampleDtNs = 1000;
+    constexpr qint64 spanNs = 1000000000;
+
+    auto chart = makeDropoutChart(mode, 1054, spanNs, n);
+    const double dpr = chart->devicePixelRatioF();
+    const int widthDev = qRound(1000 * dpr);
+    // Buckets of the window (the data fill exactly one window in both modes)
+    const internal::BucketGrid grid = (mode == StripChart::XAxisMode::Time)
+        ? internal::BucketGrid(widthDev, spanNs)
+        : internal::BucketGrid(widthDev, n);
+    auto midSampleOf = [&](qint64 k) {
+        const qint64 b0 = grid.boundary(k);
+        const qint64 b1 = grid.boundary(k + 1);
+        const qint64 mid = b0 + (b1 - b0) / 2;
+        return (mode == StripChart::XAxisMode::Time) ? mid / sampleDtNs : mid;
+    };
+    const qint64 kGap = widthDev / 4;       // one blank bucket: a segment ends before it, one starts after
+    const qint64 kIsolated = widthDev / 2;  // blank buckets on both sides: a one-bucket segment
+    const std::vector<qint64> nans = {midSampleOf(kGap), midSampleOf(kIsolated - 1), midSampleOf(kIsolated + 1)};
+
+    const int ch = chart->addChannel(QStringLiteral("Flat"), kDropoutColour, 1.0);
+    std::vector<double> values(static_cast<size_t>(n), 50.0);
+    for (qint64 i : nans) values[static_cast<size_t>(i)] = std::numeric_limits<double>::quiet_NaN();
+    if (mode == StripChart::XAxisMode::Time) {
+        chart->addUniformSamples(ch, std::chrono::nanoseconds(0), std::chrono::nanoseconds(sampleDtNs), values.data(), n);
+    } else {
+        for (double v : values) chart->addDataPoint(ch, v);
+    }
+
+    const QImage img = renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
+    QCOMPARE(internal::BucketGrid(frame.gridNum, frame.gridDen), grid);
+    QCOMPARE(frame.kStart, qint64(0));
+    QCOMPARE(frame.channels[0].segments.size(), 4UL); // [0, kGap), (kGap, kIso-1), {kIso}, (kIso+1, end]
+
+    auto lit = [&](qint64 k) { return columnHasTrace(img, *chart, deviceColumnOfBucket(frame, k)); };
+    QVERIFY2(lit(kGap - 1), "last column before the gap not drawn");
+    QVERIFY2(!lit(kGap), "gap column drawn");
+    QVERIFY2(lit(kGap + 1), "first column after the gap not drawn");
+    QVERIFY2(!lit(kIsolated - 1), "gap column drawn");
+    QVERIFY2(lit(kIsolated), "one-bucket segment not drawn");
+    QVERIFY2(!lit(kIsolated + 1), "gap column drawn");
 }
 
 QTEST_MAIN(tst_StripChart)

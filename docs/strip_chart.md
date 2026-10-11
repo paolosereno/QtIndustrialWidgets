@@ -50,8 +50,8 @@ When using explicit-timestamp APIs (`addSample`, `addSamples`, `addUniformSample
 Rendering raw waveforms with millions of data points every frame is CPU-bound and does not scale. `StripChart` integrates an internal M4 decimation engine based on the Jugel et al. M4 algorithm. In the measured streaming cases the number of heap allocations per frame does not depend on the number of samples for continuous signals; with NaN gaps it grows with the number of visible gaps (see the [Benchmark Report](benchmarks.md)).
 
 ### How It Works
-For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF())`):
-1. Samples falling into bucket `k` are aggregated into four extremal vertices:
+The plot is `W_dev = round(W_logical * devicePixelRatioF())` device pixels wide, and every decimation bucket corresponds to exactly one device column (see "Bucket-to-column rule" below). For each bucket:
+1. Samples falling into the bucket are aggregated into four extremal vertices:
    - **First** in time `(t_first, y_first)`
    - **Minimum** value `(t_min, y_min)`
    - **Maximum** value `(t_max, y_max)`
@@ -61,7 +61,15 @@ For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF()
 
 ### Critical Guarantees and Limitations
 - **Peaks are never lost (except in columns that contain a non-finite sample, see "Sensor dropouts" in section 4); intra-pixel waveform shape is not preserved**: Because the global minimum and maximum within every pixel column are explicitly captured and emitted, transient spikes, glitches, and faults are guaranteed to be drawn regardless of decimation factor. However, decimation does not eliminate acquisition Nyquist aliasing present in the underlying telemetry, nor does it retain intra-pixel waveform shapes.
-- **Trace Shimmer Prevention**: Bucket indices are anchored to absolute time (`k = floor(t / Δt_px)`), and the visible window boundary `t_end` is quantized to the next bucket boundary (`ceil(t_latest / Δt_px) * Δt_px`). This guarantees zero pixel shimmer during scrolling.
+- **Trace Shimmer Prevention**: Bucket indices are anchored to absolute time (`k = floor(t · W_dev / span)`) or to the absolute sample index (`k = floor(i · W_dev / capacity)`), and the visible window always starts and ends on bucket boundaries. Advancing the window by less than one bucket moves no sample to another column; advancing it by one bucket shifts the decimated trace by exactly one device column.
+
+### Bucket-to-column rule
+- **One bucket per device column**: the window holds exactly `W_dev` buckets, and bucket `k` occupies device column `k − kStart` of the plot, in both axis modes and at any device pixel ratio, including fractional ones such as 1.25 and 1.5.
+- **Exact arithmetic**: bucket assignment uses integers only (`k = floor(x · W_dev / den)` with `den` = time span in ns or buffer capacity, computed with a portable 128-bit multiply/divide). Bucket widths are therefore `floor` or `ceil` of `den / W_dev` and need not be equal; in Time mode the window covers exactly the configured time span.
+- **Device-pixel snapping**: the plot's left edge is snapped to a device pixel boundary using the painter's device transform, so the rule also holds when the widget itself sits at a fractional device position (common with fractional scaling). With a rotated or sheared painter the snapping is skipped.
+- **Vertex placement**: all vertices of a decimated bucket are drawn at the centre of its device column, so its min/max is a single crisp vertical line and a single-sample spike lights exactly one column. Because an aliased cosmetic polyline can leave out its first or last pixel, the end pixels of every decimated segment are drawn explicitly; a segment made of a single bucket is therefore always visible.
+- **Raw traces** use the same window and a continuous position in it, so at the `DecimationMode::Auto` switch a sample moves by at most half a device pixel.
+- **SampleIndex window**: the window holds the `W_dev` newest buckets. When the buffer has wrapped, the oldest, partial bucket (fewer than `capacity / W_dev` samples) can fall out on the left, and with a full buffer the newest sample lies less than one device pixel from the right edge.
 
 ### Decimation Modes
 - `DecimationMode::Auto`: Automatically activates M4 decimation when the visible sample count exceeds `W_dev` (plot width in device pixels); otherwise renders raw samples (default).
@@ -70,7 +78,7 @@ For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF()
 
 ### Cosmetic 1-Device-Pixel Trace Rendering
 To guarantee strictly bounded frame times ($O(W)$) even when decimating dense high-frequency noise:
-- **Thin Decimated Traces Rule**: When decimation is active (either via `Always` or triggered by `Auto`), waveforms are drawn with a cosmetic 1-device-pixel pen without antialiasing (`Qt::FlatCap`, `Qt::MiterJoin`). In dense M4 min/max zig-zags (up to ~7,680 vertices on a 1920-px plot), antialiased wide pens force `QPainter`'s rasterizer (`QStroker`) to compute outline polygons for every zig-zag segment, which is expensive for dense data. Drawing with a cosmetic 1-device-pixel unaliased pen avoids `QStroker` outline synthesis entirely. Measured paint times are in the [Benchmark Report](benchmarks.md).
+- **Thin Decimated Traces Rule**: When decimation is active (either via `Always` or triggered by `Auto`), waveforms are drawn with a cosmetic 1-device-pixel pen without antialiasing (`Qt::FlatCap`, `Qt::MiterJoin`; the end pixels of each segment are drawn explicitly, see "Bucket-to-column rule"). In dense M4 min/max zig-zags (up to ~7,680 vertices on a 1920-px plot), antialiased wide pens force `QPainter`'s rasterizer (`QStroker`) to compute outline polygons for every zig-zag segment, which is expensive for dense data. Drawing with a cosmetic 1-device-pixel unaliased pen avoids `QStroker` outline synthesis entirely. Measured paint times are in the [Benchmark Report](benchmarks.md).
 - **Raw Traces**: When decimation is inactive (via `Off` or when sample count $\le W_{dev}$), user-configured channel pen widths and antialiasing remain active for smooth visual appearance.
 - **Head Glow Dot**: Telemetry head glow dots always retain antialiasing for clean visual indicators.
 
@@ -126,7 +134,7 @@ A non-finite sample is how a sensor dropout reaches the chart, and a dropout mus
 - **Glow dot**: it is not drawn when the newest column is blank (the legend keeps showing the latest value), and it never draws inside a blank column.
 - **Raw traces**: the polyline is broken at the non-finite sample. With the default 1.8 px antialiased pen and about one sample per device pixel, the ends of the two polylines can cover the dropout's column, so a fully blank column is not guaranteed in raw mode.
 - **Autoscale** still uses all finite values, including those of a blank column.
-- **Known limitation**: in some geometries (notably `SampleIndex` mode) column edges are not aligned to device pixels, so a blank column can straddle two device columns that are each partly drawn; tracked in [#12](https://github.com/paolosereno/QtIndustrialWidgets/issues/12).
+- **Column alignment**: a blank bucket is always exactly one device column, at any position and device pixel ratio (see "Bucket-to-column rule" in section 2).
 
 ---
 
