@@ -78,6 +78,100 @@ QImage grabImage(CircularBargraph &w)
     return w.grab().toImage().convertToFormat(QImage::Format_ARGB32);
 }
 
+// Distinct, fully opaque colors so that a sampled pixel identifies its segment state.
+const QColor kNormal(0, 200, 0);
+const QColor kWarning(230, 180, 0);
+const QColor kError(220, 0, 0);
+const QColor kPeak(255, 0, 255);
+const QColor kGhost(40, 40, 40);
+const QColor kDial(10, 10, 60);
+const QColor kSentinel(1, 2, 3); // image background: "nothing painted here"
+
+void applyTestColors(CircularBargraph &w)
+{
+    w.setNormalColor(kNormal);
+    w.setWarningColor(kWarning);
+    w.setErrorColor(kError);
+    w.setPeakColor(kPeak);
+    w.setGhostColor(kGhost);
+    w.setDialColor(kDial);
+    w.setDigitalDisplayVisible(false);
+    w.setPeakHoldTimeMs(1000000); // no decay while a test runs
+}
+
+// Renders the widget alone (no background) into an image of the given device pixel ratio.
+QImage renderAt(CircularBargraph &w, qreal dpr)
+{
+    QImage img((QSizeF(w.size()) * dpr).toSize(), QImage::Format_ARGB32);
+    img.setDevicePixelRatio(dpr);
+    img.fill(kSentinel);
+    w.render(&img, QPoint(), QRegion(), QWidget::DrawChildren);
+    return img;
+}
+
+QChar classify(const QColor &c)
+{
+    if (c == kGhost) return QLatin1Char('.');
+    if (c == kPeak) return QLatin1Char('P');
+    if (c == kNormal) return QLatin1Char('N');
+    if (c == kWarning) return QLatin1Char('W');
+    if (c == kError) return QLatin1Char('E');
+    return QLatin1Char('?');
+}
+
+// Samples the color at the centre of every segment and classifies it. The geometry is
+// recomputed here from the documented layout (0 deg = 12 o'clock, clockwise; segment i spans
+// [start + i*step, start + (i+1)*step]; ring between 0.66 and 0.90 of radius = side/2 - 4),
+// independently of the painting code.
+QString sampleSegments(const QImage &img, const CircularBargraph &w)
+{
+    const double dpr = img.devicePixelRatio();
+    const double side = std::min(w.width(), w.height());
+    const double cx = w.width() * 0.5;
+    const double cy = w.height() * 0.5;
+    const double rMid = (side * 0.5 - 4.0) * (0.90 + 0.66) * 0.5;
+    const int n = w.segmentCount();
+    const double step = w.spanAngle() / n;
+
+    QString out;
+    for (int i = 0; i < n; ++i) {
+        const double ang = w.startAngle() + (i + 0.5) * step;
+        const double rad = (ang - 90.0) * 3.14159265358979323846 / 180.0;
+        const int px = static_cast<int>(std::floor((cx + rMid * std::cos(rad)) * dpr));
+        const int py = static_cast<int>(std::floor((cy + rMid * std::sin(rad)) * dpr));
+        out += classify(img.pixelColor(px, py));
+    }
+    return out;
+}
+
+// arc() with the Lit segments shown in the expected zone color letter.
+QString zoneArc(int n, int litFrom, int lit, QChar zone, int peakAt = -1)
+{
+    QString out = arc(n, litFrom, lit, peakAt);
+    out.replace(QLatin1Char('L'), zone);
+    return out;
+}
+
+// True if every pixel outside the logical rectangle `inside` still holds the sentinel.
+bool untouchedOutside(const QImage &img, const QRectF &inside)
+{
+    const double dpr = img.devicePixelRatio();
+    const QRectF dev(inside.topLeft() * dpr, inside.size() * dpr);
+    const QRgb sentinel = kSentinel.rgb();
+    for (int y = 0; y < img.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            if (dev.contains(QPointF(x + 0.5, y + 0.5))) {
+                continue;
+            }
+            if (line[x] != sentinel) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 class tst_CircularBargraph : public QObject
@@ -103,6 +197,8 @@ private Q_SLOTS:
     void peakHoldThenMonotonicDecay();
     void thresholdsStayOrdered();
     void thresholdsOrderIndependent();
+    void pixelColorAtSegmentCenters_data();
+    void pixelColorAtSegmentCenters();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -230,13 +326,25 @@ void tst_CircularBargraph::nanAndInfinityResilience()
 void tst_CircularBargraph::displayModes()
 {
     CircularBargraph bargraph;
+    applyTestColors(bargraph);
+    bargraph.resize(220, 220);
+    bargraph.setValue(50.0); // n = 12 of 24
     QCOMPARE(bargraph.displayMode(), CircularBargraph::DisplayMode::Bar);
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 0, 12, QLatin1Char('N')));
 
+    // Dot: a single cursor segment, the last one the bar would light.
     bargraph.setDisplayMode(CircularBargraph::DisplayMode::Dot);
     QCOMPARE(bargraph.displayMode(), CircularBargraph::DisplayMode::Dot);
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 11, 1, QLatin1Char('N')));
+
+    // Dot at the minimum still shows the cursor (zone color, not peak color).
+    bargraph.setValue(0.0);
+    bargraph.resetPeak();
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 0, 1, QLatin1Char('N')));
 
     bargraph.setDisplayMode(CircularBargraph::DisplayMode::Bar);
     QCOMPARE(bargraph.displayMode(), CircularBargraph::DisplayMode::Bar);
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 0, 0, QLatin1Char('N')));
 }
 
 void tst_CircularBargraph::peakHoldAndDecay()
@@ -281,44 +389,115 @@ void tst_CircularBargraph::digitalDisplay()
 void tst_CircularBargraph::extremeResizing()
 {
     CircularBargraph bargraph;
-    bargraph.show();
+    applyTestColors(bargraph);
+    bargraph.setValue(50.0); // n = 12 of 24
+    const qreal dpr = bargraph.devicePixelRatioF();
 
-    const QList<QSize> sizes = {
-        QSize(0, 0),
-        QSize(1, 1),
-        QSize(2, 2),
-        QSize(4, 4),
-        QSize(10, 1000),
-        QSize(1000, 10),
-        QSize(3840, 2160)
-    };
-
-    for (const QSize &sz : sizes) {
+    // Too small to hold the ring (radius = side/2 - 4 <= 6): nothing is painted.
+    const QList<QSize> tooSmall = {QSize(0, 0), QSize(1, 1), QSize(2, 2), QSize(4, 4),
+                                   QSize(20, 20), QSize(10, 1000), QSize(1000, 10)};
+    for (const QSize &sz : tooSmall) {
         bargraph.resize(sz);
-        bargraph.repaint();
+        QCOMPARE(bargraph.size(), sz);
+        const QImage img = renderAt(bargraph, dpr);
+        QVERIFY2(untouchedOutside(img, QRectF()),
+                 qPrintable(QStringLiteral("painted at %1x%2").arg(sz.width()).arg(sz.height())));
+    }
+
+    // Drawable sizes: the dial is painted, and only inside the centred square. Above 100 px
+    // the segments are large enough for their centre pixel to be solid: check every state.
+    const QList<QSize> drawable = {QSize(40, 1000), QSize(1000, 40), QSize(120, 1000),
+                                   QSize(1000, 120), QSize(200, 200), QSize(3840, 2160)};
+    for (const QSize &sz : drawable) {
+        bargraph.resize(sz);
+        QCOMPARE(bargraph.size(), sz);
+        const QImage img = renderAt(bargraph, dpr);
+        const double side = std::min(sz.width(), sz.height());
+        const QRectF square((sz.width() - side) * 0.5, (sz.height() - side) * 0.5, side, side);
+        const QString where = QStringLiteral("%1x%2").arg(sz.width()).arg(sz.height());
+        QVERIFY2(!untouchedOutside(img, QRectF()), qPrintable(QStringLiteral("nothing painted at ") + where));
+        QVERIFY2(untouchedOutside(img, square), qPrintable(QStringLiteral("painted outside the dial at ") + where));
+        if (side >= 100) {
+            QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 12, QLatin1Char('N')));
+        }
     }
 }
 
 void tst_CircularBargraph::offscreenRendering()
 {
     CircularBargraph bargraph;
+    applyTestColors(bargraph);
     bargraph.setRange(0.0, 100.0);
-    bargraph.setValue(75.0);
     bargraph.setWarningThreshold(60.0);
     bargraph.setErrorThreshold(80.0);
     bargraph.resize(200, 200);
 
-    QPixmap pixmap(200, 200);
-    pixmap.fill(Qt::transparent);
-    bargraph.render(&pixmap);
+    for (const qreal dpr : {1.0, 2.0}) {
+        bargraph.resetPeak();
+        bargraph.setValue(75.0); // warning zone, n = 18 of 24
+        QImage img = renderAt(bargraph, dpr);
+        QCOMPARE(img.size(), QSize(200, 200) * dpr);
+        QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 18, QLatin1Char('W')));
 
-    QVERIFY(!pixmap.isNull());
-    QCOMPARE(pixmap.size(), QSize(200, 200));
+        bargraph.setValue(85.0); // error zone, n = round(20.4) = 20
+        img = renderAt(bargraph, dpr);
+        QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 20, QLatin1Char('E')));
 
-    // HiDPI offscreen check
-    pixmap.setDevicePixelRatio(2.0);
-    bargraph.render(&pixmap);
-    QVERIFY(!pixmap.isNull());
+        bargraph.setValue(40.0); // normal zone, n = round(9.6) = 10, held peak at 85 -> idx 19
+        img = renderAt(bargraph, dpr);
+        QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 10, QLatin1Char('N'), 19));
+    }
+}
+
+void tst_CircularBargraph::pixelColorAtSegmentCenters_data()
+{
+    QTest::addColumn<int>("segments");
+    QTest::addColumn<double>("startAngle");
+    QTest::addColumn<double>("spanAngle");
+    QTest::addColumn<bool>("dot");
+    QTest::addColumn<double>("peak");
+    QTest::addColumn<double>("value");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("bar24-270-normal-peak") << 24 << -135.0 << 270.0 << false << 80.0 << 50.0
+        << zoneArc(24, 0, 12, QLatin1Char('N'), 18);
+    QTest::newRow("bar16-180-warning") << 16 << -90.0 << 180.0 << false << 75.0 << 75.0
+        << zoneArc(16, 0, 12, QLatin1Char('W'));
+    QTest::newRow("bar32-360-error-peak") << 32 << 0.0 << 360.0 << false << 100.0 << 90.0
+        << zoneArc(32, 0, 29, QLatin1Char('E'), 31);
+    QTest::newRow("bar24-full-error") << 24 << -135.0 << 270.0 << false << 100.0 << 100.0
+        << zoneArc(24, 0, 24, QLatin1Char('E'));
+    QTest::newRow("bar48-minimum") << 48 << -135.0 << 270.0 << false << 0.0 << 0.0
+        << zoneArc(48, 0, 0, QLatin1Char('N'));
+    QTest::newRow("dot24-270-peak") << 24 << -135.0 << 270.0 << true << 50.0 << 30.0
+        << zoneArc(24, 6, 1, QLatin1Char('N'), 11);
+    QTest::newRow("dot48-minimum") << 48 << -135.0 << 270.0 << true << 0.0 << 0.0
+        << zoneArc(48, 0, 1, QLatin1Char('N'));
+    QTest::newRow("dot16-180-error") << 16 << -90.0 << 180.0 << true << 95.0 << 95.0
+        << zoneArc(16, 14, 1, QLatin1Char('E')); // n = round(15.2) = 15
+}
+
+void tst_CircularBargraph::pixelColorAtSegmentCenters()
+{
+    QFETCH(int, segments);
+    QFETCH(double, startAngle);
+    QFETCH(double, spanAngle);
+    QFETCH(bool, dot);
+    QFETCH(double, peak);
+    QFETCH(double, value);
+    QFETCH(QString, expected);
+
+    CircularBargraph bargraph; // thresholds 70 / 85
+    applyTestColors(bargraph);
+    bargraph.setSegmentCount(segments);
+    bargraph.setStartAngle(startAngle);
+    bargraph.setSpanAngle(spanAngle);
+    bargraph.setDisplayMode(dot ? CircularBargraph::DisplayMode::Dot : CircularBargraph::DisplayMode::Bar);
+    bargraph.resize(240, 240);
+    bargraph.setValue(peak);
+    bargraph.setValue(value);
+
+    QCOMPARE(sampleSegments(renderAt(bargraph, bargraph.devicePixelRatioF()), bargraph), expected);
 }
 
 void tst_CircularBargraph::segmentStatesAtMinimum()
