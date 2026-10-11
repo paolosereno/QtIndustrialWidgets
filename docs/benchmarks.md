@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT
 
 # StripChart Performance Benchmarks
 
+> **Note:** Figures predate #11–#16 (rendering changes); regeneration tracked in [#18](https://github.com/paolosereno/QtIndustrialWidgets/issues/18).
+
 This page is the single source of performance figures for `QtIndustrialWidgets::StripChart`.
 The figures come from **two consecutive runs** of the same `bench_StripChart` build (benchmark source commit
 `75bb7d0`) on the machine described below. Tables show the values of run 1 and, in the last column, the range of
