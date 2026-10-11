@@ -7,57 +7,63 @@
 #include "StripChartGeometry.h"
 #include "M4Decimator.h"
 #include <algorithm>
+#include <cmath>
 
 namespace QtIndustrialWidgets {
 namespace internal {
 
 TimeWindow computeTimeWindow(qint64 tLatest, qint64 timeSpanNs, int widthDev)
 {
+    // widthDev buckets cover the span: bucket k = floor(t * W / span), anchored to absolute time.
+    // The window is the widthDev buckets ending with the bucket of tLatest. Spans shorter than
+    // widthDev ns use 1 ns buckets.
     TimeWindow win;
-    int w = std::max(1, widthDev);
-    qint64 span = std::max(qint64(1), timeSpanNs);
-    win.dtPx = std::max(qint64(1), span / w);
-    win.tEnd = (M4Decimator::floorDiv(tLatest, win.dtPx) + 1) * win.dtPx;
-    win.tStart = win.tEnd - span;
-    win.kStart = M4Decimator::floorDiv(win.tStart, win.dtPx);
-    qint64 kEnd = win.tEnd / win.dtPx;
-    win.numBuckets = static_cast<int>(kEnd - win.kStart);
-    win.grid = BucketGrid(1, win.dtPx);
+    const int w = std::max(1, widthDev);
+    const qint64 span = std::max<qint64>(w, timeSpanNs);
+    win.grid = BucketGrid(w, span);
+    win.dtPx = std::max<qint64>(1, span / w);
+    const qint64 kEnd = win.grid.bucketOf(tLatest) + 1;
+    win.kStart = kEnd - w;
+    win.numBuckets = w;
+    win.tStart = win.grid.boundary(win.kStart);
+    win.tEnd = win.grid.boundary(kEnd);
     return win;
 }
 
 IndexBuckets computeIndexBuckets(quint64 totalSamples, size_t count,
                                  int capacity, int widthDev)
 {
+    // widthDev buckets cover `capacity` samples: bucket k = floor(i * W / capacity), anchored to
+    // the absolute sample index. The window is the widthDev buckets ending with the newest sample's
+    // bucket, but never starts before the oldest retained sample's bucket; with a wrapped buffer the
+    // oldest, partial bucket can fall out on the left.
     IndexBuckets ib;
-    int w = std::max(1, widthDev);
-    int cap = std::max(1, capacity);
-    ib.samplesPerBucket = std::max(qint64(1), static_cast<qint64>(cap + w - 1) / w);
-
-    ib.grid = BucketGrid(1, ib.samplesPerBucket);
+    const int w = std::max(1, widthDev);
+    const int cap = std::max(1, capacity);
+    ib.grid = BucketGrid(w, cap);
+    ib.samplesPerBucket = std::max<qint64>(1, (static_cast<qint64>(cap) + w - 1) / w);
+    ib.numBuckets = w;
 
     if (count == 0) {
-        quint64 startCounter = totalSamples;
-        ib.kStart = M4Decimator::floorDiv(static_cast<qint64>(startCounter), ib.samplesPerBucket);
-        ib.numBuckets = 1;
+        ib.kStart = ib.grid.bucketOf(static_cast<qint64>(totalSamples));
         return ib;
     }
 
-    quint64 startCounter = (totalSamples >= count) ? (totalSamples - count) : 0;
-    qint64 firstAbsoluteIndex = static_cast<qint64>(startCounter);
-    qint64 lastAbsoluteIndex = static_cast<qint64>(startCounter + count - 1);
-    ib.kStart = M4Decimator::floorDiv(firstAbsoluteIndex, ib.samplesPerBucket);
-    qint64 kLast = M4Decimator::floorDiv(lastAbsoluteIndex, ib.samplesPerBucket);
-    ib.numBuckets = static_cast<int>(kLast - ib.kStart + 1);
+    const quint64 startCounter = (totalSamples >= count) ? (totalSamples - count) : 0;
+    const qint64 kOldest = ib.grid.bucketOf(static_cast<qint64>(startCounter));
+    const qint64 kNewest = ib.grid.bucketOf(static_cast<qint64>(startCounter + count - 1));
+    ib.kStart = std::max(kOldest, kNewest + 1 - w);
     return ib;
 }
 
 PlotXMapping makePlotXMapping(const BucketGrid &grid, qint64 kStart, double plotLeftDevExact)
 {
+    // The plot's left edge is snapped to a device pixel boundary so that every bucket covers
+    // exactly one device column.
     PlotXMapping m;
     m.grid = grid;
     m.kStart = kStart;
-    m.leftDev = plotLeftDevExact;
+    m.leftDev = std::round(plotLeftDevExact);
     return m;
 }
 
