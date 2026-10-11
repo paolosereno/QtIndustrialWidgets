@@ -159,8 +159,20 @@ struct BucketGrid {
     [[nodiscard]] constexpr qint64 num() const noexcept { return m_num; }
     [[nodiscard]] constexpr qint64 den() const noexcept { return m_den; }
 
-    /** \brief Bucket that contains axis position x. */
+    /**
+     * \brief Largest |x| whose bucket index x * num / den fits in qint64 (the valid range of
+     * bucketOf()). It is the full qint64 range when num <= den; with more buckets than axis units
+     * (num > den, e.g. a SampleIndex capacity below the plot width in DecimationMode::Always) it
+     * is floor(INT64_MAX * den / num), at least about 5.6e14 for num <= 16384.
+     */
+    [[nodiscard]] qint64 maxPosition() const noexcept {
+        return mulDivFloor(std::numeric_limits<qint64>::max(), m_den, m_num);
+    }
+
+    /** \brief Bucket that contains axis position x; |x| must not exceed maxPosition(). */
     [[nodiscard]] qint64 bucketOf(qint64 x) const noexcept {
+        Q_ASSERT_X(m_num <= m_den || (x <= maxPosition() && x >= -maxPosition()), "BucketGrid::bucketOf",
+                   "bucket index out of qint64 range: |x| exceeds maxPosition()");
         if (x <= m_fastLimit && x >= -m_fastLimit) { // x * num cannot overflow
             const qint64 p = x * m_num;
             qint64 q = p / m_den;
