@@ -105,6 +105,7 @@ struct ChannelInternal {
     internal::M4Decimator::IncrementalStream m4Stream;
     internal::GeometryKey geometryKey;
     bool geometryValid{false};
+    quint64 streamRebuilds{0}; // full O(N) rebuilds of m4Stream (diagnostics)
     bool lastDecimating{false};
 };
 
@@ -183,6 +184,7 @@ public:
     }
 
     void rebuildChannelStream(ChannelInternal &ch, const internal::GeometryKey &key) {
+        ++ch.streamRebuilds;
         ch.m4Stream.setWidth(key.widthDev, key.ringSize);
         ch.m4Stream.reset();
         ch.geometryKey = key;

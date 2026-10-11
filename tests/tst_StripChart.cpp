@@ -14,6 +14,7 @@
 #include <limits>
 #include <vector>
 #include <random>
+#include <set>
 
 using namespace QtIndustrialWidgets;
 
@@ -104,6 +105,8 @@ private Q_SLOTS:
     void sampleIndexCapacityBelowWidth();
     void timeSpanShorterThanWidth_data();
     void timeSpanShorterThanWidth();
+    void streamingDoesNotRebuildDecimationStream_data();
+    void streamingDoesNotRebuildDecimationStream();
 };
 
 void tst_StripChart::defaultValues()
@@ -2864,6 +2867,79 @@ void tst_StripChart::timeSpanShorterThanWidth()
                                 .arg(tick.label).arg(t).arg(tick.xPos * dpr, 0, 'f', 2).arg(expectedDev, 0, 'f', 2)
                                 .arg(frame.tStart).arg(frame.tEnd)));
     }
+}
+
+void tst_StripChart::streamingDoesNotRebuildDecimationStream_data()
+{
+    QTest::addColumn<int>("axisMode");
+    QTest::addColumn<int>("capacity");
+    QTest::addColumn<int>("widgetWidth");
+    const int time = static_cast<int>(StripChart::XAxisMode::Time);
+    const int index = static_cast<int>(StripChart::XAxisMode::SampleIndex);
+    // Capacities just below a multiple of the plot width (99950 = 1000 * 100 - 50; 4M on 1920 px
+    // = 1919.4 buckets of 2084 samples): before #12 the SampleIndex window alternated between
+    // W_dev and W_dev + 1 buckets while streaming, which changed the stream's ring size (issue #7)
+    QTest::newRow("SampleIndex, 99950 samples, 1000 px") << index << 99950 << 1054;
+    QTest::newRow("SampleIndex, 4M samples, 1920 px") << index << 4000000 << 1974;
+    QTest::newRow("Time, 99950 samples, 1000 px") << time << 99950 << 1054;
+    QTest::newRow("Time, 4M samples, 1920 px") << time << 4000000 << 1974;
+}
+
+void tst_StripChart::streamingDoesNotRebuildDecimationStream()
+{
+    // While data streams in, the incremental decimation stream is updated sample by sample; a full
+    // O(N) rebuild is needed only when the geometry changes (first paint, resize, span, DPR).
+    // Periodic rebuilds while streaming caused 50-190 ms frames (issue #7).
+    QFETCH(int, axisMode);
+    QFETCH(int, capacity);
+    QFETCH(int, widgetWidth);
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
+    constexpr qint64 spanNs = 10000000000LL; // 10 s window
+    const qint64 dtNs = spanNs / capacity;
+    const int chunk = std::max(1, static_cast<int>(std::lround(capacity / 10.0 / 60.0))); // 1/60 s of data
+
+    auto chart = makeDropoutChart(mode, widgetWidth, spanNs, capacity);
+    const int ch = chart->addChannel(QStringLiteral("Stream"), kDropoutColour, 1.0);
+    qint64 next = 0;
+    auto append = [&](qint64 count) {
+        appendDropoutSamples(*chart, ch, next, count, dtNs, capacity, {});
+        next += count;
+    };
+    append(capacity); // full buffer
+
+    renderToImage(*chart);
+    QCOMPARE(StripChartTestAccess::lastFrame(*chart).channels[0].path, RenderPath::Decimated);
+    const quint64 afterFirstPaint = StripChartTestAccess::streamRebuildCount(*chart, ch);
+    QCOMPARE(afterFirstPaint, quint64(1)); // the first decimated paint builds the stream
+
+    std::set<qint64> windowStarts;
+    for (int frame = 0; frame < 60; ++frame) {
+        append(chunk);
+        renderToImage(*chart);
+        windowStarts.insert(StripChartTestAccess::lastFrame(*chart).kStart);
+        QVERIFY2(StripChartTestAccess::streamRebuildCount(*chart, ch) == afterFirstPaint,
+                 qPrintable(QString("decimation stream rebuilt while streaming (frame %1, %2 rebuilds)")
+                                .arg(frame).arg(StripChartTestAccess::streamRebuildCount(*chart, ch))));
+    }
+    QVERIFY(windowStarts.size() > 10); // the window really scrolled
+
+    // The incremental stream still matches the data: the last frame's buckets equal a batch
+    // decimation of the retained samples
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
+    std::vector<qint64> keys;
+    std::vector<double> vals;
+    for (qint64 i = next - capacity; i < next; ++i) {
+        keys.push_back(mode == StripChart::XAxisMode::Time ? i * dtNs : i);
+        vals.push_back(smoothValue(i, capacity));
+    }
+    const auto batch = internal::M4Decimator::decimateToSegments(keys.data(), vals.data(), keys.size(), grid,
+                                                                 frame.kStart, frame.numBuckets, 0);
+    std::size_t batchVertices = 0;
+    for (const auto &seg : batch) batchVertices += seg.size();
+    std::size_t drawnVertices = 0;
+    for (const auto &seg : frame.channels[0].segments) drawnVertices += static_cast<std::size_t>(seg.size());
+    QCOMPARE(drawnVertices, batchVertices);
 }
 
 QTEST_MAIN(tst_StripChart)
