@@ -99,6 +99,7 @@ private Q_SLOTS:
     void segmentStatesIntermediate();
     void segmentStatesPeak();
     void noPeakSegmentAtMinimum();
+    void peakFollowsValueWhenHoldDisabled();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -388,6 +389,34 @@ void tst_CircularBargraph::noPeakSegmentAtMinimum()
     bargraph.setValue(60.0);
     bargraph.setValue(10.0);
     QVERIFY(countExact(grabImage(bargraph), QColor(255, 0, 255)) > 50);
+}
+
+void tst_CircularBargraph::peakFollowsValueWhenHoldDisabled()
+{
+    CircularBargraph bargraph;
+    bargraph.setDigitalDisplayVisible(false);
+    bargraph.setPeakColor(QColor(255, 0, 255));
+    bargraph.resize(200, 200);
+    bargraph.setPeakHoldEnabled(false);
+
+    const double values[] = {80.0, 30.0, 55.0, 0.0, 100.0, 12.5};
+    for (const double v : values) {
+        bargraph.setValue(v);
+        QCOMPARE(bargraph.peakValue(), bargraph.value());
+    }
+
+    // Falling value, then re-enabling peak hold: no phantom peak.
+    bargraph.setValue(90.0);
+    bargraph.setValue(20.0);
+    QCOMPARE(bargraph.peakValue(), 20.0);
+    bargraph.setPeakHoldEnabled(true);
+    QCOMPARE(bargraph.peakValue(), 20.0);
+    QCOMPARE(countExact(grabImage(bargraph), QColor(255, 0, 255)), 0);
+
+    // With hold enabled again, a new fall is held as usual.
+    bargraph.setValue(70.0);
+    bargraph.setValue(40.0);
+    QCOMPARE(bargraph.peakValue(), 70.0);
 }
 
 QTEST_MAIN(tst_CircularBargraph)

@@ -157,14 +157,16 @@ void CircularBargraph::setValue(double val)
 
     const double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
 
-    // Peak tracking
-    if (clamped >= d_ptr->m_peakValue) {
+    // Peak tracking (with peak hold disabled the peak is always the value)
+    if (!d_ptr->m_peakHoldEnabled) {
+        d_ptr->m_peakValue = clamped;
+    } else if (clamped >= d_ptr->m_peakValue) {
         d_ptr->m_peakValue = clamped;
         d_ptr->m_peakHoldTimer.restart();
         if (d_ptr->m_decayTimer && d_ptr->m_decayTimer->isActive()) {
             d_ptr->m_decayTimer->stop();
         }
-    } else if (d_ptr->m_peakHoldEnabled) {
+    } else {
         if (d_ptr->m_decayTimer && !d_ptr->m_decayTimer->isActive()) {
             d_ptr->m_lastDecayTime = QDateTime::currentMSecsSinceEpoch();
             d_ptr->m_decayTimer->start();
