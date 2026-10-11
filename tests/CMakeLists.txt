@@ -2,6 +2,20 @@
 #
 # SPDX-License-Identifier: MIT
 
+# Registers a test executable at the device pixel ratios the library supports. The DPR is set
+# with QT_SCALE_FACTOR (also honoured by the offscreen QPA): <name> runs at 1, <name>_dpr125 at
+# 1.25, <name>_dpr150 at 1.5 and <name>_hidpi at 2.
+function(add_dpr_tests test_name)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1")
+    add_test(NAME ${test_name}_dpr125 COMMAND ${test_name})
+    set_tests_properties(${test_name}_dpr125 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.25")
+    add_test(NAME ${test_name}_dpr150 COMMAND ${test_name})
+    set_tests_properties(${test_name}_dpr150 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.5")
+    add_test(NAME ${test_name}_hidpi COMMAND ${test_name})
+    set_tests_properties(${test_name}_hidpi PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
+endfunction()
+
 function(add_industrial_widget_test test_name)
     add_executable(${test_name} ${test_name}.cpp)
     target_link_libraries(${test_name}
@@ -19,7 +33,7 @@ function(add_industrial_widget_test test_name)
     set_target_properties(${test_name} PROPERTIES
         AUTOMOC ON
     )
-    add_test(NAME ${test_name} COMMAND ${test_name})
+    add_dpr_tests(${test_name})
 endfunction()
 
 add_industrial_widget_test(tst_RadialGauge)
@@ -47,22 +61,7 @@ target_include_directories(tst_StripChart
 set_target_properties(tst_StripChart PROPERTIES
     AUTOMOC ON
 )
-add_test(NAME tst_StripChart COMMAND tst_StripChart)
-add_test(NAME tst_StripChart_hidpi COMMAND tst_StripChart)
-set_tests_properties(tst_StripChart_hidpi PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
-
-# Fractional device pixel ratios: only the bucket/pixel-column alignment and scroll tests
-set(STRIPCHART_ALIGNMENT_TESTS
-    bucketGridProperty
-    scrollIsShiftInvariantAtAnyDpr
-    decimatedDropoutVisibleAtAnyPosition
-    spikeLitInExactlyOneColumn
-    rawDecimatedContinuity
-    segmentEndColumnsAreDrawn)
-add_test(NAME tst_StripChart_dpr125 COMMAND tst_StripChart ${STRIPCHART_ALIGNMENT_TESTS})
-set_tests_properties(tst_StripChart_dpr125 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.25")
-add_test(NAME tst_StripChart_dpr150 COMMAND tst_StripChart ${STRIPCHART_ALIGNMENT_TESTS})
-set_tests_properties(tst_StripChart_dpr150 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.5")
+add_dpr_tests(tst_StripChart)
 
 add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
@@ -89,4 +88,4 @@ target_include_directories(tst_M4Decimator
 set_target_properties(tst_M4Decimator PROPERTIES
     AUTOMOC ON
 )
-add_test(NAME tst_M4Decimator COMMAND tst_M4Decimator)
+add_dpr_tests(tst_M4Decimator)
