@@ -12,8 +12,6 @@ SPDX-License-Identifier: MIT
 [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
-[![Tests Defined](https://img.shields.io/badge/tests%20defined-131-blue.svg)](tests/)
-[![Tests Passed](https://img.shields.io/badge/tests%20passed-131%20%2F%20131%20(100%25)-brightgreen.svg)](tests/)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
@@ -147,6 +145,7 @@ High-contrast circular arc indicator composed of discrete curved LED segments.
 - **Global Threshold Zones**: 3-stage colored threshold bands (Normal green, Warning amber, Critical red) with customizable unlit "ghost" LED segment colors.
 - **Ballistic Peak Hold**: Built-in peak indicator segment with configurable hold duration and smooth ballistic decay falloff.
 - **Centered Digital Pod**: Integrated optional digital readout pod with decimal precision and measurement unit display.
+- **Non-finite input**: `±Inf` is clamped to the range bound; a `NaN` is ignored and the widget keeps the last valid value. Known limitation: a `NaN` (e.g. a sensor dropout) is therefore not shown as invalid.
 
 ---
 
@@ -254,7 +253,7 @@ The widgets will automatically appear in the **Industrial Widgets** category in 
 
 > 🌐 **Online Documentation (GitHub Pages)**: [https://paolosereno.github.io/QtIndustrialWidgets/](https://paolosereno.github.io/QtIndustrialWidgets/)
 
-QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 10 widgets, architecture design, and integration tutorials.
+QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 11 widgets, architecture design, and integration tutorials.
 
 ### Prerequisites
 

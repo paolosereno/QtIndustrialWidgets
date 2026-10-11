@@ -143,7 +143,7 @@ QSize CircularBargraph::minimumSizeHint() const
 
 void CircularBargraph::setValue(double val)
 {
-    // Fail-safe hold on NaN
+    // NaN is ignored: the widget keeps the last valid value (known limitation)
     if (std::isnan(val)) {
         return;
     }

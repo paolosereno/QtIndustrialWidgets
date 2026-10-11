@@ -28,7 +28,12 @@ class CircularBargraphPrivate;
  * - Global threshold color stages: Normal (green), Warning (amber), and Critical (red).
  * - Peak-hold indicator segment with configurable hold duration and ballistic decay falloff.
  * - Optional centered digital readout pod with unit label.
- * - Robust fail-safe hold on NaN, bounded clamping on ±Inf, and D-pointer ABI stability.
+ * - Non-finite input: a NaN is ignored (the widget keeps the last valid value), ±Inf is clamped
+ *   to the range bound. D-pointer ABI stability.
+ *
+ * \par Known limitation
+ * setValue(NaN) is ignored and the widget keeps the last valid value: a NaN (e.g. a sensor
+ * dropout) is not shown as invalid, and the display may look valid while the input is not.
  *
  * \code
  * auto *bargraph = new qiw::CircularBargraph(parent);

@@ -304,7 +304,7 @@ void tst_CircularBargraph::nanAndInfinityResilience()
     bargraph.setValue(42.0);
     QCOMPARE(bargraph.value(), 42.0);
 
-    // NaN must trigger fail-safe hold (value unchanged)
+    // NaN is ignored: the widget keeps the last valid value
     bargraph.setValue(std::numeric_limits<double>::quiet_NaN());
     QCOMPARE(bargraph.value(), 42.0);
 

@@ -22,3 +22,4 @@
 #include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/Compass.h>
+#include <QtIndustrialWidgets/CircularBargraph.h>

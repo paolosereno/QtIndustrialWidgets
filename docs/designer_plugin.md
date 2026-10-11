@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # Qt Designer Integration Guide {#designer_plugin}
 
-QtIndustrialWidgets provides an integrated plugin module (`QtIndustrialWidgetsPlugin`) that seamlessly registers all 10 widgets inside **Qt Designer** and **Qt Creator**.
+QtIndustrialWidgets provides an integrated plugin module (`QtIndustrialWidgetsPlugin`) that seamlessly registers all 11 widgets inside **Qt Designer** and **Qt Creator**.
 
 ---
 
@@ -62,5 +62,6 @@ Once installed, a new category **"Industrial Widgets"** will appear in the Widge
 8. `QtIndustrialWidgets::LevelMeter`
 9. `QtIndustrialWidgets::AnnunciatorPanel`
 10. `QtIndustrialWidgets::Compass`
+11. `QtIndustrialWidgets::CircularBargraph`
 
 All properties (ranges, thresholds, colors, orientations) can be customized directly within the **Property Editor**!
