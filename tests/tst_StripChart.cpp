@@ -1865,6 +1865,22 @@ int bucketColumn(double x0, double x1, double dpr)
     return static_cast<int>(std::floor((x0 + x1) * 0.5 * dpr));
 }
 
+// Window grid of the dropout charts below (1000 logical px plot, 1 s span, n samples at
+// sampleDtNs). Bucket widths are floor or ceil of den / W_dev samples (e.g. 666 or 667 at DPR 1.5).
+internal::BucketGrid dropoutGrid(StripChart::XAxisMode mode, int widthDev, qint64 spanNs, qint64 n)
+{
+    return (mode == StripChart::XAxisMode::Time) ? internal::BucketGrid(widthDev, spanNs)
+                                                 : internal::BucketGrid(widthDev, n);
+}
+
+// Absolute index of the sample in the middle of bucket k.
+qint64 midSampleOfBucket(const internal::BucketGrid &grid, StripChart::XAxisMode mode, qint64 k, qint64 sampleDtNs)
+{
+    const qint64 b0 = grid.boundary(k);
+    const qint64 mid = b0 + (grid.boundary(k + 1) - b0) / 2;
+    return (mode == StripChart::XAxisMode::Time) ? mid / sampleDtNs : mid;
+}
+
 int verticesInRange(const ChannelFrameDiagnostics &d, double x0, double x1)
 {
     int n = 0;
@@ -2029,19 +2045,22 @@ void tst_StripChart::decimatedConsecutiveDropouts()
 {
     QFETCH(int, axisMode);
 
-    // Aligned geometry: 1000 px plot, 1 s span, 1M samples at 1 us; 1M / W_dev samples per bucket
+    // 1000 px plot, 1 s span, 1M samples at 1 us; NaN positions from the real bucket grid
+    // (buckets need not hold a whole number of n / W_dev samples, e.g. at DPR 1.5)
     constexpr int n = 1000000;
     constexpr qint64 sampleDtNs = 1000;
+    constexpr qint64 spanNs = 1000000000;
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
 
     WarningGuard guard;
-    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), 1054, 1000000000, n);
+    auto chart = makeDropoutChart(mode, 1054, spanNs, n);
     const double dpr = chart->devicePixelRatioF();
     const int widthDev = qRound(1000 * dpr);
-    const qint64 perBucket = n / widthDev;
+    const internal::BucketGrid grid = dropoutGrid(mode, widthDev, spanNs, n);
     const qint64 k0 = widthDev / 2;
     std::vector<qint64> nans;
     for (qint64 j = 0; j < 3; ++j) {
-        nans.push_back((k0 + j) * perBucket + perBucket / 2); // one NaN in each of 3 adjacent buckets
+        nans.push_back(midSampleOfBucket(grid, mode, k0 + j, sampleDtNs)); // one NaN in each of 3 adjacent buckets
     }
     const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
     appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, nans);
@@ -2051,6 +2070,7 @@ void tst_StripChart::decimatedConsecutiveDropouts()
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
     const auto &chDiag = frame.channels[0];
     QCOMPARE(chDiag.path, RenderPath::Decimated);
+    QCOMPARE(internal::BucketGrid(frame.gridNum, frame.gridDen), grid);
 
     std::vector<int> cols;
     for (qint64 j = 0; j < 3; ++j) {
@@ -2269,17 +2289,20 @@ void tst_StripChart::glowDotNeverDrawnInBlankColumn()
     QFETCH(int, axisMode);
     QFETCH(bool, nanInLatestBucket);
 
-    // Aligned geometry: 1000 px plot, 1 s span, 1M samples at 1 us; the latest sample is finite.
+    // 1000 px plot, 1 s span, 1M samples at 1 us; the latest sample is finite. NaN position from
+    // the real bucket grid (buckets need not hold a whole number of n / W_dev samples)
     constexpr int n = 1000000;
     constexpr qint64 sampleDtNs = 1000;
+    constexpr qint64 spanNs = 1000000000;
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
 
     WarningGuard guard;
-    auto chart = makeDropoutChart(static_cast<StripChart::XAxisMode>(axisMode), 1054, 1000000000, n);
+    auto chart = makeDropoutChart(mode, 1054, spanNs, n);
     const double dpr = chart->devicePixelRatioF();
-    const qint64 perBucket = n / qRound(1000 * dpr);
-    const qint64 latestBucket = (n - 1) / perBucket;
+    const internal::BucketGrid grid = dropoutGrid(mode, qRound(1000 * dpr), spanNs, n);
+    const qint64 latestBucket = grid.bucketOf(mode == StripChart::XAxisMode::Time ? (n - 1) * sampleDtNs : n - 1);
     const qint64 nanBucket = nanInLatestBucket ? latestBucket : latestBucket - 1;
-    const qint64 nanIndex = nanBucket * perBucket + perBucket / 2;
+    const qint64 nanIndex = midSampleOfBucket(grid, mode, nanBucket, sampleDtNs);
     const int ch = chart->addChannel(QStringLiteral("Trace"), kDropoutColour, 1.0);
     appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, {nanIndex});
 
