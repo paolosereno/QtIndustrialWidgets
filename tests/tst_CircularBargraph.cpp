@@ -100,6 +100,7 @@ private Q_SLOTS:
     void segmentStatesPeak();
     void noPeakSegmentAtMinimum();
     void peakFollowsValueWhenHoldDisabled();
+    void peakHoldThenMonotonicDecay();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -417,6 +418,36 @@ void tst_CircularBargraph::peakFollowsValueWhenHoldDisabled()
     bargraph.setValue(70.0);
     bargraph.setValue(40.0);
     QCOMPARE(bargraph.peakValue(), 70.0);
+}
+
+void tst_CircularBargraph::peakHoldThenMonotonicDecay()
+{
+    constexpr int holdMs = 1000;
+    CircularBargraph bargraph;
+    bargraph.setPeakHoldTimeMs(holdMs);
+    bargraph.setPeakDecayRate(200.0); // 60 units -> ~0.3 s of decay
+
+    QElapsedTimer clock;
+    clock.start(); // started before the peak is set: clock.elapsed() >= widget hold time
+    bargraph.setValue(80.0);
+    bargraph.setValue(20.0);
+    QCOMPARE(bargraph.peakValue(), 80.0);
+
+    qint64 firstDropMs = -1;
+    double previous = bargraph.peakValue();
+    while (clock.elapsed() < holdMs + 5000 && bargraph.peakValue() > bargraph.value()) {
+        QTest::qWait(10);
+        const double peak = bargraph.peakValue();
+        QVERIFY2(peak <= previous, "peak must never rise while decaying");
+        QVERIFY2(peak >= bargraph.value(), "peak must never fall below the value");
+        if (firstDropMs < 0 && peak < 80.0) {
+            firstDropMs = clock.elapsed();
+        }
+        previous = peak;
+    }
+
+    QVERIFY2(firstDropMs >= holdMs, qPrintable(QStringLiteral("decay began after %1 ms").arg(firstDropMs)));
+    QCOMPARE(bargraph.peakValue(), 20.0);
 }
 
 QTEST_MAIN(tst_CircularBargraph)

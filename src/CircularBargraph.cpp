@@ -12,7 +12,6 @@
 #include <QtGui/QResizeEvent>
 #include <QtCore/QTimer>
 #include <QtCore/QElapsedTimer>
-#include <QtCore/QDateTime>
 
 #include <algorithm>
 #include <cmath>
@@ -56,7 +55,7 @@ public:
 
     QElapsedTimer m_peakHoldTimer;
     QTimer *m_decayTimer{nullptr};
-    qint64 m_lastDecayTime{0};
+    QElapsedTimer m_decayClock; // monotonic, measures the time between decay steps
 
     void updatePeakDecay(CircularBargraph *q);
 };
@@ -76,9 +75,7 @@ void CircularBargraphPrivate::updatePeakDecay(CircularBargraph *q)
         return;
     }
 
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    double dt = (now - m_lastDecayTime) / 1000.0;
-    m_lastDecayTime = now;
+    double dt = m_decayClock.restart() / 1000.0;
     if (dt <= 0.0 || dt > 1.0) {
         dt = 0.033;
     }
@@ -168,7 +165,7 @@ void CircularBargraph::setValue(double val)
         }
     } else {
         if (d_ptr->m_decayTimer && !d_ptr->m_decayTimer->isActive()) {
-            d_ptr->m_lastDecayTime = QDateTime::currentMSecsSinceEpoch();
+            d_ptr->m_decayClock.start();
             d_ptr->m_decayTimer->start();
         }
     }
