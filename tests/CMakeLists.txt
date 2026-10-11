@@ -57,7 +57,8 @@ set(STRIPCHART_ALIGNMENT_TESTS
     scrollIsShiftInvariantAtAnyDpr
     decimatedDropoutVisibleAtAnyPosition
     spikeLitInExactlyOneColumn
-    rawDecimatedContinuity)
+    rawDecimatedContinuity
+    segmentEndColumnsAreDrawn)
 add_test(NAME tst_StripChart_dpr125 COMMAND tst_StripChart ${STRIPCHART_ALIGNMENT_TESTS})
 set_tests_properties(tst_StripChart_dpr125 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.25")
 add_test(NAME tst_StripChart_dpr150 COMMAND tst_StripChart ${STRIPCHART_ALIGNMENT_TESTS})
