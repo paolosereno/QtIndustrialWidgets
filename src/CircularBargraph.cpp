@@ -55,7 +55,9 @@ public:
 
     QElapsedTimer m_peakHoldTimer;
     QTimer *m_decayTimer{nullptr};
-    QElapsedTimer m_decayClock; // monotonic, measures the time between decay steps
+    // Time of the last decay step on the m_peakHoldTimer clock (ms since the peak was set).
+    // Decay starts at max(end of hold, value drop), so the first step never covers the hold.
+    qint64 m_lastDecayMs{0};
 
     void updatePeakDecay(CircularBargraph *q);
 };
@@ -71,12 +73,17 @@ void CircularBargraphPrivate::updatePeakDecay(CircularBargraph *q)
         return;
     }
 
-    if (!m_peakHoldTimer.isValid() || m_peakHoldTimer.elapsed() < m_peakHoldTimeMs) {
+    if (!m_peakHoldTimer.isValid()) {
+        return;
+    }
+    const qint64 now = m_peakHoldTimer.elapsed();
+    if (now < m_peakHoldTimeMs) {
         return;
     }
 
-    double dt = m_decayClock.restart() / 1000.0;
-    if (dt <= 0.0 || dt > 1.0) {
+    double dt = std::max<qint64>(0, now - m_lastDecayMs) / 1000.0;
+    m_lastDecayMs = now;
+    if (dt > 1.0) {
         dt = 0.033;
     }
 
@@ -165,7 +172,10 @@ void CircularBargraph::setValue(double val)
         }
     } else {
         if (d_ptr->m_decayTimer && !d_ptr->m_decayTimer->isActive()) {
-            d_ptr->m_decayClock.start();
+            if (!d_ptr->m_peakHoldTimer.isValid()) {
+                d_ptr->m_peakHoldTimer.start(); // peak never set by a rise: hold from now
+            }
+            d_ptr->m_lastDecayMs = std::max<qint64>(d_ptr->m_peakHoldTimeMs, d_ptr->m_peakHoldTimer.elapsed());
             d_ptr->m_decayTimer->start();
         }
     }

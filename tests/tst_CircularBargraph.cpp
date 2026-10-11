@@ -195,6 +195,7 @@ private Q_SLOTS:
     void noPeakSegmentAtMinimum();
     void peakFollowsValueWhenHoldDisabled();
     void peakHoldThenMonotonicDecay();
+    void peakDecayStartsAtHoldEndWithoutJump();
     void thresholdsStayOrdered();
     void thresholdsOrderIndependent();
     void pixelColorAtSegmentCenters_data();
@@ -689,6 +690,34 @@ void tst_CircularBargraph::thresholdsOrderIndependent()
         QCOMPARE(viaProperties.warningThreshold(), t.warning);
         QCOMPARE(viaProperties.errorThreshold(), t.error);
     }
+}
+
+void tst_CircularBargraph::peakDecayStartsAtHoldEndWithoutJump()
+{
+    // Hold shorter than 1 s: the first decay step must not cover the hold period.
+    constexpr int holdMs = 300;
+    constexpr double rate = 100.0; // units per second
+    CircularBargraph bargraph;
+    bargraph.setPeakHoldTimeMs(holdMs);
+    bargraph.setPeakDecayRate(rate);
+
+    QElapsedTimer clock;
+    clock.start(); // started first: clock.elapsed() >= the widget's time since the peak
+    bargraph.setValue(80.0);
+    bargraph.setValue(20.0);
+
+    // The ideal peak is 80 - rate * (t - hold) after the hold; the widget's own time is
+    // never ahead of `clock`, so its peak can never be below that line.
+    while (clock.elapsed() < holdMs + 3000 && bargraph.peakValue() > bargraph.value()) {
+        QTest::qWait(5);
+        const double peak = bargraph.peakValue();
+        const double t = static_cast<double>(clock.elapsed());
+        const double lowest = 80.0 - rate * std::max(0.0, t - holdMs) / 1000.0;
+        QVERIFY2(peak >= lowest - 1e-9,
+                 qPrintable(QStringLiteral("t = %1 ms: peak %2 below the decay line %3")
+                                .arg(t).arg(peak).arg(lowest)));
+    }
+    QCOMPARE(bargraph.peakValue(), 20.0);
 }
 
 QTEST_MAIN(tst_CircularBargraph)
