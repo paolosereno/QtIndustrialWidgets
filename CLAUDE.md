@@ -67,6 +67,7 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 6. **Stay in scope.** Do only what the issue asks. Anything else you notice (bugs, smells, doc errors) goes into
    the final report as a suggestion, not into the diff.
 7. **When the spec is wrong or ambiguous, ask.** Do not improvise an alternative design.
+8. After a mutation check, restore the source (git checkout HEAD -- <files>), force a rebuild (touch the restored files or rebuild the affected target from clean), and run the full ctest until green before taking any measurement or image.
 
 ## Documentation, benchmarks and releases
 
