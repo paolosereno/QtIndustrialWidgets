@@ -12,8 +12,8 @@ SPDX-License-Identifier: MIT
 [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
-[![Tests Defined](https://img.shields.io/badge/tests%20defined-122-blue.svg)](tests/)
-[![Tests Passed](https://img.shields.io/badge/tests%20passed-122%20%2F%20122%20(100%25)-brightgreen.svg)](tests/)
+[![Tests Defined](https://img.shields.io/badge/tests%20defined-131-blue.svg)](tests/)
+[![Tests Passed](https://img.shields.io/badge/tests%20passed-131%20%2F%20131%20(100%25)-brightgreen.svg)](tests/)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
@@ -139,6 +139,14 @@ Marine gyrocompass and aeronautical directional heading indicator instrument.
 - **Course Deviation & Heading Bug**: Adjustable target heading bug with interactive mouse click/drag, displaying real-time angular course deviation (CDI).
 - **Navigation Scales**: Full 360° degree markings, cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) indices, and aviation 3-digit heading numbers.
 - **Lubber Reference & Digital Pod**: Fixed fluorescent lubber line at 12 o'clock and recessed central digital heading angle readout.
+
+### 11. `CircularBargraph` (`qiw::CircularBargraph`)
+High-contrast circular arc indicator composed of discrete curved LED segments.
+- **Operating Modes**: Progressive illuminated LED stack (`DisplayMode::Bar`) or single active cursor pointer (`DisplayMode::Dot`).
+- **Configurable Geometry**: Adjustable angular arc sweep (e.g. 180°, 270°, or 360°) and discrete curved LED segment resolution (e.g. 16, 24, 32, 48 segments).
+- **Global Threshold Zones**: 3-stage colored threshold bands (Normal green, Warning amber, Critical red) with customizable unlit "ghost" LED segment colors.
+- **Ballistic Peak Hold**: Built-in peak indicator segment with configurable hold duration and smooth ballistic decay falloff.
+- **Centered Digital Pod**: Integrated optional digital readout pod with decimal precision and measurement unit display.
 
 ---
 
