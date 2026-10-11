@@ -1,0 +1,562 @@
+// SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
+#include <QtIndustrialWidgets/CircularBargraph.h>
+
+#include <QtGui/QPainter>
+#include <QtGui/QPainterPath>
+#include <QtGui/QPaintEvent>
+#include <QtGui/QResizeEvent>
+#include <QtCore/QTimer>
+#include <QtCore/QElapsedTimer>
+#include <QtCore/QDateTime>
+
+#include <algorithm>
+#include <cmath>
+
+namespace QtIndustrialWidgets {
+
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+} // namespace
+
+class CircularBargraphPrivate {
+public:
+    double m_value{0.0};
+    double m_minimum{0.0};
+    double m_maximum{100.0};
+    int m_segmentCount{24};
+    double m_startAngle{-135.0};
+    double m_spanAngle{270.0};
+    CircularBargraph::DisplayMode m_displayMode{CircularBargraph::DisplayMode::Bar};
+
+    double m_warningThreshold{70.0};
+    double m_errorThreshold{85.0};
+
+    bool m_peakHoldEnabled{true};
+    int m_peakHoldTimeMs{1200};
+    double m_peakDecayRate{25.0};
+    double m_peakValue{0.0};
+
+    bool m_digitalDisplayVisible{true};
+    int m_precision{1};
+    QString m_unit{QStringLiteral("%")};
+
+    // Global color styling
+    QColor m_normalColor{QColor(46, 204, 113)};   // Vivid Emerald Green
+    QColor m_warningColor{QColor(254, 211, 48)};  // Amber Yellow
+    QColor m_errorColor{QColor(235, 59, 90)};     // Danger Red
+    QColor m_peakColor{QColor(255, 255, 255)};    // Bright White Peak
+    QColor m_ghostColor{QColor(38, 43, 53)};      // Unlit LED segment
+    QColor m_dialColor{QColor(24, 28, 36)};       // Deep Slate Chassis
+    QColor m_textColor{QColor(245, 246, 250)};    // Crisp Text
+
+    QElapsedTimer m_peakHoldTimer;
+    QTimer *m_decayTimer{nullptr};
+    qint64 m_lastDecayTime{0};
+
+    void updatePeakDecay(CircularBargraph *q);
+};
+
+void CircularBargraphPrivate::updatePeakDecay(CircularBargraph *q)
+{
+    if (!m_peakHoldEnabled) {
+        m_peakValue = m_value;
+        if (m_decayTimer) {
+            m_decayTimer->stop();
+        }
+        q->update();
+        return;
+    }
+
+    if (!m_peakHoldTimer.isValid() || m_peakHoldTimer.elapsed() < m_peakHoldTimeMs) {
+        return;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    double dt = (now - m_lastDecayTime) / 1000.0;
+    m_lastDecayTime = now;
+    if (dt <= 0.0 || dt > 1.0) {
+        dt = 0.033;
+    }
+
+    m_peakValue -= m_peakDecayRate * dt;
+    if (m_peakValue <= m_value) {
+        m_peakValue = m_value;
+        if (m_decayTimer) {
+            m_decayTimer->stop();
+        }
+    }
+    q->update();
+}
+
+CircularBargraph::CircularBargraph(QWidget *parent)
+    : QWidget(parent)
+    , d_ptr(std::make_unique<CircularBargraphPrivate>())
+{
+    setAttribute(Qt::WA_OpaquePaintEvent, false);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    d_ptr->m_decayTimer = new QTimer(this);
+    d_ptr->m_decayTimer->setInterval(33); // ~30 FPS ballistic decay
+    connect(d_ptr->m_decayTimer, &QTimer::timeout, this, [this]() {
+        d_ptr->updatePeakDecay(this);
+    });
+}
+
+CircularBargraph::~CircularBargraph() = default;
+
+double CircularBargraph::value() const { Q_D(const CircularBargraph); return d->m_value; }
+double CircularBargraph::minimum() const { Q_D(const CircularBargraph); return d->m_minimum; }
+double CircularBargraph::maximum() const { Q_D(const CircularBargraph); return d->m_maximum; }
+double CircularBargraph::peakValue() const { Q_D(const CircularBargraph); return d->m_peakValue; }
+int CircularBargraph::segmentCount() const { Q_D(const CircularBargraph); return d->m_segmentCount; }
+double CircularBargraph::startAngle() const { Q_D(const CircularBargraph); return d->m_startAngle; }
+double CircularBargraph::spanAngle() const { Q_D(const CircularBargraph); return d->m_spanAngle; }
+CircularBargraph::DisplayMode CircularBargraph::displayMode() const { Q_D(const CircularBargraph); return d->m_displayMode; }
+double CircularBargraph::warningThreshold() const { Q_D(const CircularBargraph); return d->m_warningThreshold; }
+double CircularBargraph::errorThreshold() const { Q_D(const CircularBargraph); return d->m_errorThreshold; }
+bool CircularBargraph::isPeakHoldEnabled() const { Q_D(const CircularBargraph); return d->m_peakHoldEnabled; }
+int CircularBargraph::peakHoldTimeMs() const { Q_D(const CircularBargraph); return d->m_peakHoldTimeMs; }
+double CircularBargraph::peakDecayRate() const { Q_D(const CircularBargraph); return d->m_peakDecayRate; }
+bool CircularBargraph::isDigitalDisplayVisible() const { Q_D(const CircularBargraph); return d->m_digitalDisplayVisible; }
+int CircularBargraph::precision() const { Q_D(const CircularBargraph); return d->m_precision; }
+QString CircularBargraph::unit() const { Q_D(const CircularBargraph); return d->m_unit; }
+
+QColor CircularBargraph::normalColor() const { Q_D(const CircularBargraph); return d->m_normalColor; }
+QColor CircularBargraph::warningColor() const { Q_D(const CircularBargraph); return d->m_warningColor; }
+QColor CircularBargraph::errorColor() const { Q_D(const CircularBargraph); return d->m_errorColor; }
+QColor CircularBargraph::peakColor() const { Q_D(const CircularBargraph); return d->m_peakColor; }
+QColor CircularBargraph::ghostColor() const { Q_D(const CircularBargraph); return d->m_ghostColor; }
+QColor CircularBargraph::dialColor() const { Q_D(const CircularBargraph); return d->m_dialColor; }
+QColor CircularBargraph::textColor() const { Q_D(const CircularBargraph); return d->m_textColor; }
+
+QSize CircularBargraph::sizeHint() const
+{
+    return QSize(180, 180);
+}
+
+QSize CircularBargraph::minimumSizeHint() const
+{
+    return QSize(50, 50);
+}
+
+void CircularBargraph::setValue(double val)
+{
+    // Fail-safe hold on NaN
+    if (std::isnan(val)) {
+        return;
+    }
+    // Bounded saturation clamping on ±Inf
+    if (std::isinf(val)) {
+        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    }
+
+    const double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
+
+    // Peak tracking
+    if (clamped >= d_ptr->m_peakValue) {
+        d_ptr->m_peakValue = clamped;
+        d_ptr->m_peakHoldTimer.restart();
+        if (d_ptr->m_decayTimer && d_ptr->m_decayTimer->isActive()) {
+            d_ptr->m_decayTimer->stop();
+        }
+    } else if (d_ptr->m_peakHoldEnabled) {
+        if (d_ptr->m_decayTimer && !d_ptr->m_decayTimer->isActive()) {
+            d_ptr->m_lastDecayTime = QDateTime::currentMSecsSinceEpoch();
+            d_ptr->m_decayTimer->start();
+        }
+    }
+
+    if (qFuzzyCompare(d_ptr->m_value, clamped)) {
+        return;
+    }
+
+    d_ptr->m_value = clamped;
+    Q_EMIT valueChanged(d_ptr->m_value);
+    update();
+}
+
+void CircularBargraph::setMinimum(double min)
+{
+    setRange(min, d_ptr->m_maximum);
+}
+
+void CircularBargraph::setMaximum(double max)
+{
+    setRange(d_ptr->m_minimum, max);
+}
+
+void CircularBargraph::setRange(double min, double max)
+{
+    if (!std::isfinite(min) || !std::isfinite(max) || min >= max) {
+        return;
+    }
+    if (qFuzzyCompare(d_ptr->m_minimum, min) && qFuzzyCompare(d_ptr->m_maximum, max)) {
+        return;
+    }
+
+    d_ptr->m_minimum = min;
+    d_ptr->m_maximum = max;
+    d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
+    d_ptr->m_peakValue = std::clamp(d_ptr->m_peakValue, d_ptr->m_minimum, d_ptr->m_maximum);
+
+    Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    Q_EMIT valueChanged(d_ptr->m_value);
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setSegmentCount(int count)
+{
+    if (count < 4 || d_ptr->m_segmentCount == count) {
+        return;
+    }
+    d_ptr->m_segmentCount = count;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setStartAngle(double angle)
+{
+    if (!std::isfinite(angle) || qFuzzyCompare(d_ptr->m_startAngle, angle)) {
+        return;
+    }
+    d_ptr->m_startAngle = angle;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setSpanAngle(double angle)
+{
+    if (!std::isfinite(angle) || angle <= 0.0 || angle > 360.0 || qFuzzyCompare(d_ptr->m_spanAngle, angle)) {
+        return;
+    }
+    d_ptr->m_spanAngle = angle;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setDisplayMode(DisplayMode mode)
+{
+    if (d_ptr->m_displayMode == mode) {
+        return;
+    }
+    d_ptr->m_displayMode = mode;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setWarningThreshold(double threshold)
+{
+    if (!std::isfinite(threshold) || qFuzzyCompare(d_ptr->m_warningThreshold, threshold)) {
+        return;
+    }
+    d_ptr->m_warningThreshold = threshold;
+    Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setErrorThreshold(double threshold)
+{
+    if (!std::isfinite(threshold) || qFuzzyCompare(d_ptr->m_errorThreshold, threshold)) {
+        return;
+    }
+    d_ptr->m_errorThreshold = threshold;
+    Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setPeakHoldEnabled(bool enable)
+{
+    if (d_ptr->m_peakHoldEnabled == enable) {
+        return;
+    }
+    d_ptr->m_peakHoldEnabled = enable;
+    if (!enable) {
+        d_ptr->m_peakValue = d_ptr->m_value;
+        if (d_ptr->m_decayTimer) {
+            d_ptr->m_decayTimer->stop();
+        }
+    }
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setPeakHoldTimeMs(int ms)
+{
+    if (ms < 0 || d_ptr->m_peakHoldTimeMs == ms) {
+        return;
+    }
+    d_ptr->m_peakHoldTimeMs = ms;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setPeakDecayRate(double rate)
+{
+    if (!std::isfinite(rate) || rate <= 0.0 || qFuzzyCompare(d_ptr->m_peakDecayRate, rate)) {
+        return;
+    }
+    d_ptr->m_peakDecayRate = rate;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setDigitalDisplayVisible(bool visible)
+{
+    if (d_ptr->m_digitalDisplayVisible == visible) {
+        return;
+    }
+    d_ptr->m_digitalDisplayVisible = visible;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setPrecision(int prec)
+{
+    if (prec < 0 || d_ptr->m_precision == prec) {
+        return;
+    }
+    d_ptr->m_precision = prec;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setUnit(const QString &unit)
+{
+    if (d_ptr->m_unit == unit) {
+        return;
+    }
+    d_ptr->m_unit = unit;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::resetPeak()
+{
+    d_ptr->m_peakValue = d_ptr->m_value;
+    if (d_ptr->m_decayTimer && d_ptr->m_decayTimer->isActive()) {
+        d_ptr->m_decayTimer->stop();
+    }
+    update();
+}
+
+void CircularBargraph::setNormalColor(const QColor &color)
+{
+    if (d_ptr->m_normalColor == color) return;
+    d_ptr->m_normalColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setWarningColor(const QColor &color)
+{
+    if (d_ptr->m_warningColor == color) return;
+    d_ptr->m_warningColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setErrorColor(const QColor &color)
+{
+    if (d_ptr->m_errorColor == color) return;
+    d_ptr->m_errorColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setPeakColor(const QColor &color)
+{
+    if (d_ptr->m_peakColor == color) return;
+    d_ptr->m_peakColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setGhostColor(const QColor &color)
+{
+    if (d_ptr->m_ghostColor == color) return;
+    d_ptr->m_ghostColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setDialColor(const QColor &color)
+{
+    if (d_ptr->m_dialColor == color) return;
+    d_ptr->m_dialColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::setTextColor(const QColor &color)
+{
+    if (d_ptr->m_textColor == color) return;
+    d_ptr->m_textColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void CircularBargraph::paintEvent(QPaintEvent *)
+{
+    if (width() <= 4 || height() <= 4) {
+        return;
+    }
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+
+    const double w = width();
+    const double h = height();
+    const double side = std::min(w, h);
+    const QPointF center(w * 0.5, h * 0.5);
+    const double radius = (side * 0.5) - 4.0;
+
+    if (radius <= 6.0) {
+        return;
+    }
+
+    // 1. Dial Background Chassis
+    if (d_ptr->m_dialColor.alpha() > 0) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(d_ptr->m_dialColor);
+        painter.drawEllipse(center, radius, radius);
+    }
+
+    // 2. Discrete Curved LED Segment Geometry
+    const double rOuter = radius * 0.90;
+    const double rInner = radius * 0.66;
+    const int N = std::max(4, d_ptr->m_segmentCount);
+    const double stepAngle = d_ptr->m_spanAngle / static_cast<double>(N);
+
+    // Gap calculation between segments (proportional, clamped)
+    double gapAngle = stepAngle * 0.18;
+    gapAngle = std::clamp(gapAngle, 0.4, 4.0);
+    const double segSpan = std::max(0.2, stepAngle - gapAngle);
+
+    // Global Threshold active color determination
+    QColor activeColor = d_ptr->m_normalColor;
+    if (d_ptr->m_value >= d_ptr->m_errorThreshold) {
+        activeColor = d_ptr->m_errorColor;
+    } else if (d_ptr->m_value >= d_ptr->m_warningThreshold) {
+        activeColor = d_ptr->m_warningColor;
+    }
+
+    const double rangeSpan = d_ptr->m_maximum - d_ptr->m_minimum;
+    const double factor = (rangeSpan > 0.0)
+        ? std::clamp((d_ptr->m_value - d_ptr->m_minimum) / rangeSpan, 0.0, 1.0)
+        : 0.0;
+
+    const int litSegments = (rangeSpan > 0.0)
+        ? std::clamp(static_cast<int>(std::round(factor * N)), 0, N)
+        : 0;
+
+    const int dotIndex = (rangeSpan > 0.0)
+        ? std::clamp(static_cast<int>(std::floor(factor * (N - 1) + 0.5)), 0, N - 1)
+        : 0;
+
+    // Peak hold segment determination
+    int peakIndex = -1;
+    if (d_ptr->m_peakHoldEnabled && rangeSpan > 0.0) {
+        const double peakFactor = std::clamp((d_ptr->m_peakValue - d_ptr->m_minimum) / rangeSpan, 0.0, 1.0);
+        peakIndex = std::clamp(static_cast<int>(std::floor(peakFactor * (N - 1) + 0.5)), 0, N - 1);
+    }
+
+    painter.setPen(Qt::NoPen);
+
+    for (int i = 0; i < N; ++i) {
+        const double aStart = d_ptr->m_startAngle + i * stepAngle + (gapAngle * 0.5);
+        const double aEnd = aStart + segSpan;
+        const int arcSteps = std::max(2, static_cast<int>(std::ceil(segSpan / 3.0)));
+
+        QPainterPath path;
+
+        // Outer arc: aStart -> aEnd
+        for (int s = 0; s <= arcSteps; ++s) {
+            const double ang = aStart + (aEnd - aStart) * (static_cast<double>(s) / arcSteps);
+            const double rad = (ang - 90.0) * kPi / 180.0;
+            const double px = center.x() + rOuter * std::cos(rad);
+            const double py = center.y() + rOuter * std::sin(rad);
+            if (s == 0) {
+                path.moveTo(px, py);
+            } else {
+                path.lineTo(px, py);
+            }
+        }
+
+        // Inner arc: aEnd -> aStart (reversed)
+        for (int s = arcSteps; s >= 0; --s) {
+            const double ang = aStart + (aEnd - aStart) * (static_cast<double>(s) / arcSteps);
+            const double rad = (ang - 90.0) * kPi / 180.0;
+            const double px = center.x() + rInner * std::cos(rad);
+            const double py = center.y() + rInner * std::sin(rad);
+            path.lineTo(px, py);
+        }
+
+        path.closeSubpath();
+
+        // Check if illuminated
+        bool isLit = false;
+        if (d_ptr->m_displayMode == DisplayMode::Bar) {
+            isLit = (i < litSegments);
+        } else {
+            isLit = (i == dotIndex && d_ptr->m_value >= d_ptr->m_minimum);
+        }
+
+        const bool isPeak = (d_ptr->m_peakHoldEnabled && i == peakIndex);
+
+        if (isPeak) {
+            painter.fillPath(path, d_ptr->m_peakColor);
+        } else if (isLit) {
+            painter.fillPath(path, activeColor);
+        } else {
+            painter.fillPath(path, d_ptr->m_ghostColor);
+        }
+    }
+
+    // 3. Optional Centered Digital Readout Pod
+    if (d_ptr->m_digitalDisplayVisible && rInner > 15.0) {
+        const QString valStr = QString::number(d_ptr->m_value, 'f', d_ptr->m_precision);
+        const double podRadius = rInner * 0.90;
+
+        // Dark recessed pod circular well
+        painter.setBrush(d_ptr->m_dialColor.darker(130));
+        painter.drawEllipse(center, podRadius, podRadius);
+
+        const double fontSize = std::max(7.0, rInner * 0.36);
+        QFont valFont = font();
+        valFont.setBold(true);
+        valFont.setPointSizeF(fontSize);
+        painter.setFont(valFont);
+        painter.setPen(d_ptr->m_textColor);
+
+        if (d_ptr->m_unit.isEmpty()) {
+            const QRectF valRect(center.x() - podRadius, center.y() - podRadius, podRadius * 2.0, podRadius * 2.0);
+            painter.drawText(valRect, Qt::AlignCenter, valStr);
+        } else {
+            const QRectF valRect(center.x() - podRadius, center.y() - podRadius * 0.75, podRadius * 2.0, podRadius * 0.9);
+            painter.drawText(valRect, Qt::AlignCenter, valStr);
+
+            QFont unitFont = font();
+            unitFont.setPointSizeF(std::max(5.5, fontSize * 0.52));
+            painter.setFont(unitFont);
+            painter.setPen(d_ptr->m_textColor.darker(125));
+
+            const QRectF unitRect(center.x() - podRadius, center.y() + podRadius * 0.10, podRadius * 2.0, podRadius * 0.65);
+            painter.drawText(unitRect, Qt::AlignCenter, d_ptr->m_unit);
+        }
+    }
+}
+
+void CircularBargraph::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    update();
+}
+
+} // namespace QtIndustrialWidgets

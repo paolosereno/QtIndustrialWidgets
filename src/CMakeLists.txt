@@ -38,6 +38,7 @@ add_library(QtIndustrialWidgets SHARED
     LevelMeter.cpp
     AnnunciatorPanel.cpp
     Compass.cpp
+    CircularBargraph.cpp
     $<TARGET_OBJECTS:M4Decimator>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
@@ -50,6 +51,7 @@ add_library(QtIndustrialWidgets SHARED
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LevelMeter.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/AnnunciatorPanel.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/Compass.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/CircularBargraph.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)
