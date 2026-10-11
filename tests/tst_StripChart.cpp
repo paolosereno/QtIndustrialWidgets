@@ -1827,13 +1827,25 @@ int verticesInRange(const ChannelFrameDiagnostics &d, double x0, double x1)
     return n;
 }
 
-bool columnHasTrace(const QImage &img, const StripChart &chart, int xDev)
+bool columnHasColour(const QImage &img, const StripChart &chart, int xDev, const QColor &colour)
 {
     const auto &f = StripChartTestAccess::lastFrame(chart);
     const double dpr = chart.devicePixelRatioF();
     const int top = static_cast<int>(std::floor(f.plotRect.top() * dpr));
     const int bottom = static_cast<int>(std::ceil(f.plotRect.bottom() * dpr));
-    return !traceYAtColumn(img, kDropoutColour, xDev, top, bottom, 60).empty();
+    return !traceYAtColumn(img, colour, xDev, top, bottom, 60).empty();
+}
+
+bool columnHasTrace(const QImage &img, const StripChart &chart, int xDev)
+{
+    return columnHasColour(img, chart, xDev, kDropoutColour);
+}
+
+// The trace's end point carries the glow dot (channel colour lighter(150)), which covers the trace
+// pixels of the columns around it; either colour shows that the column is drawn.
+bool columnHasTraceOrGlow(const QImage &img, const StripChart &chart, int xDev)
+{
+    return columnHasTrace(img, chart, xDev) || columnHasColour(img, chart, xDev, kDropoutColour.lighter(150));
 }
 
 } // namespace
@@ -2072,8 +2084,10 @@ void tst_StripChart::decimatedDropoutStreaming()
         QVERIFY(chDiag.segments[0].last().x() < x0);
         QVERIFY(chDiag.segments[1].first().x() >= x1);
         const int col = bucketColumn(x0, x1, dpr);
-        QVERIFY(columnHasTrace(img, *chart, col - 1));
-        QVERIFY(columnHasTrace(img, *chart, col + 1));
+        // The NaN bucket is now the penultimate one: the glow dot on the last point can cover the
+        // trace columns around the gap, but never the gap itself.
+        QVERIFY(columnHasTraceOrGlow(img, *chart, col - 1));
+        QVERIFY(columnHasTraceOrGlow(img, *chart, col + 1));
         QVERIFY2(!columnHasTrace(img, *chart, col), qPrintable(QStringLiteral("closed NaN column %1 drawn").arg(col)));
     }
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
@@ -2257,8 +2271,17 @@ void tst_StripChart::glowDotNeverDrawnInBlankColumn()
         const QPointF last = chDiag.segments.back().last();
         const auto latest = bucketXRange(*chart, latestBucket);
         QVERIFY(last.x() >= latest.first && last.x() < latest.second);
-        const int lastCol = static_cast<int>(std::floor(last.x() * dpr));
-        QVERIFY2(hasGlow(lastCol), qPrintable(QStringLiteral("no glow at the last point, col %1").arg(lastCol)));
+        // The glow dot (radius 2.5 logical px) is visible in the plot columns around the last point
+        // other than the blank NaN column (the last point can sit on the plot's right edge).
+        const int from = std::max(left, static_cast<int>(std::floor((last.x() - 2.5) * dpr)));
+        const int to = std::min(right - 1, static_cast<int>(std::ceil((last.x() + 2.5) * dpr)));
+        int glowColumns = 0;
+        for (int x = from; x <= to; ++x) {
+            if (x != col && hasGlow(x)) {
+                ++glowColumns;
+            }
+        }
+        QVERIFY2(glowColumns > 0, qPrintable(QStringLiteral("no glow around the last point (x %1)").arg(last.x() * dpr)));
     }
 }
 
