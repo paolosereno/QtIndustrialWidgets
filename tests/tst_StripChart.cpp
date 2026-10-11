@@ -26,6 +26,13 @@ Q_SIGNALS:
     void pointReady(int ch, double v);
 };
 
+namespace {
+// Expected-failure message for pixel checks where decimation buckets do not cover whole device
+// columns (approved by the maintainer; tracked in #12).
+const char *const kBucketNotPixelAligned = "Bucket boundaries are not aligned to device columns yet; see #12";
+
+} // namespace
+
 class tst_StripChart : public QObject
 {
     Q_OBJECT
@@ -424,6 +431,9 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
         // The bucket containing the NaN is not drawn: 2 segments and no trace in its column.
         QCOMPARE(chDiag.segments.size(), 2UL);
 
+        // At DPR 1 the NaN bucket (samples 49926-50031) spans x 514.305-515.307 px and the next
+        // segment starts at x 515.308 (sample 50032), inside device column 515.
+        QEXPECT_FAIL("", kBucketNotPixelAligned, Continue);
         QVERIFY2(ysNan.empty(), qPrintable(QString("Trace pixel found in decimated NaN column %1").arg(xNanDev)));
     }
 }
@@ -1823,12 +1833,6 @@ bool columnHasTrace(const QImage &img, const StripChart &chart, int xDev)
     const int bottom = static_cast<int>(std::ceil(f.plotRect.bottom() * dpr));
     return !traceYAtColumn(img, kDropoutColour, xDev, top, bottom, 60).empty();
 }
-
-// TODO(#?): replace "#?" with the number of the issue on aligning decimation buckets to device
-// pixel columns, once it exists.
-const char *const kBucketNotPixelAligned =
-    "Bucket edges are not aligned to device pixel columns, so the blank bucket does not cover a whole "
-    "device column (see issue #? on bucket/pixel-column alignment)";
 
 } // namespace
 

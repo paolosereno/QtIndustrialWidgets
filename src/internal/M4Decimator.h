@@ -87,11 +87,16 @@ struct M4Bucket {
 
     /**
      * \brief Emits up to 4 vertices in chronological order, deduplicating coincident points.
+     *
+     * A bucket that contains any non-finite sample emits no vertex, so its pixel column stays
+     * blank and a sensor dropout is never hidden by the bucket's finite samples. The finite
+     * extremals are still kept (yMin / yMax are used by autoscale).
+     *
      * \param out Output array of capacity at least 4.
      * \return Number of unique vertices emitted (0 to 4).
      */
     int emitVertices(M4Point out[4]) const noexcept {
-        if (!hasFinite) return 0;
+        if (!hasFinite || hasNonFinite) return 0;
 
         M4Point raw[4];
         if (tMin <= tMax) {
