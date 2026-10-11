@@ -71,10 +71,19 @@ qint64 mulDivFloor(qint64 a, qint64 b, qint64 c, qint64 *remainder) noexcept
     div128by64(hi, lo, static_cast<quint64>(c), frac, rem); // r * b / c < b, fits
     if (remainder) *remainder = static_cast<qint64>(rem);
 
-    // q * b + frac, saturated
-    if (q > 0 && q > (kMax - static_cast<qint64>(frac)) / b) return kMax;
-    if (q < 0 && q < kMin / b) return kMin;
-    return q * b + static_cast<qint64>(frac);
+    // q * b + frac, saturated. Overflow is decided on the final sum: the intermediate product
+    // q * b can leave the qint64 range while q * b + frac still fits (0 <= frac < b).
+    const qint64 f = static_cast<qint64>(frac);
+    if (q >= 0) {
+        if (q > (kMax - f) / b) return kMax;
+        return q * b + f;
+    }
+    // q < 0: q * b + frac == (q + 1) * b - (b - frac), with 0 < b - frac <= b. The sum is >= kMin
+    // iff (q + 1) * b >= kMin + (b - frac), i.e. q + 1 >= ceil((kMin + (b - frac)) / b); the
+    // numerator is negative, so C++ truncating division rounds it up as required.
+    const qint64 d = b - f;
+    if (q + 1 < (kMin + d) / b) return kMin;
+    return (q + 1) * b - d;
 }
 
 qint64 mulDivCeil(qint64 a, qint64 b, qint64 c) noexcept
