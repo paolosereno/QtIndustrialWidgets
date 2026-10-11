@@ -15,11 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Sensor dropouts in decimated traces**: A decimation bucket (pixel column) that contains any non-finite sample is no longer drawn: its column stays blank and the trace is broken on both sides, in both axis modes, in batch decimation and in the incremental stream. Previously the bucket's finite samples were drawn as an isolated stroke and the dropout could be invisible. As a consequence, finite samples in such a column, including peaks, are not drawn; autoscale still uses them.
+- **Glow dot next to a dropout**: In decimated traces the glow dot on the latest point is no longer drawn when the newest bucket is blank (the legend still shows the latest value), and it is clipped so it never draws inside a blank dropout column.
+
 ### Fixed
 - **Performance figures**: Re-measured all `StripChart` performance figures with a corrected benchmark method (5 warm-up + 30 measured renders with min/median/p95, a streaming case, real insertion call counts, test signals defined as functions of time so every sample count draws the same image, trace pixel counts, two runs with the range of the medians); `docs/benchmarks.md` is now the only source of performance figures, and README, `docs/strip_chart.md` and this changelog quote or link it.
 - **Non-reproducible baseline**: Removed the earlier baseline column, the extrapolated `addSample` figure and every speed-up factor derived from them. The 2.0.1 comparison in `docs/benchmarks.md` was re-measured in the same session; it uses the previous benchmark generator, whose samples are identical to the current one at the 1M sample count used for the comparison.
 - **Unverified claims**: Removed the "over 1,000×" rasterization claim and replaced "zero per-frame heap allocations" with what the benchmark measures (allocations per frame independent of the number of samples for continuous signals; growing with the number of visible NaN gaps).
 - **Previous `Auto` threshold**: The 2.1.0 entry now states the correct previous `DecimationMode::Auto` threshold (`2 · W_dev`, not `W_dev / 2`).
+
+### Tests
+- **Dropout columns**: Removed the `QEXPECT_FAIL` markers on the segment count of `nonFiniteValuesBreakTheTrace`; its pixel check remains an expected failure only because bucket edges are not aligned to device columns in that geometry (#12). Added tests for single, edge, consecutive, streaming and evicted dropouts, for the glow dot next to a blank column and for autoscale with a blank column, and extended the incremental-equals-batch property test to compare the sets of drawn and blank buckets.
 
 ---
 
