@@ -9,6 +9,7 @@
 #include <internal/M4Decimator.h>
 #include <cmath>
 #include <random>
+#include <set>
 #include <vector>
 
 using namespace QtIndustrialWidgets::internal;
@@ -407,6 +408,7 @@ void tst_M4Decimator::propertyTestIncrementalEqualsBatch()
     std::bernoulli_distribution infDist(0.5);
 
     constexpr int totalScenarios = 250;
+    int mixedBuckets = 0; // buckets with both finite and non-finite samples, across all scenarios
 
     for (int scenario = 0; scenario < totalScenarios; ++scenario) {
         uint64_t scenarioSeed = rng();
@@ -558,7 +560,46 @@ void tst_M4Decimator::propertyTestIncrementalEqualsBatch()
                 QCOMPARE(streamSeg[v].value, batchSeg[v].value);
             }
         }
+
+        // 4. Blank buckets: a bucket with any non-finite sample is never drawn, identically in batch
+        //    and incremental extraction; every finite-only bucket is drawn; no segment spans a blank bucket.
+        std::set<qint64> blank;
+        std::set<qint64> finiteOnly;
+        for (int i = 0; i < activeBuckets; ++i) {
+            const auto &bb = batchBuckets[static_cast<size_t>(i)];
+            if (bb.hasNonFinite) {
+                blank.insert(kStart + i);
+                if (bb.hasFinite) {
+                    ++mixedBuckets;
+                }
+            } else if (bb.hasFinite) {
+                finiteOnly.insert(kStart + i);
+            }
+        }
+        auto drawnBuckets = [&](const std::vector<std::vector<M4Point>> &segs) {
+            std::set<qint64> drawn;
+            for (const auto &seg : segs) {
+                for (const auto &pt : seg) {
+                    drawn.insert(M4Decimator::floorDiv(pt.t, dt_px));
+                }
+            }
+            return drawn;
+        };
+        const std::set<qint64> drawnBatch = drawnBuckets(batchSegments);
+        const std::set<qint64> drawnStream = drawnBuckets(streamSegments);
+        const QString where = QString("scenario %1 (seed %2)").arg(scenario).arg(scenarioSeed);
+        QVERIFY2(drawnStream == drawnBatch, qPrintable("incremental and batch draw different buckets in " + where));
+        QVERIFY2(drawnBatch == finiteOnly, qPrintable("drawn buckets differ from finite-only buckets in " + where));
+        for (const auto &seg : batchSegments) {
+            const qint64 lo = M4Decimator::floorDiv(seg.front().t, dt_px);
+            const qint64 hi = M4Decimator::floorDiv(seg.back().t, dt_px);
+            auto it = blank.lower_bound(lo);
+            QVERIFY2(it == blank.end() || *it > hi, qPrintable("segment spans a blank bucket in " + where));
+        }
     }
+
+    // The scenarios must actually exercise buckets that mix finite and non-finite samples
+    QVERIFY2(mixedBuckets > 0, "no mixed finite/non-finite bucket generated");
 }
 
 QTEST_MAIN(tst_M4Decimator)

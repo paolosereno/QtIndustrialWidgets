@@ -60,7 +60,7 @@ For each device pixel column `k` (`W_dev = round(W_logical * devicePixelRatioF()
 3. The total emitted vertices per channel are bounded by `≤ 4 · W_dev` points, rendered as contiguous `QPolygonF` polylines.
 
 ### Critical Guarantees and Limitations
-- **Peaks are never lost; intra-pixel waveform shape is not preserved**: Because the global minimum and maximum within every pixel column are explicitly captured and emitted, transient spikes, glitches, and faults are guaranteed to be drawn regardless of decimation factor. However, decimation does not eliminate acquisition Nyquist aliasing present in the underlying telemetry, nor does it retain intra-pixel waveform shapes.
+- **Peaks are never lost (except in columns that contain a non-finite sample, see "Sensor dropouts" in section 4); intra-pixel waveform shape is not preserved**: Because the global minimum and maximum within every pixel column are explicitly captured and emitted, transient spikes, glitches, and faults are guaranteed to be drawn regardless of decimation factor. However, decimation does not eliminate acquisition Nyquist aliasing present in the underlying telemetry, nor does it retain intra-pixel waveform shapes.
 - **Trace Shimmer Prevention**: Bucket indices are anchored to absolute time (`k = floor(t / Δt_px)`), and the visible window boundary `t_end` is quantized to the next bucket boundary (`ceil(t_latest / Δt_px) * Δt_px`). This guarantees zero pixel shimmer during scrolling.
 
 ### Decimation Modes
@@ -119,6 +119,14 @@ Polylines break automatically into separate segments when:
 - NaN and ±∞ values are **stored** in the circular buffer as sensor fault telemetry.
 - They are excluded from autoscale range calculation and filtered from `QPainter` polylines.
 - The legend overlay displays `---` when the latest telemetry value is non-finite.
+
+### Sensor dropouts
+A non-finite sample is how a sensor dropout reaches the chart, and a dropout must never be hidden: a trace that looks continuous across a failed sensor is misleading.
+- **Decimated traces**: a pixel column (decimation bucket) that contains any non-finite sample is left **blank**, and the trace is broken on both sides. The finite samples of that column, including peaks, are not drawn. Adjacent dropout columns form one contiguous blank region. This applies in both axis modes, while streaming (a dropout in the newest column blanks it on the next frame) and after buffer eviction (a column is drawn again once its non-finite samples have been evicted).
+- **Glow dot**: it is not drawn when the newest column is blank (the legend keeps showing the latest value), and it never draws inside a blank column.
+- **Raw traces**: the polyline is broken at the non-finite sample. With the default 1.8 px antialiased pen and about one sample per device pixel, the ends of the two polylines can cover the dropout's column, so a fully blank column is not guaranteed in raw mode.
+- **Autoscale** still uses all finite values, including those of a blank column.
+- **Known limitation**: in some geometries (notably `SampleIndex` mode) column edges are not aligned to device pixels, so a blank column can straddle two device columns that are each partly drawn; tracked in [#12](https://github.com/paolosereno/QtIndustrialWidgets/issues/12).
 
 ---
 

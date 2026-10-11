@@ -103,7 +103,7 @@ Precision rotary potentiometer and selector switch.
 ### 6. `StripChart` (`qiw::StripChart`)
 Real-time scrolling telemetry strip chart and oscilloscope for high-rate DAQ.
 - **Measured Performance**: On an Intel Core i5-13600KF (Ubuntu 24.04 on WSL2, GCC 13.3, Qt 6.4.2, offscreen CPU raster, 1920 device px plot), the steady-state paint median is 2.96 ms for 1 channel × 1M noisy samples and 23.08 ms for 4 channels × 1M (medians over two runs: 2.96–3.99 ms and 11.42–23.08 ms; timings on that machine are bimodal); `addSample` with autoscale ON takes 0.0323 µs per call (median). Full tables, method and the 2.1.0 targets that are not yet met: [Benchmark Report](docs/benchmarks.md).
-- **M4 Min/Max Pixel Decimation**: Bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer. Peaks are never lost; intra-pixel waveform shape is not preserved.
+- **M4 Min/Max Pixel Decimation**: Bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer. Peaks are never lost (except in pixel columns that contain a non-finite sample, which are left blank so sensor dropouts stay visible); intra-pixel waveform shape is not preserved.
 - **Thin Decimated Traces**: When decimation is active, traces render using a cosmetic 1-device-pixel pen without antialiasing to avoid `QStroker` outline polygon synthesis, which dominates the cost of stroking dense zig-zags with wide antialiased pens.
 - **Nanosecond Real-Time Axis**: True `std::chrono::nanoseconds` time representation with dynamic 1-2-5 tick grid, relative (`-10 s … 0 s`) or absolute wall-clock (`HH:mm:ss.zzz`) formats.
 - **Robust Telemetry Handling**: Automatic inter-sample gap detection (4x EMA threshold) and resilience to sensor dropouts (raw NaN/±∞ fault preservation without painter errors).
