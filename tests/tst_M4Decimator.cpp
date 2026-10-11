@@ -27,6 +27,8 @@ private Q_SLOTS:
     void propertyTestIncrementalEqualsBatch();
     void mulDivExact();
     void bucketGridBoundaries();
+    void bucketGridMoreBucketsThanUnits();
+    void mulDivSaturationEdges();
 };
 
 void tst_M4Decimator::pixelEquivalence()
@@ -682,6 +684,75 @@ void tst_M4Decimator::bucketGridBoundaries()
     for (qint64 x : {-2001LL, -1000LL, -1LL, 0LL, 999LL, 1000LL, 123456789LL}) {
         QCOMPARE(uniform.bucketOf(x), M4Decimator::floorDiv(x, 1000));
     }
+}
+
+void tst_M4Decimator::bucketGridMoreBucketsThanUnits()
+{
+    // num > den: more buckets than axis units, as with a SampleIndex capacity (>= 10 samples)
+    // below the plot width (<= 16384 device px) in DecimationMode::Always. Bucket assignment must
+    // stay exact over the whole valid range |x| <= maxPosition().
+    std::mt19937_64 rng(1515);
+    std::uniform_int_distribution<qint64> numDist(11, 16384);
+    std::uniform_real_distribution<double> unit(0.0, 1.0);
+    for (int i = 0; i < 20000; ++i) {
+        const qint64 num = numDist(rng);
+        const qint64 den = 10 + static_cast<qint64>(unit(rng) * static_cast<double>(num - 10)); // 10 <= den < num
+        const BucketGrid grid(num, den);
+        const qint64 limit = grid.maxPosition();
+        QVERIFY(limit > 0);
+        // Positions across the range, including both ends of it
+        qint64 x = 0;
+        switch (i % 4) {
+            case 0: x = limit; break;
+            case 1: x = -limit; break;
+            case 2: x = limit - static_cast<qint64>(unit(rng) * 1e6); break;
+            default: x = static_cast<qint64>((unit(rng) * 2.0 - 1.0) * static_cast<double>(limit)); break;
+        }
+        const qint64 k = grid.bucketOf(x);
+        // At the top of the range k can be INT64_MAX, whose next boundary does not exist
+        const bool lastBucket = (k == std::numeric_limits<qint64>::max());
+        QVERIFY2(grid.boundary(k) <= x && (lastBucket || x < grid.boundary(k + 1)),
+                 qPrintable(QString("x %1 not in bucket %2 of grid %3/%4 (limit %5)").arg(x).arg(k).arg(num).arg(den).arg(limit)));
+#if defined(__SIZEOF_INT128__)
+        __extension__ typedef __int128 i128;
+        const i128 p = static_cast<i128>(x) * num;
+        i128 f = p / den;
+        if ((p % den) != 0 && p < 0) --f;
+        QVERIFY2(f == k, qPrintable(QString("floor(%1*%2/%3) != %4").arg(x).arg(num).arg(den).arg(k)));
+#endif
+    }
+    // maxPosition() is exact: one more position would not fit
+    const BucketGrid g(16384, 10);
+    QCOMPARE(g.maxPosition(), 5629499534213119LL); // floor((2^63 - 1) * 10 / 16384)
+    QCOMPARE(g.bucketOf(g.maxPosition()), 9223372036854774169LL); // floor(5629499534213119 * 16384 / 10)
+    // and is the whole qint64 range when num <= den
+    QCOMPARE(BucketGrid(1000, 1000000000).maxPosition(), std::numeric_limits<qint64>::max());
+}
+
+void tst_M4Decimator::mulDivSaturationEdges()
+{
+    // Results exactly at INT64_MIN / INT64_MAX and one beyond or inside them, on both sides.
+    // The intermediate product q * b of mulDivFloor() can leave the qint64 range while the final
+    // result still fits; only results outside the range saturate.
+    struct Edge {
+        qint64 a, b, c, expected; // expected = exact floor(a * b / c), saturated to the qint64 range
+    };
+    const Edge edges[] = {
+        {-9223362813491962317LL, 1000001LL, 1000000LL, std::numeric_limits<qint64>::min()}, // exact INT64_MIN - 1: saturates
+        {-9223362813491962316LL, 1000001LL, 1000000LL, std::numeric_limits<qint64>::min()}, // exact INT64_MIN
+        {-9223362813491962315LL, 1000001LL, 1000000LL, std::numeric_limits<qint64>::min() + 1}, // exact INT64_MIN + 1
+        {9223362813491962315LL, 1000001LL, 1000000LL, std::numeric_limits<qint64>::max() - 1}, // exact INT64_MAX - 1
+        {9223362813491962316LL, 1000001LL, 1000000LL, std::numeric_limits<qint64>::max()},     // exact INT64_MAX
+        {9223362813491962317LL, 1000001LL, 1000000LL, std::numeric_limits<qint64>::max()},     // exact INT64_MAX + 1: saturates
+    };
+    for (const Edge &e : edges) {
+        QVERIFY2(mulDivFloor(e.a, e.b, e.c) == e.expected,
+                 qPrintable(QString("floor(%1 * %2 / %3) = %4, expected %5")
+                                .arg(e.a).arg(e.b).arg(e.c).arg(mulDivFloor(e.a, e.b, e.c)).arg(e.expected)));
+    }
+    // The first case found by bucketGridMoreBucketsThanUnits: x = -maxPosition() of grid 15079/7023
+    QCOMPARE(mulDivFloor(-4295758459767298261LL, 15079, 7023), -9223372036854775805LL);
+    QCOMPARE(mulDivFloor(4295758459767298261LL, 15079, 7023), 9223372036854775804LL);
 }
 
 QTEST_MAIN(tst_M4Decimator)

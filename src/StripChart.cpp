@@ -1026,8 +1026,10 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
                 painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
             }
         } else if (d_ptr->m_xAxisMode == XAxisMode::Time && d_ptr->m_timeLabelFormat == TimeLabelFormat::Relative) {
-            // 1-2-5 Tick Selection for Relative Time
-            qint64 spanNs = d_ptr->m_timeSpan.count();
+            // 1-2-5 Tick Selection for Relative Time, over the effective window length (a span
+            // shorter than W_dev ns is shown as a W_dev ns window)
+            const int widthDev = std::max(1, static_cast<int>(std::round(plotRect.width() * dpr)));
+            const qint64 spanNs = internal::effectiveTimeSpan(d_ptr->m_timeSpan.count(), widthDev);
             auto tickResult = internal::computeTimeTicks(0, spanNs, plotRect.width(), 60.0);
 
             for (const auto &tick : tickResult.ticks) {
@@ -1128,10 +1130,12 @@ void StripChart::paintEvent(QPaintEvent *)
         if (d_ptr->m_xAxisMode == XAxisMode::Time) {
             qint64 spanNs = d_ptr->m_timeSpan.count();
             if (d_ptr->m_timeLabelFormat == TimeLabelFormat::Relative) {
-                auto tickResult = internal::computeTimeTicks(0, spanNs, plotRect.width(), 60.0);
+                // Same ticks as the static grid: effective window length
+                const qint64 windowNs = internal::effectiveTimeSpan(spanNs, W_dev);
+                auto tickResult = internal::computeTimeTicks(0, windowNs, plotRect.width(), 60.0);
                 d_ptr->lastFrame.xTicks.reserve(tickResult.ticks.size());
                 for (const auto &tick : tickResult.ticks) {
-                    double frac = static_cast<double>(tick.tNs) / static_cast<double>(spanNs);
+                    double frac = static_cast<double>(tick.tNs) / static_cast<double>(windowNs);
                     double x = plotRect.left() + frac * plotRect.width();
                     d_ptr->lastFrame.xTicks.push_back({tick.tNs, x, tick.label});
                 }

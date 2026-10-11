@@ -24,6 +24,12 @@ struct TimeWindow {
     int    numBuckets{0};  // buckets in the window
 };
 
+/**
+ * \brief Length in ns of the Time-mode window: the configured span, or widthDev ns when the span
+ * is shorter (1 ns buckets, never more buckets than nanoseconds). Labels and ticks must use it.
+ */
+qint64 effectiveTimeSpan(qint64 timeSpanNs, int widthDev);
+
 TimeWindow computeTimeWindow(qint64 tLatest, qint64 timeSpanNs, int widthDev);
 
 struct IndexBuckets {
