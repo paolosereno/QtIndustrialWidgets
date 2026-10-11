@@ -21,6 +21,7 @@ class IndustrialSwitch;
 class LevelMeter;
 class AnnunciatorPanel;
 class Compass;
+class CircularBargraph;
 }
 class QSlider;
 class QLabel;
@@ -88,6 +89,12 @@ private:
     // Level Meters / VU Meters
     QtIndustrialWidgets::LevelMeter *m_vibrationMeter{nullptr};
     QtIndustrialWidgets::LevelMeter *m_audioVuMeter{nullptr};
+
+    // Circular Bargraphs
+    QtIndustrialWidgets::CircularBargraph *m_circBargraphBar{nullptr};
+    QtIndustrialWidgets::CircularBargraph *m_circBargraphDot{nullptr};
+    QtIndustrialWidgets::CircularBargraph *m_circBargraphSemi{nullptr};
+    QSlider *m_circBargraphSlider{nullptr};
 
     // Sliders for manual control
     QSlider *m_rpmSlider{nullptr};
