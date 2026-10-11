@@ -4,6 +4,8 @@
 
 #include <QtIndustrialWidgets/CircularBargraph.h>
 
+#include "internal/CircularBargraphSegments.h"
+
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
@@ -447,25 +449,15 @@ void CircularBargraph::paintEvent(QPaintEvent *)
         activeColor = d_ptr->m_warningColor;
     }
 
-    const double rangeSpan = d_ptr->m_maximum - d_ptr->m_minimum;
-    const double factor = (rangeSpan > 0.0)
-        ? std::clamp((d_ptr->m_value - d_ptr->m_minimum) / rangeSpan, 0.0, 1.0)
-        : 0.0;
-
-    const int litSegments = (rangeSpan > 0.0)
-        ? std::clamp(static_cast<int>(std::round(factor * N)), 0, N)
-        : 0;
-
-    const int dotIndex = (rangeSpan > 0.0)
-        ? std::clamp(static_cast<int>(std::floor(factor * (N - 1) + 0.5)), 0, N - 1)
-        : 0;
-
-    // Peak hold segment determination
-    int peakIndex = -1;
-    if (d_ptr->m_peakHoldEnabled && rangeSpan > 0.0) {
-        const double peakFactor = std::clamp((d_ptr->m_peakValue - d_ptr->m_minimum) / rangeSpan, 0.0, 1.0);
-        peakIndex = std::clamp(static_cast<int>(std::floor(peakFactor * (N - 1) + 0.5)), 0, N - 1);
-    }
+    internal::SegmentInput segIn;
+    segIn.value = d_ptr->m_value;
+    segIn.minimum = d_ptr->m_minimum;
+    segIn.maximum = d_ptr->m_maximum;
+    segIn.peakValue = d_ptr->m_peakValue;
+    segIn.segmentCount = N;
+    segIn.dotMode = (d_ptr->m_displayMode == DisplayMode::Dot);
+    segIn.peakHoldEnabled = d_ptr->m_peakHoldEnabled;
+    const std::vector<internal::SegmentState> states = internal::computeSegmentStates(segIn);
 
     painter.setPen(Qt::NoPen);
 
@@ -500,22 +492,16 @@ void CircularBargraph::paintEvent(QPaintEvent *)
 
         path.closeSubpath();
 
-        // Check if illuminated
-        bool isLit = false;
-        if (d_ptr->m_displayMode == DisplayMode::Bar) {
-            isLit = (i < litSegments);
-        } else {
-            isLit = (i == dotIndex && d_ptr->m_value >= d_ptr->m_minimum);
-        }
-
-        const bool isPeak = (d_ptr->m_peakHoldEnabled && i == peakIndex);
-
-        if (isPeak) {
+        switch (states[static_cast<size_t>(i)]) {
+        case internal::SegmentState::Peak:
             painter.fillPath(path, d_ptr->m_peakColor);
-        } else if (isLit) {
+            break;
+        case internal::SegmentState::Lit:
             painter.fillPath(path, activeColor);
-        } else {
+            break;
+        case internal::SegmentState::Off:
             painter.fillPath(path, d_ptr->m_ghostColor);
+            break;
         }
     }
 
