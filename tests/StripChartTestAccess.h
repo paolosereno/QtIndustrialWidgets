@@ -29,6 +29,14 @@ public:
         chart.d_ptr->m_testRawPenCosmetic1px = enable;
     }
 
+    // Number of full rebuilds of the channel's incremental decimation stream so far
+    static quint64 streamRebuildCount(const StripChart &chart, int channelId) {
+        if (channelId >= 0 && channelId < static_cast<int>(chart.d_ptr->m_channels.size())) {
+            return chart.d_ptr->m_channels[channelId].streamRebuilds;
+        }
+        return 0;
+    }
+
     static bool isDecimating(const StripChart &chart, int channelId) {
         if (channelId >= 0 && channelId < static_cast<int>(chart.d_ptr->m_channels.size())) {
             return chart.d_ptr->m_channels[channelId].lastDecimating;

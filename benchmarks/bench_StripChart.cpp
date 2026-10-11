@@ -9,6 +9,9 @@
 //  - Streaming cases: before every render, 1/60 s of acquisition (at the case's sample rate) is
 //    appended to every channel with addUniformSamples(). Render time, append time and heap
 //    allocations per render / per append are reported.
+//  - Streaming, SampleIndex and Time interleaved: both charts receive the same data and are
+//    rendered alternately in the same loop, so the ratio of their timings is not affected by the
+//    machine's state changing between runs.
 //  - First paint after resize: 10 independent trials (cold path).
 //  - Insertion cases: real call counts, never extrapolated.
 //  - Signals are functions of time, so every sample count draws the same waveform in the window;
@@ -201,6 +204,17 @@ struct StreamRow {
     qint64 tracePixels{0}; // last measured frame
 };
 
+// SampleIndex and Time charts streamed and rendered alternately in the same loop, so that both
+// modes see the same machine state (this machine's timings are bimodal between runs).
+struct InterleavedRow {
+    int channels{0};
+    QString samples;
+    QString signal;
+    int chunkPerChannel{0};
+    Stats sampleIndexMs;
+    Stats timeMs;
+};
+
 struct TimedRow {
     QString name;
     QString unitsPerTrial;
@@ -211,6 +225,7 @@ struct TimedRow {
 
 std::vector<PaintRow> g_steadyRows;
 std::vector<StreamRow> g_streamRows;
+std::vector<InterleavedRow> g_interleavedRows;
 std::vector<TimedRow> g_resizeRows;
 std::vector<TimedRow> g_insertRows;
 QStringList g_environment;
@@ -411,6 +426,23 @@ void printMarkdown()
         }
     }
 
+    if (!g_interleavedRows.empty()) {
+        out(QString());
+        out(QStringLiteral("#### Paint with streaming, SampleIndex and Time interleaved (both charts receive 1/60 s of data "
+                           "and are rendered alternately in the same frame; %1 warm-up + %2 measured frames, ms)")
+                .arg(kWarmupRenders).arg(kMeasuredRenders));
+        out(QString());
+        out(QStringLiteral("| Channels | Samples / ch | Signal | New samples / ch / frame | SampleIndex render median | "
+                           "SampleIndex render p95 | Time render median | Time render p95 | p95 ratio SampleIndex / Time |"));
+        out(QStringLiteral("|---:|---:|---|---:|---:|---:|---:|---:|---:|"));
+        for (const InterleavedRow &r : g_interleavedRows) {
+            out(QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 | %8 | %9 |")
+                    .arg(r.channels).arg(r.samples, r.signal).arg(r.chunkPerChannel)
+                    .arg(ms(r.sampleIndexMs.median), ms(r.sampleIndexMs.p95), ms(r.timeMs.median), ms(r.timeMs.p95),
+                         ms(r.sampleIndexMs.p95 / r.timeMs.p95)));
+        }
+    }
+
     auto printTimed = [](const QString &title, const std::vector<TimedRow> &rows) {
         if (rows.empty()) {
             return;
@@ -554,6 +586,8 @@ private Q_SLOTS:
     void paintSteady();
     void paintStreaming_data();
     void paintStreaming();
+    void paintStreamingInterleaved_data();
+    void paintStreamingInterleaved();
     void firstPaintAfterResize();
     void insertionThroughput_addSample_autoscaleOn();
     void insertionThroughput_addSample_autoscaleOff();
@@ -698,6 +732,108 @@ void BenchStripChart::paintSteady()
 void BenchStripChart::paintStreaming_data()
 {
     addPaintMatrixRows();
+}
+
+void BenchStripChart::paintStreamingInterleaved_data()
+{
+    QTest::addColumn<int>("channels");
+    QTest::addColumn<int>("samples");
+    QTest::addColumn<int>("signalType");
+
+    const int channelCounts[] = {1, 4};
+    const int sampleCounts[] = {10000, 100000, 1000000, 4000000};
+    const SignalType signalTypes[] = {SignalType::SmoothSine, SignalType::BroadbandNoise, SignalType::SpikesAndNaN};
+    for (int ch : channelCounts) {
+        for (int s : sampleCounts) {
+            for (auto sig : signalTypes) {
+                const QString tag = QStringLiteral("%1ch_%2_%3").arg(ch).arg(QLatin1String(sampleLabel(s)))
+                                        .arg(QLatin1String(signalTypeName(sig)));
+                QTest::newRow(tag.toUtf8().constData()) << ch << s << static_cast<int>(sig);
+            }
+        }
+    }
+}
+
+void BenchStripChart::paintStreamingInterleaved()
+{
+    QFETCH(int, channels);
+    QFETCH(int, samples);
+    QFETCH(int, signalType);
+
+    const auto sig = static_cast<SignalType>(signalType);
+    const double sampleRateHz = static_cast<double>(samples) / (static_cast<double>(kTimeSpanNs) * 1e-9);
+    const int chunk = std::max(1, static_cast<int>(std::lround(sampleRateHz * kFramePeriodS)));
+    const int frames = kWarmupRenders + kMeasuredRenders;
+    const int totalSamples = samples + frames * chunk;
+    const qint64 dtNs = sampleIntervalNs(samples);
+
+    // Same data and geometry in both charts; only the X axis mode differs
+    StripChart indexChart;
+    StripChart timeChart;
+    configureChart(indexChart, samples, StripChart::XAxisMode::SampleIndex);
+    configureChart(timeChart, samples, StripChart::XAxisMode::Time);
+    std::vector<std::vector<double>> data;
+    for (int c = 0; c < channels; ++c) {
+        data.push_back(generateSignal(sig, totalSamples, c, dtNs));
+        for (StripChart *chart : {&indexChart, &timeChart}) {
+            const int id = chart->addChannel(QStringLiteral("Ch%1").arg(c), kColors[c % 4]);
+            chart->addUniformSamples(id, std::chrono::nanoseconds(0), std::chrono::nanoseconds(dtNs),
+                                     data.back().data(), samples);
+        }
+    }
+    indexChart.resize(kWidgetWidth, kWidgetHeight);
+    timeChart.resize(kWidgetWidth, kWidgetHeight);
+    QPixmap pix(indexChart.size());
+    indexChart.render(&pix); // first paints at this size (cold path, not measured)
+    timeChart.render(&pix);
+
+    auto timedRender = [&pix](StripChart &chart) {
+        QElapsedTimer timer;
+        timer.start();
+        chart.render(&pix);
+        return timer.nsecsElapsed() / 1e6;
+    };
+
+    std::vector<double> indexMs;
+    std::vector<double> timeMs;
+    for (int f = 0; f < frames; ++f) {
+        const qint64 firstIndex = static_cast<qint64>(samples) + static_cast<qint64>(f) * chunk;
+        for (int c = 0; c < channels; ++c) {
+            for (StripChart *chart : {&indexChart, &timeChart}) {
+                chart->addUniformSamples(c, std::chrono::nanoseconds(firstIndex * dtNs), std::chrono::nanoseconds(dtNs),
+                                         data[c].data() + firstIndex, chunk);
+            }
+        }
+        // Alternate which mode renders first, so neither is favoured by the order
+        double a = 0.0;
+        double b = 0.0;
+        if (f % 2 == 0) {
+            a = timedRender(indexChart);
+            b = timedRender(timeChart);
+        } else {
+            b = timedRender(timeChart);
+            a = timedRender(indexChart);
+        }
+        if (f >= kWarmupRenders) {
+            indexMs.push_back(a);
+            timeMs.push_back(b);
+        }
+    }
+
+    InterleavedRow r;
+    r.channels = channels;
+    r.samples = QLatin1String(sampleLabel(samples));
+    r.signal = QLatin1String(signalTypeName(sig));
+    r.chunkPerChannel = chunk;
+    r.sampleIndexMs = computeStats(indexMs);
+    r.timeMs = computeStats(timeMs);
+    g_interleavedRows.push_back(r);
+
+    std::fprintf(stderr, "[PAINT_STREAM_INTERLEAVED] %d ch | %4s | %-14s | +%d/ch/frame | SampleIndex median %8.2f p95 %8.2f"
+                         " | Time median %8.2f p95 %8.2f ms | p95 ratio %.2f\n",
+                 channels, sampleLabel(samples), signalTypeName(sig), chunk,
+                 r.sampleIndexMs.median, r.sampleIndexMs.p95, r.timeMs.median, r.timeMs.p95,
+                 r.sampleIndexMs.p95 / r.timeMs.p95);
 }
 
 void BenchStripChart::paintStreaming()
