@@ -101,6 +101,9 @@ private Q_SLOTS:
     void rawDecimatedContinuity();
     void segmentEndColumnsAreDrawn_data();
     void segmentEndColumnsAreDrawn();
+    void sampleIndexCapacityBelowWidth();
+    void timeSpanShorterThanWidth_data();
+    void timeSpanShorterThanWidth();
 };
 
 void tst_StripChart::defaultValues()
@@ -2757,6 +2760,110 @@ void tst_StripChart::segmentEndColumnsAreDrawn()
     QVERIFY2(!lit(kIsolated - 1), "gap column drawn");
     QVERIFY2(lit(kIsolated), "one-bucket segment not drawn");
     QVERIFY2(!lit(kIsolated + 1), "gap column drawn");
+}
+
+void tst_StripChart::sampleIndexCapacityBelowWidth()
+{
+    // DecimationMode::Always with fewer samples than device columns: the grid has more buckets than
+    // samples (num > den). Every retained sample must still be drawn in the column of its bucket,
+    // after the buffer has wrapped several times.
+    constexpr int capacity = 300;
+    auto chart = makeDropoutChart(StripChart::XAxisMode::SampleIndex, 1054, 0, capacity);
+    const int ch = chart->addChannel(QStringLiteral("Ramp"), kDropoutColour, 1.0);
+    constexpr int total = 1234; // four wraps
+    for (int i = 0; i < total; ++i) {
+        chart->addDataPoint(ch, 10.0 + 80.0 * (i % capacity) / capacity + 0.01 * (i / capacity));
+    }
+    renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const double dpr = chart->devicePixelRatioF();
+    QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
+    const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
+    QCOMPARE(grid, internal::BucketGrid(frame.widthDev, capacity));
+    QVERIFY(grid.num() > grid.den());
+    const auto m = frameXMapping(*chart);
+
+    // One vertex per retained sample (at most one sample per bucket), at its bucket's column centre
+    std::vector<QPointF> pts;
+    for (const auto &seg : frame.channels[0].segments) pts.insert(pts.end(), seg.begin(), seg.end());
+    QCOMPARE(static_cast<int>(pts.size()), capacity);
+    for (int j = 0; j < capacity; ++j) {
+        const qint64 i = total - capacity + j;
+        const qint64 k = grid.bucketOf(i);
+        QVERIFY(k >= frame.kStart && k < frame.kStart + frame.numBuckets);
+        QVERIFY2(std::abs(pts[static_cast<size_t>(j)].x() * dpr - m.vertexDev(k)) < 1e-6,
+                 qPrintable(QString("sample %1: x %2, expected %3").arg(i).arg(pts[static_cast<size_t>(j)].x() * dpr).arg(m.vertexDev(k))));
+    }
+    // The newest sample is within capacity / W_dev columns of the right edge
+    const qint64 kNewest = grid.bucketOf(total - 1);
+    QVERIFY(kNewest - frame.kStart >= frame.numBuckets - 1 - (frame.widthDev + capacity - 1) / capacity);
+}
+
+void tst_StripChart::timeSpanShorterThanWidth_data()
+{
+    QTest::addColumn<int>("labelFormat");
+    QTest::newRow("Relative labels") << static_cast<int>(StripChart::TimeLabelFormat::Relative);
+    QTest::newRow("Absolute labels") << static_cast<int>(StripChart::TimeLabelFormat::Absolute);
+}
+
+void tst_StripChart::timeSpanShorterThanWidth()
+{
+    // A time span shorter than W_dev ns uses 1 ns buckets (no more buckets than nanoseconds), so
+    // the window is W_dev ns wide. Samples must land in the column of their nanosecond, and the
+    // X-axis labels must describe that effective window, not the configured span.
+    QFETCH(int, labelFormat);
+    constexpr qint64 spanNs = 400;
+    auto chart = makeDropoutChart(StripChart::XAxisMode::Time, 1054, spanNs, 100000);
+    chart->setGridVisible(true);
+    chart->setTimeLabelFormat(static_cast<StripChart::TimeLabelFormat>(labelFormat));
+    const int ch = chart->addChannel(QStringLiteral("Ramp"), kDropoutColour, 1.0);
+    const double dpr = chart->devicePixelRatioF();
+    const int widthDev = qRound(1000 * dpr);
+    const qint64 tFirst = 1000000;
+    const int n = 3 * widthDev; // 1 sample per ns, three windows' worth
+    for (int i = 0; i < n; ++i) {
+        chart->addSample(ch, std::chrono::nanoseconds(tFirst + i), 10.0 + 80.0 * i / n);
+    }
+    renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
+    const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
+    QCOMPARE(grid, internal::BucketGrid(widthDev, widthDev)); // 1 ns buckets
+    QCOMPARE(frame.tEnd - frame.tStart, qint64(widthDev));    // effective window: W_dev ns
+    QCOMPARE(frame.tEnd, tFirst + n);
+    const auto m = frameXMapping(*chart);
+
+    // Every visible sample is a bucket of its own, drawn at the centre of its column
+    std::vector<QPointF> pts;
+    for (const auto &seg : frame.channels[0].segments) pts.insert(pts.end(), seg.begin(), seg.end());
+    QCOMPARE(static_cast<int>(pts.size()), widthDev);
+    for (int c = 0; c < widthDev; ++c) {
+        const qint64 t = frame.tStart + c;
+        QCOMPARE(grid.bucketOf(t), frame.kStart + c);
+        QVERIFY(std::abs(pts[static_cast<size_t>(c)].x() * dpr - m.vertexDev(grid.bucketOf(t))) < 1e-6);
+    }
+
+    // X-axis labels describe the effective window [tStart, tEnd): relative ticks are those of the
+    // window's length (offset tNs from the window start, labelled relative to the right edge), and
+    // every tick sits where the data of its time is drawn (within half a device pixel).
+    QVERIFY(!frame.xTicks.empty());
+    const bool relative = (labelFormat == static_cast<int>(StripChart::TimeLabelFormat::Relative));
+    if (relative) {
+        const auto expected = internal::computeTimeTicks(0, frame.tEnd - frame.tStart, frame.plotRect.width(), 60.0);
+        QCOMPARE(frame.xTicks.size(), expected.ticks.size());
+        for (size_t i = 0; i < expected.ticks.size(); ++i) {
+            QCOMPARE(frame.xTicks[i].tNs, expected.ticks[i].tNs);
+            QCOMPARE(frame.xTicks[i].label, expected.ticks[i].label);
+        }
+    }
+    for (const auto &tick : frame.xTicks) {
+        const qint64 t = relative ? frame.tStart + tick.tNs : tick.tNs;
+        const double expectedDev = m.positionDev(t);
+        QVERIFY2(std::abs(tick.xPos * dpr - expectedDev) <= 0.5,
+                 qPrintable(QString("tick '%1' (t = %2 ns) at device x %3, data of that time at %4; window [%5, %6) ns")
+                                .arg(tick.label).arg(t).arg(tick.xPos * dpr, 0, 'f', 2).arg(expectedDev, 0, 'f', 2)
+                                .arg(frame.tStart).arg(frame.tEnd)));
+    }
 }
 
 QTEST_MAIN(tst_StripChart)
