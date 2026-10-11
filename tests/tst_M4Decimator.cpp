@@ -724,7 +724,7 @@ void tst_M4Decimator::bucketGridMoreBucketsThanUnits()
     // maxPosition() is exact: one more position would not fit
     const BucketGrid g(16384, 10);
     QCOMPARE(g.maxPosition(), 5629499534213119LL); // floor((2^63 - 1) * 10 / 16384)
-    QCOMPARE(g.bucketOf(g.maxPosition()), 9223372036854774784LL);
+    QCOMPARE(g.bucketOf(g.maxPosition()), 9223372036854774169LL); // floor(5629499534213119 * 16384 / 10)
     // and is the whole qint64 range when num <= den
     QCOMPARE(BucketGrid(1000, 1000000000).maxPosition(), std::numeric_limits<qint64>::max());
 }
