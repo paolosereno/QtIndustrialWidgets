@@ -28,12 +28,9 @@ class CircularBargraphPrivate;
  * - Global threshold color stages: Normal (green), Warning (amber), and Critical (red).
  * - Peak-hold indicator segment with configurable hold duration and ballistic decay falloff.
  * - Optional centered digital readout pod with unit label.
- * - Non-finite input: a NaN is ignored (the widget keeps the last valid value), ±Inf is clamped
- *   to the range bound. D-pointer ABI stability.
- *
- * \par Known limitation
- * setValue(NaN) is ignored and the widget keeps the last valid value: a NaN (e.g. a sensor
- * dropout) is not shown as invalid, and the display may look valid while the input is not.
+ * - Value state (valueState()): out-of-range inputs (including ±Inf) are shown at the range
+ *   bound with a blinking end segment and a '<' / '>' readout; a NaN input is shown as
+ *   \c Invalid (all segments ghost, readout "---"). D-pointer ABI stability.
  *
  * \code
  * auto *bargraph = new qiw::CircularBargraph(parent);
@@ -48,6 +45,8 @@ class QTINDUSTRIALWIDGETS_EXPORT CircularBargraph : public QWidget
     Q_OBJECT
 
     Q_PROPERTY(double value READ value WRITE setValue NOTIFY valueChanged)
+    Q_PROPERTY(double rawValue READ rawValue)
+    Q_PROPERTY(ValueState valueState READ valueState NOTIFY valueStateChanged)
     Q_PROPERTY(double minimum READ minimum WRITE setMinimum NOTIFY rangeChanged)
     Q_PROPERTY(double maximum READ maximum WRITE setMaximum NOTIFY rangeChanged)
     Q_PROPERTY(int segmentCount READ segmentCount WRITE setSegmentCount NOTIFY appearanceChanged)
@@ -78,6 +77,15 @@ public:
     };
     Q_ENUM(DisplayMode)
 
+    /** \brief Classification of the last input passed to setValue(). */
+    enum class ValueState {
+        Valid,      ///< Finite and within [minimum(), maximum()] (bounds included)
+        Underrange, ///< Below minimum() or -Inf: readout '<' + minimum, first segment blinks
+        Overrange,  ///< Above maximum() or +Inf: full bar, last segment blinks, readout '>' + maximum
+        Invalid     ///< NaN: all segments ghost, readout "---", value() and peakValue() are NaN
+    };
+    Q_ENUM(ValueState)
+
     /**
      * \brief Constructs a CircularBargraph widget with default styling.
      * \param parent Optional parent widget.
@@ -85,13 +93,29 @@ public:
     explicit CircularBargraph(QWidget *parent = nullptr);
     ~CircularBargraph() override;
 
-    /** \brief Returns the current indicated value. */
+    /**
+     * \brief Returns the indicated value: the last input clamped to [minimum(), maximum()],
+     * or NaN when valueState() is \c Invalid.
+     */
     [[nodiscard]] double value() const;
+    /**
+     * \brief Returns the last input passed to setValue(), unclamped (may be ±Inf or NaN).
+     *
+     * Lets the application see which value caused an out-of-range state. Not notified
+     * separately: valueChanged() reports changes of value(), valueStateChanged() of the state.
+     */
+    [[nodiscard]] double rawValue() const;
+    /** \brief Returns the classification of rawValue() against the current range. */
+    [[nodiscard]] ValueState valueState() const;
     /** \brief Returns the minimum scale value. */
     [[nodiscard]] double minimum() const;
     /** \brief Returns the maximum scale value. */
     [[nodiscard]] double maximum() const;
-    /** \brief Returns the current peak hold value. */
+    /**
+     * \brief Returns the current peak hold value (equal to value() when peak hold is disabled).
+     *
+     * NaN while valueState() is \c Invalid; the first valid value after that resets the peak.
+     */
     [[nodiscard]] double peakValue() const;
     /** \brief Returns the number of discrete curved LED segments. */
     [[nodiscard]] int segmentCount() const;
@@ -137,7 +161,13 @@ public:
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:
-    /** \brief Sets the current indicated value. */
+    /**
+     * \brief Sets the input value.
+     *
+     * The input is stored unclamped (rawValue()) and classified against the range
+     * (valueState()); value() is the input clamped to the range, or NaN for a NaN input.
+     * The state and value() are recomputed whenever the range changes.
+     */
     void setValue(double val);
     /** \brief Sets the minimum scale value. */
     void setMinimum(double min);
@@ -200,8 +230,13 @@ public Q_SLOTS:
     void setTextColor(const QColor &color);
 
 Q_SIGNALS:
-    /** \brief Emitted when the indicated value changes. */
+    /**
+     * \brief Emitted when value() changes; \a newValue is NaN once on entering the
+     * \c Invalid state (repeated NaN inputs do not emit).
+     */
     void valueChanged(double newValue);
+    /** \brief Emitted when valueState() changes. */
+    void valueStateChanged(QtIndustrialWidgets::CircularBargraph::ValueState state);
     /** \brief Emitted when the scale range changes. */
     void rangeChanged(double newMin, double newMax);
     /** \brief Emitted when the warning or error threshold changes. */

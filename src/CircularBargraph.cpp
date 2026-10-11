@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace QtIndustrialWidgets {
 
@@ -22,9 +23,46 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 } // namespace
 
+namespace {
+constexpr int kBlinkHalfPeriodMs = 250; // ~2 Hz out-of-range blink
+
+internal::InputState toInputState(CircularBargraph::ValueState st)
+{
+    switch (st) {
+    case CircularBargraph::ValueState::Underrange: return internal::InputState::Underrange;
+    case CircularBargraph::ValueState::Overrange: return internal::InputState::Overrange;
+    case CircularBargraph::ValueState::Invalid: return internal::InputState::Invalid;
+    case CircularBargraph::ValueState::Valid: break;
+    }
+    return internal::InputState::Valid;
+}
+
+CircularBargraph::ValueState toValueState(internal::InputState st)
+{
+    switch (st) {
+    case internal::InputState::Underrange: return CircularBargraph::ValueState::Underrange;
+    case internal::InputState::Overrange: return CircularBargraph::ValueState::Overrange;
+    case internal::InputState::Invalid: return CircularBargraph::ValueState::Invalid;
+    case internal::InputState::Valid: break;
+    }
+    return CircularBargraph::ValueState::Valid;
+}
+
+// value() comparison that treats NaN == NaN (Invalid -> Invalid is not a change).
+bool sameValue(double a, double b)
+{
+    if (std::isnan(a) || std::isnan(b)) {
+        return std::isnan(a) && std::isnan(b);
+    }
+    return qFuzzyCompare(a, b);
+}
+} // namespace
+
 class CircularBargraphPrivate {
 public:
-    double m_value{0.0};
+    double m_rawValue{0.0};   // last input, unclamped (may be ±Inf / NaN)
+    double m_value{0.0};      // m_rawValue clamped to the range, NaN when Invalid
+    CircularBargraph::ValueState m_valueState{CircularBargraph::ValueState::Valid};
     double m_minimum{0.0};
     double m_maximum{100.0};
     int m_segmentCount{24};
@@ -59,8 +97,71 @@ public:
     // Decay starts at max(end of hold, value drop), so the first step never covers the hold.
     qint64 m_lastDecayMs{0};
 
+    QTimer *m_blinkTimer{nullptr};
+    bool m_blinkOn{true};
+
+    struct Changes {
+        bool value{false};
+        bool state{false};
+    };
+    // Recomputes state, value and peak from m_rawValue and the range. Emits nothing.
+    Changes applyInput();
+    void updatePeak(double newValue, bool leavingInvalid);
     void updatePeakDecay(CircularBargraph *q);
 };
+
+CircularBargraphPrivate::Changes CircularBargraphPrivate::applyInput()
+{
+    const auto newState = toValueState(internal::classifyInput(m_rawValue, m_minimum, m_maximum));
+    const double newValue = (newState == CircularBargraph::ValueState::Invalid)
+        ? std::numeric_limits<double>::quiet_NaN()
+        : std::clamp(m_rawValue, m_minimum, m_maximum); // ±Inf clamps to the bounds
+
+    const bool wasInvalid = (m_valueState == CircularBargraph::ValueState::Invalid);
+    if (newState == CircularBargraph::ValueState::Invalid) {
+        // Peak hidden and undefined while the input is invalid
+        m_peakValue = newValue;
+        m_decayTimer->stop();
+    } else {
+        updatePeak(newValue, wasInvalid);
+    }
+
+    Changes changes;
+    changes.value = !sameValue(m_value, newValue);
+    changes.state = (newState != m_valueState);
+    m_value = newValue;
+    m_valueState = newState;
+
+    if (changes.state) {
+        m_blinkOn = true;
+        if (newState == CircularBargraph::ValueState::Overrange
+            || newState == CircularBargraph::ValueState::Underrange) {
+            m_blinkTimer->start();
+        } else {
+            m_blinkTimer->stop();
+        }
+    }
+    return changes;
+}
+
+void CircularBargraphPrivate::updatePeak(double newValue, bool leavingInvalid)
+{
+    // With peak hold disabled the peak is always the value; after an invalid input the
+    // first valid value resets the peak.
+    if (!m_peakHoldEnabled) {
+        m_peakValue = newValue;
+    } else if (leavingInvalid || newValue >= m_peakValue) {
+        m_peakValue = newValue;
+        m_peakHoldTimer.restart();
+        m_decayTimer->stop();
+    } else if (!m_decayTimer->isActive()) {
+        if (!m_peakHoldTimer.isValid()) {
+            m_peakHoldTimer.start(); // peak never set by a rise: hold from now
+        }
+        m_lastDecayMs = std::max<qint64>(m_peakHoldTimeMs, m_peakHoldTimer.elapsed());
+        m_decayTimer->start();
+    }
+}
 
 void CircularBargraphPrivate::updatePeakDecay(CircularBargraph *q)
 {
@@ -73,7 +174,7 @@ void CircularBargraphPrivate::updatePeakDecay(CircularBargraph *q)
         return;
     }
 
-    if (!m_peakHoldTimer.isValid()) {
+    if (!m_peakHoldTimer.isValid() || m_valueState == CircularBargraph::ValueState::Invalid) {
         return;
     }
     const qint64 now = m_peakHoldTimer.elapsed();
@@ -109,11 +210,21 @@ CircularBargraph::CircularBargraph(QWidget *parent)
     connect(d_ptr->m_decayTimer, &QTimer::timeout, this, [this]() {
         d_ptr->updatePeakDecay(this);
     });
+
+    d_ptr->m_blinkTimer = new QTimer(this);
+    d_ptr->m_blinkTimer->setTimerType(Qt::PreciseTimer);
+    d_ptr->m_blinkTimer->setInterval(kBlinkHalfPeriodMs);
+    connect(d_ptr->m_blinkTimer, &QTimer::timeout, this, [this]() {
+        d_ptr->m_blinkOn = !d_ptr->m_blinkOn;
+        update();
+    });
 }
 
 CircularBargraph::~CircularBargraph() = default;
 
 double CircularBargraph::value() const { Q_D(const CircularBargraph); return d->m_value; }
+double CircularBargraph::rawValue() const { Q_D(const CircularBargraph); return d->m_rawValue; }
+CircularBargraph::ValueState CircularBargraph::valueState() const { Q_D(const CircularBargraph); return d->m_valueState; }
 double CircularBargraph::minimum() const { Q_D(const CircularBargraph); return d->m_minimum; }
 double CircularBargraph::maximum() const { Q_D(const CircularBargraph); return d->m_maximum; }
 double CircularBargraph::peakValue() const { Q_D(const CircularBargraph); return d->m_peakValue; }
@@ -150,42 +261,14 @@ QSize CircularBargraph::minimumSizeHint() const
 
 void CircularBargraph::setValue(double val)
 {
-    // NaN is ignored: the widget keeps the last valid value (known limitation)
-    if (std::isnan(val)) {
-        return;
+    d_ptr->m_rawValue = val;
+    const auto changes = d_ptr->applyInput();
+    if (changes.value) {
+        Q_EMIT valueChanged(d_ptr->m_value);
     }
-    // Bounded saturation clamping on ±Inf
-    if (std::isinf(val)) {
-        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    if (changes.state) {
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
     }
-
-    const double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
-
-    // Peak tracking (with peak hold disabled the peak is always the value)
-    if (!d_ptr->m_peakHoldEnabled) {
-        d_ptr->m_peakValue = clamped;
-    } else if (clamped >= d_ptr->m_peakValue) {
-        d_ptr->m_peakValue = clamped;
-        d_ptr->m_peakHoldTimer.restart();
-        if (d_ptr->m_decayTimer && d_ptr->m_decayTimer->isActive()) {
-            d_ptr->m_decayTimer->stop();
-        }
-    } else {
-        if (d_ptr->m_decayTimer && !d_ptr->m_decayTimer->isActive()) {
-            if (!d_ptr->m_peakHoldTimer.isValid()) {
-                d_ptr->m_peakHoldTimer.start(); // peak never set by a rise: hold from now
-            }
-            d_ptr->m_lastDecayMs = std::max<qint64>(d_ptr->m_peakHoldTimeMs, d_ptr->m_peakHoldTimer.elapsed());
-            d_ptr->m_decayTimer->start();
-        }
-    }
-
-    if (qFuzzyCompare(d_ptr->m_value, clamped)) {
-        return;
-    }
-
-    d_ptr->m_value = clamped;
-    Q_EMIT valueChanged(d_ptr->m_value);
     update();
 }
 
@@ -210,11 +293,19 @@ void CircularBargraph::setRange(double min, double max)
 
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
-    d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
-    d_ptr->m_peakValue = std::clamp(d_ptr->m_peakValue, d_ptr->m_minimum, d_ptr->m_maximum);
+    if (!std::isnan(d_ptr->m_peakValue)) {
+        d_ptr->m_peakValue = std::clamp(d_ptr->m_peakValue, d_ptr->m_minimum, d_ptr->m_maximum);
+    }
+    // State and value are recomputed from the raw input against the new range
+    const auto changes = d_ptr->applyInput();
 
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
-    Q_EMIT valueChanged(d_ptr->m_value);
+    if (changes.value) {
+        Q_EMIT valueChanged(d_ptr->m_value);
+    }
+    if (changes.state) {
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
+    }
     Q_EMIT appearanceChanged();
     update();
 }
@@ -474,6 +565,8 @@ void CircularBargraph::paintEvent(QPaintEvent *)
     segIn.segmentCount = N;
     segIn.dotMode = (d_ptr->m_displayMode == DisplayMode::Dot);
     segIn.peakHoldEnabled = d_ptr->m_peakHoldEnabled;
+    segIn.state = toInputState(d_ptr->m_valueState);
+    segIn.blinkOn = d_ptr->m_blinkOn;
     const std::vector<internal::SegmentState> states = internal::computeSegmentStates(segIn);
 
     painter.setPen(Qt::NoPen);
@@ -517,6 +610,7 @@ void CircularBargraph::paintEvent(QPaintEvent *)
             painter.fillPath(path, activeColor);
             break;
         case internal::SegmentState::Off:
+        case internal::SegmentState::Ghost:
             painter.fillPath(path, d_ptr->m_ghostColor);
             break;
         }
@@ -524,7 +618,9 @@ void CircularBargraph::paintEvent(QPaintEvent *)
 
     // 3. Optional Centered Digital Readout Pod
     if (d_ptr->m_digitalDisplayVisible && rInner > 15.0) {
-        const QString valStr = QString::number(d_ptr->m_value, 'f', d_ptr->m_precision);
+        const QString valStr = internal::formatReadout(toInputState(d_ptr->m_valueState), d_ptr->m_value,
+                                                       d_ptr->m_minimum, d_ptr->m_maximum,
+                                                       d_ptr->m_precision);
         const double podRadius = rInner * 0.90;
 
         // Dark recessed pod circular well

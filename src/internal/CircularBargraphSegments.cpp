@@ -10,11 +10,28 @@
 namespace QtIndustrialWidgets {
 namespace internal {
 
+InputState classifyInput(double raw, double minimum, double maximum)
+{
+    if (std::isnan(raw)) {
+        return InputState::Invalid;
+    }
+    if (raw > maximum) {
+        return InputState::Overrange;
+    }
+    if (raw < minimum) {
+        return InputState::Underrange;
+    }
+    return InputState::Valid;
+}
+
 std::vector<SegmentState> computeSegmentStates(const SegmentInput &in)
 {
     const int N = in.segmentCount;
     if (N < 1) {
         return {};
+    }
+    if (in.state == InputState::Invalid) {
+        return std::vector<SegmentState>(static_cast<size_t>(N), SegmentState::Ghost);
     }
     std::vector<SegmentState> states(static_cast<size_t>(N), SegmentState::Off);
 
@@ -46,7 +63,33 @@ std::vector<SegmentState> computeSegmentStates(const SegmentInput &in)
             states[static_cast<size_t>(peakIndex)] = SegmentState::Peak;
         }
     }
+
+    // Out of range: the end segment blinks, over anything computed above (bar, dot, peak).
+    int blinkIndex = -1;
+    if (in.state == InputState::Overrange) {
+        blinkIndex = N - 1;
+    } else if (in.state == InputState::Underrange) {
+        blinkIndex = 0;
+    }
+    if (blinkIndex >= 0) {
+        states[static_cast<size_t>(blinkIndex)] = in.blinkOn ? SegmentState::Lit : SegmentState::Off;
+    }
     return states;
+}
+
+QString formatReadout(InputState state, double value, double minimum, double maximum, int precision)
+{
+    switch (state) {
+    case InputState::Invalid:
+        return QStringLiteral("---");
+    case InputState::Overrange:
+        return QLatin1Char('>') + QString::number(maximum, 'f', precision);
+    case InputState::Underrange:
+        return QLatin1Char('<') + QString::number(minimum, 'f', precision);
+    case InputState::Valid:
+        break;
+    }
+    return QString::number(value, 'f', precision);
 }
 
 } // namespace internal

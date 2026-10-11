@@ -15,7 +15,7 @@ using namespace QtIndustrialWidgets;
 
 namespace {
 
-// Encodes segment states as a string ('.' Off, 'L' Lit, 'P' Peak), index 0 first,
+// Encodes segment states as a string ('.' Off, 'L' Lit, 'P' Peak, 'G' Ghost), index 0 first,
 // so that QCOMPARE prints the whole arc on failure.
 QString encodeStates(const std::vector<internal::SegmentState> &states)
 {
@@ -25,15 +25,19 @@ QString encodeStates(const std::vector<internal::SegmentState> &states)
         case internal::SegmentState::Off: out += QLatin1Char('.'); break;
         case internal::SegmentState::Lit: out += QLatin1Char('L'); break;
         case internal::SegmentState::Peak: out += QLatin1Char('P'); break;
+        case internal::SegmentState::Ghost: out += QLatin1Char('G'); break;
         }
     }
     return out;
 }
 
 QString statesFor(double value, double peak, int n, bool dot, bool peakHold = true,
-                  double minimum = 0.0, double maximum = 100.0)
+                  double minimum = 0.0, double maximum = 100.0,
+                  internal::InputState state = internal::InputState::Valid, bool blinkOn = true)
 {
     internal::SegmentInput in;
+    in.state = state;
+    in.blinkOn = blinkOn;
     in.value = value;
     in.minimum = minimum;
     in.maximum = maximum;
@@ -152,6 +156,12 @@ QString zoneArc(int n, int litFrom, int lit, QChar zone, int peakAt = -1)
     return out;
 }
 
+// Pixel classification of an all-ghost (Invalid) arc.
+QString invalidArc(int n)
+{
+    return QString(n, QLatin1Char('.'));
+}
+
 // True if every pixel outside the logical rectangle `inside` still holds the sentinel.
 bool untouchedOutside(const QImage &img, const QRectF &inside)
 {
@@ -196,6 +206,14 @@ private Q_SLOTS:
     void peakFollowsValueWhenHoldDisabled();
     void peakHoldThenMonotonicDecay();
     void peakDecayStartsAtHoldEndWithoutJump();
+    void valueStateTransitions();
+    void rawValueAndRangeRecompute();
+    void peakInInvalidState();
+    void segmentStatesOutOfRangeAndInvalid();
+    void readoutText();
+    void invalidStatePixels();
+    void outOfRangeEndSegmentBlinks_data();
+    void outOfRangeEndSegmentBlinks();
     void thresholdsStayOrdered();
     void thresholdsOrderIndependent();
     void pixelColorAtSegmentCenters_data();
@@ -219,6 +237,8 @@ void tst_CircularBargraph::defaultValues()
     QCOMPARE(bargraph.isDigitalDisplayVisible(), true);
     QCOMPARE(bargraph.precision(), 1);
     QCOMPARE(bargraph.unit(), QStringLiteral("%"));
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Valid);
+    QCOMPARE(bargraph.rawValue(), 0.0);
 }
 
 void tst_CircularBargraph::settersAndClamping()
@@ -305,17 +325,20 @@ void tst_CircularBargraph::nanAndInfinityResilience()
     bargraph.setValue(42.0);
     QCOMPARE(bargraph.value(), 42.0);
 
-    // NaN is ignored: the widget keeps the last valid value
+    // NaN: Invalid, value() is NaN
     bargraph.setValue(std::numeric_limits<double>::quiet_NaN());
-    QCOMPARE(bargraph.value(), 42.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Invalid);
+    QVERIFY(std::isnan(bargraph.value()));
 
-    // Positive infinity saturates to maximum
+    // Positive infinity saturates to maximum (Overrange)
     bargraph.setValue(std::numeric_limits<double>::infinity());
     QCOMPARE(bargraph.value(), 100.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Overrange);
 
-    // Negative infinity saturates to minimum
+    // Negative infinity saturates to minimum (Underrange)
     bargraph.setValue(-std::numeric_limits<double>::infinity());
     QCOMPARE(bargraph.value(), 0.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Underrange);
 
     // Non-finite range bounds rejected
     bargraph.setRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
@@ -718,6 +741,256 @@ void tst_CircularBargraph::peakDecayStartsAtHoldEndWithoutJump()
                                 .arg(t).arg(peak).arg(lowest)));
     }
     QCOMPARE(bargraph.peakValue(), 20.0);
+}
+
+void tst_CircularBargraph::valueStateTransitions()
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    CircularBargraph bargraph; // range 0..100, value 0, Valid
+    QSignalSpy spyValue(&bargraph, &CircularBargraph::valueChanged);
+    QSignalSpy spyState(&bargraph, &CircularBargraph::valueStateChanged);
+
+    // Entering Invalid: valueChanged(NaN) once, state signal once.
+    bargraph.setValue(nan);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Invalid);
+    QVERIFY(std::isnan(bargraph.value()));
+    QVERIFY(std::isnan(bargraph.rawValue()));
+    QCOMPARE(spyValue.count(), 1);
+    QVERIFY(std::isnan(spyValue.takeFirst().at(0).toDouble()));
+    QCOMPARE(spyState.count(), 1);
+    QCOMPARE(spyState.takeFirst().at(0).value<CircularBargraph::ValueState>(),
+             CircularBargraph::ValueState::Invalid);
+
+    // Repeated NaN: no signal.
+    bargraph.setValue(nan);
+    QCOMPARE(spyValue.count(), 0);
+    QCOMPARE(spyState.count(), 0);
+
+    // Leaving Invalid: the valid value is emitted.
+    bargraph.setValue(50.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Valid);
+    QCOMPARE(spyValue.count(), 1);
+    QCOMPARE(spyValue.takeFirst().at(0).toDouble(), 50.0);
+    QCOMPARE(spyState.count(), 1);
+    QCOMPARE(spyState.takeFirst().at(0).value<CircularBargraph::ValueState>(),
+             CircularBargraph::ValueState::Valid);
+
+    // Overrange: value() at maximum, raw kept.
+    bargraph.setValue(120.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Overrange);
+    QCOMPARE(bargraph.value(), 100.0);
+    QCOMPARE(bargraph.rawValue(), 120.0);
+    QCOMPARE(spyState.count(), 1);
+    spyState.clear();
+    spyValue.clear();
+    bargraph.setValue(inf); // still Overrange, value() unchanged: no signal
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Overrange);
+    QCOMPARE(bargraph.rawValue(), inf);
+    QCOMPARE(spyState.count(), 0);
+    QCOMPARE(spyValue.count(), 0);
+
+    // Underrange.
+    bargraph.setValue(-5.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Underrange);
+    QCOMPARE(bargraph.value(), 0.0);
+    QCOMPARE(bargraph.rawValue(), -5.0);
+    bargraph.setValue(-inf);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Underrange);
+
+    // Bounds themselves are Valid.
+    bargraph.setValue(100.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Valid);
+    bargraph.setValue(0.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Valid);
+}
+
+void tst_CircularBargraph::rawValueAndRangeRecompute()
+{
+    CircularBargraph bargraph; // 0..100
+    QSignalSpy spyState(&bargraph, &CircularBargraph::valueStateChanged);
+    QSignalSpy spyValue(&bargraph, &CircularBargraph::valueChanged);
+
+    bargraph.setValue(120.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Overrange);
+    QCOMPARE(bargraph.value(), 100.0);
+    spyState.clear();
+    spyValue.clear();
+
+    // Widening the range brings the raw input back into range.
+    bargraph.setRange(0.0, 200.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Valid);
+    QCOMPARE(bargraph.value(), 120.0);
+    QCOMPARE(bargraph.rawValue(), 120.0);
+    QCOMPARE(spyState.count(), 1);
+    QCOMPARE(spyValue.count(), 1);
+    QCOMPARE(spyValue.takeFirst().at(0).toDouble(), 120.0);
+
+    // Narrowing it puts it out of range again, on either side.
+    bargraph.setRange(0.0, 50.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Overrange);
+    QCOMPARE(bargraph.value(), 50.0);
+    bargraph.setRange(130.0, 150.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Underrange);
+    QCOMPARE(bargraph.value(), 130.0);
+
+    // ±Inf stay out of range whatever the range.
+    bargraph.setValue(std::numeric_limits<double>::infinity());
+    bargraph.setRange(-1e300, 1e300);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Overrange);
+    QCOMPARE(bargraph.value(), 1e300);
+
+    // NaN stays Invalid across range changes, and does not re-emit valueChanged.
+    bargraph.setValue(std::numeric_limits<double>::quiet_NaN());
+    spyValue.clear();
+    bargraph.setRange(0.0, 10.0);
+    QCOMPARE(bargraph.valueState(), CircularBargraph::ValueState::Invalid);
+    QVERIFY(std::isnan(bargraph.value()));
+    QCOMPARE(spyValue.count(), 0);
+}
+
+void tst_CircularBargraph::peakInInvalidState()
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CircularBargraph bargraph;
+    bargraph.setPeakHoldTimeMs(1000000);
+    bargraph.setValue(80.0);
+    bargraph.setValue(30.0);
+    QCOMPARE(bargraph.peakValue(), 80.0);
+
+    bargraph.setValue(nan);
+    QVERIFY(std::isnan(bargraph.peakValue()));
+
+    // The first valid value resets the peak, which is then held as usual.
+    bargraph.setValue(40.0);
+    QCOMPARE(bargraph.peakValue(), 40.0);
+    bargraph.setValue(20.0);
+    QCOMPARE(bargraph.peakValue(), 40.0);
+
+    // Peak hold disabled: the peak is the value, NaN included.
+    bargraph.setPeakHoldEnabled(false);
+    bargraph.setValue(nan);
+    QVERIFY(std::isnan(bargraph.peakValue()));
+    bargraph.setValue(10.0);
+    QCOMPARE(bargraph.peakValue(), 10.0);
+}
+
+void tst_CircularBargraph::segmentStatesOutOfRangeAndInvalid()
+{
+    using IS = internal::InputState;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+
+    // Invalid: all ghost, in both modes, whatever the peak.
+    QCOMPARE(statesFor(nan, nan, 24, false, true, 0.0, 100.0, IS::Invalid), QString(24, QLatin1Char('G')));
+    QCOMPARE(statesFor(nan, 50.0, 16, true, true, 0.0, 100.0, IS::Invalid), QString(16, QLatin1Char('G')));
+
+    // Overrange: full bar, last segment blinking; never shown as Peak.
+    QCOMPARE(statesFor(100.0, 100.0, 24, false, true, 0.0, 100.0, IS::Overrange, true), arc(24, 0, 24));
+    QCOMPARE(statesFor(100.0, 100.0, 24, false, true, 0.0, 100.0, IS::Overrange, false), arc(24, 0, 23));
+    QCOMPARE(statesFor(100.0, 100.0, 24, true, true, 0.0, 100.0, IS::Overrange, true), arc(24, 23, 1));
+    QCOMPARE(statesFor(100.0, 100.0, 24, true, true, 0.0, 100.0, IS::Overrange, false), arc(24, 0, 0));
+
+    // Underrange: only the first segment, blinking; a held peak above is still shown.
+    QCOMPARE(statesFor(0.0, 0.0, 24, false, true, 0.0, 100.0, IS::Underrange, true), arc(24, 0, 1));
+    QCOMPARE(statesFor(0.0, 0.0, 24, false, true, 0.0, 100.0, IS::Underrange, false), arc(24, 0, 0));
+    QCOMPARE(statesFor(0.0, 0.0, 24, true, true, 0.0, 100.0, IS::Underrange, true), arc(24, 0, 1));
+    QCOMPARE(statesFor(0.0, 0.0, 24, true, true, 0.0, 100.0, IS::Underrange, false), arc(24, 0, 0));
+    QCOMPARE(statesFor(0.0, 50.0, 24, false, true, 0.0, 100.0, IS::Underrange, false), arc(24, 0, 0, 11));
+    QCOMPARE(statesFor(0.0, 3.0, 24, false, true, 0.0, 100.0, IS::Underrange, false), arc(24, 0, 0)); // peak idx 0 = blink
+}
+
+void tst_CircularBargraph::readoutText()
+{
+    using IS = internal::InputState;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    QCOMPARE(internal::formatReadout(IS::Valid, 42.31, 0.0, 100.0, 1), QStringLiteral("42.3"));
+    QCOMPARE(internal::formatReadout(IS::Valid, 7.0, 0.0, 100.0, 0), QStringLiteral("7"));
+    QCOMPARE(internal::formatReadout(IS::Overrange, 100.0, 0.0, 100.0, 1), QStringLiteral(">100.0"));
+    QCOMPARE(internal::formatReadout(IS::Underrange, -20.0, -20.0, 80.0, 2), QStringLiteral("<-20.00"));
+    QCOMPARE(internal::formatReadout(IS::Invalid, nan, 0.0, 100.0, 1), QStringLiteral("---"));
+
+    QCOMPARE(internal::classifyInput(nan, 0.0, 100.0), IS::Invalid);
+    QCOMPARE(internal::classifyInput(100.0, 0.0, 100.0), IS::Valid);
+    QCOMPARE(internal::classifyInput(0.0, 0.0, 100.0), IS::Valid);
+    QCOMPARE(internal::classifyInput(100.5, 0.0, 100.0), IS::Overrange);
+    QCOMPARE(internal::classifyInput(-0.5, 0.0, 100.0), IS::Underrange);
+    QCOMPARE(internal::classifyInput(std::numeric_limits<double>::infinity(), 0.0, 100.0), IS::Overrange);
+    QCOMPARE(internal::classifyInput(-std::numeric_limits<double>::infinity(), 0.0, 100.0), IS::Underrange);
+}
+
+void tst_CircularBargraph::invalidStatePixels()
+{
+    CircularBargraph bargraph;
+    applyTestColors(bargraph);
+    bargraph.resize(220, 220);
+    bargraph.setValue(90.0);
+    bargraph.setValue(50.0); // held peak at 90
+    bargraph.setValue(std::numeric_limits<double>::quiet_NaN());
+
+    for (const auto mode : {CircularBargraph::DisplayMode::Bar, CircularBargraph::DisplayMode::Dot}) {
+        bargraph.setDisplayMode(mode);
+        const QImage img = renderAt(bargraph, bargraph.devicePixelRatioF());
+        QCOMPARE(sampleSegments(img, bargraph), invalidArc(24));
+        QCOMPARE(countExact(img, kPeak), 0);
+    }
+}
+
+void tst_CircularBargraph::outOfRangeEndSegmentBlinks_data()
+{
+    QTest::addColumn<double>("input");
+    QTest::addColumn<bool>("dot");
+    QTest::addColumn<int>("blinkIndex");
+    QTest::addColumn<QString>("onPhase");
+    QTest::addColumn<QString>("offPhase");
+
+    // thresholds 70 / 85: overrange -> error zone, underrange -> normal zone
+    QTest::newRow("over-bar") << 150.0 << false << 23
+        << zoneArc(24, 0, 24, QLatin1Char('E')) << zoneArc(24, 0, 23, QLatin1Char('E'));
+    QTest::newRow("over-dot") << std::numeric_limits<double>::infinity() << true << 23
+        << zoneArc(24, 23, 1, QLatin1Char('E')) << zoneArc(24, 0, 0, QLatin1Char('E'));
+    QTest::newRow("under-bar") << -10.0 << false << 0
+        << zoneArc(24, 0, 1, QLatin1Char('N')) << zoneArc(24, 0, 0, QLatin1Char('N'));
+    QTest::newRow("under-dot") << -std::numeric_limits<double>::infinity() << true << 0
+        << zoneArc(24, 0, 1, QLatin1Char('N')) << zoneArc(24, 0, 0, QLatin1Char('N'));
+}
+
+void tst_CircularBargraph::outOfRangeEndSegmentBlinks()
+{
+    QFETCH(double, input);
+    QFETCH(bool, dot);
+    QFETCH(int, blinkIndex);
+    QFETCH(QString, onPhase);
+    QFETCH(QString, offPhase);
+
+    CircularBargraph bargraph;
+    applyTestColors(bargraph);
+    bargraph.setDisplayMode(dot ? CircularBargraph::DisplayMode::Dot : CircularBargraph::DisplayMode::Bar);
+    bargraph.resize(220, 220);
+    const qreal dpr = bargraph.devicePixelRatioF();
+
+    QElapsedTimer clock;
+    clock.start(); // before entering the state: clock.elapsed() >= time in the state
+    bargraph.setValue(input);
+    QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), onPhase); // starts lit
+
+    // Toggles at ~2 Hz (250 ms half period): never before 200 ms, and both phases are seen.
+    qint64 firstToggleMs = -1;
+    bool sawOff = false;
+    bool sawOnAgain = false;
+    while (clock.elapsed() < 3000 && !(sawOff && sawOnAgain)) {
+        QTest::qWait(10);
+        const QString states = sampleSegments(renderAt(bargraph, dpr), bargraph);
+        QVERIFY2(states == onPhase || states == offPhase, qPrintable(states));
+        if (states == offPhase && !sawOff) {
+            sawOff = true;
+            firstToggleMs = clock.elapsed();
+        } else if (states == onPhase && sawOff) {
+            sawOnAgain = true;
+        }
+    }
+    QVERIFY2(sawOff && sawOnAgain, "the end segment did not blink");
+    QVERIFY2(firstToggleMs >= 200, qPrintable(QStringLiteral("first toggle after %1 ms").arg(firstToggleMs)));
+    QCOMPARE(onPhase.at(blinkIndex) != offPhase.at(blinkIndex), true);
 }
 
 QTEST_MAIN(tst_CircularBargraph)
