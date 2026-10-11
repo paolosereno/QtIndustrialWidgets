@@ -336,9 +336,6 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
     {
         WarningGuard guard;
         auto chart = makeChart(1000, 300, 0.0, 100.0);
-        if (chart->devicePixelRatioF() != 1.0) {
-            QSKIP("Pixel gap check requires DPR 1");
-        }
         chart->setXAxisMode(StripChart::XAxisMode::SampleIndex);
         chart->setCapacity(100);
         chart->setDecimationMode(StripChart::DecimationMode::Off);
@@ -380,22 +377,30 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
             }
         }
 
-        // Pixels: no trace pixel in the columns strictly between the x of samples 49 and 51,
-        // and strictly between 69 and 71
+        // Pixels: no trace pixel in the device columns strictly between the x of samples 49 and 51,
+        // and strictly between 69 and 71, excluding on each side the extent of the raw pen's round
+        // cap, ceil(penWidth / 2 * dpr) device pixels. The remaining range must not be empty.
         qreal dpr = chart->devicePixelRatioF();
         int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
         int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
+        const int capDev = static_cast<int>(std::ceil(chDiag.penWidth / 2.0 * dpr));
 
         int x49Dev = static_cast<int>(std::floor(mapIndex(*chart, 49) * dpr));
         int x51Dev = static_cast<int>(std::ceil(mapIndex(*chart, 51) * dpr));
-        for (int x = x49Dev + 1; x < x51Dev; ++x) {
+        QVERIFY2(x49Dev + 1 + capDev < x51Dev - capDev,
+                 qPrintable(QString("no column left to check between samples 49 and 51 (cols %1..%2, cap %3)").arg(x49Dev).arg(x51Dev).arg(capDev)));
+        qInfo("Gap 49-51: device columns %d..%d checked (cap exclusion %d per side)", x49Dev + 1 + capDev, x51Dev - capDev - 1, capDev);
+        for (int x = x49Dev + 1 + capDev; x < x51Dev - capDev; ++x) {
             auto ys = traceYAtColumn(img, chColor, x, plotTopDev, plotBottomDev, 60);
             QVERIFY2(ys.empty(), qPrintable(QString("Trace pixel found between samples 49 and 51 at col %1").arg(x)));
         }
 
         int x69Dev = static_cast<int>(std::floor(mapIndex(*chart, 69) * dpr));
         int x71Dev = static_cast<int>(std::ceil(mapIndex(*chart, 71) * dpr));
-        for (int x = x69Dev + 1; x < x71Dev; ++x) {
+        QVERIFY2(x69Dev + 1 + capDev < x71Dev - capDev,
+                 qPrintable(QString("no column left to check between samples 69 and 71 (cols %1..%2, cap %3)").arg(x69Dev).arg(x71Dev).arg(capDev)));
+        qInfo("Gap 69-71: device columns %d..%d checked (cap exclusion %d per side)", x69Dev + 1 + capDev, x71Dev - capDev - 1, capDev);
+        for (int x = x69Dev + 1 + capDev; x < x71Dev - capDev; ++x) {
             auto ys = traceYAtColumn(img, chColor, x, plotTopDev, plotBottomDev, 60);
             QVERIFY2(ys.empty(), qPrintable(QString("Trace pixel found between samples 69 and 71 at col %1").arg(x)));
         }
@@ -437,7 +442,9 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
         qreal dpr = chart->devicePixelRatioF();
         int plotTopDev = static_cast<int>(std::floor(frame.plotRect.top() * dpr));
         int plotBottomDev = static_cast<int>(std::ceil(frame.plotRect.bottom() * dpr));
-        int xNanDev = static_cast<int>(std::round(mapIndex(*chart, 50000) * dpr));
+        // Device column of the bucket that holds the NaN (#12: one bucket per device column)
+        const qint64 kNan = internal::BucketGrid(frame.gridNum, frame.gridDen).bucketOf(50000);
+        int xNanDev = static_cast<int>(std::floor(frameXMapping(*chart).columnLeftDev(kNan) + 1e-9));
         auto ysNan = traceYAtColumn(img, chColor, xNanDev, plotTopDev, plotBottomDev, 60);
 
         // The bucket containing the NaN is not drawn: 2 segments and no trace in its column.
@@ -918,92 +925,12 @@ void tst_StripChart::windowIsQuantisedAndScrollIsShiftInvariant()
         }
     }
 
-    // Part 2: Shift invariance (pixels)
-    // Time mode, DecimationMode::Always, a stationary noisy signal at 100 kHz, W_dev = 1000, timeSpan = 1 s, dtPx = 1 ms
-    {
-        auto chart = makeChart(1054, 400, 0.0, 100.0);
-        chart->setXAxisMode(StripChart::XAxisMode::Time);
-        chart->setDecimationMode(StripChart::DecimationMode::Always);
-        chart->setTimeSpan(std::chrono::seconds(1));
-        chart->setGridVisible(false);
-        chart->setLegendVisible(false);
-        chart->setCapacity(200000);
+    // Part 2 (pixel shift invariance) is covered at every device pixel ratio by
+    // scrollIsShiftInvariantAtAnyDpr, which runs the same scenario (1 s span, 1000 px plot,
+    // DecimationMode::Always, stationary noise at 100 kHz) and asserts the same properties:
+    // same window and identical pixels within a bucket, a one-bucket advance shifts the trace by
+    // exactly one device column.
 
-        const QColor chColor(255, 0, 0);
-        int ch = chart->addChannel(QStringLiteral("Noise"), chColor, 1.0);
-
-        // Generate stationary pseudo-random signal at 100 kHz (10 µs = 10,000 ns spacing)
-        // 100 samples per 1 ms bucket
-        std::mt19937 rng(42);
-        std::uniform_real_distribution<double> dist(10.0, 90.0);
-
-        // Initial render to discover exact dtPx and bucket width
-        renderToImage(*chart);
-        const auto &fInit = StripChartTestAccess::lastFrame(*chart);
-        qint64 dtPx = fInit.dtPx;
-        qreal dpr = chart->devicePixelRatioF();
-        if (dpr != 1.0) {
-            QSKIP("Pixel shift invariance test requires DPR 1");
-        }
-        int shiftCols = static_cast<int>(std::round(1.0 * dpr));
-
-        // Fill initial samples up to 1 s + 20 % of bucket 1050
-        qint64 dtSample = 10000LL; // 10 µs
-        int samplesPerBucket = std::max(1, static_cast<int>(dtPx / dtSample));
-        int totalInitialSamples = 1050 * samplesPerBucket + samplesPerBucket / 5;
-
-        qint64 currentT = 0;
-        for (int i = 0; i < totalInitialSamples; ++i) {
-            chart->addSample(ch, std::chrono::nanoseconds(currentT), dist(rng));
-            currentT += dtSample;
-        }
-
-        // 1. Render frame A
-        QImage imgA = renderToImage(*chart);
-        FrameDiagnostics diagA = StripChartTestAccess::lastFrame(*chart);
-        int plotLeftDev = static_cast<int>(std::round(diagA.plotRect.left() * dpr));
-        int plotRightDev = static_cast<int>(std::round(diagA.plotRect.right() * dpr));
-        int plotTopDev = static_cast<int>(std::round(diagA.plotRect.top() * dpr));
-        int plotBottomDev = static_cast<int>(std::round(diagA.plotRect.bottom() * dpr));
-
-        // 2. Append samples so that tLatest advances within the same bucket (e.g. 20 % of bucket)
-        int subBucketSamples = std::max(1, samplesPerBucket / 5);
-        for (int i = 0; i < subBucketSamples; ++i) {
-            chart->addSample(ch, std::chrono::nanoseconds(currentT), dist(rng));
-            currentT += dtSample;
-        }
-        QImage imgB = renderToImage(*chart);
-        FrameDiagnostics diagB = StripChartTestAccess::lastFrame(*chart);
-        QCOMPARE(diagB.tEnd, diagA.tEnd); // must be in identical bucket!
-
-        // Assert B is pixel-identical to A, except the rightmost columns affected by latest sample / glow dot
-        for (int x = plotLeftDev; x < plotRightDev - 5 * shiftCols; ++x) {
-            for (int y = plotTopDev; y <= plotBottomDev; ++y) {
-                QCOMPARE(imgB.pixelColor(x, y), imgA.pixelColor(x, y));
-            }
-        }
-
-        // 3. Append remaining samples to complete exactly one more bucket of data
-        int remainingSamples = samplesPerBucket;
-        for (int i = 0; i < remainingSamples; ++i) {
-            chart->addSample(ch, std::chrono::nanoseconds(currentT), dist(rng));
-            currentT += dtSample;
-        }
-        QImage imgC = renderToImage(*chart);
-        FrameDiagnostics diagC = StripChartTestAccess::lastFrame(*chart);
-        QCOMPARE(diagC.tEnd - diagA.tEnd, diagA.dtPx); // exactly 1 bucket shift!
-
-        // Assert C shifted left by exactly 1 device column equals A's,
-        // except the leftmost and rightmost columns
-        for (int x = plotLeftDev + 2 * shiftCols; x < plotRightDev - 5 * shiftCols; ++x) {
-            for (int y = plotTopDev; y <= plotBottomDev; ++y) {
-                if (imgC.pixelColor(x, y) != imgA.pixelColor(x + shiftCols, y)) {
-                    qWarning("Part 3 mismatch at x=%d y=%d", x, y);
-                }
-                QCOMPARE(imgC.pixelColor(x, y), imgA.pixelColor(x + shiftCols, y));
-            }
-        }
-    }
 }
 
 void tst_StripChart::timeWindowCoverage()
