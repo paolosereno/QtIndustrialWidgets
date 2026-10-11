@@ -40,6 +40,7 @@ target_include_directories(CircularBargraphSegments
 target_link_libraries(CircularBargraphSegments
     PUBLIC
         Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
 )
 
 set_target_properties(CircularBargraphSegments PROPERTIES

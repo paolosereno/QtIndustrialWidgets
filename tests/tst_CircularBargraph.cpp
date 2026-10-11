@@ -113,13 +113,32 @@ QImage renderAt(CircularBargraph &w, qreal dpr)
     return img;
 }
 
+// Expected dimmed tint of an unlit segment, recomputed here: 25 % zone color over ghost.
+QColor expectedTint(const QColor &zone)
+{
+    const auto mix = [](int z, int g) { return qRound(0.25 * z + 0.75 * g); };
+    return QColor(mix(zone.red(), kGhost.red()), mix(zone.green(), kGhost.green()),
+                  mix(zone.blue(), kGhost.blue()));
+}
+
+bool near(const QColor &a, const QColor &b)
+{
+    return std::abs(a.red() - b.red()) <= 1 && std::abs(a.green() - b.green()) <= 1
+        && std::abs(a.blue() - b.blue()) <= 1 && a.alpha() == 255;
+}
+
+// 'N'/'W'/'E' lit zone color, 'n'/'w'/'e' dimmed tint of that zone, 'P' peak,
+// 'G' plain ghost (Invalid), '?' anything else.
 QChar classify(const QColor &c)
 {
-    if (c == kGhost) return QLatin1Char('.');
     if (c == kPeak) return QLatin1Char('P');
     if (c == kNormal) return QLatin1Char('N');
     if (c == kWarning) return QLatin1Char('W');
     if (c == kError) return QLatin1Char('E');
+    if (c == kGhost) return QLatin1Char('G');
+    if (near(c, expectedTint(kNormal))) return QLatin1Char('n');
+    if (near(c, expectedTint(kWarning))) return QLatin1Char('w');
+    if (near(c, expectedTint(kError))) return QLatin1Char('e');
     return QLatin1Char('?');
 }
 
@@ -148,18 +167,33 @@ QString sampleSegments(const QImage &img, const CircularBargraph &w)
     return out;
 }
 
-// arc() with the Lit segments shown in the expected zone color letter.
-QString zoneArc(int n, int litFrom, int lit, QChar zone, int peakAt = -1)
+// Zone letter of every segment of `w`, recomputed here from the documented rule: the zone
+// containing the segment centre (>= threshold belongs to the upper zone).
+QString expectedZones(const CircularBargraph &w)
 {
-    QString out = arc(n, litFrom, lit, peakAt);
-    out.replace(QLatin1Char('L'), zone);
+    QString out;
+    const int n = w.segmentCount();
+    for (int i = 0; i < n; ++i) {
+        const double c = w.minimum() + (i + 0.5) * (w.maximum() - w.minimum()) / n;
+        out += (c >= w.errorThreshold()) ? QLatin1Char('E')
+             : (c >= w.warningThreshold()) ? QLatin1Char('W') : QLatin1Char('N');
+    }
     return out;
 }
 
-// Pixel classification of an all-ghost (Invalid) arc.
-QString invalidArc(int n)
+// Turns a state arc ('.', 'L', 'P', 'G') into the expected pixel classification of `w`.
+QString expectedPixels(const CircularBargraph &w, const QString &stateArc)
 {
-    return QString(n, QLatin1Char('.'));
+    const QString zones = expectedZones(w);
+    QString out = stateArc;
+    for (int i = 0; i < out.size(); ++i) {
+        if (out[i] == QLatin1Char('L')) {
+            out[i] = zones[i];
+        } else if (out[i] == QLatin1Char('.')) {
+            out[i] = zones[i].toLower();
+        }
+    }
+    return out;
 }
 
 // True if every pixel outside the logical rectangle `inside` still holds the sentinel.
@@ -214,6 +248,9 @@ private Q_SLOTS:
     void invalidStatePixels();
     void outOfRangeEndSegmentBlinks_data();
     void outOfRangeEndSegmentBlinks();
+    void segmentZonesByPosition();
+    void unlitTintColor();
+    void zoneColorsByPositionPixels();
     void thresholdsStayOrdered();
     void thresholdsOrderIndependent();
     void pixelColorAtSegmentCenters_data();
@@ -354,21 +391,21 @@ void tst_CircularBargraph::displayModes()
     bargraph.resize(220, 220);
     bargraph.setValue(50.0); // n = 12 of 24
     QCOMPARE(bargraph.displayMode(), CircularBargraph::DisplayMode::Bar);
-    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 0, 12, QLatin1Char('N')));
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), expectedPixels(bargraph, arc(24, 0, 12)));
 
     // Dot: a single cursor segment, the last one the bar would light.
     bargraph.setDisplayMode(CircularBargraph::DisplayMode::Dot);
     QCOMPARE(bargraph.displayMode(), CircularBargraph::DisplayMode::Dot);
-    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 11, 1, QLatin1Char('N')));
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), expectedPixels(bargraph, arc(24, 11, 1)));
 
     // Dot at the minimum still shows the cursor (zone color, not peak color).
     bargraph.setValue(0.0);
     bargraph.resetPeak();
-    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 0, 1, QLatin1Char('N')));
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), expectedPixels(bargraph, arc(24, 0, 1)));
 
     bargraph.setDisplayMode(CircularBargraph::DisplayMode::Bar);
     QCOMPARE(bargraph.displayMode(), CircularBargraph::DisplayMode::Bar);
-    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), zoneArc(24, 0, 0, QLatin1Char('N')));
+    QCOMPARE(sampleSegments(renderAt(bargraph, 1.0), bargraph), expectedPixels(bargraph, arc(24, 0, 0)));
 }
 
 void tst_CircularBargraph::peakHoldAndDecay()
@@ -442,7 +479,7 @@ void tst_CircularBargraph::extremeResizing()
         QVERIFY2(!untouchedOutside(img, QRectF()), qPrintable(QStringLiteral("nothing painted at ") + where));
         QVERIFY2(untouchedOutside(img, square), qPrintable(QStringLiteral("painted outside the dial at ") + where));
         if (side >= 100) {
-            QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 12, QLatin1Char('N')));
+            QCOMPARE(sampleSegments(img, bargraph), expectedPixels(bargraph, arc(24, 0, 12)));
         }
     }
 }
@@ -461,15 +498,15 @@ void tst_CircularBargraph::offscreenRendering()
         bargraph.setValue(75.0); // warning zone, n = 18 of 24
         QImage img = renderAt(bargraph, dpr);
         QCOMPARE(img.size(), QSize(200, 200) * dpr);
-        QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 18, QLatin1Char('W')));
+        QCOMPARE(sampleSegments(img, bargraph), expectedPixels(bargraph, arc(24, 0, 18)));
 
         bargraph.setValue(85.0); // error zone, n = round(20.4) = 20
         img = renderAt(bargraph, dpr);
-        QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 20, QLatin1Char('E')));
+        QCOMPARE(sampleSegments(img, bargraph), expectedPixels(bargraph, arc(24, 0, 20)));
 
         bargraph.setValue(40.0); // normal zone, n = round(9.6) = 10, held peak at 85 -> idx 19
         img = renderAt(bargraph, dpr);
-        QCOMPARE(sampleSegments(img, bargraph), zoneArc(24, 0, 10, QLatin1Char('N'), 19));
+        QCOMPARE(sampleSegments(img, bargraph), expectedPixels(bargraph, arc(24, 0, 10, 19)));
     }
 }
 
@@ -484,21 +521,21 @@ void tst_CircularBargraph::pixelColorAtSegmentCenters_data()
     QTest::addColumn<QString>("expected");
 
     QTest::newRow("bar24-270-normal-peak") << 24 << -135.0 << 270.0 << false << 80.0 << 50.0
-        << zoneArc(24, 0, 12, QLatin1Char('N'), 18);
+        << arc(24, 0, 12, 18);
     QTest::newRow("bar16-180-warning") << 16 << -90.0 << 180.0 << false << 75.0 << 75.0
-        << zoneArc(16, 0, 12, QLatin1Char('W'));
+        << arc(16, 0, 12);
     QTest::newRow("bar32-360-error-peak") << 32 << 0.0 << 360.0 << false << 100.0 << 90.0
-        << zoneArc(32, 0, 29, QLatin1Char('E'), 31);
+        << arc(32, 0, 29, 31);
     QTest::newRow("bar24-full-error") << 24 << -135.0 << 270.0 << false << 100.0 << 100.0
-        << zoneArc(24, 0, 24, QLatin1Char('E'));
+        << arc(24, 0, 24);
     QTest::newRow("bar48-minimum") << 48 << -135.0 << 270.0 << false << 0.0 << 0.0
-        << zoneArc(48, 0, 0, QLatin1Char('N'));
+        << arc(48, 0, 0);
     QTest::newRow("dot24-270-peak") << 24 << -135.0 << 270.0 << true << 50.0 << 30.0
-        << zoneArc(24, 6, 1, QLatin1Char('N'), 11);
+        << arc(24, 6, 1, 11);
     QTest::newRow("dot48-minimum") << 48 << -135.0 << 270.0 << true << 0.0 << 0.0
-        << zoneArc(48, 0, 1, QLatin1Char('N'));
+        << arc(48, 0, 1);
     QTest::newRow("dot16-180-error") << 16 << -90.0 << 180.0 << true << 95.0 << 95.0
-        << zoneArc(16, 14, 1, QLatin1Char('E')); // n = round(15.2) = 15
+        << arc(16, 14, 1); // n = round(15.2) = 15
 }
 
 void tst_CircularBargraph::pixelColorAtSegmentCenters()
@@ -521,7 +558,8 @@ void tst_CircularBargraph::pixelColorAtSegmentCenters()
     bargraph.setValue(peak);
     bargraph.setValue(value);
 
-    QCOMPARE(sampleSegments(renderAt(bargraph, bargraph.devicePixelRatioF()), bargraph), expected);
+    QCOMPARE(sampleSegments(renderAt(bargraph, bargraph.devicePixelRatioF()), bargraph),
+             expectedPixels(bargraph, expected));
 }
 
 void tst_CircularBargraph::segmentStatesAtMinimum()
@@ -930,7 +968,7 @@ void tst_CircularBargraph::invalidStatePixels()
     for (const auto mode : {CircularBargraph::DisplayMode::Bar, CircularBargraph::DisplayMode::Dot}) {
         bargraph.setDisplayMode(mode);
         const QImage img = renderAt(bargraph, bargraph.devicePixelRatioF());
-        QCOMPARE(sampleSegments(img, bargraph), invalidArc(24));
+        QCOMPARE(sampleSegments(img, bargraph), QString(24, QLatin1Char('G')));
         QCOMPARE(countExact(img, kPeak), 0);
     }
 }
@@ -943,15 +981,14 @@ void tst_CircularBargraph::outOfRangeEndSegmentBlinks_data()
     QTest::addColumn<QString>("onPhase");
     QTest::addColumn<QString>("offPhase");
 
-    // thresholds 70 / 85: overrange -> error zone, underrange -> normal zone
     QTest::newRow("over-bar") << 150.0 << false << 23
-        << zoneArc(24, 0, 24, QLatin1Char('E')) << zoneArc(24, 0, 23, QLatin1Char('E'));
+        << arc(24, 0, 24) << arc(24, 0, 23);
     QTest::newRow("over-dot") << std::numeric_limits<double>::infinity() << true << 23
-        << zoneArc(24, 23, 1, QLatin1Char('E')) << zoneArc(24, 0, 0, QLatin1Char('E'));
+        << arc(24, 23, 1) << arc(24, 0, 0);
     QTest::newRow("under-bar") << -10.0 << false << 0
-        << zoneArc(24, 0, 1, QLatin1Char('N')) << zoneArc(24, 0, 0, QLatin1Char('N'));
+        << arc(24, 0, 1) << arc(24, 0, 0);
     QTest::newRow("under-dot") << -std::numeric_limits<double>::infinity() << true << 0
-        << zoneArc(24, 0, 1, QLatin1Char('N')) << zoneArc(24, 0, 0, QLatin1Char('N'));
+        << arc(24, 0, 1) << arc(24, 0, 0);
 }
 
 void tst_CircularBargraph::outOfRangeEndSegmentBlinks()
@@ -967,6 +1004,8 @@ void tst_CircularBargraph::outOfRangeEndSegmentBlinks()
     bargraph.setDisplayMode(dot ? CircularBargraph::DisplayMode::Dot : CircularBargraph::DisplayMode::Bar);
     bargraph.resize(220, 220);
     const qreal dpr = bargraph.devicePixelRatioF();
+    onPhase = expectedPixels(bargraph, onPhase);
+    offPhase = expectedPixels(bargraph, offPhase);
 
     QElapsedTimer clock;
     clock.start(); // before entering the state: clock.elapsed() >= time in the state
@@ -991,6 +1030,64 @@ void tst_CircularBargraph::outOfRangeEndSegmentBlinks()
     QVERIFY2(sawOff && sawOnAgain, "the end segment did not blink");
     QVERIFY2(firstToggleMs >= 200, qPrintable(QStringLiteral("first toggle after %1 ms").arg(firstToggleMs)));
     QCOMPARE(onPhase.at(blinkIndex) != offPhase.at(blinkIndex), true);
+}
+
+void tst_CircularBargraph::segmentZonesByPosition()
+{
+    const auto zonesOf = [](double mn, double mx, double w, double e, int n) {
+        QString out;
+        for (const internal::Zone z : internal::computeSegmentZones(mn, mx, w, e, n)) {
+            out += (z == internal::Zone::Error) ? QLatin1Char('E')
+                 : (z == internal::Zone::Warning) ? QLatin1Char('W') : QLatin1Char('N');
+        }
+        return out;
+    };
+    // Centres 5, 15, ..., 95: a centre on a threshold belongs to the upper zone.
+    QCOMPARE(zonesOf(0.0, 100.0, 35.0, 75.0, 10), QStringLiteral("NNNWWWWEEE"));
+    QCOMPARE(zonesOf(0.0, 100.0, 36.0, 76.0, 10), QStringLiteral("NNNNWWWWEE"));
+    // Thresholds outside the range, equal thresholds, offset range.
+    QCOMPARE(zonesOf(0.0, 100.0, -10.0, 200.0, 10), QStringLiteral("WWWWWWWWWW"));
+    QCOMPARE(zonesOf(0.0, 100.0, 200.0, 300.0, 10), QStringLiteral("NNNNNNNNNN"));
+    QCOMPARE(zonesOf(0.0, 100.0, 50.0, 50.0, 10), QStringLiteral("NNNNNEEEEE"));
+    QCOMPARE(zonesOf(-50.0, 50.0, -15.0, 25.0, 10), QStringLiteral("NNNWWWWEEE"));
+    QCOMPARE(zonesOf(0.0, 100.0, 70.0, 85.0, 4), QStringLiteral("NNNE")); // 12.5 37.5 62.5 87.5
+}
+
+void tst_CircularBargraph::unlitTintColor()
+{
+    QCOMPARE(internal::unlitTint(QColor(200, 100, 0), QColor(40, 40, 40)), QColor(80, 55, 30));
+    QCOMPARE(internal::unlitTint(QColor(255, 255, 255), QColor(0, 0, 0)), QColor(64, 64, 64));
+    QCOMPARE(internal::unlitTint(QColor(10, 20, 30), QColor(10, 20, 30)), QColor(10, 20, 30));
+}
+
+void tst_CircularBargraph::zoneColorsByPositionPixels()
+{
+    // 10 segments, centres 5..95; warning 35, error 75 -> zones NNNWWWWEEE.
+    CircularBargraph bargraph;
+    applyTestColors(bargraph);
+    bargraph.setSegmentCount(10);
+    bargraph.setWarningThreshold(35.0);
+    bargraph.setErrorThreshold(75.0);
+    bargraph.resize(240, 240);
+    const qreal dpr = bargraph.devicePixelRatioF();
+
+    bargraph.setValue(60.0); // 6 lit: lit segments keep their own zone, unlit show the tint
+    QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), QStringLiteral("NNNWWWweee"));
+
+    bargraph.setValue(100.0);
+    QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), QStringLiteral("NNNWWWWEEE"));
+
+    bargraph.setValue(0.0);
+    bargraph.resetPeak();
+    QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), QStringLiteral("nnnwwwweee"));
+
+    // Dot: the dot takes the zone of its own position.
+    bargraph.setDisplayMode(CircularBargraph::DisplayMode::Dot);
+    bargraph.setValue(40.0); // n = 4 -> segment 3
+    QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), QStringLiteral("nnnWwwweee"));
+    bargraph.setValue(20.0); // n = 2 -> segment 1
+    bargraph.resetPeak();
+    QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), QStringLiteral("nNnwwwweee"));
 }
 
 QTEST_MAIN(tst_CircularBargraph)

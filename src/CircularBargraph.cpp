@@ -549,13 +549,17 @@ void CircularBargraph::paintEvent(QPaintEvent *)
     gapAngle = std::clamp(gapAngle, 0.4, 4.0);
     const double segSpan = std::max(0.2, stepAngle - gapAngle);
 
-    // Global Threshold active color determination
-    QColor activeColor = d_ptr->m_normalColor;
-    if (d_ptr->m_value >= d_ptr->m_errorThreshold) {
-        activeColor = d_ptr->m_errorColor;
-    } else if (d_ptr->m_value >= d_ptr->m_warningThreshold) {
-        activeColor = d_ptr->m_warningColor;
-    }
+    // Colour zones by position: each segment takes the zone containing its centre
+    const std::vector<internal::Zone> zones = internal::computeSegmentZones(
+        d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_warningThreshold, d_ptr->m_errorThreshold, N);
+    const auto zoneColor = [this](internal::Zone z) {
+        switch (z) {
+        case internal::Zone::Warning: return d_ptr->m_warningColor;
+        case internal::Zone::Error: return d_ptr->m_errorColor;
+        case internal::Zone::Normal: break;
+        }
+        return d_ptr->m_normalColor;
+    };
 
     internal::SegmentInput segIn;
     segIn.value = d_ptr->m_value;
@@ -602,14 +606,17 @@ void CircularBargraph::paintEvent(QPaintEvent *)
 
         path.closeSubpath();
 
+        const QColor segZoneColor = zoneColor(zones[static_cast<size_t>(i)]);
         switch (states[static_cast<size_t>(i)]) {
         case internal::SegmentState::Peak:
             painter.fillPath(path, d_ptr->m_peakColor);
             break;
         case internal::SegmentState::Lit:
-            painter.fillPath(path, activeColor);
+            painter.fillPath(path, segZoneColor);
             break;
         case internal::SegmentState::Off:
+            painter.fillPath(path, internal::unlitTint(segZoneColor, d_ptr->m_ghostColor));
+            break;
         case internal::SegmentState::Ghost:
             painter.fillPath(path, d_ptr->m_ghostColor);
             break;

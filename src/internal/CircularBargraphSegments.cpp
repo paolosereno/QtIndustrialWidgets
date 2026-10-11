@@ -24,6 +24,35 @@ InputState classifyInput(double raw, double minimum, double maximum)
     return InputState::Valid;
 }
 
+std::vector<Zone> computeSegmentZones(double minimum, double maximum, double warningThreshold,
+                                      double errorThreshold, int segmentCount)
+{
+    if (segmentCount < 1) {
+        return {};
+    }
+    std::vector<Zone> zones(static_cast<size_t>(segmentCount), Zone::Normal);
+    const double span = maximum - minimum;
+    for (int i = 0; i < segmentCount; ++i) {
+        const double centre = minimum + (i + 0.5) / segmentCount * span;
+        if (centre >= errorThreshold) {
+            zones[static_cast<size_t>(i)] = Zone::Error;
+        } else if (centre >= warningThreshold) {
+            zones[static_cast<size_t>(i)] = Zone::Warning;
+        }
+    }
+    return zones;
+}
+
+QColor unlitTint(const QColor &zoneColor, const QColor &ghostColor)
+{
+    const auto mix = [](int zone, int ghost) {
+        return qRound(kUnlitTintWeight * zone + (1.0 - kUnlitTintWeight) * ghost);
+    };
+    return QColor(mix(zoneColor.red(), ghostColor.red()),
+                  mix(zoneColor.green(), ghostColor.green()),
+                  mix(zoneColor.blue(), ghostColor.blue()));
+}
+
 std::vector<SegmentState> computeSegmentStates(const SegmentInput &in)
 {
     const int N = in.segmentCount;

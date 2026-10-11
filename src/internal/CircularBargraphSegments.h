@@ -8,6 +8,7 @@
 
 #include <QtCore/QString>
 #include <QtCore/qglobal.h>
+#include <QtGui/QColor>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -34,6 +35,30 @@ enum class InputState : quint8 {
     Overrange,  ///< Above maximum (including +Inf)
     Invalid     ///< NaN
 };
+
+/**
+ * \enum Zone
+ * \brief Threshold zone of a segment, decided by the position of its centre.
+ */
+enum class Zone : quint8 { Normal, Warning, Error };
+
+/**
+ * \brief Zone of every segment: the zone containing the segment centre
+ * c_i = minimum + (i + 0.5) / N * (maximum - minimum).
+ *
+ * Error if c_i >= errorThreshold, else Warning if c_i >= warningThreshold, else Normal.
+ */
+std::vector<Zone> computeSegmentZones(double minimum, double maximum, double warningThreshold,
+                                      double errorThreshold, int segmentCount);
+
+/// Weight of the zone color in the dimmed tint of an unlit segment (rest: ghost color).
+constexpr double kUnlitTintWeight = 0.25;
+
+/**
+ * \brief Dimmed tint of an unlit segment: kUnlitTintWeight of \a zoneColor over \a ghostColor,
+ * per channel, rounded to the nearest integer; opaque.
+ */
+QColor unlitTint(const QColor &zoneColor, const QColor &ghostColor);
 
 /** \brief Classifies a raw input against the range. */
 InputState classifyInput(double raw, double minimum, double maximum);
