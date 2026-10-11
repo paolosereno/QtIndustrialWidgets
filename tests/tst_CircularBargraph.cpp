@@ -101,6 +101,8 @@ private Q_SLOTS:
     void noPeakSegmentAtMinimum();
     void peakFollowsValueWhenHoldDisabled();
     void peakHoldThenMonotonicDecay();
+    void thresholdsStayOrdered();
+    void thresholdsOrderIndependent();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -448,6 +450,66 @@ void tst_CircularBargraph::peakHoldThenMonotonicDecay()
 
     QVERIFY2(firstDropMs >= holdMs, qPrintable(QStringLiteral("decay began after %1 ms").arg(firstDropMs)));
     QCOMPARE(bargraph.peakValue(), 20.0);
+}
+
+void tst_CircularBargraph::thresholdsStayOrdered()
+{
+    CircularBargraph bargraph; // warning 70, error 85
+    QSignalSpy spy(&bargraph, &CircularBargraph::thresholdChanged);
+
+    // Raising warning above error drags error up with it (one signal, both values).
+    bargraph.setWarningThreshold(90.0);
+    QCOMPARE(bargraph.warningThreshold(), 90.0);
+    QCOMPARE(bargraph.errorThreshold(), 90.0);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toDouble(), 90.0);
+    QCOMPARE(spy.at(0).at(1).toDouble(), 90.0);
+    spy.clear();
+
+    // Lowering error below warning drags warning down with it.
+    bargraph.setErrorThreshold(50.0);
+    QCOMPARE(bargraph.warningThreshold(), 50.0);
+    QCOMPARE(bargraph.errorThreshold(), 50.0);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toDouble(), 50.0);
+    QCOMPARE(spy.at(0).at(1).toDouble(), 50.0);
+    spy.clear();
+
+    // A consistent change moves only its own threshold.
+    bargraph.setErrorThreshold(80.0);
+    QCOMPARE(bargraph.warningThreshold(), 50.0);
+    QCOMPARE(bargraph.errorThreshold(), 80.0);
+    bargraph.setWarningThreshold(80.0); // equal is allowed
+    QCOMPARE(bargraph.warningThreshold(), 80.0);
+    QCOMPARE(bargraph.errorThreshold(), 80.0);
+    QCOMPARE(spy.count(), 2);
+}
+
+void tst_CircularBargraph::thresholdsOrderIndependent()
+{
+    struct Pair { double warning; double error; };
+    const Pair targets[] = {{90.0, 95.0}, {40.0, 50.0}, {10.0, 99.0}, {80.0, 80.0}, {-20.0, -10.0}};
+
+    for (const Pair &t : targets) {
+        CircularBargraph warningFirst; // starts at 70 / 85
+        warningFirst.setWarningThreshold(t.warning);
+        warningFirst.setErrorThreshold(t.error);
+        QCOMPARE(warningFirst.warningThreshold(), t.warning);
+        QCOMPARE(warningFirst.errorThreshold(), t.error);
+
+        CircularBargraph errorFirst;
+        errorFirst.setErrorThreshold(t.error);
+        errorFirst.setWarningThreshold(t.warning);
+        QCOMPARE(errorFirst.warningThreshold(), t.warning);
+        QCOMPARE(errorFirst.errorThreshold(), t.error);
+
+        // Same through the property system (the path used by Designer .ui files).
+        CircularBargraph viaProperties;
+        QVERIFY(viaProperties.setProperty("errorThreshold", t.error));
+        QVERIFY(viaProperties.setProperty("warningThreshold", t.warning));
+        QCOMPARE(viaProperties.warningThreshold(), t.warning);
+        QCOMPARE(viaProperties.errorThreshold(), t.error);
+    }
 }
 
 QTEST_MAIN(tst_CircularBargraph)

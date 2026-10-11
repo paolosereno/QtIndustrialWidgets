@@ -255,6 +255,10 @@ void CircularBargraph::setWarningThreshold(double threshold)
         return;
     }
     d_ptr->m_warningThreshold = threshold;
+    // Keep warning <= error: a warning above error drags error up (QAbstractSlider-like)
+    if (d_ptr->m_errorThreshold < threshold) {
+        d_ptr->m_errorThreshold = threshold;
+    }
     Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
     Q_EMIT appearanceChanged();
     update();
@@ -266,6 +270,10 @@ void CircularBargraph::setErrorThreshold(double threshold)
         return;
     }
     d_ptr->m_errorThreshold = threshold;
+    // Keep warning <= error: an error below warning drags warning down
+    if (d_ptr->m_warningThreshold > threshold) {
+        d_ptr->m_warningThreshold = threshold;
+    }
     Q_EMIT thresholdChanged(d_ptr->m_warningThreshold, d_ptr->m_errorThreshold);
     Q_EMIT appearanceChanged();
     update();

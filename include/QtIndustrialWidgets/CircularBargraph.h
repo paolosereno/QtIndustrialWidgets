@@ -148,9 +148,21 @@ public Q_SLOTS:
     void setSpanAngle(double angle);
     /** \brief Sets the display presentation mode (Bar or Dot). */
     void setDisplayMode(DisplayMode mode);
-    /** \brief Sets the warning threshold value. */
+    /**
+     * \brief Sets the warning threshold value.
+     *
+     * The thresholds always satisfy warningThreshold() <= errorThreshold(): if \a threshold
+     * is above the error threshold, the error threshold is raised to \a threshold too
+     * (one thresholdChanged() carries both values). Setting both thresholds to a consistent
+     * pair gives that pair whatever the call order.
+     */
     void setWarningThreshold(double threshold);
-    /** \brief Sets the critical error threshold value. */
+    /**
+     * \brief Sets the critical error threshold value.
+     *
+     * If \a threshold is below the warning threshold, the warning threshold is lowered to
+     * \a threshold too, so that warningThreshold() <= errorThreshold() always holds.
+     */
     void setErrorThreshold(double threshold);
     /** \brief Enables or disables peak hold indication. */
     void setPeakHoldEnabled(bool enable);
