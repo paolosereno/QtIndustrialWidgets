@@ -15,11 +15,62 @@
 #include <QtGui/QPixmap>
 #include <QtCore/QtMath>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QVarLengthArray>
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
 namespace QtIndustrialWidgets {
+
+namespace {
+
+constexpr double kGlowRadius = 2.5; // glow dot radius on the latest point, logical px
+
+using BlankColumns = QVarLengthArray<QRectF, 16>;
+
+// Collects the device columns (in logical coordinates) of blank buckets - buckets with a
+// non-finite sample - that a glow dot centred in bucket kCentre could reach. A bucket's column is
+// the device column that contains the bucket's centre. The glow dot is clipped so it never draws
+// inside a column left blank for a sensor dropout.
+template <typename BucketXRange>
+void collectBlankColumnsNearGlow(const internal::M4Decimator::IncrementalStream &stream, qint64 kCentre,
+                                 qint64 kFirst, qint64 kEnd, double bucketWidthDev, double dpr,
+                                 const QRectF &plotRect, BucketXRange bucketXRange, BlankColumns &out)
+{
+    if (bucketWidthDev <= 0.0) return;
+    const qint64 reach = static_cast<qint64>(std::ceil(kGlowRadius * dpr / bucketWidthDev)) + 1;
+    for (qint64 k = std::max(kFirst, kCentre - reach); k <= std::min(kEnd - 1, kCentre + reach); ++k) {
+        const internal::M4Bucket *b = stream.bucketAt(k);
+        if (!b || !b->hasNonFinite) continue;
+        const std::pair<double, double> x = bucketXRange(k);
+        const double column = std::floor((x.first + x.second) * 0.5 * dpr);
+        out.append(QRectF(column / dpr, plotRect.top(), 1.0 / dpr, plotRect.height()));
+    }
+}
+
+void drawGlowDot(QPainter &painter, const QPointF &centre, const QColor &colour,
+                 const QRectF &plotRect, const BlankColumns &blankColumns)
+{
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(colour.lighter(150));
+    if (blankColumns.isEmpty()) {
+        painter.drawEllipse(centre, kGlowRadius, kGlowRadius);
+        return;
+    }
+    QPainterPath keep;
+    keep.addRect(plotRect);
+    for (const QRectF &r : blankColumns) {
+        QPainterPath blank;
+        blank.addRect(r);
+        keep = keep.subtracted(blank);
+    }
+    painter.save();
+    painter.setClipPath(keep, Qt::IntersectClip);
+    painter.drawEllipse(centre, kGlowRadius, kGlowRadius);
+    painter.restore();
+}
+
+} // namespace
 
 StripChart::StripChart(QWidget *parent)
     : QWidget(parent)
@@ -1261,6 +1312,8 @@ void StripChart::paintEvent(QPaintEvent *)
 
             QPointF lastDrawnPt;
             bool hasDrawnPt = false;
+            bool suppressGlow = false;   // the latest bucket is blank (dropout): no glow dot
+            BlankColumns glowBlankColumns;
 
             if (doDecimate) {
                 internal::GeometryKey targetKey;
@@ -1301,6 +1354,24 @@ void StripChart::paintEvent(QPaintEvent *)
                 }
 
                 ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, gapThresh);
+
+                // The glow dot must never draw inside a column left blank for a dropout
+                {
+                    const internal::M4Bucket *latest = ch.m4Stream.bucketAt(
+                        internal::M4Decimator::floorDiv(ch.lastTimestamp, dt_px));
+                    suppressGlow = latest && latest->hasNonFinite;
+                    if (!suppressGlow && !d_ptr->m_reusableSegments.empty() && !d_ptr->m_reusableSegments.back().empty()) {
+                        const qint64 kLastDrawn = internal::M4Decimator::floorDiv(d_ptr->m_reusableSegments.back().back().t, dt_px);
+                        const double bucketWidthDev = static_cast<double>(dt_px) / static_cast<double>(timeSpanNs) * plotRect.width() * dpr;
+                        collectBlankColumnsNearGlow(ch.m4Stream, kLastDrawn, kStartQuery, kStartQuery + numBucketsQuery,
+                                                    bucketWidthDev, dpr, plotRect,
+                                                    [&](qint64 k) {
+                                                        return std::make_pair(mapPoint(k * dt_px, 0.0).x(),
+                                                                              mapPoint((k + 1) * dt_px, 0.0).x());
+                                                    },
+                                                    glowBlankColumns);
+                    }
+                }
 
                 for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
@@ -1373,11 +1444,9 @@ void StripChart::paintEvent(QPaintEvent *)
             // Restore antialiasing for downstream elements (glow dot, legend)
             painter.setRenderHint(QPainter::Antialiasing, true);
 
-            // Glow dot on latest point if finite
-            if (hasDrawnPt && std::isfinite(ch.latestValue)) {
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(ch.color.lighter(150));
-                painter.drawEllipse(lastDrawnPt, 2.5, 2.5);
+            // Glow dot on latest point if finite, never inside a blank dropout column
+            if (hasDrawnPt && std::isfinite(ch.latestValue) && !suppressGlow) {
+                drawGlowDot(painter, lastDrawnPt, ch.color, plotRect, glowBlankColumns);
             }
 
             if (d_ptr->recordDiagnostics) {
@@ -1442,6 +1511,8 @@ void StripChart::paintEvent(QPaintEvent *)
 
             QPointF lastDrawnPt;
             bool hasDrawnPt = false;
+            bool suppressGlow = false;   // the latest bucket is blank (dropout): no glow dot
+            BlankColumns glowBlankColumns;
 
             if (doDecimate) {
                 auto ib = internal::computeIndexBuckets(ch.totalSamples, ch.count, d_ptr->m_capacity, W_dev);
@@ -1485,6 +1556,27 @@ void StripChart::paintEvent(QPaintEvent *)
                 }
 
                 ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, 0);
+
+                // The glow dot must never draw inside a column left blank for a dropout
+                {
+                    const qint64 spb = ib.samplesPerBucket;
+                    const internal::M4Bucket *latest = ch.m4Stream.bucketAt(
+                        internal::M4Decimator::floorDiv(static_cast<qint64>(ch.totalSamples) - 1, spb));
+                    suppressGlow = latest && latest->hasNonFinite;
+                    if (!suppressGlow && !d_ptr->m_reusableSegments.empty() && !d_ptr->m_reusableSegments.back().empty()) {
+                        const qint64 kLastDrawn = internal::M4Decimator::floorDiv(d_ptr->m_reusableSegments.back().back().t, spb);
+                        const double denom = static_cast<double>(d_ptr->m_capacity - 1);
+                        const double bucketWidthDev = (denom > 0.0) ? static_cast<double>(spb) / denom * plotRect.width() * dpr : 0.0;
+                        auto xOfIndex = [&](qint64 i) {
+                            const double frac = (ch.count <= 1) ? 0.0 : static_cast<double>(i - static_cast<qint64>(startCounter)) / denom;
+                            return plotRect.left() + frac * plotRect.width();
+                        };
+                        collectBlankColumnsNearGlow(ch.m4Stream, kLastDrawn, kStartQuery, kStartQuery + numBucketsQuery,
+                                                    bucketWidthDev, dpr, plotRect,
+                                                    [&](qint64 k) { return std::make_pair(xOfIndex(k * spb), xOfIndex((k + 1) * spb)); },
+                                                    glowBlankColumns);
+                    }
+                }
 
                 for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
@@ -1548,10 +1640,9 @@ void StripChart::paintEvent(QPaintEvent *)
             // Restore antialiasing for downstream elements (glow dot, legend)
             painter.setRenderHint(QPainter::Antialiasing, true);
 
-            if (hasDrawnPt && std::isfinite(ch.latestValue)) {
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(ch.color.lighter(150));
-                painter.drawEllipse(lastDrawnPt, 2.5, 2.5);
+            // Glow dot on latest point if finite, never inside a blank dropout column
+            if (hasDrawnPt && std::isfinite(ch.latestValue) && !suppressGlow) {
+                drawGlowDot(painter, lastDrawnPt, ch.color, plotRect, glowBlankColumns);
             }
 
             if (d_ptr->recordDiagnostics) {
