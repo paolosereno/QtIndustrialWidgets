@@ -486,7 +486,9 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             painter.setPen(d_ptr->m_textColor);
             for (const internal::ScaleLabelSlot &slot : layout.labels) {
                 QRectF drawR(labelX, d_ptr->m_tubeRect.bottom() - slot.end, w - labelX - 4.0, slot.end - slot.start);
-                painter.drawText(drawR, Qt::AlignLeft | Qt::AlignVCenter, texts.at(slot.index));
+                // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS); the
+                // rectangle only positions the label
+                painter.drawText(drawR, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextDontClip, texts.at(slot.index));
             }
         }
 
@@ -583,7 +585,9 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             for (const internal::ScaleLabelSlot &slot : layout.labels) {
                 const QString &s = texts.at(slot.index);
                 QRectF drawR(d_ptr->m_tubeRect.left() + slot.start, labelY, slot.end - slot.start, fm.boundingRect(s).height());
-                painter.drawText(drawR, Qt::AlignCenter, s);
+                // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, up to
+                // 1 px per label); the rectangle only positions the label
+                painter.drawText(drawR, Qt::AlignCenter | Qt::TextDontClip, s);
             }
         }
 
