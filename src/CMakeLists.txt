@@ -48,6 +48,21 @@ set_target_properties(CircularBargraphSegments PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(LinearGaugeScale OBJECT
+    internal/LinearGaugeScale.cpp
+    internal/LinearGaugeScale.h
+)
+
+target_include_directories(LinearGaugeScale
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+set_target_properties(LinearGaugeScale PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(QtIndustrialWidgets SHARED
     RadialGauge.cpp
     LinearGauge.cpp
@@ -62,6 +77,7 @@ add_library(QtIndustrialWidgets SHARED
     CircularBargraph.cpp
     $<TARGET_OBJECTS:M4Decimator>
     $<TARGET_OBJECTS:CircularBargraphSegments>
+    $<TARGET_OBJECTS:LinearGaugeScale>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h

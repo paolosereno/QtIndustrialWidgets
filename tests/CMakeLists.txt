@@ -37,7 +37,27 @@ function(add_industrial_widget_test test_name)
 endfunction()
 
 add_industrial_widget_test(tst_RadialGauge)
-add_industrial_widget_test(tst_LinearGauge)
+add_executable(tst_LinearGauge
+    tst_LinearGauge.cpp
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_LinearGauge
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_LinearGauge
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_LinearGauge PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_LinearGauge)
 add_industrial_widget_test(tst_SevenSegmentDisplay)
 add_industrial_widget_test(tst_LedIndicator)
 add_industrial_widget_test(tst_IndustrialKnob)
