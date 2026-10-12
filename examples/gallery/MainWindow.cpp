@@ -167,7 +167,7 @@ void MainWindow::setupUi()
     dashLayout->setSpacing(14);
 
     // Row 1: Radial Gauges Group
-    auto *radialGroup = new QGroupBox(QStringLiteral("Powertrain & Dynamics (Radial Gauges)"), dashTab);
+    auto *radialGroup = new QGroupBox(QStringLiteral("Powertrain && Dynamics (Radial Gauges)"), dashTab);
     auto *radialLayout = new QHBoxLayout(radialGroup);
     radialLayout->setContentsMargins(12, 16, 12, 12);
     radialLayout->setSpacing(14);
@@ -232,7 +232,7 @@ void MainWindow::setupUi()
     lowerRowLayout->setSpacing(14);
 
     // Group for Linear Gauges / Thermometers
-    auto *linearGroup = new QGroupBox(QStringLiteral("Thermal & Fluid Systems (Linear Gauges)"), dashTab);
+    auto *linearGroup = new QGroupBox(QStringLiteral("Thermal && Fluid Systems (Linear Gauges)"), dashTab);
     auto *linearLayout = new QHBoxLayout(linearGroup);
     linearLayout->setContentsMargins(12, 16, 12, 12);
     linearLayout->setSpacing(14);
@@ -603,7 +603,7 @@ void MainWindow::setupUi()
     // ------------------------------------------------------------------------
     // Multi-Channel VU & Level Meter Showcase (LevelMeter)
     // ------------------------------------------------------------------------
-    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic & Signal Level Meters (LevelMeter)"), controlsTab);
+    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic && Signal Level Meters (LevelMeter)"), controlsTab);
     auto *meterLayout = new QHBoxLayout(meterBox);
     meterLayout->setSpacing(24);
     meterLayout->setContentsMargins(18, 18, 18, 14);
@@ -665,7 +665,7 @@ void MainWindow::setupUi()
     // setWidget() turns on autoFillBackground; keep the themed tab pane visible behind the content
     controlsTab->setAutoFillBackground(false);
     controlsScroll->viewport()->setAutoFillBackground(false);
-    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls && Diagnostics"));
 
     // ------------------------------------------------------------------------
     // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
@@ -1014,7 +1014,7 @@ void MainWindow::setupUi()
     annControlsRow->setSpacing(14);
 
     // Operator Pushbuttons (ISA-18.1 Sequences A & M)
-    auto *operatorBox = new QGroupBox(QStringLiteral("Operator Pushbuttons (ISA-18.1 Sequences A & M)"), annunciatorTab);
+    auto *operatorBox = new QGroupBox(QStringLiteral("Operator Pushbuttons (ISA-18.1 Sequences A && M)"), annunciatorTab);
     auto *operatorLayout = new QHBoxLayout(operatorBox);
     operatorLayout->setSpacing(12);
     operatorLayout->setContentsMargins(14, 16, 14, 14);
@@ -1047,7 +1047,7 @@ void MainWindow::setupUi()
     annControlsRow->addWidget(operatorBox, 1);
 
     // Alarm Trip Simulator & ISA Sequence selector
-    auto *simBox = new QGroupBox(QStringLiteral("Alarm Event Simulator & Configuration"), annunciatorTab);
+    auto *simBox = new QGroupBox(QStringLiteral("Alarm Event Simulator && Configuration"), annunciatorTab);
     auto *simLayout = new QHBoxLayout(simBox);
     simLayout->setSpacing(12);
     simLayout->setContentsMargins(14, 16, 14, 14);
@@ -1201,7 +1201,7 @@ void MainWindow::setupUi()
     navLayout->addLayout(instrumentsRow, 1);
 
     // Bottom Controls & Simulation Console
-    auto *navControlsBox = new QGroupBox(QStringLiteral("Navigation Controls & Autopilot Simulation"), navTab);
+    auto *navControlsBox = new QGroupBox(QStringLiteral("Navigation Controls && Autopilot Simulation"), navTab);
     auto *ncLayout = new QGridLayout(navControlsBox);
     ncLayout->setContentsMargins(16, 16, 16, 14);
     ncLayout->setSpacing(12);
@@ -1335,7 +1335,7 @@ void MainWindow::setupUi()
     });
 
     navLayout->addWidget(navControlsBox);
-    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (Compass)"));
+    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro && Marine Compass (Compass)"));
 
     // ------------------------------------------------------------------------
     // TAB 6: High-Rate DAQ Telemetry (StripChart)
@@ -1361,7 +1361,7 @@ void MainWindow::setupUi()
     daqLayout->addWidget(m_daqChart, 1);
 
     // Controls panel
-    auto *daqControlsBox = new QGroupBox(QStringLiteral("High-Rate Acquisition Controls & Real-Time Performance"), daqTab);
+    auto *daqControlsBox = new QGroupBox(QStringLiteral("High-Rate Acquisition Controls && Real-Time Performance"), daqTab);
     auto *daqControlsLayout = new QGridLayout(daqControlsBox);
     daqControlsLayout->setContentsMargins(12, 16, 12, 12);
     daqControlsLayout->setHorizontalSpacing(16);
