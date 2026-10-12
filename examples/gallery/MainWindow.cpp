@@ -27,6 +27,9 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QRadioButton>
+#include <QtWidgets/QButtonGroup>
+#include <QtWidgets/QScrollArea>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QStyleFactory>
@@ -34,9 +37,11 @@
 #include <QtCore/QPropertyAnimation>
 #include <QtCore/QEasingCurve>
 #include <QtCore/QMetaEnum>
+#include <QtCore/QSignalBlocker>
 #include <QtGui/QPalette>
 #include <QtCore/QtMath>
 
+#include <array>
 #include <limits>
 
 using namespace QtIndustrialWidgets;
@@ -649,10 +654,28 @@ void MainWindow::setupUi()
     controlsLayout->addWidget(meterBox, row, 0, 1, 3);
     row++;
 
+    controlsLayout->setRowStretch(row, 1);
+    // The tab is taller than the default window: scroll instead of squashing the widgets.
+    // A Minimum vertical policy keeps the content at least at its size hint.
+    controlsTab->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    auto *controlsScroll = new QScrollArea(tabWidget);
+    controlsScroll->setWidgetResizable(true);
+    controlsScroll->setFrameShape(QFrame::NoFrame);
+    controlsScroll->setWidget(controlsTab);
+    // setWidget() turns on autoFillBackground; keep the themed tab pane visible behind the content
+    controlsTab->setAutoFillBackground(false);
+    controlsScroll->viewport()->setAutoFillBackground(false);
+    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+
     // ------------------------------------------------------------------------
-    // Circular Arc LED Bargraph Showcase (CircularBargraph)
+    // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
     // ------------------------------------------------------------------------
-    auto *circBox = new QGroupBox(QStringLiteral("Circular Arc LED Indicators (CircularBargraph)"), controlsTab);
+    auto *bargraphTab = new QWidget(tabWidget);
+    auto *bargraphLayout = new QVBoxLayout(bargraphTab);
+    bargraphLayout->setContentsMargins(20, 20, 20, 20);
+    bargraphLayout->setSpacing(14);
+
+    auto *circBox = new QGroupBox(QStringLiteral("Circular Arc LED Indicators (CircularBargraph)"), bargraphTab);
     auto *circMainLayout = new QVBoxLayout(circBox);
     circMainLayout->setContentsMargins(16, 16, 16, 14);
     circMainLayout->setSpacing(12);
@@ -699,17 +722,21 @@ void MainWindow::setupUi()
     m_circBargraphSemi->setPeakHoldEnabled(true);
     m_circBargraphSemi->setUnit(QStringLiteral("SEMI"));
 
-    circWidgetsLayout->addWidget(m_circBargraphBar);
-    circWidgetsLayout->addWidget(m_circBargraphDot);
-    circWidgetsLayout->addWidget(m_circBargraphSemi);
-    circWidgetsLayout->addStretch();
-    circMainLayout->addLayout(circWidgetsLayout);
+    // The dial is painted in min(width, height) - 8 px, so 200x200 keeps it >= 180 px across
+    for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+        bg->setMinimumSize(200, 200);
+        bg->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        circWidgetsLayout->addWidget(bg, 1);
+    }
+    circMainLayout->addLayout(circWidgetsLayout, 1);
 
     // Controls row: slider + reset peak + mode toggle
     auto *circCtrlLayout = new QHBoxLayout();
     circCtrlLayout->setSpacing(12);
 
-    auto *sliderLbl = new QLabel(QStringLiteral("Level:"), circBox);
+    // The level slider is in absolute scale units (0 - 100): narrowing the range below shows
+    // Under/Overrange
+    auto *sliderLbl = new QLabel(QStringLiteral("Level (absolute):"), circBox);
     m_circBargraphSlider = new QSlider(Qt::Horizontal, circBox);
     m_circBargraphSlider->setRange(0, 100);
     m_circBargraphSlider->setValue(65);
@@ -748,13 +775,20 @@ void MainWindow::setupUi()
         if (!m_circBargraphBar || !m_circStateLabel) return;
         const char *stateName = QMetaEnum::fromType<CircularBargraph::ValueState>()
                                     .valueToKey(static_cast<int>(m_circBargraphBar->valueState()));
-        m_circStateLabel->setText(QStringLiteral("State: %1 | raw %2 | value %3")
+        m_circStateLabel->setText(QStringLiteral("State: %1 | raw %2 | value %3 | warning %4 / error %5 | range %6 - %7")
                                       .arg(QString::fromLatin1(stateName))
                                       .arg(m_circBargraphBar->rawValue(), 0, 'f', 1)
-                                      .arg(m_circBargraphBar->value(), 0, 'f', 1));
+                                      .arg(m_circBargraphBar->value(), 0, 'f', 1)
+                                      .arg(m_circBargraphBar->warningThreshold(), 0, 'f', 0)
+                                      .arg(m_circBargraphBar->errorThreshold(), 0, 'f', 0)
+                                      .arg(m_circBargraphBar->minimum(), 0, 'f', 0)
+                                      .arg(m_circBargraphBar->maximum(), 0, 'f', 0));
     };
+    // All three bargraphs get the same settings, so the Bar one alone drives the label
     connect(m_circBargraphBar, &CircularBargraph::valueStateChanged, this, updateCircStateLabel);
     connect(m_circBargraphBar, &CircularBargraph::valueChanged, this, updateCircStateLabel);
+    connect(m_circBargraphBar, &CircularBargraph::thresholdChanged, this, updateCircStateLabel);
+    connect(m_circBargraphBar, &CircularBargraph::rangeChanged, this, updateCircStateLabel);
     updateCircStateLabel();
 
     auto *resetPeakBtn = new QPushButton(QStringLiteral("Reset Peak"), circBox);
@@ -785,14 +819,135 @@ void MainWindow::setupUi()
     circStateLayout->addWidget(m_circStateLabel, 1);
     circMainLayout->addLayout(circStateLayout);
 
-    controlsLayout->addWidget(circBox, row, 0, 1, 3);
-    row++;
+    bargraphLayout->addWidget(circBox, 1);
 
-    controlsLayout->setRowStretch(row, 1);
-    tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+    // Feature settings: every control acts on all three bargraphs
+    auto *circSettingsBox = new QGroupBox(QStringLiteral("Segments, Zones, Peak and Range"), bargraphTab);
+    auto *circSettingsLayout = new QGridLayout(circSettingsBox);
+    circSettingsLayout->setContentsMargins(16, 16, 16, 14);
+    circSettingsLayout->setHorizontalSpacing(12);
+    circSettingsLayout->setVerticalSpacing(10);
+    const auto allBargraphs = [this]() {
+        return std::array<CircularBargraph *, 3>{m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi};
+    };
+
+    // Only widgets the gallery theme already styles (sliders, radio buttons) are used here,
+    // so the controls stay readable in both themes
+
+    // Segment count ("Default" restores the per-bargraph counts set above)
+    auto *segmentsLayout = new QHBoxLayout();
+    segmentsLayout->setSpacing(16);
+    auto *segmentsGroup = new QButtonGroup(circSettingsBox);
+    for (int count : {0, 12, 24, 48}) {
+        auto *radio = new QRadioButton(count > 0 ? QString::number(count) : QStringLiteral("Default (24 / 32 / 16)"),
+                                       circSettingsBox);
+        radio->setObjectName(QStringLiteral("circSegments%1").arg(count));
+        radio->setChecked(count == 0);
+        segmentsGroup->addButton(radio, count);
+        segmentsLayout->addWidget(radio);
+    }
+    segmentsLayout->addStretch();
+    connect(segmentsGroup, &QButtonGroup::idClicked, this, [this](int count) {
+        m_circBargraphBar->setSegmentCount(count > 0 ? count : 24);
+        m_circBargraphDot->setSegmentCount(count > 0 ? count : 32);
+        m_circBargraphSemi->setSegmentCount(count > 0 ? count : 16);
+    });
+
+    const auto addSettingSlider = [circSettingsBox](const QString &objectName, int minVal, int maxVal, int value) {
+        auto *slider = new QSlider(Qt::Horizontal, circSettingsBox);
+        slider->setObjectName(objectName);
+        slider->setRange(minVal, maxVal);
+        slider->setValue(value);
+        return slider;
+    };
+    const auto addValueLabel = [circSettingsBox](const QString &text) {
+        auto *label = new QLabel(text, circSettingsBox);
+        label->setMinimumWidth(80);
+        return label;
+    };
+
+    // Thresholds: setting one may push the other (warning <= error); the sliders follow
+    // thresholdChanged() of the Bar bargraph
+    auto *warnSlider = addSettingSlider(QStringLiteral("circWarningSlider"), 0, 100,
+                                        qRound(m_circBargraphBar->warningThreshold()));
+    auto *errorSlider = addSettingSlider(QStringLiteral("circErrorSlider"), 0, 100,
+                                         qRound(m_circBargraphBar->errorThreshold()));
+    auto *warnValLbl = addValueLabel(QString::number(warnSlider->value()));
+    auto *errorValLbl = addValueLabel(QString::number(errorSlider->value()));
+    connect(warnSlider, &QSlider::valueChanged, this, [allBargraphs](int val) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setWarningThreshold(val);
+    });
+    connect(errorSlider, &QSlider::valueChanged, this, [allBargraphs](int val) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setErrorThreshold(val);
+    });
+    connect(m_circBargraphBar, &CircularBargraph::thresholdChanged, this,
+            [warnSlider, errorSlider, warnValLbl, errorValLbl](double warning, double error) {
+        const QSignalBlocker blockWarn(warnSlider);
+        const QSignalBlocker blockError(errorSlider);
+        warnSlider->setValue(qRound(warning));
+        errorSlider->setValue(qRound(error));
+        warnValLbl->setText(QString::number(warning, 'f', 0));
+        errorValLbl->setText(QString::number(error, 'f', 0));
+    });
+
+    // Range: setRange() rejects min >= max, so both sliders are re-read from the Bar
+    // bargraph after every change
+    auto *minSlider = addSettingSlider(QStringLiteral("circMinimumSlider"), 0, 99, qRound(m_circBargraphBar->minimum()));
+    auto *maxSlider = addSettingSlider(QStringLiteral("circMaximumSlider"), 1, 100, qRound(m_circBargraphBar->maximum()));
+    auto *minValLbl = addValueLabel(QString::number(minSlider->value()));
+    auto *maxValLbl = addValueLabel(QString::number(maxSlider->value()));
+    const auto applyRange = [this, allBargraphs, minSlider, maxSlider, minValLbl, maxValLbl]() {
+        for (CircularBargraph *bg : allBargraphs()) bg->setRange(minSlider->value(), maxSlider->value());
+        const QSignalBlocker blockMin(minSlider);
+        const QSignalBlocker blockMax(maxSlider);
+        minSlider->setValue(qRound(m_circBargraphBar->minimum()));
+        maxSlider->setValue(qRound(m_circBargraphBar->maximum()));
+        minValLbl->setText(QString::number(minSlider->value()));
+        maxValLbl->setText(QString::number(maxSlider->value()));
+    };
+    connect(minSlider, &QSlider::valueChanged, this, applyRange);
+    connect(maxSlider, &QSlider::valueChanged, this, applyRange);
+
+    // Peak hold time and decay rate
+    auto *holdSlider = addSettingSlider(QStringLiteral("circPeakHoldSlider"), 0, 5000, m_circBargraphBar->peakHoldTimeMs());
+    holdSlider->setSingleStep(100);
+    holdSlider->setPageStep(500);
+    auto *holdValLbl = addValueLabel(QStringLiteral("%1 ms").arg(holdSlider->value()));
+    connect(holdSlider, &QSlider::valueChanged, this, [allBargraphs, holdValLbl](int ms) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setPeakHoldTimeMs(ms);
+        holdValLbl->setText(QStringLiteral("%1 ms").arg(ms));
+    });
+
+    auto *decaySlider = addSettingSlider(QStringLiteral("circPeakDecaySlider"), 1, 200,
+                                         qRound(m_circBargraphBar->peakDecayRate()));
+    auto *decayValLbl = addValueLabel(QStringLiteral("%1 units/s").arg(decaySlider->value()));
+    connect(decaySlider, &QSlider::valueChanged, this, [allBargraphs, decayValLbl](int rate) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setPeakDecayRate(rate);
+        decayValLbl->setText(QStringLiteral("%1 units/s").arg(rate));
+    });
+
+    const auto addSettingRow = [circSettingsBox, circSettingsLayout](int gridRow, int column, const QString &label,
+                                                                      QSlider *slider, QLabel *valueLabel) {
+        circSettingsLayout->addWidget(new QLabel(label, circSettingsBox), gridRow, column);
+        circSettingsLayout->addWidget(slider, gridRow, column + 1);
+        circSettingsLayout->addWidget(valueLabel, gridRow, column + 2);
+    };
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Segments:"), circSettingsBox), 0, 0);
+    circSettingsLayout->addLayout(segmentsLayout, 0, 1, 1, 5);
+    addSettingRow(1, 0, QStringLiteral("Warning threshold:"), warnSlider, warnValLbl);
+    addSettingRow(2, 0, QStringLiteral("Error threshold:"), errorSlider, errorValLbl);
+    addSettingRow(3, 0, QStringLiteral("Peak hold time:"), holdSlider, holdValLbl);
+    addSettingRow(1, 3, QStringLiteral("Range min:"), minSlider, minValLbl);
+    addSettingRow(2, 3, QStringLiteral("Range max:"), maxSlider, maxValLbl);
+    addSettingRow(3, 3, QStringLiteral("Peak decay rate:"), decaySlider, decayValLbl);
+    circSettingsLayout->setColumnStretch(1, 1);
+    circSettingsLayout->setColumnStretch(4, 1);
+
+    bargraphLayout->addWidget(circSettingsBox);
+    tabWidget->addTab(bargraphTab, QStringLiteral("⭕ Circular Bargraph (CircularBargraph)"));
 
     // ------------------------------------------------------------------------
-    // TAB 3: Alarm Annunciator Matrix (ANSI/ISA-18.1)
+    // TAB 4: Alarm Annunciator Matrix (ANSI/ISA-18.1)
     // ------------------------------------------------------------------------
     auto *annunciatorTab = new QWidget(tabWidget);
     auto *annLayout = new QVBoxLayout(annunciatorTab);
@@ -986,7 +1141,7 @@ void MainWindow::setupUi()
     tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
 
     // ------------------------------------------------------------------------
-    // TAB 4: Navigation & Directional Gyro (Compass)
+    // TAB 5: Navigation & Directional Gyro (Compass)
     // ------------------------------------------------------------------------
     auto *navTab = new QWidget(tabWidget);
     auto *navLayout = new QVBoxLayout(navTab);
@@ -1183,7 +1338,7 @@ void MainWindow::setupUi()
     tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (Compass)"));
 
     // ------------------------------------------------------------------------
-    // TAB 5: High-Rate DAQ Telemetry (StripChart)
+    // TAB 6: High-Rate DAQ Telemetry (StripChart)
     // ------------------------------------------------------------------------
     auto *daqTab = new QWidget(tabWidget);
     auto *daqLayout = new QVBoxLayout(daqTab);
