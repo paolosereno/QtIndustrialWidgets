@@ -27,6 +27,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QSpinBox>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QStyleFactory>
@@ -34,9 +35,11 @@
 #include <QtCore/QPropertyAnimation>
 #include <QtCore/QEasingCurve>
 #include <QtCore/QMetaEnum>
+#include <QtCore/QSignalBlocker>
 #include <QtGui/QPalette>
 #include <QtCore/QtMath>
 
+#include <array>
 #include <limits>
 
 using namespace QtIndustrialWidgets;
@@ -719,7 +722,9 @@ void MainWindow::setupUi()
     auto *circCtrlLayout = new QHBoxLayout();
     circCtrlLayout->setSpacing(12);
 
-    auto *sliderLbl = new QLabel(QStringLiteral("Level:"), circBox);
+    // The level slider is in absolute scale units (0 - 100): narrowing the range below shows
+    // Under/Overrange
+    auto *sliderLbl = new QLabel(QStringLiteral("Level (absolute):"), circBox);
     m_circBargraphSlider = new QSlider(Qt::Horizontal, circBox);
     m_circBargraphSlider->setRange(0, 100);
     m_circBargraphSlider->setValue(65);
@@ -758,13 +763,20 @@ void MainWindow::setupUi()
         if (!m_circBargraphBar || !m_circStateLabel) return;
         const char *stateName = QMetaEnum::fromType<CircularBargraph::ValueState>()
                                     .valueToKey(static_cast<int>(m_circBargraphBar->valueState()));
-        m_circStateLabel->setText(QStringLiteral("State: %1 | raw %2 | value %3")
+        m_circStateLabel->setText(QStringLiteral("State: %1 | raw %2 | value %3 | warning %4 / error %5 | range %6 - %7")
                                       .arg(QString::fromLatin1(stateName))
                                       .arg(m_circBargraphBar->rawValue(), 0, 'f', 1)
-                                      .arg(m_circBargraphBar->value(), 0, 'f', 1));
+                                      .arg(m_circBargraphBar->value(), 0, 'f', 1)
+                                      .arg(m_circBargraphBar->warningThreshold(), 0, 'f', 0)
+                                      .arg(m_circBargraphBar->errorThreshold(), 0, 'f', 0)
+                                      .arg(m_circBargraphBar->minimum(), 0, 'f', 0)
+                                      .arg(m_circBargraphBar->maximum(), 0, 'f', 0));
     };
+    // All three bargraphs get the same settings, so the Bar one alone drives the label
     connect(m_circBargraphBar, &CircularBargraph::valueStateChanged, this, updateCircStateLabel);
     connect(m_circBargraphBar, &CircularBargraph::valueChanged, this, updateCircStateLabel);
+    connect(m_circBargraphBar, &CircularBargraph::thresholdChanged, this, updateCircStateLabel);
+    connect(m_circBargraphBar, &CircularBargraph::rangeChanged, this, updateCircStateLabel);
     updateCircStateLabel();
 
     auto *resetPeakBtn = new QPushButton(QStringLiteral("Reset Peak"), circBox);
@@ -796,6 +808,126 @@ void MainWindow::setupUi()
     circMainLayout->addLayout(circStateLayout);
 
     bargraphLayout->addWidget(circBox, 1);
+
+    // Feature settings: every control acts on all three bargraphs
+    auto *circSettingsBox = new QGroupBox(QStringLiteral("Segments, Zones, Peak and Range"), bargraphTab);
+    auto *circSettingsLayout = new QGridLayout(circSettingsBox);
+    circSettingsLayout->setContentsMargins(16, 16, 16, 14);
+    circSettingsLayout->setHorizontalSpacing(12);
+    circSettingsLayout->setVerticalSpacing(10);
+    const auto allBargraphs = [this]() {
+        return std::array<CircularBargraph *, 3>{m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi};
+    };
+
+    // Segment count ("Default" restores the per-bargraph counts set above)
+    auto *segmentsCombo = new QComboBox(circSettingsBox);
+    segmentsCombo->setObjectName(QStringLiteral("circSegmentsCombo"));
+    segmentsCombo->addItem(QStringLiteral("Default (24 / 32 / 16)"), 0);
+    for (int count : {12, 24, 48}) {
+        segmentsCombo->addItem(QString::number(count), count);
+    }
+    connect(segmentsCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, segmentsCombo](int index) {
+        const int count = segmentsCombo->itemData(index).toInt();
+        m_circBargraphBar->setSegmentCount(count > 0 ? count : 24);
+        m_circBargraphDot->setSegmentCount(count > 0 ? count : 32);
+        m_circBargraphSemi->setSegmentCount(count > 0 ? count : 16);
+    });
+
+    // Thresholds: setting one may push the other (warning <= error); the sliders follow
+    // thresholdChanged() of the Bar bargraph
+    const auto addThresholdSlider = [circSettingsBox](const QString &objectName, double value) {
+        auto *slider = new QSlider(Qt::Horizontal, circSettingsBox);
+        slider->setObjectName(objectName);
+        slider->setRange(0, 100);
+        slider->setValue(static_cast<int>(value));
+        return slider;
+    };
+    auto *warnSlider = addThresholdSlider(QStringLiteral("circWarningSlider"), m_circBargraphBar->warningThreshold());
+    auto *errorSlider = addThresholdSlider(QStringLiteral("circErrorSlider"), m_circBargraphBar->errorThreshold());
+    auto *warnValLbl = new QLabel(QString::number(warnSlider->value()), circSettingsBox);
+    auto *errorValLbl = new QLabel(QString::number(errorSlider->value()), circSettingsBox);
+    warnValLbl->setFixedWidth(40);
+    errorValLbl->setFixedWidth(40);
+    connect(warnSlider, &QSlider::valueChanged, this, [allBargraphs](int val) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setWarningThreshold(val);
+    });
+    connect(errorSlider, &QSlider::valueChanged, this, [allBargraphs](int val) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setErrorThreshold(val);
+    });
+    connect(m_circBargraphBar, &CircularBargraph::thresholdChanged, this,
+            [warnSlider, errorSlider, warnValLbl, errorValLbl](double warning, double error) {
+        const QSignalBlocker blockWarn(warnSlider);
+        const QSignalBlocker blockError(errorSlider);
+        warnSlider->setValue(qRound(warning));
+        errorSlider->setValue(qRound(error));
+        warnValLbl->setText(QString::number(warning, 'f', 0));
+        errorValLbl->setText(QString::number(error, 'f', 0));
+    });
+
+    // Peak hold time and decay rate
+    auto *holdSpin = new QSpinBox(circSettingsBox);
+    holdSpin->setObjectName(QStringLiteral("circPeakHoldSpin"));
+    holdSpin->setRange(0, 5000);
+    holdSpin->setSingleStep(100);
+    holdSpin->setSuffix(QStringLiteral(" ms"));
+    holdSpin->setValue(m_circBargraphBar->peakHoldTimeMs());
+    connect(holdSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [allBargraphs](int ms) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setPeakHoldTimeMs(ms);
+    });
+
+    auto *decaySpin = new QDoubleSpinBox(circSettingsBox);
+    decaySpin->setObjectName(QStringLiteral("circPeakDecaySpin"));
+    decaySpin->setRange(1.0, 200.0);
+    decaySpin->setDecimals(1);
+    decaySpin->setSingleStep(5.0);
+    decaySpin->setSuffix(QStringLiteral(" units/s"));
+    decaySpin->setValue(m_circBargraphBar->peakDecayRate());
+    connect(decaySpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [allBargraphs](double rate) {
+        for (CircularBargraph *bg : allBargraphs()) bg->setPeakDecayRate(rate);
+    });
+
+    // Range: setRange() rejects min >= max, so both spin boxes are re-read from the Bar
+    // bargraph after every change
+    auto *minSpin = new QSpinBox(circSettingsBox);
+    minSpin->setObjectName(QStringLiteral("circMinimumSpin"));
+    minSpin->setRange(0, 99);
+    minSpin->setValue(static_cast<int>(m_circBargraphBar->minimum()));
+    auto *maxSpin = new QSpinBox(circSettingsBox);
+    maxSpin->setObjectName(QStringLiteral("circMaximumSpin"));
+    maxSpin->setRange(1, 100);
+    maxSpin->setValue(static_cast<int>(m_circBargraphBar->maximum()));
+    const auto applyRange = [this, allBargraphs, minSpin, maxSpin]() {
+        for (CircularBargraph *bg : allBargraphs()) bg->setRange(minSpin->value(), maxSpin->value());
+        const QSignalBlocker blockMin(minSpin);
+        const QSignalBlocker blockMax(maxSpin);
+        minSpin->setValue(qRound(m_circBargraphBar->minimum()));
+        maxSpin->setValue(qRound(m_circBargraphBar->maximum()));
+    };
+    connect(minSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, applyRange);
+    connect(maxSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, applyRange);
+
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Segments:"), circSettingsBox), 0, 0);
+    circSettingsLayout->addWidget(segmentsCombo, 0, 1);
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Range min:"), circSettingsBox), 0, 3);
+    circSettingsLayout->addWidget(minSpin, 0, 4);
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Range max:"), circSettingsBox), 0, 5);
+    circSettingsLayout->addWidget(maxSpin, 0, 6);
+
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Warning threshold:"), circSettingsBox), 1, 0);
+    circSettingsLayout->addWidget(warnSlider, 1, 1, 1, 5);
+    circSettingsLayout->addWidget(warnValLbl, 1, 6);
+
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Error threshold:"), circSettingsBox), 2, 0);
+    circSettingsLayout->addWidget(errorSlider, 2, 1, 1, 5);
+    circSettingsLayout->addWidget(errorValLbl, 2, 6);
+
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Peak hold time:"), circSettingsBox), 3, 0);
+    circSettingsLayout->addWidget(holdSpin, 3, 1);
+    circSettingsLayout->addWidget(new QLabel(QStringLiteral("Peak decay rate:"), circSettingsBox), 3, 3);
+    circSettingsLayout->addWidget(decaySpin, 3, 4, 1, 3);
+    circSettingsLayout->setColumnStretch(2, 1);
+
+    bargraphLayout->addWidget(circSettingsBox);
     tabWidget->addTab(bargraphTab, QStringLiteral("⭕ Circular Bargraph (CircularBargraph)"));
 
     // ------------------------------------------------------------------------
