@@ -47,6 +47,8 @@ enum class Zone : quint8 { Normal, Warning, Error };
  * c_i = minimum + (i + 0.5) / N * (maximum - minimum).
  *
  * Error if c_i >= errorThreshold, else Warning if c_i >= warningThreshold, else Normal.
+ * Evaluated as i + 0.5 >= (threshold - minimum) * N / (maximum - minimum), which is
+ * independent of FMA contraction.
  */
 std::vector<Zone> computeSegmentZones(double minimum, double maximum, double warningThreshold,
                                       double errorThreshold, int segmentCount);
@@ -59,6 +61,15 @@ constexpr double kUnlitTintWeight = 0.25;
  * per channel, rounded to the nearest integer; opaque.
  */
 QColor unlitTint(const QColor &zoneColor, const QColor &ghostColor);
+
+/** \brief Result of one peak-decay step. */
+struct PeakDecayStep {
+    double peak{0.0};     ///< New peak value (never below the value)
+    bool finished{false}; ///< The peak has reached the value: decay stops
+};
+
+/** \brief One decay step: the peak falls by \a rate * \a dtSeconds towards \a value. */
+PeakDecayStep decayPeakStep(double peak, double value, double rate, double dtSeconds);
 
 /** \brief Classifies a raw input against the range. */
 InputState classifyInput(double raw, double minimum, double maximum);

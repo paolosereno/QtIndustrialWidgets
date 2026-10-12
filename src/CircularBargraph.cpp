@@ -188,12 +188,10 @@ void CircularBargraphPrivate::updatePeakDecay(CircularBargraph *q)
         dt = 0.033;
     }
 
-    m_peakValue -= m_peakDecayRate * dt;
-    if (m_peakValue <= m_value) {
-        m_peakValue = m_value;
-        if (m_decayTimer) {
-            m_decayTimer->stop();
-        }
+    const internal::PeakDecayStep step = internal::decayPeakStep(m_peakValue, m_value, m_peakDecayRate, dt);
+    m_peakValue = step.peak;
+    if (step.finished && m_decayTimer) {
+        m_decayTimer->stop();
     }
     q->update();
 }

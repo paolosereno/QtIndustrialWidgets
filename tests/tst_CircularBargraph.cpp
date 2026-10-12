@@ -251,6 +251,7 @@ private Q_SLOTS:
     void segmentZonesByPosition();
     void unlitTintColor();
     void zoneColorsByPositionPixels();
+    void peakDecayStepIndependentOfFma();
     void thresholdsStayOrdered();
     void thresholdsOrderIndependent();
     void pixelColorAtSegmentCenters_data();
@@ -1088,6 +1089,29 @@ void tst_CircularBargraph::zoneColorsByPositionPixels()
     bargraph.setValue(20.0); // n = 2 -> segment 1
     bargraph.resetPeak();
     QCOMPARE(sampleSegments(renderAt(bargraph, dpr), bargraph), QStringLiteral("nNnwwwweee"));
+}
+
+void tst_CircularBargraph::peakDecayStepIndependentOfFma()
+{
+    // Exact steps.
+    internal::PeakDecayStep s = internal::decayPeakStep(30.0, 20.0, 25.0, 0.2); // drop 5
+    QCOMPARE(s.finished, false);
+    QCOMPARE(s.peak, 25.0);
+    s = internal::decayPeakStep(25.0, 20.0, 25.0, 0.2);
+    QCOMPARE(s.finished, true);
+    QCOMPARE(s.peak, 20.0);
+    s = internal::decayPeakStep(21.0, 20.0, 25.0, 0.2); // overshoot clamps to the value
+    QCOMPARE(s.finished, true);
+    QCOMPARE(s.peak, 20.0);
+
+    // 25 * 0.161 is not exact in binary. With the old form peak - rate * dt <= value, a build
+    // that rounds the product first (no FMA) says decay has finished, a fused multiply-add says
+    // it has not. The decision must not depend on how the compiler contracts the expression:
+    // peak - value <= rate * dt gives the same answer in both builds (here: not finished, which
+    // is also the exact-arithmetic answer for these inputs, though not for every input).
+    s = internal::decayPeakStep(24.025000000000002, 20.0, 25.0, 0.161);
+    QCOMPARE(s.finished, false);
+    QVERIFY(s.peak >= 20.0);
 }
 
 QTEST_MAIN(tst_CircularBargraph)

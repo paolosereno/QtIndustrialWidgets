@@ -32,15 +32,37 @@ std::vector<Zone> computeSegmentZones(double minimum, double maximum, double war
     }
     std::vector<Zone> zones(static_cast<size_t>(segmentCount), Zone::Normal);
     const double span = maximum - minimum;
+
+    // c_i >= t is decided in segment units, i + 0.5 >= pos(t) with pos(t) = (t - min) * N / span,
+    // so that no product is followed by a sum: the result does not depend on whether the
+    // compiler contracts a * b + c into an FMA (it does on arm64 / with -ffp-contract=fast).
+    // For span < 0 the inequality flips; for span == 0 every centre is the minimum.
+    const auto atOrAbove = [&](int i, double threshold) {
+        if (span == 0.0) {
+            return minimum >= threshold;
+        }
+        const double pos = (threshold - minimum) * segmentCount / span;
+        return (span > 0.0) ? (i + 0.5 >= pos) : (i + 0.5 <= pos);
+    };
     for (int i = 0; i < segmentCount; ++i) {
-        const double centre = minimum + (i + 0.5) / segmentCount * span;
-        if (centre >= errorThreshold) {
+        if (atOrAbove(i, errorThreshold)) {
             zones[static_cast<size_t>(i)] = Zone::Error;
-        } else if (centre >= warningThreshold) {
+        } else if (atOrAbove(i, warningThreshold)) {
             zones[static_cast<size_t>(i)] = Zone::Warning;
         }
     }
     return zones;
+}
+
+PeakDecayStep decayPeakStep(double peak, double value, double rate, double dtSeconds)
+{
+    // Decide on peak - value <= drop rather than on peak - rate * dt <= value: the latter can be
+    // contracted into an FMA, which changes the decision near the boundary.
+    const double drop = rate * dtSeconds;
+    if (peak - value <= drop) {
+        return {value, true};
+    }
+    return {std::max(value, peak - drop), false};
 }
 
 QColor unlitTint(const QColor &zoneColor, const QColor &ghostColor)
