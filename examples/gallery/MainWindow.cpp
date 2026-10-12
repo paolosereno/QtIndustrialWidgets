@@ -28,6 +28,7 @@
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QSpinBox>
+#include <QtWidgets/QScrollArea>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QStyleFactory>
@@ -653,7 +654,17 @@ void MainWindow::setupUi()
     row++;
 
     controlsLayout->setRowStretch(row, 1);
-    tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+    // The tab is taller than the default window: scroll instead of squashing the widgets.
+    // A Minimum vertical policy keeps the content at least at its size hint.
+    controlsTab->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    auto *controlsScroll = new QScrollArea(tabWidget);
+    controlsScroll->setWidgetResizable(true);
+    controlsScroll->setFrameShape(QFrame::NoFrame);
+    controlsScroll->setWidget(controlsTab);
+    // setWidget() turns on autoFillBackground; keep the themed tab pane visible behind the content
+    controlsTab->setAutoFillBackground(false);
+    controlsScroll->viewport()->setAutoFillBackground(false);
+    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
 
     // ------------------------------------------------------------------------
     // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
