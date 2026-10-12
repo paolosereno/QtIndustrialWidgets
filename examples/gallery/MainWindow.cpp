@@ -167,7 +167,7 @@ void MainWindow::setupUi()
     dashLayout->setSpacing(14);
 
     // Row 1: Radial Gauges Group
-    auto *radialGroup = new QGroupBox(QStringLiteral("Powertrain & Dynamics (Radial Gauges)"), dashTab);
+    auto *radialGroup = new QGroupBox(QStringLiteral("Powertrain && Dynamics (Radial Gauges)"), dashTab);
     auto *radialLayout = new QHBoxLayout(radialGroup);
     radialLayout->setContentsMargins(12, 16, 12, 12);
     radialLayout->setSpacing(14);
@@ -232,7 +232,7 @@ void MainWindow::setupUi()
     lowerRowLayout->setSpacing(14);
 
     // Group for Linear Gauges / Thermometers
-    auto *linearGroup = new QGroupBox(QStringLiteral("Thermal & Fluid Systems (Linear Gauges)"), dashTab);
+    auto *linearGroup = new QGroupBox(QStringLiteral("Thermal && Fluid Systems (Linear Gauges)"), dashTab);
     auto *linearLayout = new QHBoxLayout(linearGroup);
     linearLayout->setContentsMargins(12, 16, 12, 12);
     linearLayout->setSpacing(14);
@@ -603,7 +603,7 @@ void MainWindow::setupUi()
     // ------------------------------------------------------------------------
     // Multi-Channel VU & Level Meter Showcase (LevelMeter)
     // ------------------------------------------------------------------------
-    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic & Signal Level Meters (LevelMeter)"), controlsTab);
+    auto *meterBox = new QGroupBox(QStringLiteral("Acoustic && Signal Level Meters (LevelMeter)"), controlsTab);
     auto *meterLayout = new QHBoxLayout(meterBox);
     meterLayout->setSpacing(24);
     meterLayout->setContentsMargins(18, 18, 18, 14);
@@ -665,7 +665,7 @@ void MainWindow::setupUi()
     // setWidget() turns on autoFillBackground; keep the themed tab pane visible behind the content
     controlsTab->setAutoFillBackground(false);
     controlsScroll->viewport()->setAutoFillBackground(false);
-    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls && Diagnostics"));
 
     // ------------------------------------------------------------------------
     // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
@@ -1014,7 +1014,7 @@ void MainWindow::setupUi()
     annControlsRow->setSpacing(14);
 
     // Operator Pushbuttons (ISA-18.1 Sequences A & M)
-    auto *operatorBox = new QGroupBox(QStringLiteral("Operator Pushbuttons (ISA-18.1 Sequences A & M)"), annunciatorTab);
+    auto *operatorBox = new QGroupBox(QStringLiteral("Operator Pushbuttons (ISA-18.1 Sequences A && M)"), annunciatorTab);
     auto *operatorLayout = new QHBoxLayout(operatorBox);
     operatorLayout->setSpacing(12);
     operatorLayout->setContentsMargins(14, 16, 14, 14);
@@ -1047,9 +1047,10 @@ void MainWindow::setupUi()
     annControlsRow->addWidget(operatorBox, 1);
 
     // Alarm Trip Simulator & ISA Sequence selector
-    auto *simBox = new QGroupBox(QStringLiteral("Alarm Event Simulator & Configuration"), annunciatorTab);
-    auto *simLayout = new QHBoxLayout(simBox);
-    simLayout->setSpacing(12);
+    auto *simBox = new QGroupBox(QStringLiteral("Alarm Event Simulator && Configuration"), annunciatorTab);
+    // Two rows: on one row the box gets less width than its controls' size hints (#28)
+    auto *simLayout = new QVBoxLayout(simBox);
+    simLayout->setSpacing(10);
     simLayout->setContentsMargins(14, 16, 14, 14);
 
     auto *seqCombo = new QComboBox(simBox);
@@ -1088,12 +1089,20 @@ void MainWindow::setupUi()
         }
     });
 
-    simLayout->addWidget(new QLabel(QStringLiteral("Sequence:"), simBox));
-    simLayout->addWidget(seqCombo);
-    simLayout->addWidget(tripTurbineBtn);
-    simLayout->addWidget(tripSteamBtn);
-    simLayout->addWidget(tripFireBtn);
-    simLayout->addWidget(clearAllBtn);
+    auto *seqRow = new QHBoxLayout();
+    seqRow->setSpacing(12);
+    seqRow->addWidget(new QLabel(QStringLiteral("Sequence:"), simBox));
+    seqRow->addWidget(seqCombo);
+    seqRow->addStretch();
+    simLayout->addLayout(seqRow);
+
+    auto *tripRow = new QHBoxLayout();
+    tripRow->setSpacing(12);
+    tripRow->addWidget(tripTurbineBtn);
+    tripRow->addWidget(tripSteamBtn);
+    tripRow->addWidget(tripFireBtn);
+    tripRow->addWidget(clearAllBtn);
+    simLayout->addLayout(tripRow);
     annControlsRow->addWidget(simBox, 1);
 
     annLayout->addLayout(annControlsRow);
@@ -1201,7 +1210,7 @@ void MainWindow::setupUi()
     navLayout->addLayout(instrumentsRow, 1);
 
     // Bottom Controls & Simulation Console
-    auto *navControlsBox = new QGroupBox(QStringLiteral("Navigation Controls & Autopilot Simulation"), navTab);
+    auto *navControlsBox = new QGroupBox(QStringLiteral("Navigation Controls && Autopilot Simulation"), navTab);
     auto *ncLayout = new QGridLayout(navControlsBox);
     ncLayout->setContentsMargins(16, 16, 16, 14);
     ncLayout->setSpacing(12);
@@ -1335,7 +1344,7 @@ void MainWindow::setupUi()
     });
 
     navLayout->addWidget(navControlsBox);
-    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (Compass)"));
+    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro && Marine Compass (Compass)"));
 
     // ------------------------------------------------------------------------
     // TAB 6: High-Rate DAQ Telemetry (StripChart)
@@ -1361,7 +1370,7 @@ void MainWindow::setupUi()
     daqLayout->addWidget(m_daqChart, 1);
 
     // Controls panel
-    auto *daqControlsBox = new QGroupBox(QStringLiteral("High-Rate Acquisition Controls & Real-Time Performance"), daqTab);
+    auto *daqControlsBox = new QGroupBox(QStringLiteral("High-Rate Acquisition Controls && Real-Time Performance"), daqTab);
     auto *daqControlsLayout = new QGridLayout(daqControlsBox);
     daqControlsLayout->setContentsMargins(12, 16, 12, 12);
     daqControlsLayout->setHorizontalSpacing(16);
@@ -1753,12 +1762,31 @@ void MainWindow::applyTheme(bool dark)
             // Without these rules a combo keeps the style's light background under the light text.
             // No QComboBox::drop-down rule: styling it hides the style's arrow. The popup list takes
             // its selection colours from the QComboBox rule.
-            "QComboBox { background-color: #242c3d; border: 1px solid #364259; border-radius: 4px; color: #e1e7ec; padding: 2px 8px; selection-background-color: #2e384e; selection-color: #00e5ff; }"
+            "QComboBox { background-color: #242c3d; border: 1px solid #364259; border-radius: 4px; color: #e1e7ec; padding: 2px 5px; selection-background-color: #2e384e; selection-color: #00e5ff; }"
             "QComboBox:hover, QComboBox:on { border-color: #00e5ff; }"
             "QComboBox QAbstractItemView { background-color: #242c3d; border: 1px solid #364259; color: #e1e7ec; selection-background-color: #2e384e; selection-color: #00e5ff; outline: 0; }"
             "QSlider::groove:horizontal { border: 1px solid #2e384e; height: 6px; background: #1a202c; border-radius: 3px; }"
             "QSlider::sub-page:horizontal { background: #00e5ff; border-radius: 3px; }"
             "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #00e5ff; width: 16px; margin-top: -5px; margin-bottom: -5px; border-radius: 8px; }"
+            // Scroll bars and the tab-bar scroll buttons otherwise keep the style's light palette
+            "QScrollBar:vertical { background: #1a202c; width: 14px; margin: 14px 0 14px 0; border: none; }"
+            "QScrollBar:horizontal { background: #1a202c; height: 14px; margin: 0 14px 0 14px; border: none; }"
+            "QScrollBar::handle { background: #8e9bb0; border-radius: 4px; }"
+            "QScrollBar::handle:vertical { min-height: 24px; margin: 0 2px; }"
+            "QScrollBar::handle:horizontal { min-width: 24px; margin: 2px 0; }"
+            "QScrollBar::handle:hover { background: #00e5ff; }"
+            "QScrollBar::add-line, QScrollBar::sub-line { background: #242c3d; border: 1px solid #364259; }"
+            "QScrollBar::add-line:vertical { subcontrol-position: bottom; subcontrol-origin: margin; height: 14px; }"
+            "QScrollBar::sub-line:vertical { subcontrol-position: top; subcontrol-origin: margin; height: 14px; }"
+            "QScrollBar::add-line:horizontal { subcontrol-position: right; subcontrol-origin: margin; width: 14px; }"
+            "QScrollBar::sub-line:horizontal { subcontrol-position: left; subcontrol-origin: margin; width: 14px; }"
+            "QScrollBar::add-page, QScrollBar::sub-page { background: none; }"
+            // Styling the scroll-bar buttons hides the style's arrows, so they come from the gallery resources
+            "QScrollBar::up-arrow:vertical { image: url(:/gallery/images/arrow-up.png); width: 8px; height: 5px; }"
+            "QScrollBar::down-arrow:vertical { image: url(:/gallery/images/arrow-down.png); width: 8px; height: 5px; }"
+            "QScrollBar::left-arrow:horizontal { image: url(:/gallery/images/arrow-left.png); width: 5px; height: 8px; }"
+            "QScrollBar::right-arrow:horizontal { image: url(:/gallery/images/arrow-right.png); width: 5px; height: 8px; }"
+            "QTabBar QToolButton { background-color: #242c3d; border: 1px solid #364259; }"
         );
         setStyleSheet(qss);
 
@@ -1841,6 +1869,12 @@ void MainWindow::applyTheme(bool dark)
             m_compassNorthUp->setDialColor(QColor(20, 24, 32));
             m_compassNorthUp->setBezelColor(QColor(48, 56, 70));
             m_compassNorthUp->setTextColor(QColor(225, 231, 236));
+        }
+
+        // The default dial colour (24, 28, 36) is almost the dark panel colour: use black so the
+        // disc stays visible (it is decorative, the segments carry the value)
+        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+            if (bg) bg->setDialColor(QColor(0, 0, 0));
         }
     } else {
         // Modern Clean Light SCADA Theme
@@ -1956,6 +1990,11 @@ void MainWindow::applyTheme(bool dark)
             m_compassNorthUp->setDialColor(QColor(242, 244, 248));
             m_compassNorthUp->setBezelColor(QColor(200, 208, 218));
             m_compassNorthUp->setTextColor(QColor(30, 39, 46));
+        }
+
+        // Back to the CircularBargraph default dial colour
+        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+            if (bg) bg->setDialColor(QColor(24, 28, 36));
         }
     }
 }

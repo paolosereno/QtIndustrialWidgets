@@ -6,6 +6,7 @@ add_executable(QtIndustrialWidgetsGallery
     main.cpp
     MainWindow.h
     MainWindow.cpp
+    gallery.qrc
 )
 
 target_link_libraries(QtIndustrialWidgetsGallery
@@ -16,5 +17,6 @@ target_link_libraries(QtIndustrialWidgetsGallery
 
 set_target_properties(QtIndustrialWidgetsGallery PROPERTIES
     AUTOMOC ON
+    AUTORCC ON
     OUTPUT_NAME "QtIndustrialWidgetsGallery"
 )
