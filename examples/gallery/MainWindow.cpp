@@ -649,10 +649,18 @@ void MainWindow::setupUi()
     controlsLayout->addWidget(meterBox, row, 0, 1, 3);
     row++;
 
+    controlsLayout->setRowStretch(row, 1);
+    tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+
     // ------------------------------------------------------------------------
-    // Circular Arc LED Bargraph Showcase (CircularBargraph)
+    // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
     // ------------------------------------------------------------------------
-    auto *circBox = new QGroupBox(QStringLiteral("Circular Arc LED Indicators (CircularBargraph)"), controlsTab);
+    auto *bargraphTab = new QWidget(tabWidget);
+    auto *bargraphLayout = new QVBoxLayout(bargraphTab);
+    bargraphLayout->setContentsMargins(20, 20, 20, 20);
+    bargraphLayout->setSpacing(14);
+
+    auto *circBox = new QGroupBox(QStringLiteral("Circular Arc LED Indicators (CircularBargraph)"), bargraphTab);
     auto *circMainLayout = new QVBoxLayout(circBox);
     circMainLayout->setContentsMargins(16, 16, 16, 14);
     circMainLayout->setSpacing(12);
@@ -699,11 +707,13 @@ void MainWindow::setupUi()
     m_circBargraphSemi->setPeakHoldEnabled(true);
     m_circBargraphSemi->setUnit(QStringLiteral("SEMI"));
 
-    circWidgetsLayout->addWidget(m_circBargraphBar);
-    circWidgetsLayout->addWidget(m_circBargraphDot);
-    circWidgetsLayout->addWidget(m_circBargraphSemi);
-    circWidgetsLayout->addStretch();
-    circMainLayout->addLayout(circWidgetsLayout);
+    // The dial is painted in min(width, height) - 8 px, so 200x200 keeps it >= 180 px across
+    for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+        bg->setMinimumSize(200, 200);
+        bg->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        circWidgetsLayout->addWidget(bg, 1);
+    }
+    circMainLayout->addLayout(circWidgetsLayout, 1);
 
     // Controls row: slider + reset peak + mode toggle
     auto *circCtrlLayout = new QHBoxLayout();
@@ -785,14 +795,11 @@ void MainWindow::setupUi()
     circStateLayout->addWidget(m_circStateLabel, 1);
     circMainLayout->addLayout(circStateLayout);
 
-    controlsLayout->addWidget(circBox, row, 0, 1, 3);
-    row++;
-
-    controlsLayout->setRowStretch(row, 1);
-    tabWidget->addTab(controlsTab, QStringLiteral("🎛️ Manual Controls & Diagnostics"));
+    bargraphLayout->addWidget(circBox, 1);
+    tabWidget->addTab(bargraphTab, QStringLiteral("⭕ Circular Bargraph (CircularBargraph)"));
 
     // ------------------------------------------------------------------------
-    // TAB 3: Alarm Annunciator Matrix (ANSI/ISA-18.1)
+    // TAB 4: Alarm Annunciator Matrix (ANSI/ISA-18.1)
     // ------------------------------------------------------------------------
     auto *annunciatorTab = new QWidget(tabWidget);
     auto *annLayout = new QVBoxLayout(annunciatorTab);
@@ -986,7 +993,7 @@ void MainWindow::setupUi()
     tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
 
     // ------------------------------------------------------------------------
-    // TAB 4: Navigation & Directional Gyro (Compass)
+    // TAB 5: Navigation & Directional Gyro (Compass)
     // ------------------------------------------------------------------------
     auto *navTab = new QWidget(tabWidget);
     auto *navLayout = new QVBoxLayout(navTab);
@@ -1183,7 +1190,7 @@ void MainWindow::setupUi()
     tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro & Marine Compass (Compass)"));
 
     // ------------------------------------------------------------------------
-    // TAB 5: High-Rate DAQ Telemetry (StripChart)
+    // TAB 6: High-Rate DAQ Telemetry (StripChart)
     // ------------------------------------------------------------------------
     auto *daqTab = new QWidget(tabWidget);
     auto *daqLayout = new QVBoxLayout(daqTab);
