@@ -4,12 +4,15 @@
 
 #include <QtIndustrialWidgets/LinearGauge.h>
 
+#include "internal/LinearGaugeScale.h"
+
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
 #include <QtGui/QResizeEvent>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QLinearGradient>
+#include <QtCore/QStringList>
 #include <QtCore/QtMath>
 #include <algorithm>
 #include <cmath>
@@ -48,6 +51,20 @@ public:
     double m_bulbRadius{0.0};
     bool m_wasWarning{false};
     bool m_wasError{false};
+
+    // Text of every major scale label, minimum first
+    QStringList majorLabelTexts() const
+    {
+        QStringList texts;
+        const double valRange = m_maximum - m_minimum;
+        for (int i = 0; i <= m_majorTicks; ++i) {
+            const double frac = static_cast<double>(i) / m_majorTicks;
+            const double val = m_minimum + frac * valRange;
+            texts << ((m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
+                                         : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1));
+        }
+        return texts;
+    }
 };
 
 
@@ -429,7 +446,6 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             const double labelX = tickStartX + majorTickLen + 5.0;
 
             int totalMinorDivisions = d_ptr->m_majorTicks * (d_ptr->m_minorTicks + 1);
-            double valRange = d_ptr->m_maximum - d_ptr->m_minimum;
 
             // Minor ticks
             if (d_ptr->m_minorTicks > 0) {
@@ -453,20 +469,24 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
 
             for (int i = 0; i <= d_ptr->m_majorTicks; ++i) {
                 double frac = static_cast<double>(i) / d_ptr->m_majorTicks;
-                double val = d_ptr->m_minimum + frac * valRange;
                 double y = d_ptr->m_tubeRect.bottom() - frac * d_ptr->m_tubeRect.height();
-
-                painter.setPen(QPen(d_ptr->m_scaleColor, 1.6));
                 painter.drawLine(QPointF(tickStartX, y), QPointF(tickStartX + majorTickLen, y));
+            }
 
-                QString s = (d_ptr->m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
-                                               : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1);
-
-                QFontMetricsF fm(f);
-                QRectF textR = fm.boundingRect(s);
-                QRectF drawR(labelX, y - textR.height() * 0.5, w - labelX - 4.0, textR.height());
-                painter.setPen(d_ptr->m_textColor);
-                painter.drawText(drawR, Qt::AlignLeft | Qt::AlignVCenter, s);
+            // Labels: only those that keep the minimum gap, the end ones inside the scale.
+            // Positions along the scale run upwards from the tube bottom.
+            const QFontMetricsF fm(f);
+            const QStringList texts = d_ptr->majorLabelTexts();
+            std::vector<double> extents;
+            for (const QString &s : texts) {
+                extents.push_back(fm.boundingRect(s).height());
+            }
+            const internal::ScaleLabelLayout layout = internal::layoutScaleLabels(
+                extents, d_ptr->m_tubeRect.height(), internal::scaleLabelMinGap(fm.height()));
+            painter.setPen(d_ptr->m_textColor);
+            for (const internal::ScaleLabelSlot &slot : layout.labels) {
+                QRectF drawR(labelX, d_ptr->m_tubeRect.bottom() - slot.end, w - labelX - 4.0, slot.end - slot.start);
+                painter.drawText(drawR, Qt::AlignLeft | Qt::AlignVCenter, texts.at(slot.index));
             }
         }
 
@@ -525,7 +545,6 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             const double labelY = tickStartY + majorTickLen + 2.0;
 
             int totalMinorDivisions = d_ptr->m_majorTicks * (d_ptr->m_minorTicks + 1);
-            double valRange = d_ptr->m_maximum - d_ptr->m_minimum;
 
             if (d_ptr->m_minorTicks > 0) {
                 painter.setPen(QPen(d_ptr->m_scaleColor.darker(130), 1.0));
@@ -543,21 +562,27 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             f.setBold(true);
             painter.setFont(f);
 
+            painter.setPen(QPen(d_ptr->m_scaleColor, 1.6));
             for (int i = 0; i <= d_ptr->m_majorTicks; ++i) {
                 double frac = static_cast<double>(i) / d_ptr->m_majorTicks;
-                double val = d_ptr->m_minimum + frac * valRange;
                 double x = d_ptr->m_tubeRect.left() + frac * d_ptr->m_tubeRect.width();
-
-                painter.setPen(QPen(d_ptr->m_scaleColor, 1.6));
                 painter.drawLine(QPointF(x, tickStartY), QPointF(x, tickStartY + majorTickLen));
+            }
 
-                QString s = (d_ptr->m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
-                                               : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1);
-
-                QFontMetricsF fm(f);
-                QRectF textR = fm.boundingRect(s);
-                QRectF drawR(x - textR.width() * 0.5, labelY, textR.width(), textR.height());
-                painter.setPen(d_ptr->m_textColor);
+            // Labels: only those that keep the minimum gap, the end ones inside the scale
+            // (the last one no longer reaches under the digital display)
+            const QFontMetricsF fm(f);
+            const QStringList texts = d_ptr->majorLabelTexts();
+            std::vector<double> extents;
+            for (const QString &s : texts) {
+                extents.push_back(fm.boundingRect(s).width());
+            }
+            const internal::ScaleLabelLayout layout = internal::layoutScaleLabels(
+                extents, d_ptr->m_tubeRect.width(), internal::scaleLabelMinGap(fm.height()));
+            painter.setPen(d_ptr->m_textColor);
+            for (const internal::ScaleLabelSlot &slot : layout.labels) {
+                const QString &s = texts.at(slot.index);
+                QRectF drawR(d_ptr->m_tubeRect.left() + slot.start, labelY, slot.end - slot.start, fm.boundingRect(s).height());
                 painter.drawText(drawR, Qt::AlignCenter, s);
             }
         }

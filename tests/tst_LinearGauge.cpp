@@ -4,9 +4,14 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/LinearGauge.h>
+#include <QtGui/QFontMetricsF>
+#include <QtGui/QImage>
+#include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
 #include "internal/LinearGaugeScale.h"
+
+#include <algorithm>
 
 #include <cmath>
 #include <limits>
@@ -30,7 +35,88 @@ private Q_SLOTS:
     void scaleLabelLayout();
     void scaleLabelLayoutNonFinite();
     void scaleLabelMinGap();
+    void scaleLabelsReadable_data();
+    void scaleLabelsReadable();
 };
+
+namespace {
+
+constexpr QRgb kLabelColor = 0xffff00ff; // magenta: used by nothing else in the gauge
+constexpr QRgb kTickColor = 0xff0000ff;  // pure blue major ticks
+
+bool isLabelPixel(QRgb p)
+{
+    // Anti-aliased magenta on the dark casing: red and blue well above green
+    return qRed(p) >= 120 && qBlue(p) >= 120 && qGreen(p) * 2 <= qRed(p) && qGreen(p) * 2 <= qBlue(p);
+}
+
+bool isTickPixel(QRgb p)
+{
+    return qBlue(p) >= 200 && qRed(p) <= 60 && qGreen(p) <= 60;
+}
+
+struct Run {
+    double start; // logical px along the scan axis
+    double end;
+};
+
+// Runs of image columns (horizontal) or rows (vertical) that contain a pixel matching \a pred,
+// merging runs closer than \a mergeGap logical px (the space between glyphs of one label)
+template <typename Pred>
+QVector<Run> runsAlong(const QImage &img, Qt::Orientation axis, double mergeGap, Pred pred)
+{
+    const double dpr = img.devicePixelRatio();
+    const int len = axis == Qt::Horizontal ? img.width() : img.height();
+    const int across = axis == Qt::Horizontal ? img.height() : img.width();
+    QVector<Run> runs;
+    int runStart = -1;
+    for (int a = 0; a <= len; ++a) {
+        bool hit = false;
+        for (int b = 0; a < len && b < across && !hit; ++b) {
+            hit = pred(axis == Qt::Horizontal ? img.pixel(a, b) : img.pixel(b, a));
+        }
+        if (hit && runStart < 0) {
+            runStart = a;
+        } else if (!hit && runStart >= 0) {
+            const Run run{runStart / dpr, a / dpr};
+            if (!runs.isEmpty() && run.start - runs.last().end <= mergeGap) {
+                runs.last().end = run.end;
+            } else {
+                runs.append(run);
+            }
+            runStart = -1;
+        }
+    }
+    return runs;
+}
+
+// Ink extent of one label rendered alone with the gauge's label font, at the same DPR
+double inkExtent(const QString &text, const QFont &font, Qt::Orientation axis, qreal dpr)
+{
+    const QFontMetricsF fm(font);
+    const QSize logical = (fm.boundingRect(text).size() + QSizeF(8, 8)).toSize();
+    QImage img(logical * dpr, QImage::Format_ARGB32_Premultiplied);
+    img.setDevicePixelRatio(dpr);
+    img.fill(Qt::black);
+    {
+        QPainter p(&img);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.setFont(font);
+        p.setPen(QColor::fromRgb(kLabelColor));
+        p.drawText(QRectF(QPointF(0, 0), QSizeF(logical)), Qt::AlignCenter, text);
+    }
+    const QVector<Run> runs = runsAlong(img, axis, 1e9, isLabelPixel);
+    return runs.isEmpty() ? 0.0 : runs.first().end - runs.first().start;
+}
+
+QString scaleLabelText(double value, int precision)
+{
+    // Same formatting as LinearGauge::paintEvent()
+    return precision == 0 ? QString::number(static_cast<qint64>(std::round(value)))
+                          : QString::number(value, 'f', (value == std::floor(value)) ? 0 : 1);
+}
+
+} // namespace
 
 void tst_LinearGauge::defaultValues()
 {
@@ -272,6 +358,121 @@ void tst_LinearGauge::scaleLabelMinGap()
     QCOMPARE(internal::scaleLabelMinGap(8.0), 4.0);
     QCOMPARE(internal::scaleLabelMinGap(6.0), 4.0);
     QCOMPARE(internal::scaleLabelMinGap(std::numeric_limits<double>::quiet_NaN()), 4.0);
+}
+
+void tst_LinearGauge::scaleLabelsReadable_data()
+{
+    QTest::addColumn<Qt::Orientation>("orientation");
+    QTest::addColumn<bool>("thermometer");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<QSize>("size");
+    QTest::addColumn<int>("expectedLabels"); // -1: not checked
+
+    // Configurations and sizes from the gallery Dashboard (#31)
+    QTest::newRow("horizontal 0-250 at size hint") << Qt::Horizontal << false << 250.0 << 0 << QSize(280, 100) << -1;
+    QTest::newRow("horizontal 0-250 at 219x55") << Qt::Horizontal << false << 250.0 << 0 << QSize(219, 55) << -1;
+    QTest::newRow("vertical thermometer 0-120 at 103x166") << Qt::Vertical << true << 120.0 << 1 << QSize(103, 166) << -1;
+    QTest::newRow("vertical 0-100 at 102x166") << Qt::Vertical << false << 100.0 << 0 << QSize(102, 166) << -1;
+    // Ample space: nothing to thin out
+    QTest::newRow("vertical 0-100 at 100x400: all labels") << Qt::Vertical << false << 100.0 << 0 << QSize(100, 400) << 11;
+}
+
+void tst_LinearGauge::scaleLabelsReadable()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QFETCH(bool, thermometer);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(QSize, size);
+    QFETCH(int, expectedLabels);
+
+    LinearGauge gauge;
+    gauge.setOrientation(orientation);
+    gauge.setThermometerMode(thermometer);
+    gauge.setRange(0.0, maximum);
+    gauge.setValue(maximum * 0.5);
+    gauge.setPrecision(precision);
+    gauge.setMinorTicks(0);
+    gauge.setTextColor(QColor::fromRgb(kLabelColor));
+    gauge.setScaleColor(QColor::fromRgb(kTickColor));
+    gauge.resize(size);
+    const QImage img = gauge.grab().toImage();
+    const qreal dpr = img.devicePixelRatio();
+    const bool horizontal = orientation == Qt::Horizontal;
+
+    // Label font and minimum gap as decided in #31 (font: LinearGauge::paintEvent())
+    QFont font = gauge.font();
+    font.setPixelSize(std::clamp(static_cast<int>(size.height() * (horizontal ? 0.12 : 0.04)), 8, 12));
+    font.setBold(true);
+    const double minGap = internal::scaleLabelMinGap(QFontMetricsF(font).height());
+    const int majorTicks = gauge.majorTicks();
+    QVector<double> ink;
+    for (int i = 0; i <= majorTicks; ++i) {
+        ink.append(inkExtent(scaleLabelText(maximum * i / majorTicks, precision), font, orientation, dpr));
+    }
+    const double widest = *std::max_element(ink.cbegin(), ink.cend());
+
+    // Along the scale axis: labels and major ticks, ordered from the minimum end
+    QVector<Run> labels = runsAlong(img, orientation, 2.0, isLabelPixel);
+    QVector<Run> ticks = runsAlong(img, orientation, 0.0, isTickPixel);
+    if (!horizontal) { // rows grow downwards, the scale grows upwards
+        std::reverse(labels.begin(), labels.end());
+        std::reverse(ticks.begin(), ticks.end());
+    }
+    QCOMPARE(ticks.size(), majorTicks + 1);
+    QVERIFY(labels.size() >= 2);
+    const auto describe = [&labels]() {
+        QStringList parts;
+        for (const Run &r : labels) parts << QStringLiteral("%1-%2").arg(r.start, 0, 'f', 1).arg(r.end, 0, 'f', 1);
+        return parts.join(QLatin1Char(' '));
+    };
+
+    // (a) no label run longer than the largest label: longer runs are merged labels
+    for (const Run &r : labels) {
+        QVERIFY2(r.end - r.start <= widest + 1.0,
+                 qPrintable(QStringLiteral("run %1-%2 longer than the widest label (%3 px): labels merged [%4]")
+                                .arg(r.start, 0, 'f', 1).arg(r.end, 0, 'f', 1).arg(widest, 0, 'f', 1).arg(describe())));
+    }
+    // (b) the decided minimum gap between drawn labels (1 px for anti-aliasing)
+    for (int i = 1; i < labels.size(); ++i) {
+        const double gap = horizontal ? labels[i].start - labels[i - 1].end : labels[i - 1].start - labels[i].end;
+        QVERIFY2(gap >= minGap - 1.0, qPrintable(QStringLiteral("gap %1 px < minimum %2 px [%3]")
+                                                     .arg(gap, 0, 'f', 1).arg(minGap, 0, 'f', 1).arg(describe())));
+    }
+    // (c) first and last labels drawn, inside the scale (between the end ticks), the last one whole
+    const double scaleMin = (ticks.first().start + ticks.first().end) * 0.5;
+    const double scaleMax = (ticks.last().start + ticks.last().end) * 0.5;
+    const Run &first = labels.first();
+    const Run &last = labels.last();
+    if (horizontal) {
+        QVERIFY2(first.start >= scaleMin - 1.0 && first.start <= scaleMin + ink.first() + 1.0,
+                 qPrintable(QStringLiteral("first label %1-%2, scale starts at %3").arg(first.start).arg(first.end).arg(scaleMin)));
+        QVERIFY2(last.end <= scaleMax + 1.0 && last.end >= scaleMax - ink.last() - 1.0,
+                 qPrintable(QStringLiteral("last label %1-%2, scale ends at %3").arg(last.start).arg(last.end).arg(scaleMax)));
+    } else {
+        QVERIFY2(first.end <= scaleMin + 1.0 && first.end >= scaleMin - ink.first() - 1.0,
+                 qPrintable(QStringLiteral("bottom label %1-%2, scale bottom at %3").arg(first.start).arg(first.end).arg(scaleMin)));
+        QVERIFY2(last.start >= scaleMax - 1.0 && last.start <= scaleMax + ink.last() + 1.0,
+                 qPrintable(QStringLiteral("top label %1-%2, scale top at %3").arg(last.start).arg(last.end).arg(scaleMax)));
+    }
+    QVERIFY2(last.end - last.start >= ink.last() - 1.0,
+             qPrintable(QStringLiteral("last label %1 px long, the label is %2 px: cut")
+                            .arg(last.end - last.start, 0, 'f', 1).arg(ink.last(), 0, 'f', 1)));
+    // (d) no label pixel inside the digital display pod (LinearGauge::paintEvent() geometry)
+    const QRectF pod = horizontal ? QRectF(size.width() - 55.0 + 4.0, 6.0, 55.0 - 10.0, size.height() - 12.0)
+                                  : QRectF(6.0, 6.0, size.width() - 12.0, 24.0);
+    for (int y = qFloor(pod.top() * dpr); y < qCeil(pod.bottom() * dpr); ++y) {
+        for (int x = qFloor(pod.left() * dpr); x < qCeil(pod.right() * dpr); ++x) {
+            if (isLabelPixel(img.pixel(x, y))) {
+                QFAIL(qPrintable(QStringLiteral("label pixel inside the digital display at %1,%2").arg(x / dpr).arg(y / dpr)));
+            }
+        }
+    }
+    // (e) with ample space every label is drawn
+    if (expectedLabels >= 0) {
+        QCOMPARE(labels.size(), expectedLabels);
+    }
 }
 
 QTEST_MAIN(tst_LinearGauge)
