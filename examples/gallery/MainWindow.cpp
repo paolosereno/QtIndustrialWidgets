@@ -1870,6 +1870,12 @@ void MainWindow::applyTheme(bool dark)
             m_compassNorthUp->setBezelColor(QColor(48, 56, 70));
             m_compassNorthUp->setTextColor(QColor(225, 231, 236));
         }
+
+        // The default dial colour (24, 28, 36) is almost the dark panel colour: use black so the
+        // disc stays visible (it is decorative, the segments carry the value)
+        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+            if (bg) bg->setDialColor(QColor(0, 0, 0));
+        }
     } else {
         // Modern Clean Light SCADA Theme
         QString qss = QStringLiteral(
@@ -1984,6 +1990,11 @@ void MainWindow::applyTheme(bool dark)
             m_compassNorthUp->setDialColor(QColor(242, 244, 248));
             m_compassNorthUp->setBezelColor(QColor(200, 208, 218));
             m_compassNorthUp->setTextColor(QColor(30, 39, 46));
+        }
+
+        // Back to the CircularBargraph default dial colour
+        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+            if (bg) bg->setDialColor(QColor(24, 28, 36));
         }
     }
 }
