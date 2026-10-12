@@ -1768,6 +1768,25 @@ void MainWindow::applyTheme(bool dark)
             "QSlider::groove:horizontal { border: 1px solid #2e384e; height: 6px; background: #1a202c; border-radius: 3px; }"
             "QSlider::sub-page:horizontal { background: #00e5ff; border-radius: 3px; }"
             "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #00e5ff; width: 16px; margin-top: -5px; margin-bottom: -5px; border-radius: 8px; }"
+            // Scroll bars and the tab-bar scroll buttons otherwise keep the style's light palette
+            "QScrollBar:vertical { background: #1a202c; width: 14px; margin: 14px 0 14px 0; border: none; }"
+            "QScrollBar:horizontal { background: #1a202c; height: 14px; margin: 0 14px 0 14px; border: none; }"
+            "QScrollBar::handle { background: #8e9bb0; border-radius: 4px; }"
+            "QScrollBar::handle:vertical { min-height: 24px; margin: 0 2px; }"
+            "QScrollBar::handle:horizontal { min-width: 24px; margin: 2px 0; }"
+            "QScrollBar::handle:hover { background: #00e5ff; }"
+            "QScrollBar::add-line, QScrollBar::sub-line { background: #242c3d; border: 1px solid #364259; }"
+            "QScrollBar::add-line:vertical { subcontrol-position: bottom; subcontrol-origin: margin; height: 14px; }"
+            "QScrollBar::sub-line:vertical { subcontrol-position: top; subcontrol-origin: margin; height: 14px; }"
+            "QScrollBar::add-line:horizontal { subcontrol-position: right; subcontrol-origin: margin; width: 14px; }"
+            "QScrollBar::sub-line:horizontal { subcontrol-position: left; subcontrol-origin: margin; width: 14px; }"
+            "QScrollBar::add-page, QScrollBar::sub-page { background: none; }"
+            // Styling the scroll-bar buttons hides the style's arrows, so they come from the gallery resources
+            "QScrollBar::up-arrow:vertical { image: url(:/gallery/images/arrow-up.png); width: 8px; height: 5px; }"
+            "QScrollBar::down-arrow:vertical { image: url(:/gallery/images/arrow-down.png); width: 8px; height: 5px; }"
+            "QScrollBar::left-arrow:horizontal { image: url(:/gallery/images/arrow-left.png); width: 5px; height: 8px; }"
+            "QScrollBar::right-arrow:horizontal { image: url(:/gallery/images/arrow-right.png); width: 5px; height: 8px; }"
+            "QTabBar QToolButton { background-color: #242c3d; border: 1px solid #364259; }"
         );
         setStyleSheet(qss);
 

@@ -1,0 +1,20 @@
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+
+SPDX-License-Identifier: MIT
+-->
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- Scroll-bar arrows for the dark theme (the style's own arrows disappear once the
+         scroll-bar buttons are styled with a style sheet) -->
+    <qresource prefix="/gallery">
+        <file>images/arrow-up.png</file>
+        <file>images/arrow-up@2x.png</file>
+        <file>images/arrow-down.png</file>
+        <file>images/arrow-down@2x.png</file>
+        <file>images/arrow-left.png</file>
+        <file>images/arrow-left@2x.png</file>
+        <file>images/arrow-right.png</file>
+        <file>images/arrow-right@2x.png</file>
+    </qresource>
+</RCC>
