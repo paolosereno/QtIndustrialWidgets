@@ -1048,8 +1048,9 @@ void MainWindow::setupUi()
 
     // Alarm Trip Simulator & ISA Sequence selector
     auto *simBox = new QGroupBox(QStringLiteral("Alarm Event Simulator && Configuration"), annunciatorTab);
-    auto *simLayout = new QHBoxLayout(simBox);
-    simLayout->setSpacing(12);
+    // Two rows: on one row the box gets less width than its controls' size hints (#28)
+    auto *simLayout = new QVBoxLayout(simBox);
+    simLayout->setSpacing(10);
     simLayout->setContentsMargins(14, 16, 14, 14);
 
     auto *seqCombo = new QComboBox(simBox);
@@ -1088,12 +1089,20 @@ void MainWindow::setupUi()
         }
     });
 
-    simLayout->addWidget(new QLabel(QStringLiteral("Sequence:"), simBox));
-    simLayout->addWidget(seqCombo);
-    simLayout->addWidget(tripTurbineBtn);
-    simLayout->addWidget(tripSteamBtn);
-    simLayout->addWidget(tripFireBtn);
-    simLayout->addWidget(clearAllBtn);
+    auto *seqRow = new QHBoxLayout();
+    seqRow->setSpacing(12);
+    seqRow->addWidget(new QLabel(QStringLiteral("Sequence:"), simBox));
+    seqRow->addWidget(seqCombo);
+    seqRow->addStretch();
+    simLayout->addLayout(seqRow);
+
+    auto *tripRow = new QHBoxLayout();
+    tripRow->setSpacing(12);
+    tripRow->addWidget(tripTurbineBtn);
+    tripRow->addWidget(tripSteamBtn);
+    tripRow->addWidget(tripFireBtn);
+    tripRow->addWidget(clearAllBtn);
+    simLayout->addLayout(tripRow);
     annControlsRow->addWidget(simBox, 1);
 
     annLayout->addLayout(annControlsRow);
