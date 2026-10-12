@@ -14,6 +14,7 @@
 #include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/Compass.h>
+#include <QtIndustrialWidgets/CircularBargraph.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -957,6 +958,119 @@ QIcon CompassPlugin::icon() const
 }
 
 // ============================================================================
+// CircularBargraphPlugin
+// ============================================================================
+
+CircularBargraphPlugin::CircularBargraphPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void CircularBargraphPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *CircularBargraphPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::CircularBargraph(parent);
+}
+
+QString CircularBargraphPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString CircularBargraphPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/CircularBargraph.h");
+}
+
+QString CircularBargraphPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::CircularBargraph");
+}
+
+QString CircularBargraphPlugin::toolTip() const
+{
+    return QStringLiteral("Circular arc bargraph indicator with discrete curved LED segments and peak hold");
+}
+
+QString CircularBargraphPlugin::whatsThis() const
+{
+    return QStringLiteral("An industrial circular LED bargraph indicator with progressive Bar or Dot mode, threshold zones, and ballistic peak decay.");
+}
+
+QString CircularBargraphPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::CircularBargraph\" name=\"circularBargraph\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>180</width>\n"
+        "   <height>180</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon CircularBargraphPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Chassis background
+    p.setPen(QPen(QColor(60, 70, 85), 1.0));
+    p.setBrush(QColor(24, 28, 36));
+    p.drawEllipse(QPointF(16, 16), 14, 14);
+
+    // Discrete arc segments in miniature
+    const double rOut = 13.0;
+    const double rIn = 9.0;
+    const int numSegs = 8;
+    const double startA = -135.0;
+    const double spanA = 270.0;
+    const double stepA = spanA / numSegs;
+    const double gapA = 3.0;
+
+    p.setPen(Qt::NoPen);
+    for (int i = 0; i < numSegs; ++i) {
+        double a1 = startA + i * stepA + gapA * 0.5;
+        double a2 = a1 + stepA - gapA;
+        QPainterPath path;
+        for (int s = 0; s <= 2; ++s) {
+            double ang = a1 + (a2 - a1) * (s / 2.0);
+            double rad = (ang - 90.0) * 3.14159265358979323846 / 180.0;
+            double px = 16.0 + rOut * std::cos(rad);
+            double py = 16.0 + rOut * std::sin(rad);
+            if (s == 0) path.moveTo(px, py); else path.lineTo(px, py);
+        }
+        for (int s = 2; s >= 0; --s) {
+            double ang = a1 + (a2 - a1) * (s / 2.0);
+            double rad = (ang - 90.0) * 3.14159265358979323846 / 180.0;
+            double px = 16.0 + rIn * std::cos(rad);
+            double py = 16.0 + rIn * std::sin(rad);
+            path.lineTo(px, py);
+        }
+        path.closeSubpath();
+        QColor col = (i < 5) ? QColor(46, 204, 113) : ((i == 5) ? QColor(254, 211, 48) : QColor(38, 43, 53));
+        p.fillPath(path, col);
+    }
+
+    // Inner center pod
+    p.setBrush(QColor(18, 21, 28));
+    p.drawEllipse(QPointF(16, 16), 7, 7);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -973,6 +1087,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new LevelMeterPlugin(this));
     m_widgets.append(new AnnunciatorPanelPlugin(this));
     m_widgets.append(new CompassPlugin(this));
+    m_widgets.append(new CircularBargraphPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

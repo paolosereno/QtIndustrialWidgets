@@ -12,8 +12,6 @@ SPDX-License-Identifier: MIT
 [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
 [![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
-[![Tests Defined](https://img.shields.io/badge/tests%20defined-122-blue.svg)](tests/)
-[![Tests Passed](https://img.shields.io/badge/tests%20passed-122%20%2F%20122%20(100%25)-brightgreen.svg)](tests/)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
 A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
@@ -140,6 +138,15 @@ Marine gyrocompass and aeronautical directional heading indicator instrument.
 - **Navigation Scales**: Full 360° degree markings, cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) indices, and aviation 3-digit heading numbers.
 - **Lubber Reference & Digital Pod**: Fixed fluorescent lubber line at 12 o'clock and recessed central digital heading angle readout.
 
+### 11. `CircularBargraph` (`qiw::CircularBargraph`)
+High-contrast circular arc indicator composed of discrete curved LED segments.
+- **Operating Modes**: Progressive illuminated LED stack (`DisplayMode::Bar`) or single active cursor pointer (`DisplayMode::Dot`).
+- **Configurable Geometry**: Adjustable angular arc sweep (e.g. 180°, 270°, or 360°) and discrete curved LED segment resolution (e.g. 16, 24, 32, 48 segments).
+- **Threshold Zones by Position**: Each segment takes the color of the zone (Normal green, Warning amber, Critical red) containing its centre; unlit segments show a dimmed tint of their zone over the customizable "ghost" color. `warningThreshold <= errorThreshold` is kept by the setters.
+- **Ballistic Peak Hold**: Built-in peak indicator segment with configurable hold duration and smooth ballistic decay falloff.
+- **Centered Digital Pod**: Integrated optional digital readout pod with decimal precision and measurement unit display.
+- **Value State**: `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`. Out-of-range inputs (including `±Inf`) are shown at the range bound with the end segment blinking (~2 Hz) and a `<` / `>` readout; a `NaN` input is shown as `Invalid` (all segments ghost, readout `---`). `rawValue()` keeps the unclamped input, and the state is recomputed when the range changes.
+
 ---
 
 ## 🛠️ Build and Installation
@@ -246,7 +253,7 @@ The widgets will automatically appear in the **Industrial Widgets** category in 
 
 > 🌐 **Online Documentation (GitHub Pages)**: [https://paolosereno.github.io/QtIndustrialWidgets/](https://paolosereno.github.io/QtIndustrialWidgets/)
 
-QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 10 widgets, architecture design, and integration tutorials.
+QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 11 widgets, architecture design, and integration tutorials.
 
 ### Prerequisites
 

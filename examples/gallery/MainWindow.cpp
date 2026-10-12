@@ -14,6 +14,7 @@
 #include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/Compass.h>
+#include <QtIndustrialWidgets/CircularBargraph.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -32,8 +33,11 @@
 #include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtCore/QPropertyAnimation>
 #include <QtCore/QEasingCurve>
+#include <QtCore/QMetaEnum>
 #include <QtGui/QPalette>
 #include <QtCore/QtMath>
+
+#include <limits>
 
 using namespace QtIndustrialWidgets;
 
@@ -643,6 +647,145 @@ void MainWindow::setupUi()
     meterLayout->addStretch();
 
     controlsLayout->addWidget(meterBox, row, 0, 1, 3);
+    row++;
+
+    // ------------------------------------------------------------------------
+    // Circular Arc LED Bargraph Showcase (CircularBargraph)
+    // ------------------------------------------------------------------------
+    auto *circBox = new QGroupBox(QStringLiteral("Circular Arc LED Indicators (CircularBargraph)"), controlsTab);
+    auto *circMainLayout = new QVBoxLayout(circBox);
+    circMainLayout->setContentsMargins(16, 16, 16, 14);
+    circMainLayout->setSpacing(12);
+
+    auto *circWidgetsLayout = new QHBoxLayout();
+    circWidgetsLayout->setSpacing(24);
+
+    // 1. 270° Bar Mode with Digital Readout
+    m_circBargraphBar = new CircularBargraph(circBox);
+    m_circBargraphBar->setRange(0.0, 100.0);
+    m_circBargraphBar->setValue(65.0);
+    m_circBargraphBar->setSegmentCount(24);
+    m_circBargraphBar->setStartAngle(-135.0);
+    m_circBargraphBar->setSpanAngle(270.0);
+    m_circBargraphBar->setDisplayMode(CircularBargraph::DisplayMode::Bar);
+    m_circBargraphBar->setWarningThreshold(70.0);
+    m_circBargraphBar->setErrorThreshold(85.0);
+    m_circBargraphBar->setPeakHoldEnabled(true);
+    m_circBargraphBar->setUnit(QStringLiteral("%"));
+
+    // 2. 270° Dot Mode (Single Cursor Pointer)
+    m_circBargraphDot = new CircularBargraph(circBox);
+    m_circBargraphDot->setRange(0.0, 100.0);
+    m_circBargraphDot->setValue(65.0);
+    m_circBargraphDot->setSegmentCount(32);
+    m_circBargraphDot->setStartAngle(-135.0);
+    m_circBargraphDot->setSpanAngle(270.0);
+    m_circBargraphDot->setDisplayMode(CircularBargraph::DisplayMode::Dot);
+    m_circBargraphDot->setWarningThreshold(70.0);
+    m_circBargraphDot->setErrorThreshold(85.0);
+    m_circBargraphDot->setPeakHoldEnabled(true);
+    m_circBargraphDot->setUnit(QStringLiteral("DOT"));
+
+    // 3. 180° Semicircular Sweep (16 Segments)
+    m_circBargraphSemi = new CircularBargraph(circBox);
+    m_circBargraphSemi->setRange(0.0, 100.0);
+    m_circBargraphSemi->setValue(65.0);
+    m_circBargraphSemi->setSegmentCount(16);
+    m_circBargraphSemi->setStartAngle(-90.0);
+    m_circBargraphSemi->setSpanAngle(180.0);
+    m_circBargraphSemi->setDisplayMode(CircularBargraph::DisplayMode::Bar);
+    m_circBargraphSemi->setWarningThreshold(70.0);
+    m_circBargraphSemi->setErrorThreshold(85.0);
+    m_circBargraphSemi->setPeakHoldEnabled(true);
+    m_circBargraphSemi->setUnit(QStringLiteral("SEMI"));
+
+    circWidgetsLayout->addWidget(m_circBargraphBar);
+    circWidgetsLayout->addWidget(m_circBargraphDot);
+    circWidgetsLayout->addWidget(m_circBargraphSemi);
+    circWidgetsLayout->addStretch();
+    circMainLayout->addLayout(circWidgetsLayout);
+
+    // Controls row: slider + reset peak + mode toggle
+    auto *circCtrlLayout = new QHBoxLayout();
+    circCtrlLayout->setSpacing(12);
+
+    auto *sliderLbl = new QLabel(QStringLiteral("Level:"), circBox);
+    m_circBargraphSlider = new QSlider(Qt::Horizontal, circBox);
+    m_circBargraphSlider->setRange(0, 100);
+    m_circBargraphSlider->setValue(65);
+    connect(m_circBargraphSlider, &QSlider::valueChanged, this, [this](int val) {
+        if (m_circInputCombo) m_circInputCombo->setCurrentIndex(0); // manual level -> Live input
+        if (m_circBargraphBar) m_circBargraphBar->setValue(val);
+        if (m_circBargraphDot) m_circBargraphDot->setValue(val);
+        if (m_circBargraphSemi) m_circBargraphSemi->setValue(val);
+    });
+
+    // Value state demo: force an out-of-range or invalid input (the simulation leaves the
+    // bargraphs alone while a forced input is selected)
+    auto *inputLbl = new QLabel(QStringLiteral("Input:"), circBox);
+    m_circInputCombo = new QComboBox(circBox);
+    m_circInputCombo->addItem(QStringLiteral("Live"));
+    m_circInputCombo->addItem(QStringLiteral("Overrange (max + 10)"));
+    m_circInputCombo->addItem(QStringLiteral("Underrange (min - 10)"));
+    m_circInputCombo->addItem(QStringLiteral("Invalid (NaN)"));
+    connect(m_circInputCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+            if (!bg) continue;
+            switch (index) {
+            case 1: bg->setValue(bg->maximum() + 10.0); break;
+            case 2: bg->setValue(bg->minimum() - 10.0); break;
+            case 3: bg->setValue(std::numeric_limits<double>::quiet_NaN()); break;
+            default:
+                if (m_circBargraphSlider) bg->setValue(m_circBargraphSlider->value());
+                break;
+            }
+        }
+    });
+
+    m_circStateLabel = new QLabel(circBox);
+    m_circStateLabel->setMinimumWidth(260);
+    const auto updateCircStateLabel = [this]() {
+        if (!m_circBargraphBar || !m_circStateLabel) return;
+        const char *stateName = QMetaEnum::fromType<CircularBargraph::ValueState>()
+                                    .valueToKey(static_cast<int>(m_circBargraphBar->valueState()));
+        m_circStateLabel->setText(QStringLiteral("State: %1 | raw %2 | value %3")
+                                      .arg(QString::fromLatin1(stateName))
+                                      .arg(m_circBargraphBar->rawValue(), 0, 'f', 1)
+                                      .arg(m_circBargraphBar->value(), 0, 'f', 1));
+    };
+    connect(m_circBargraphBar, &CircularBargraph::valueStateChanged, this, updateCircStateLabel);
+    connect(m_circBargraphBar, &CircularBargraph::valueChanged, this, updateCircStateLabel);
+    updateCircStateLabel();
+
+    auto *resetPeakBtn = new QPushButton(QStringLiteral("Reset Peak"), circBox);
+    connect(resetPeakBtn, &QPushButton::clicked, this, [this]() {
+        if (m_circBargraphBar) m_circBargraphBar->resetPeak();
+        if (m_circBargraphDot) m_circBargraphDot->resetPeak();
+        if (m_circBargraphSemi) m_circBargraphSemi->resetPeak();
+    });
+
+    auto *peakCheck = new QCheckBox(QStringLiteral("Peak Hold"), circBox);
+    peakCheck->setChecked(true);
+    connect(peakCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_circBargraphBar) m_circBargraphBar->setPeakHoldEnabled(on);
+        if (m_circBargraphDot) m_circBargraphDot->setPeakHoldEnabled(on);
+        if (m_circBargraphSemi) m_circBargraphSemi->setPeakHoldEnabled(on);
+    });
+
+    circCtrlLayout->addWidget(sliderLbl);
+    circCtrlLayout->addWidget(m_circBargraphSlider, 1);
+    circCtrlLayout->addWidget(peakCheck);
+    circCtrlLayout->addWidget(resetPeakBtn);
+    circMainLayout->addLayout(circCtrlLayout);
+
+    auto *circStateLayout = new QHBoxLayout();
+    circStateLayout->setSpacing(12);
+    circStateLayout->addWidget(inputLbl);
+    circStateLayout->addWidget(m_circInputCombo);
+    circStateLayout->addWidget(m_circStateLabel, 1);
+    circMainLayout->addLayout(circStateLayout);
+
+    controlsLayout->addWidget(circBox, row, 0, 1, 3);
     row++;
 
     controlsLayout->setRowStretch(row, 1);
@@ -1399,6 +1542,19 @@ void MainWindow::onSimulationTick()
             if (m_headingSlider) {
                 m_headingSlider->setValue(static_cast<int>(newHdg));
             }
+        }
+    }
+
+    // Dynamic circular bargraph simulation (paused while a forced demo input is selected)
+    if (m_circBargraphBar && (!m_circInputCombo || m_circInputCombo->currentIndex() == 0)) {
+        double circVal = 50.0 + 42.0 * std::sin(m_simTime * 1.5);
+        m_circBargraphBar->setValue(circVal);
+        if (m_circBargraphDot) m_circBargraphDot->setValue(circVal);
+        if (m_circBargraphSemi) m_circBargraphSemi->setValue(circVal);
+        if (m_circBargraphSlider) {
+            m_circBargraphSlider->blockSignals(true);
+            m_circBargraphSlider->setValue(static_cast<int>(circVal));
+            m_circBargraphSlider->blockSignals(false);
         }
     }
 }

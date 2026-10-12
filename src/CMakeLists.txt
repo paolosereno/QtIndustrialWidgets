@@ -27,6 +27,27 @@ set_target_properties(M4Decimator PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(CircularBargraphSegments OBJECT
+    internal/CircularBargraphSegments.cpp
+    internal/CircularBargraphSegments.h
+)
+
+target_include_directories(CircularBargraphSegments
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(CircularBargraphSegments
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+)
+
+set_target_properties(CircularBargraphSegments PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(QtIndustrialWidgets SHARED
     RadialGauge.cpp
     LinearGauge.cpp
@@ -38,7 +59,9 @@ add_library(QtIndustrialWidgets SHARED
     LevelMeter.cpp
     AnnunciatorPanel.cpp
     Compass.cpp
+    CircularBargraph.cpp
     $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:CircularBargraphSegments>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h
@@ -50,6 +73,7 @@ add_library(QtIndustrialWidgets SHARED
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LevelMeter.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/AnnunciatorPanel.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/Compass.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/CircularBargraph.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

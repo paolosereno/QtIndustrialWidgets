@@ -67,6 +67,27 @@ add_industrial_widget_test(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
 add_industrial_widget_test(tst_AnnunciatorPanel)
 add_industrial_widget_test(tst_Compass)
+add_executable(tst_CircularBargraph
+    tst_CircularBargraph.cpp
+    $<TARGET_OBJECTS:CircularBargraphSegments>
+)
+target_link_libraries(tst_CircularBargraph
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_CircularBargraph
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_CircularBargraph PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_CircularBargraph)
 
 add_executable(tst_M4Decimator
     tst_M4Decimator.cpp
