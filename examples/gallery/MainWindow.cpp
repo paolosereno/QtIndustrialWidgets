@@ -1762,7 +1762,7 @@ void MainWindow::applyTheme(bool dark)
             // Without these rules a combo keeps the style's light background under the light text.
             // No QComboBox::drop-down rule: styling it hides the style's arrow. The popup list takes
             // its selection colours from the QComboBox rule.
-            "QComboBox { background-color: #242c3d; border: 1px solid #364259; border-radius: 4px; color: #e1e7ec; padding: 2px 8px; selection-background-color: #2e384e; selection-color: #00e5ff; }"
+            "QComboBox { background-color: #242c3d; border: 1px solid #364259; border-radius: 4px; color: #e1e7ec; padding: 2px 5px; selection-background-color: #2e384e; selection-color: #00e5ff; }"
             "QComboBox:hover, QComboBox:on { border-color: #00e5ff; }"
             "QComboBox QAbstractItemView { background-color: #242c3d; border: 1px solid #364259; color: #e1e7ec; selection-background-color: #2e384e; selection-color: #00e5ff; outline: 0; }"
             "QSlider::groove:horizontal { border: 1px solid #2e384e; height: 6px; background: #1a202c; border-radius: 3px; }"
