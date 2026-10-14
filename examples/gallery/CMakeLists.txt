@@ -6,6 +6,8 @@ add_executable(QtIndustrialWidgetsGallery
     main.cpp
     MainWindow.h
     MainWindow.cpp
+    Showcases.h
+    Showcases.cpp
     gallery.qrc
 )
 
