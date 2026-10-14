@@ -79,14 +79,14 @@ void MainWindow::setupUi()
 
     auto *topLayout = new QHBoxLayout(topBar);
     topLayout->setContentsMargins(14, 10, 14, 10);
-    topLayout->setSpacing(14);
+    topLayout->setSpacing(8); // at 1200x820 the LED labels need the room (#26)
 
     auto *titleLabel = new QLabel(QStringLiteral("<b>QtIndustrialWidgets</b> &nbsp;|&nbsp; Instrumentation Gallery"), this);
     QFont titleFont = titleLabel->font();
     titleFont.setPointSize(12);
     titleLabel->setFont(titleFont);
 
-    m_fpsLabel = new QLabel(QStringLiteral("FPS: -- (0 ms)"), this);
+    m_fpsLabel = new QLabel(QStringLiteral("FPS: --"), this);
     m_fpsLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace;"));
 
     // Annunciator Status LEDs
@@ -108,31 +108,27 @@ void MainWindow::setupUi()
     m_pumpLed->setShape(LedIndicator::LedShape::Rectangular);
     m_pumpLed->setOn(false);
 
-    m_simButton = new QPushButton(QStringLiteral("Start Simulation (50 Hz)"), this);
+    m_simButton = new QPushButton(QStringLiteral("Start Simulation"), this);
     m_simButton->setCursor(Qt::PointingHandCursor);
     m_simButton->setMinimumHeight(32);
     connect(m_simButton, &QPushButton::clicked, this, &MainWindow::toggleSimulation);
 
-    m_tourButton = new QPushButton(QStringLiteral("Auto-Tour (Off)"), this);
+    m_tourButton = new QPushButton(QStringLiteral("Auto-Tour"), this);
     m_tourButton->setCheckable(true);
     m_tourButton->setCursor(Qt::PointingHandCursor);
     m_tourButton->setMinimumHeight(32);
     m_tourButton->setToolTip(QStringLiteral("Cycle automatically between tabs every 3.5 seconds with a smooth transition"));
     connect(m_tourButton, &QPushButton::clicked, this, &MainWindow::toggleAutoTour);
 
-    m_themeButton = new QPushButton(QStringLiteral("Switch to Light Theme"), this);
+    m_themeButton = new QPushButton(QStringLiteral("Light Theme"), this);
     m_themeButton->setCursor(Qt::PointingHandCursor);
     m_themeButton->setMinimumHeight(32);
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
 
     topLayout->addWidget(titleLabel);
-    topLayout->addSpacing(12);
     topLayout->addWidget(m_runLed);
-    topLayout->addSpacing(8);
     topLayout->addWidget(m_warnLed);
-    topLayout->addSpacing(8);
     topLayout->addWidget(m_alarmLed);
-    topLayout->addSpacing(8);
     topLayout->addWidget(m_pumpLed);
     topLayout->addStretch();
     topLayout->addWidget(m_fpsLabel);
@@ -1448,7 +1444,7 @@ void MainWindow::toggleSimulation()
     if (m_isSimulating) {
         m_simTimer.stop();
         m_isSimulating = false;
-        m_simButton->setText(QStringLiteral("Start Simulation (50 Hz)"));
+        m_simButton->setText(QStringLiteral("Start Simulation"));
         m_fpsLabel->setText(QStringLiteral("FPS: --"));
 
         m_runLed->setOn(false);
@@ -1477,7 +1473,7 @@ void MainWindow::toggleAutoTour()
     m_isAutoTourActive = !m_isAutoTourActive;
     if (m_isAutoTourActive) {
         m_tourButton->setChecked(true);
-        m_tourButton->setText(QStringLiteral("Auto-Tour (3.5s)"));
+        m_tourButton->setText(QStringLiteral("Stop Tour"));
         m_tourButton->setStyleSheet(QStringLiteral(
             "QPushButton { background-color: #0984e3; border: 1px solid #74b9ff; color: #ffffff; font-weight: bold; padding: 6px 14px; border-radius: 4px; }"
             "QPushButton:hover { background-color: #0870c2; }"
@@ -1485,7 +1481,7 @@ void MainWindow::toggleAutoTour()
         m_tourTimer.start(3500);
     } else {
         m_tourButton->setChecked(false);
-        m_tourButton->setText(QStringLiteral("Auto-Tour (Off)"));
+        m_tourButton->setText(QStringLiteral("Auto-Tour"));
         m_tourButton->setStyleSheet(QString());
         m_tourTimer.stop();
         if (m_tabAnimation) {
@@ -1555,7 +1551,7 @@ void MainWindow::onSimulationTick()
     qint64 now = m_elapsedTimer.elapsed();
     if (now - m_lastFpsCheck >= 500) {
         double fps = (m_frameCount * 1000.0) / (now - m_lastFpsCheck);
-        m_fpsLabel->setText(QStringLiteral("FPS: %1 (20 ms tick)").arg(QString::number(fps, 'f', 1)));
+        m_fpsLabel->setText(QStringLiteral("FPS: %1").arg(QString::number(fps, 'f', 1)));
         m_frameCount = 0;
         m_lastFpsCheck = now;
     }
@@ -1728,8 +1724,8 @@ void MainWindow::toggleTheme()
 void MainWindow::applyTheme(bool dark)
 {
     m_isDarkTheme = dark;
-    m_themeButton->setText(dark ? QStringLiteral("Switch to Light Theme")
-                                : QStringLiteral("Switch to Dark Theme"));
+    m_themeButton->setText(dark ? QStringLiteral("Light Theme")
+                                : QStringLiteral("Dark Theme"));
 
     if (m_tourButton) {
         if (m_isAutoTourActive) {
