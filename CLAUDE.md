@@ -95,7 +95,13 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
    - full `ctest` result (normal + HiDPI) and `reuse lint` result;
    - benchmark table if performance was touched;
    - any deviation from the issue and why; anything noticed out of scope.
-5. Never push to `main`, never force-push, never merge your own PR.
+5. When the work is done and verified, push the issue branch and open the PR yourself with `Fixes #<n>` and the
+   full report as body. Never merge: the maintainer reviews and merges.
+6. Screenshots for a PR go on the `pr-assets` branch (worktree `../qiw-pr-assets`), in `pr<number>/`, as compressed
+   PNG; reference them in the PR body via
+   `https://raw.githubusercontent.com/paolosereno/QtIndustrialWidgets/pr-assets/pr<number>/<file>.png`.
+   Never merge `pr-assets` into `main`.
+7. Never push to `main`, never force-push, never merge your own PR.
 
 ## Map of the code worth knowing
 
