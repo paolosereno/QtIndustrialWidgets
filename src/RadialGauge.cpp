@@ -4,6 +4,8 @@
 
 #include <QtIndustrialWidgets/RadialGauge.h>
 
+#include "internal/RadialGaugeLayout.h"
+
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
@@ -374,7 +376,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     const double h = targetSize.height();
     const double side = std::min(w, h);
     const QPointF center(w * 0.5, h * 0.5);
-    const double radius = (side * 0.5) - 4.0;
+    const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(side);
+    const double radius = geo.radius;
 
     if (radius <= 5.0) {
         d_ptr->m_cacheDirty = false;
@@ -403,8 +406,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     painter.setBrush(dialGrad);
     painter.drawEllipse(center, innerRadius, innerRadius);
 
-    const double arcRadius = radius * 0.82;
-    const double arcWidth = std::max(3.0, radius * 0.055);
+    const double arcRadius = geo.arcRadius;
+    const double arcWidth = geo.arcWidth;
 
     // Helper lambda to draw smooth arc path between two values
     auto drawArcSegment = [&](double vStart, double vEnd, const QColor &color) {
@@ -446,10 +449,10 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     }
 
     // 3. Ticks and Labels
-    const double tickOuter = arcRadius - (arcWidth * 0.6);
-    const double majorTickInner = tickOuter - (radius * 0.09);
-    const double minorTickInner = tickOuter - (radius * 0.045);
-    const double labelRadius = majorTickInner - (radius * 0.12);
+    const double tickOuter = geo.tickOuter;
+    const double majorTickInner = geo.majorTickInner;
+    const double minorTickInner = geo.minorTickInner;
+    const double labelRadius = geo.labelRadius;
 
     int totalMinorDivisions = d_ptr->m_majorTicks * (d_ptr->m_minorTicks + 1);
     double valueRange = d_ptr->m_maximum - d_ptr->m_minimum;
@@ -475,9 +478,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     }
 
     // Major ticks and labels font setup
-    int labelFontSize = std::max(7, static_cast<int>(radius * 0.082));
     QFont font = painter.font();
-    font.setPixelSize(labelFontSize);
+    font.setPixelSize(geo.labelFontPx);
     font.setBold(true);
     painter.setFont(font);
 
