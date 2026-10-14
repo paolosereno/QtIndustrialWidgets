@@ -52,6 +52,22 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 
 ## 📦 Widgets Included
 
+| Widget | Showcase |
+|---|---|
+| `RadialGauge`<br>0–8000 RPM, needle in the warning zone | <img src="docs/images/radial-gauge-warning.png" alt="RadialGauge" width="300"> |
+| `LinearGauge`<br>Thermometer mode, 0–120 °C | <img src="docs/images/linear-gauge-thermometer.png" alt="LinearGauge" width="120"> |
+| `SevenSegmentDisplay`<br>Six digits, one decimal, skewed segments | <img src="docs/images/seven-segment-display-value.png" alt="SevenSegmentDisplay" width="300"> |
+| `LedIndicator`<br>Round lens, on, with label | <img src="docs/images/led-indicator-on.png" alt="LedIndicator" width="140"> |
+| `IndustrialKnob`<br>Continuous 0–8000 RPM with value pod | <img src="docs/images/industrial-knob-continuous.png" alt="IndustrialKnob" width="220"> |
+| `StripChart`<br>Three channels over 10 s with a NaN dropout | <img src="docs/images/strip-chart-channels.png" alt="StripChart" width="640"> |
+| `IndustrialSwitch`<br>Toggle lever under a safety guard | <img src="docs/images/industrial-switch-guarded-toggle.png" alt="IndustrialSwitch" width="180"> |
+| `LevelMeter`<br>Stereo dB meter with held peaks | <img src="docs/images/level-meter-stereo-db.png" alt="LevelMeter" width="170"> |
+| `AnnunciatorPanel`<br>ISA-18.1 tiles: acknowledged, unacknowledged and advisory alarms | <img src="docs/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640"> |
+| `Compass`<br>Heading-up card, heading 047° with heading bug | <img src="docs/images/compass-heading-up.png" alt="Compass" width="300"> |
+| `CircularBargraph`<br>24 segments with peak hold | <img src="docs/images/circular-bargraph-valid.png" alt="CircularBargraph" width="260"> |
+
+The images are generated from the gallery with `--export-gallery` (dark theme, device pixel ratio 2, shown at half their pixel width); see [docs/gallery_images.md](docs/gallery_images.md) for how to regenerate them and for the other variants.
+
 All widgets are encapsulated in the `QtIndustrialWidgets` namespace (with a convenient short alias `qiw` provided by default in headers):
 
 ```cpp

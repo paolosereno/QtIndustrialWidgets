@@ -1,0 +1,8 @@
+version = 1
+
+# Generated documentation images (QtIndustrialWidgetsGallery --export-gallery, see docs/gallery_images.md)
+[[annotations]]
+path = "docs/images/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Paolo Sereno <paolomsereno@gmail.com>"
+SPDX-License-Identifier = "MIT"
