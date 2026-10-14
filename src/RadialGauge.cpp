@@ -509,7 +509,9 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
                        textRect.width(), textRect.height());
 
         painter.setPen(d_ptr->m_textColor);
-        painter.drawText(drawRect, Qt::AlignCenter, labelStr);
+        // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
+        // the rectangle only positions the label
+        painter.drawText(drawRect, Qt::AlignCenter | Qt::TextDontClip, labelStr);
     }
 
     // 4. Digital Display Background & Unit (Recessed pod below pivot)
