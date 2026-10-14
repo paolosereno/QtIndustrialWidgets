@@ -122,6 +122,41 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build -C Release --output-on-failure
 
+      # TEMP (#36): where does the QtTest log go on Windows? Remove this step before merging.
+      - name: TEMP diagnose QtTest output on Windows
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $exe = Join-Path $PWD 'build\bin\Release\tst_TempCiOutput.exe'
+          if (-not (Test-Path $exe)) { Write-Host "not found: $exe"; exit 0 }
+
+          function Invoke-Variant([string] $name, [string[]] $testArgs) {
+            Write-Host "===== variant $name : tst_TempCiOutput.exe $($testArgs -join ' ')"
+            $out = & $exe @testArgs 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            Write-Host $out
+            Write-Host ("----- variant $name exit code: {0} (0x{1:X8}), {2} characters of output" -f $code, $code, $out.Length)
+          }
+
+          Invoke-Variant 'A (no options)' @()
+          Invoke-Variant 'B (-o -,txt)' @('-o', '-,txt')
+          $file = Join-Path $PWD 'tst_TempCiOutput_out.txt'
+          Invoke-Variant 'C (-o file,txt)' @('-o', "$file,txt")
+          Write-Host '----- variant C file content:'
+          if (Test-Path $file) { Get-Content $file | Write-Host } else { Write-Host '(no file)' }
+          $env:QT_FORCE_STDERR_LOGGING = '1'
+          Invoke-Variant 'D (QT_FORCE_STDERR_LOGGING=1)' @()
+          Remove-Item Env:QT_FORCE_STDERR_LOGGING
+
+          Write-Host '===== ctest -R tst_TempCiOutput -V (shows the output of passing tests too)'
+          ctest --test-dir build -C Release -R '^tst_TempCiOutput$' -V 2>&1 | Out-String | Write-Host
+          exit 0
+
   # ============================================================
   # 3. macOS (AppleClang & Qt 6)
   # ============================================================

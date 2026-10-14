@@ -130,3 +130,6 @@ set_target_properties(tst_M4Decimator PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_M4Decimator)
+
+# TEMP (#36): deliberately failing test for the Windows CI output check. Remove before merging.
+add_industrial_widget_test(tst_TempCiOutput)
