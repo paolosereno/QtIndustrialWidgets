@@ -62,6 +62,23 @@ set_target_properties(tst_LinearGauge PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_LinearGauge)
+add_executable(tst_RadialGaugeLayout
+    tst_RadialGaugeLayout.cpp
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+)
+target_link_libraries(tst_RadialGaugeLayout
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_RadialGaugeLayout
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_RadialGaugeLayout PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_RadialGaugeLayout)
 add_industrial_widget_test(tst_SevenSegmentDisplay)
 add_industrial_widget_test(tst_LedIndicator)
 add_industrial_widget_test(tst_IndustrialKnob)
