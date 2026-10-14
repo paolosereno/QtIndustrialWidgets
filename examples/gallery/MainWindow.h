@@ -135,7 +135,6 @@ private:
     QPushButton *m_simButton{nullptr};
     QPushButton *m_tourButton{nullptr};
     QPushButton *m_themeButton{nullptr};
-    QLabel *m_statusLabel{nullptr};
     QLabel *m_fpsLabel{nullptr};
     QTabWidget *m_tabWidget{nullptr};
 

@@ -86,9 +86,6 @@ void MainWindow::setupUi()
     titleFont.setPointSize(12);
     titleLabel->setFont(titleFont);
 
-    m_statusLabel = new QLabel(QStringLiteral("● Standby (Manual Mode)"), this);
-    m_statusLabel->setStyleSheet(QStringLiteral("color: #7f8c8d; font-weight: bold;"));
-
     m_fpsLabel = new QLabel(QStringLiteral("FPS: -- (0 ms)"), this);
     m_fpsLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace;"));
 
