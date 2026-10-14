@@ -105,6 +105,10 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
    `https://raw.githubusercontent.com/paolosereno/QtIndustrialWidgets/pr-assets/pr<number>/<file>.png`.
    Never merge `pr-assets` into `main`.
 7. Never push to `main`, never force-push, never merge your own PR.
+8. You may open issues (`gh issue create`), edit them (`gh issue edit`) and comment on them (`gh issue comment`)
+   when the maintainer asks, or to post the plan of point 2. Issue texts are in English; show the text to the
+   maintainer before publishing unless told to publish directly. Never close, delete or transfer issues, and never
+   change their labels or assignees unless asked.
 
 ## Map of the code worth knowing
 
