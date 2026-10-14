@@ -8,7 +8,10 @@
       "Bash(gh pr create*)",
       "Bash(gh pr edit*)",
       "Bash(gh pr checks*)",
-      "Bash(gh run view*)"
+      "Bash(gh run view*)",
+      "Bash(gh issue create*)",
+      "Bash(gh issue edit*)",
+      "Bash(gh issue comment*)"
     ],
     "deny": [
       "Bash(git push --force*)",
@@ -18,7 +21,10 @@
       "Bash(git push * --force*)",
       "Bash(git push * -f*)",
       "Bash(git push *:main*)",
-      "Bash(git push * +*)"
+      "Bash(git push * +*)",
+      "Bash(gh issue close*)",
+      "Bash(gh issue delete*)",
+      "Bash(gh issue transfer*)"
     ]
   }
 }
