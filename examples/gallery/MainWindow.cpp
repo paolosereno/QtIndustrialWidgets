@@ -39,6 +39,8 @@
 #include <QtCore/QMetaEnum>
 #include <QtCore/QSignalBlocker>
 #include <QtGui/QPalette>
+#include <QtGui/QPainter>
+#include <QtGui/QImageWriter>
 #include <QtCore/QtMath>
 
 #include <array>
@@ -79,14 +81,14 @@ void MainWindow::setupUi()
 
     auto *topLayout = new QHBoxLayout(topBar);
     topLayout->setContentsMargins(14, 10, 14, 10);
-    topLayout->setSpacing(14);
+    topLayout->setSpacing(8); // at 1200x820 the LED labels need the room (#26)
 
-    auto *titleLabel = new QLabel(QStringLiteral("⚡ <b>QtIndustrialWidgets</b> &nbsp;|&nbsp; High-Performance Instrumentation"), this);
+    auto *titleLabel = new QLabel(QStringLiteral("<b>QtIndustrialWidgets</b> &nbsp;|&nbsp; Instrumentation Gallery"), this);
     QFont titleFont = titleLabel->font();
     titleFont.setPointSize(12);
     titleLabel->setFont(titleFont);
 
-    m_fpsLabel = new QLabel(QStringLiteral("FPS: -- (0 ms)"), this);
+    m_fpsLabel = new QLabel(QStringLiteral("FPS: --"), this);
     m_fpsLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace;"));
 
     // Annunciator Status LEDs
@@ -108,31 +110,27 @@ void MainWindow::setupUi()
     m_pumpLed->setShape(LedIndicator::LedShape::Rectangular);
     m_pumpLed->setOn(false);
 
-    m_simButton = new QPushButton(QStringLiteral("▶ Start Simulation (50 Hz)"), this);
+    m_simButton = new QPushButton(QStringLiteral("Start Simulation"), this);
     m_simButton->setCursor(Qt::PointingHandCursor);
     m_simButton->setMinimumHeight(32);
     connect(m_simButton, &QPushButton::clicked, this, &MainWindow::toggleSimulation);
 
-    m_tourButton = new QPushButton(QStringLiteral("🔄 Auto-Tour (Off)"), this);
+    m_tourButton = new QPushButton(QStringLiteral("Auto-Tour"), this);
     m_tourButton->setCheckable(true);
     m_tourButton->setCursor(Qt::PointingHandCursor);
     m_tourButton->setMinimumHeight(32);
     m_tourButton->setToolTip(QStringLiteral("Cycle automatically between tabs every 3.5 seconds with a smooth transition"));
     connect(m_tourButton, &QPushButton::clicked, this, &MainWindow::toggleAutoTour);
 
-    m_themeButton = new QPushButton(QStringLiteral("☀️ Switch to Light Theme"), this);
+    m_themeButton = new QPushButton(QStringLiteral("Light Theme"), this);
     m_themeButton->setCursor(Qt::PointingHandCursor);
     m_themeButton->setMinimumHeight(32);
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
 
     topLayout->addWidget(titleLabel);
-    topLayout->addSpacing(12);
     topLayout->addWidget(m_runLed);
-    topLayout->addSpacing(8);
     topLayout->addWidget(m_warnLed);
-    topLayout->addSpacing(8);
     topLayout->addWidget(m_alarmLed);
-    topLayout->addSpacing(8);
     topLayout->addWidget(m_pumpLed);
     topLayout->addStretch();
     topLayout->addWidget(m_fpsLabel);
@@ -360,7 +358,7 @@ void MainWindow::setupUi()
 
     dashLayout->addLayout(lowerRowLayout, 3);
 
-    tabWidget->addTab(dashTab, QStringLiteral("📊 Live Instrumentation Dashboard"));
+    tabWidget->addTab(dashTab, QStringLiteral("Dashboard"));
 
     // ------------------------------------------------------------------------
     // TAB 2: Manual Control Sliders & Calibration
@@ -662,7 +660,7 @@ void MainWindow::setupUi()
     // setWidget() turns on autoFillBackground; keep the themed tab pane visible behind the content
     controlsTab->setAutoFillBackground(false);
     controlsScroll->viewport()->setAutoFillBackground(false);
-    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls && Diagnostics"));
+    tabWidget->addTab(controlsScroll, QStringLiteral("Manual Controls"));
 
     // ------------------------------------------------------------------------
     // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
@@ -941,7 +939,7 @@ void MainWindow::setupUi()
     circSettingsLayout->setColumnStretch(4, 1);
 
     bargraphLayout->addWidget(circSettingsBox);
-    tabWidget->addTab(bargraphTab, QStringLiteral("⭕ Circular Bargraph (CircularBargraph)"));
+    tabWidget->addTab(bargraphTab, QStringLiteral("Circular Bargraph"));
 
     // ------------------------------------------------------------------------
     // TAB 4: Alarm Annunciator Matrix (ANSI/ISA-18.1)
@@ -958,10 +956,10 @@ void MainWindow::setupUi()
     annHeaderLayout->setContentsMargins(14, 10, 14, 10);
     annHeaderLayout->setSpacing(16);
 
-    auto *annTitleLbl = new QLabel(QStringLiteral("🚨 <b>Alarm Annunciator Window Matrix (ISA-18.1 Sequences A & M)</b>"), annHeaderBox);
+    auto *annTitleLbl = new QLabel(QStringLiteral("<b>Alarm Annunciator Window Matrix (ISA-18.1 Sequences A & M)</b>"), annHeaderBox);
     annTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
 
-    m_annunciatorHornLabel = new QLabel(QStringLiteral("🔇 HORN: SILENT"), annHeaderBox);
+    m_annunciatorHornLabel = new QLabel(QStringLiteral("HORN: SILENT"), annHeaderBox);
     m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;"));
 
     m_annunciatorStatusLabel = new QLabel(QStringLiteral("Active: 0 | Unack: 0 | Normal: 12"), annHeaderBox);
@@ -1016,22 +1014,22 @@ void MainWindow::setupUi()
     operatorLayout->setSpacing(12);
     operatorLayout->setContentsMargins(14, 16, 14, 14);
 
-    auto *ackBtn = new QPushButton(QStringLiteral("🔔 ACKNOWLEDGE (ACK)"), operatorBox);
+    auto *ackBtn = new QPushButton(QStringLiteral("ACKNOWLEDGE (ACK)"), operatorBox);
     ackBtn->setCursor(Qt::PointingHandCursor);
     ackBtn->setStyleSheet(QStringLiteral("background-color: #0984e3; color: white; font-weight: bold; padding: 8px 16px;"));
     connect(ackBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::acknowledgeAll);
 
-    auto *silenceBtn = new QPushButton(QStringLiteral("🔇 SILENCE"), operatorBox);
+    auto *silenceBtn = new QPushButton(QStringLiteral("SILENCE"), operatorBox);
     silenceBtn->setCursor(Qt::PointingHandCursor);
     silenceBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
     connect(silenceBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::silence);
 
-    auto *resetBtn = new QPushButton(QStringLiteral("🔄 RESET"), operatorBox);
+    auto *resetBtn = new QPushButton(QStringLiteral("RESET"), operatorBox);
     resetBtn->setCursor(Qt::PointingHandCursor);
     resetBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
     connect(resetBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::resetAll);
 
-    auto *lampTestBtn = new QPushButton(QStringLiteral("💡 LAMP TEST"), operatorBox);
+    auto *lampTestBtn = new QPushButton(QStringLiteral("LAMP TEST"), operatorBox);
     lampTestBtn->setCheckable(true);
     lampTestBtn->setCursor(Qt::PointingHandCursor);
     lampTestBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
@@ -1123,10 +1121,10 @@ void MainWindow::setupUi()
     });
     connect(m_annunciatorPanel, &AnnunciatorPanel::audibleHornChanged, this, [this](bool horn) {
         if (horn) {
-            m_annunciatorHornLabel->setText(QStringLiteral("🔊 HORN: SOUNDING (AUDIBLE ALARM)"));
+            m_annunciatorHornLabel->setText(QStringLiteral("HORN: SOUNDING (AUDIBLE ALARM)"));
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #eb3b5a; border-radius: 4px; color: #ffffff;"));
         } else {
-            m_annunciatorHornLabel->setText(QStringLiteral("🔇 HORN: SILENT"));
+            m_annunciatorHornLabel->setText(QStringLiteral("HORN: SILENT"));
             m_annunciatorHornLabel->setStyleSheet(m_isDarkTheme 
                 ? QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;")
                 : QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #e8ecf1; border-radius: 4px; color: #718093;"));
@@ -1144,7 +1142,7 @@ void MainWindow::setupUi()
         }
     });
 
-    tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
+    tabWidget->addTab(annunciatorTab, QStringLiteral("Annunciator"));
 
     // ------------------------------------------------------------------------
     // TAB 5: Navigation & Directional Gyro (Compass)
@@ -1161,7 +1159,7 @@ void MainWindow::setupUi()
     navHeaderLayout->setContentsMargins(14, 10, 14, 10);
     navHeaderLayout->setSpacing(16);
 
-    auto *navTitleLbl = new QLabel(QStringLiteral("🧭 <b>Aeronautical & Marine Directional Navigation Instruments</b>"), navHeaderBox);
+    auto *navTitleLbl = new QLabel(QStringLiteral("<b>Aeronautical & Marine Directional Navigation Instruments</b>"), navHeaderBox);
     navTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
 
     m_deviationLabel = new QLabel(QStringLiteral("CDI: ON COURSE (000°)"), navHeaderBox);
@@ -1257,13 +1255,13 @@ void MainWindow::setupUi()
         buttonRow->addWidget(btn);
     };
 
-    addCardBtn(QStringLiteral("🧭 North (000°)"), 0.0);
-    addCardBtn(QStringLiteral("🧭 East (090°)"), 90.0);
-    addCardBtn(QStringLiteral("🧭 South (180°)"), 180.0);
-    addCardBtn(QStringLiteral("🧭 West (270°)"), 270.0);
+    addCardBtn(QStringLiteral("North (000°)"), 0.0);
+    addCardBtn(QStringLiteral("East (090°)"), 90.0);
+    addCardBtn(QStringLiteral("South (180°)"), 180.0);
+    addCardBtn(QStringLiteral("West (270°)"), 270.0);
 
     // Align Button
-    auto *alignBtn = new QPushButton(QStringLiteral("⚡ Align Bug to Heading"), navControlsBox);
+    auto *alignBtn = new QPushButton(QStringLiteral("Align Bug to Heading"), navControlsBox);
     alignBtn->setCursor(Qt::PointingHandCursor);
     connect(alignBtn, &QPushButton::clicked, this, [=]() {
         double currentHdg = m_compassHeadingUp->heading();
@@ -1274,19 +1272,19 @@ void MainWindow::setupUi()
     buttonRow->addWidget(alignBtn);
 
     // Autopilot Button
-    m_autopilotButton = new QPushButton(QStringLiteral("🤖 Engage Autopilot Heading Hold"), navControlsBox);
+    m_autopilotButton = new QPushButton(QStringLiteral("Engage Autopilot Heading Hold"), navControlsBox);
     m_autopilotButton->setCheckable(true);
     m_autopilotButton->setCursor(Qt::PointingHandCursor);
     m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #242c3d; color: #00e5ff; font-weight: bold; padding: 6px 14px;"));
     connect(m_autopilotButton, &QPushButton::toggled, this, [this, autopilotStatusLabel](bool checked) {
         m_isAutopilotActive = checked;
         if (checked) {
-            m_autopilotButton->setText(QStringLiteral("⏹ Disengage Autopilot"));
+            m_autopilotButton->setText(QStringLiteral("Disengage Autopilot"));
             m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #eb3b5a; color: white; font-weight: bold; padding: 6px 14px;"));
             autopilotStatusLabel->setText(QStringLiteral("AUTOPILOT: LOCKED (HEADING HOLD)"));
             autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #2ecc71;"));
         } else {
-            m_autopilotButton->setText(QStringLiteral("🤖 Engage Autopilot Heading Hold"));
+            m_autopilotButton->setText(QStringLiteral("Engage Autopilot Heading Hold"));
             m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #242c3d; color: #00e5ff; font-weight: bold; padding: 6px 14px;"));
             autopilotStatusLabel->setText(QStringLiteral("AUTOPILOT: STANDBY"));
             autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #a4b3c6;"));
@@ -1341,7 +1339,7 @@ void MainWindow::setupUi()
     });
 
     navLayout->addWidget(navControlsBox);
-    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro && Marine Compass (Compass)"));
+    tabWidget->addTab(navTab, QStringLiteral("Compass"));
 
     // ------------------------------------------------------------------------
     // TAB 6: High-Rate DAQ Telemetry (StripChart)
@@ -1438,7 +1436,7 @@ void MainWindow::setupUi()
     daqControlsLayout->addWidget(m_daqMetricsLabel, 2, 2, 1, 2);
 
     daqLayout->addWidget(daqControlsBox);
-    tabWidget->addTab(daqTab, QStringLiteral("⚡ High-Rate DAQ (StripChart)"));
+    tabWidget->addTab(daqTab, QStringLiteral("High-Rate DAQ"));
 
     rootLayout->addWidget(tabWidget);
 }
@@ -1448,7 +1446,7 @@ void MainWindow::toggleSimulation()
     if (m_isSimulating) {
         m_simTimer.stop();
         m_isSimulating = false;
-        m_simButton->setText(QStringLiteral("▶ Start Simulation (50 Hz)"));
+        m_simButton->setText(QStringLiteral("Start Simulation"));
         m_fpsLabel->setText(QStringLiteral("FPS: --"));
 
         m_runLed->setOn(false);
@@ -1464,7 +1462,7 @@ void MainWindow::toggleSimulation()
         m_lastFpsCheck = m_elapsedTimer.elapsed();
         m_simTimer.start(20); // 50 Hz (20 ms interval)
         m_isSimulating = true;
-        m_simButton->setText(QStringLiteral("⏹ Stop Simulation"));
+        m_simButton->setText(QStringLiteral("Stop Simulation"));
 
         m_runLed->setOn(true);
         m_pumpLed->setOn(true);
@@ -1477,7 +1475,7 @@ void MainWindow::toggleAutoTour()
     m_isAutoTourActive = !m_isAutoTourActive;
     if (m_isAutoTourActive) {
         m_tourButton->setChecked(true);
-        m_tourButton->setText(QStringLiteral("⏸ Auto-Tour (3.5s)"));
+        m_tourButton->setText(QStringLiteral("Stop Tour"));
         m_tourButton->setStyleSheet(QStringLiteral(
             "QPushButton { background-color: #0984e3; border: 1px solid #74b9ff; color: #ffffff; font-weight: bold; padding: 6px 14px; border-radius: 4px; }"
             "QPushButton:hover { background-color: #0870c2; }"
@@ -1485,7 +1483,7 @@ void MainWindow::toggleAutoTour()
         m_tourTimer.start(3500);
     } else {
         m_tourButton->setChecked(false);
-        m_tourButton->setText(QStringLiteral("🔄 Auto-Tour (Off)"));
+        m_tourButton->setText(QStringLiteral("Auto-Tour"));
         m_tourButton->setStyleSheet(QString());
         m_tourTimer.stop();
         if (m_tabAnimation) {
@@ -1555,7 +1553,7 @@ void MainWindow::onSimulationTick()
     qint64 now = m_elapsedTimer.elapsed();
     if (now - m_lastFpsCheck >= 500) {
         double fps = (m_frameCount * 1000.0) / (now - m_lastFpsCheck);
-        m_fpsLabel->setText(QStringLiteral("FPS: %1 (20 ms tick)").arg(QString::number(fps, 'f', 1)));
+        m_fpsLabel->setText(QStringLiteral("FPS: %1").arg(QString::number(fps, 'f', 1)));
         m_frameCount = 0;
         m_lastFpsCheck = now;
     }
@@ -1728,8 +1726,8 @@ void MainWindow::toggleTheme()
 void MainWindow::applyTheme(bool dark)
 {
     m_isDarkTheme = dark;
-    m_themeButton->setText(dark ? QStringLiteral("☀️ Switch to Light Theme")
-                                : QStringLiteral("🌙 Switch to Dark Theme"));
+    m_themeButton->setText(dark ? QStringLiteral("Light Theme")
+                                : QStringLiteral("Dark Theme"));
 
     if (m_tourButton) {
         if (m_isAutoTourActive) {
@@ -1998,7 +1996,8 @@ void MainWindow::applyTheme(bool dark)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == m_daqChart && event->type() == QEvent::Paint) {
+    // The measured paint time would make exported images differ from run to run
+    if (watched == m_daqChart && event->type() == QEvent::Paint && !m_exportMode) {
         QElapsedTimer timer;
         timer.start();
         m_daqChart->removeEventFilter(this);
@@ -2022,4 +2021,90 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::prepareForExport()
+{
+    m_exportMode = true;
+    m_simTimer.stop();
+    m_tourTimer.stop();
+
+    // Dashboard telemetry (sample-index axis): 300 points per channel of analytic signals
+    constexpr double pi = 3.14159265358979323846;
+    for (int i = 0; i < 300; ++i) {
+        const double t = i * 0.05;
+        m_stripChart->addDataPoint(m_chRpm, 55.0 + 25.0 * std::sin(2.0 * pi * t / 6.0));
+        m_stripChart->addDataPoint(m_chBoost, 52.0 + 18.0 * std::sin(2.0 * pi * t / 4.0 + 1.0));
+        m_stripChart->addDataPoint(m_chTemp, 80.0 + 8.0 * (1.0 - std::exp(-t / 5.0)));
+    }
+
+    // High-rate DAQ (time axis, explicit timestamps): 10 s at 100 kHz, the simulation's
+    // signals without its random noise
+    constexpr int count = 1000000;
+    std::vector<double> sine(count);
+    std::vector<double> square(count);
+    double phase = 0.0;
+    for (int i = 0; i < count; ++i) {
+        const int index = i + 1;
+        phase += 0.005;
+        double s = std::sin(phase) * 40.0 + 50.0;
+        if (index % 4137 == 0) {
+            s = 145.0; // single-sample spike
+        }
+        if (index % 8251 < 6) {
+            s = std::numeric_limits<double>::quiet_NaN(); // sensor dropout
+        }
+        sine[static_cast<size_t>(i)] = s;
+        square[static_cast<size_t>(i)] = (index % 5519 == 0) ? -15.0 : ((std::sin(phase * 0.2) >= 0.0) ? 80.0 : 20.0);
+    }
+    const auto dt = std::chrono::nanoseconds(10000); // 10 us = 100 kHz
+    m_daqChart->addUniformSamples(m_daqChannelSine, std::chrono::nanoseconds(0), dt, sine.data(), count);
+    m_daqChart->addUniformSamples(m_daqChannelSquare, std::chrono::nanoseconds(0), dt, square.data(), count);
+}
+
+bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStringList *written, QString *error)
+{
+    static const char *const names[] = {"dashboard", "manual-controls", "circular-bargraph",
+                                        "annunciator", "compass", "daq"};
+    if (m_tabWidget->count() != static_cast<int>(sizeof(names) / sizeof(names[0]))) {
+        *error = QStringLiteral("gallery has %1 tabs, the export knows %2").arg(m_tabWidget->count())
+                     .arg(sizeof(names) / sizeof(names[0]));
+        return false;
+    }
+    applyTheme(dark);
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        m_tabWidget->setCurrentIndex(i);
+        // Freeze what moves with time; the event loop is never run, so no timer fires afterwards
+        for (LedIndicator *led : findChildren<LedIndicator *>()) {
+            if (led->isBlinking()) {
+                led->setBlinking(false);
+                led->setOn(true);
+            }
+        }
+        for (LevelMeter *meter : findChildren<LevelMeter *>()) {
+            meter->resetPeaks();
+        }
+        for (CircularBargraph *bargraph : findChildren<CircularBargraph *>()) {
+            bargraph->resetPeak();
+        }
+        QCoreApplication::sendPostedEvents();
+
+        QImage image(size() * dpr, QImage::Format_ARGB32_Premultiplied);
+        image.setDevicePixelRatio(dpr);
+        image.fill(Qt::black);
+        {
+            QPainter painter(&image);
+            render(&painter, QPoint(), QRegion(), QWidget::DrawWindowBackground | QWidget::DrawChildren);
+        }
+        const QString path = QStringLiteral("%1/tab-%2%3.png").arg(dir, QLatin1String(names[i]),
+                                                                   dark ? QString() : QStringLiteral("-light"));
+        QImageWriter writer(path, "png");
+        writer.setQuality(0); // PNG: maximum compression
+        if (!writer.write(image)) {
+            *error = QStringLiteral("tab \"%1\": %2").arg(m_tabWidget->tabText(i), writer.errorString());
+            return false;
+        }
+        written->append(path);
+    }
+    return true;
 }

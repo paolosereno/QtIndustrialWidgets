@@ -134,3 +134,30 @@ set_target_properties(tst_M4Decimator PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_M4Decimator)
+
+# Every public widget has a showcase in the gallery's image export list (#26)
+add_executable(tst_GalleryShowcases
+    tst_GalleryShowcases.cpp
+    ${PROJECT_SOURCE_DIR}/examples/gallery/Showcases.cpp
+)
+target_link_libraries(tst_GalleryShowcases
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_GalleryShowcases
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/examples/gallery
+)
+target_compile_definitions(tst_GalleryShowcases
+    PRIVATE
+        QIW_PUBLIC_HEADER_DIR="${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets"
+)
+set_target_properties(tst_GalleryShowcases PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_GalleryShowcases)

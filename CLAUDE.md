@@ -30,6 +30,9 @@ QT_QPA_PLATFORM=offscreen ./build/bin/tst_StripChart -v2
 cmake -B build -DBUILD_BENCHMARKS=ON && cmake --build build
 QT_QPA_PLATFORM=offscreen ./build/bin/bench_StripChart
 
+# Documentation images (docs/images/, DPR 2, dark theme; see docs/gallery_images.md)
+./build/bin/QtIndustrialWidgetsGallery --export-gallery docs/images
+
 # Licence compliance (CI fails without it)
 reuse lint
 ```

@@ -77,6 +77,29 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build --output-on-failure
 
+      # Smoke test of the documentation image export (#26); images are uploaded, never committed
+      - name: Export gallery images (smoke test)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/gallery-images"
+          ./build/bin/QtIndustrialWidgetsGallery --export-gallery "$out" --theme both | tee "$RUNNER_TEMP/export.log"
+          # every printed file exists
+          while read -r f; do test -s "$f" || { echo "missing: $f"; exit 1; }; done < "$RUNNER_TEMP/export.log"
+          # the dark images are exactly the committed docs/images, each with its light variant
+          diff <(ls "$out" | grep -v -- '-light\.png$' | sort) <(ls docs/images | sort)
+          for f in docs/images/*.png; do
+            n=$(basename "$f" .png)
+            test -s "$out/$n-light.png" || { echo "missing light variant: $n-light.png"; exit 1; }
+          done
+          echo "$(ls "$out" | wc -l) images exported"
+
+      - name: Upload gallery images artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gallery-images
+          path: ${{ runner.temp }}/gallery-images/
+          retention-days: 14
+
       - name: Build Doxygen documentation
         run: cmake --build build --target docs
 
