@@ -20,6 +20,13 @@
  * customizable angular spans (e.g. 270° industrial sweep, 180° semi-circular, etc.), major and minor graduation ticks,
  * color-coded warning/error threshold arc bands, and an integrated recessed digital readout pod.
  *
+ * The digital readout pod sits below the pivot and is sized from the scale labels: it is narrowed (and, if
+ * needed, moved down) so that it does not cover any scale label, and the value font shrinks to fit the widest
+ * value of the range (minimum or maximum at the current precision) down to the size of the scale labels
+ * (8 px at least). The value has precedence over the labels: if it does not fit even at that size, the pod
+ * grows to hold the whole value and may then cover part of a label. The value is never clipped or abbreviated.
+ * The scale radius and the scale label font do not depend on the pod.
+ *
  * The dial scale, graduation ticks, numbers, and threshold bands are rendered into a high-DPI cached QPixmap
  * that updates only when geometry or visual properties change, allowing 60+ FPS needle animation with minimal CPU usage.
  *
@@ -144,7 +151,7 @@ public Q_SLOTS:
     void setErrorThreshold(double threshold);
     /** \brief Toggles visibility of the colored threshold arc bands. */
     void setThresholdBandsVisible(bool visible);
-    /** \brief Toggles visibility of the digital readout box. */
+    /** \brief Toggles visibility of the digital readout box (see the class description for its layout). */
     void setDigitalDisplayVisible(bool visible);
 
     /** \brief Sets the needle pointer color. */

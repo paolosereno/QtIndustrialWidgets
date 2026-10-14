@@ -50,6 +50,10 @@ public:
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
 
+    // Digital display geometry, computed with the static scale (see internal/RadialGaugeLayout.h)
+    QRectF m_podRect;
+    int m_valueFontPx{8};
+
     // Threshold state tracking
     bool m_wasWarning{false};
     bool m_wasError{false};
@@ -378,6 +382,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     const QPointF center(w * 0.5, h * 0.5);
     const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(side);
     const double radius = geo.radius;
+    d_ptr->m_podRect = QRectF();
 
     if (radius <= 5.0) {
         d_ptr->m_cacheDirty = false;
@@ -484,6 +489,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     painter.setFont(font);
 
     QPen majorPen(d_ptr->m_scaleColor, std::max(1.8, radius * 0.022), Qt::SolidLine, Qt::RoundCap);
+    std::vector<internal::LayoutRect> labelRects;
 
     for (int i = 0; i <= d_ptr->m_majorTicks; ++i) {
         double frac = static_cast<double>(i) / d_ptr->m_majorTicks;
@@ -514,36 +520,68 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
         // the rectangle only positions the label
         painter.drawText(drawRect, Qt::AlignCenter | Qt::TextDontClip, labelStr);
+        labelRects.push_back({drawRect.x(), drawRect.y(), drawRect.width(), drawRect.height()});
     }
 
-    // 4. Digital Display Background & Unit (Recessed pod below pivot)
+    // 4. Digital Display Background & Unit (Recessed pod below pivot), sized and placed clear of
+    //    the scale labels; the value font shrinks to fit the widest value, down to the label font.
+    //    The value has precedence: at that font the pod grows to hold it whole, even over a label (#43)
     if (d_ptr->m_digitalDisplayVisible) {
-        double podWidth = radius * 0.68;
-        double podHeight = radius * 0.28;
-        QRectF podRect(center.x() - podWidth * 0.5,
-                       center.y() + radius * 0.28,
-                       podWidth, podHeight);
+        const double pad = std::max(3.0, radius * 0.04);
+        const int preferredValuePx = std::max(8, static_cast<int>(radius * 0.15));
+        const int minimumValuePx = std::max(8, geo.labelFontPx);
+        const QString minText = QString::number(d_ptr->m_minimum, 'f', d_ptr->m_precision);
+        const QString maxText = QString::number(d_ptr->m_maximum, 'f', d_ptr->m_precision);
+        QFont valFont = this->font();
+        valFont.setBold(true);
+        auto valueWidth = [&](int px) {
+            valFont.setPixelSize(px);
+            const QFontMetricsF vfm(valFont);
+            return std::max(vfm.horizontalAdvance(minText), vfm.horizontalAdvance(maxText));
+        };
+        auto valueHeight = [&](int px) {
+            valFont.setPixelSize(px);
+            return QFontMetricsF(valFont).height();
+        };
 
-        // Subtle recessed LCD box
-        QLinearGradient podGrad(podRect.topLeft(), podRect.bottomLeft());
-        podGrad.setColorAt(0.0, QColor(10, 12, 16, 220));
-        podGrad.setColorAt(1.0, QColor(22, 26, 34, 220));
+        QFont unitFont = font;
+        unitFont.setPixelSize(std::max(7, static_cast<int>(radius * 0.07)));
+        unitFont.setBold(false);
 
-        painter.setPen(QPen(d_ptr->m_bezelColor.darker(120), 1.2));
-        painter.setBrush(podGrad);
-        painter.drawRoundedRect(podRect, 4.0, 4.0);
+        internal::PodLayoutInput in;
+        in.centerX = center.x();
+        in.centerY = center.y();
+        in.radius = radius;
+        in.labelRects = labelRects;
+        in.minPodWidth = valueWidth(minimumValuePx) + 2.0 * pad;
+        in.minPodHeight = valueHeight(minimumValuePx);
+        in.unitWidth = d_ptr->m_unit.isEmpty() ? 0.0 : QFontMetricsF(unitFont).horizontalAdvance(d_ptr->m_unit);
+        const internal::PodLayout layout = internal::layoutDigitalPod(in);
 
-        // Static unit text on the dial
-        if (!d_ptr->m_unit.isEmpty()) {
-            int unitFontSize = std::max(7, static_cast<int>(radius * 0.07));
-            QFont unitFont = font;
-            unitFont.setPixelSize(unitFontSize);
-            unitFont.setBold(false);
-            painter.setFont(unitFont);
+        const QRectF podRect(layout.pod.x, layout.pod.y, layout.pod.w, layout.pod.h);
+        const internal::FontFit fit = internal::fitFontPixelSize(preferredValuePx, minimumValuePx,
+                                                                 podRect.width() - 2.0 * pad, podRect.height(),
+                                                                 valueWidth, valueHeight);
+        d_ptr->m_podRect = podRect;
+        d_ptr->m_valueFontPx = fit.pixelSize;
 
-            QRectF unitRect(podRect.left(), podRect.top() - radius * 0.14, podWidth, radius * 0.14);
-            painter.setPen(d_ptr->m_scaleColor.darker(110));
-            painter.drawText(unitRect, Qt::AlignCenter, d_ptr->m_unit);
+        if (!podRect.isEmpty()) {
+            // Subtle recessed LCD box
+            QLinearGradient podGrad(podRect.topLeft(), podRect.bottomLeft());
+            podGrad.setColorAt(0.0, QColor(10, 12, 16, 220));
+            podGrad.setColorAt(1.0, QColor(22, 26, 34, 220));
+
+            painter.setPen(QPen(d_ptr->m_bezelColor.darker(120), 1.2));
+            painter.setBrush(podGrad);
+            painter.drawRoundedRect(podRect, 4.0, 4.0);
+
+            // Static unit text on the dial
+            if (!d_ptr->m_unit.isEmpty()) {
+                painter.setFont(unitFont);
+                const QRectF unitRect(layout.unit.x, layout.unit.y, layout.unit.w, layout.unit.h);
+                painter.setPen(d_ptr->m_scaleColor.darker(110));
+                painter.drawText(unitRect, Qt::AlignCenter, d_ptr->m_unit);
+            }
         }
     }
 
@@ -572,18 +610,13 @@ void RadialGauge::paintEvent(QPaintEvent *)
 
     if (radius <= 5.0) return;
 
-    // 2. Dynamic Digital Readout
-    if (d_ptr->m_digitalDisplayVisible) {
-        double podWidth = radius * 0.68;
-        double podHeight = radius * 0.28;
-        QRectF podRect(center.x() - podWidth * 0.5,
-                       center.y() + radius * 0.28,
-                       podWidth, podHeight);
+    // 2. Dynamic Digital Readout (pod geometry and font from renderStaticScale())
+    if (d_ptr->m_digitalDisplayVisible && !d_ptr->m_podRect.isEmpty()) {
+        const QRectF podRect = d_ptr->m_podRect;
 
         QString valStr = QString::number(d_ptr->m_value, 'f', d_ptr->m_precision);
-        int valFontSize = std::max(8, static_cast<int>(radius * 0.15));
         QFont valFont = font();
-        valFont.setPixelSize(valFontSize);
+        valFont.setPixelSize(d_ptr->m_valueFontPx);
         valFont.setBold(true);
         painter.setFont(valFont);
 
