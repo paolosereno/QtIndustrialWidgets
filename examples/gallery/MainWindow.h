@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QtWidgets/QMainWindow>
+#include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QElapsedTimer>
 
@@ -37,6 +38,12 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override = default;
+
+    // Documentation image export (--export-gallery, see GalleryExport.cpp)
+    /// Stops everything time-dependent and fills the charts with fixed analytic data.
+    void prepareForExport();
+    /// Renders every tab at the window's current size; appends the written paths to \a written.
+    bool exportTabImages(const QString &dir, qreal dpr, bool dark, QStringList *written, QString *error);
 
 private Q_SLOTS:
     void toggleSimulation();
@@ -148,6 +155,7 @@ private:
     bool m_isDarkTheme{true};
     bool m_isSimulating{false};
     bool m_isAutoTourActive{false};
+    bool m_exportMode{false};
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

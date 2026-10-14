@@ -39,6 +39,8 @@
 #include <QtCore/QMetaEnum>
 #include <QtCore/QSignalBlocker>
 #include <QtGui/QPalette>
+#include <QtGui/QPainter>
+#include <QtGui/QImageWriter>
 #include <QtCore/QtMath>
 
 #include <array>
@@ -1994,7 +1996,8 @@ void MainWindow::applyTheme(bool dark)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == m_daqChart && event->type() == QEvent::Paint) {
+    // The measured paint time would make exported images differ from run to run
+    if (watched == m_daqChart && event->type() == QEvent::Paint && !m_exportMode) {
         QElapsedTimer timer;
         timer.start();
         m_daqChart->removeEventFilter(this);
@@ -2018,4 +2021,90 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::prepareForExport()
+{
+    m_exportMode = true;
+    m_simTimer.stop();
+    m_tourTimer.stop();
+
+    // Dashboard telemetry (sample-index axis): 300 points per channel of analytic signals
+    constexpr double pi = 3.14159265358979323846;
+    for (int i = 0; i < 300; ++i) {
+        const double t = i * 0.05;
+        m_stripChart->addDataPoint(m_chRpm, 55.0 + 25.0 * std::sin(2.0 * pi * t / 6.0));
+        m_stripChart->addDataPoint(m_chBoost, 52.0 + 18.0 * std::sin(2.0 * pi * t / 4.0 + 1.0));
+        m_stripChart->addDataPoint(m_chTemp, 80.0 + 8.0 * (1.0 - std::exp(-t / 5.0)));
+    }
+
+    // High-rate DAQ (time axis, explicit timestamps): 10 s at 100 kHz, the simulation's
+    // signals without its random noise
+    constexpr int count = 1000000;
+    std::vector<double> sine(count);
+    std::vector<double> square(count);
+    double phase = 0.0;
+    for (int i = 0; i < count; ++i) {
+        const int index = i + 1;
+        phase += 0.005;
+        double s = std::sin(phase) * 40.0 + 50.0;
+        if (index % 4137 == 0) {
+            s = 145.0; // single-sample spike
+        }
+        if (index % 8251 < 6) {
+            s = std::numeric_limits<double>::quiet_NaN(); // sensor dropout
+        }
+        sine[static_cast<size_t>(i)] = s;
+        square[static_cast<size_t>(i)] = (index % 5519 == 0) ? -15.0 : ((std::sin(phase * 0.2) >= 0.0) ? 80.0 : 20.0);
+    }
+    const auto dt = std::chrono::nanoseconds(10000); // 10 us = 100 kHz
+    m_daqChart->addUniformSamples(m_daqChannelSine, std::chrono::nanoseconds(0), dt, sine.data(), count);
+    m_daqChart->addUniformSamples(m_daqChannelSquare, std::chrono::nanoseconds(0), dt, square.data(), count);
+}
+
+bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStringList *written, QString *error)
+{
+    static const char *const names[] = {"dashboard", "manual-controls", "circular-bargraph",
+                                        "annunciator", "compass", "daq"};
+    if (m_tabWidget->count() != static_cast<int>(sizeof(names) / sizeof(names[0]))) {
+        *error = QStringLiteral("gallery has %1 tabs, the export knows %2").arg(m_tabWidget->count())
+                     .arg(sizeof(names) / sizeof(names[0]));
+        return false;
+    }
+    applyTheme(dark);
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        m_tabWidget->setCurrentIndex(i);
+        // Freeze what moves with time; the event loop is never run, so no timer fires afterwards
+        for (LedIndicator *led : findChildren<LedIndicator *>()) {
+            if (led->isBlinking()) {
+                led->setBlinking(false);
+                led->setOn(true);
+            }
+        }
+        for (LevelMeter *meter : findChildren<LevelMeter *>()) {
+            meter->resetPeaks();
+        }
+        for (CircularBargraph *bargraph : findChildren<CircularBargraph *>()) {
+            bargraph->resetPeak();
+        }
+        QCoreApplication::sendPostedEvents();
+
+        QImage image(size() * dpr, QImage::Format_ARGB32_Premultiplied);
+        image.setDevicePixelRatio(dpr);
+        image.fill(Qt::black);
+        {
+            QPainter painter(&image);
+            render(&painter, QPoint(), QRegion(), QWidget::DrawWindowBackground | QWidget::DrawChildren);
+        }
+        const QString path = QStringLiteral("%1/tab-%2%3.png").arg(dir, QLatin1String(names[i]),
+                                                                   dark ? QString() : QStringLiteral("-light"));
+        QImageWriter writer(path, "png");
+        writer.setQuality(0); // PNG: maximum compression
+        if (!writer.write(image)) {
+            *error = QStringLiteral("tab \"%1\": %2").arg(m_tabWidget->tabText(i), writer.errorString());
+            return false;
+        }
+        written->append(path);
+    }
+    return true;
 }
