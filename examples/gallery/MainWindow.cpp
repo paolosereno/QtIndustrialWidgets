@@ -81,7 +81,7 @@ void MainWindow::setupUi()
     topLayout->setContentsMargins(14, 10, 14, 10);
     topLayout->setSpacing(14);
 
-    auto *titleLabel = new QLabel(QStringLiteral("⚡ <b>QtIndustrialWidgets</b> &nbsp;|&nbsp; High-Performance Instrumentation"), this);
+    auto *titleLabel = new QLabel(QStringLiteral("<b>QtIndustrialWidgets</b> &nbsp;|&nbsp; Instrumentation Gallery"), this);
     QFont titleFont = titleLabel->font();
     titleFont.setPointSize(12);
     titleLabel->setFont(titleFont);
@@ -108,19 +108,19 @@ void MainWindow::setupUi()
     m_pumpLed->setShape(LedIndicator::LedShape::Rectangular);
     m_pumpLed->setOn(false);
 
-    m_simButton = new QPushButton(QStringLiteral("▶ Start Simulation (50 Hz)"), this);
+    m_simButton = new QPushButton(QStringLiteral("Start Simulation (50 Hz)"), this);
     m_simButton->setCursor(Qt::PointingHandCursor);
     m_simButton->setMinimumHeight(32);
     connect(m_simButton, &QPushButton::clicked, this, &MainWindow::toggleSimulation);
 
-    m_tourButton = new QPushButton(QStringLiteral("🔄 Auto-Tour (Off)"), this);
+    m_tourButton = new QPushButton(QStringLiteral("Auto-Tour (Off)"), this);
     m_tourButton->setCheckable(true);
     m_tourButton->setCursor(Qt::PointingHandCursor);
     m_tourButton->setMinimumHeight(32);
     m_tourButton->setToolTip(QStringLiteral("Cycle automatically between tabs every 3.5 seconds with a smooth transition"));
     connect(m_tourButton, &QPushButton::clicked, this, &MainWindow::toggleAutoTour);
 
-    m_themeButton = new QPushButton(QStringLiteral("☀️ Switch to Light Theme"), this);
+    m_themeButton = new QPushButton(QStringLiteral("Switch to Light Theme"), this);
     m_themeButton->setCursor(Qt::PointingHandCursor);
     m_themeButton->setMinimumHeight(32);
     connect(m_themeButton, &QPushButton::clicked, this, &MainWindow::toggleTheme);
@@ -360,7 +360,7 @@ void MainWindow::setupUi()
 
     dashLayout->addLayout(lowerRowLayout, 3);
 
-    tabWidget->addTab(dashTab, QStringLiteral("📊 Live Instrumentation Dashboard"));
+    tabWidget->addTab(dashTab, QStringLiteral("Dashboard"));
 
     // ------------------------------------------------------------------------
     // TAB 2: Manual Control Sliders & Calibration
@@ -662,7 +662,7 @@ void MainWindow::setupUi()
     // setWidget() turns on autoFillBackground; keep the themed tab pane visible behind the content
     controlsTab->setAutoFillBackground(false);
     controlsScroll->viewport()->setAutoFillBackground(false);
-    tabWidget->addTab(controlsScroll, QStringLiteral("🎛️ Manual Controls && Diagnostics"));
+    tabWidget->addTab(controlsScroll, QStringLiteral("Manual Controls"));
 
     // ------------------------------------------------------------------------
     // TAB 3: Circular Arc LED Bargraph Showcase (CircularBargraph)
@@ -941,7 +941,7 @@ void MainWindow::setupUi()
     circSettingsLayout->setColumnStretch(4, 1);
 
     bargraphLayout->addWidget(circSettingsBox);
-    tabWidget->addTab(bargraphTab, QStringLiteral("⭕ Circular Bargraph (CircularBargraph)"));
+    tabWidget->addTab(bargraphTab, QStringLiteral("Circular Bargraph"));
 
     // ------------------------------------------------------------------------
     // TAB 4: Alarm Annunciator Matrix (ANSI/ISA-18.1)
@@ -958,10 +958,10 @@ void MainWindow::setupUi()
     annHeaderLayout->setContentsMargins(14, 10, 14, 10);
     annHeaderLayout->setSpacing(16);
 
-    auto *annTitleLbl = new QLabel(QStringLiteral("🚨 <b>Alarm Annunciator Window Matrix (ISA-18.1 Sequences A & M)</b>"), annHeaderBox);
+    auto *annTitleLbl = new QLabel(QStringLiteral("<b>Alarm Annunciator Window Matrix (ISA-18.1 Sequences A & M)</b>"), annHeaderBox);
     annTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
 
-    m_annunciatorHornLabel = new QLabel(QStringLiteral("🔇 HORN: SILENT"), annHeaderBox);
+    m_annunciatorHornLabel = new QLabel(QStringLiteral("HORN: SILENT"), annHeaderBox);
     m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;"));
 
     m_annunciatorStatusLabel = new QLabel(QStringLiteral("Active: 0 | Unack: 0 | Normal: 12"), annHeaderBox);
@@ -1016,22 +1016,22 @@ void MainWindow::setupUi()
     operatorLayout->setSpacing(12);
     operatorLayout->setContentsMargins(14, 16, 14, 14);
 
-    auto *ackBtn = new QPushButton(QStringLiteral("🔔 ACKNOWLEDGE (ACK)"), operatorBox);
+    auto *ackBtn = new QPushButton(QStringLiteral("ACKNOWLEDGE (ACK)"), operatorBox);
     ackBtn->setCursor(Qt::PointingHandCursor);
     ackBtn->setStyleSheet(QStringLiteral("background-color: #0984e3; color: white; font-weight: bold; padding: 8px 16px;"));
     connect(ackBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::acknowledgeAll);
 
-    auto *silenceBtn = new QPushButton(QStringLiteral("🔇 SILENCE"), operatorBox);
+    auto *silenceBtn = new QPushButton(QStringLiteral("SILENCE"), operatorBox);
     silenceBtn->setCursor(Qt::PointingHandCursor);
     silenceBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
     connect(silenceBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::silence);
 
-    auto *resetBtn = new QPushButton(QStringLiteral("🔄 RESET"), operatorBox);
+    auto *resetBtn = new QPushButton(QStringLiteral("RESET"), operatorBox);
     resetBtn->setCursor(Qt::PointingHandCursor);
     resetBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
     connect(resetBtn, &QPushButton::clicked, m_annunciatorPanel, &AnnunciatorPanel::resetAll);
 
-    auto *lampTestBtn = new QPushButton(QStringLiteral("💡 LAMP TEST"), operatorBox);
+    auto *lampTestBtn = new QPushButton(QStringLiteral("LAMP TEST"), operatorBox);
     lampTestBtn->setCheckable(true);
     lampTestBtn->setCursor(Qt::PointingHandCursor);
     lampTestBtn->setStyleSheet(QStringLiteral("padding: 8px 14px; font-weight: bold;"));
@@ -1123,10 +1123,10 @@ void MainWindow::setupUi()
     });
     connect(m_annunciatorPanel, &AnnunciatorPanel::audibleHornChanged, this, [this](bool horn) {
         if (horn) {
-            m_annunciatorHornLabel->setText(QStringLiteral("🔊 HORN: SOUNDING (AUDIBLE ALARM)"));
+            m_annunciatorHornLabel->setText(QStringLiteral("HORN: SOUNDING (AUDIBLE ALARM)"));
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #eb3b5a; border-radius: 4px; color: #ffffff;"));
         } else {
-            m_annunciatorHornLabel->setText(QStringLiteral("🔇 HORN: SILENT"));
+            m_annunciatorHornLabel->setText(QStringLiteral("HORN: SILENT"));
             m_annunciatorHornLabel->setStyleSheet(m_isDarkTheme 
                 ? QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;")
                 : QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #e8ecf1; border-radius: 4px; color: #718093;"));
@@ -1144,7 +1144,7 @@ void MainWindow::setupUi()
         }
     });
 
-    tabWidget->addTab(annunciatorTab, QStringLiteral("🚨 Alarm Annunciator Matrix (ISA-18.1)"));
+    tabWidget->addTab(annunciatorTab, QStringLiteral("Annunciator"));
 
     // ------------------------------------------------------------------------
     // TAB 5: Navigation & Directional Gyro (Compass)
@@ -1161,7 +1161,7 @@ void MainWindow::setupUi()
     navHeaderLayout->setContentsMargins(14, 10, 14, 10);
     navHeaderLayout->setSpacing(16);
 
-    auto *navTitleLbl = new QLabel(QStringLiteral("🧭 <b>Aeronautical & Marine Directional Navigation Instruments</b>"), navHeaderBox);
+    auto *navTitleLbl = new QLabel(QStringLiteral("<b>Aeronautical & Marine Directional Navigation Instruments</b>"), navHeaderBox);
     navTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
 
     m_deviationLabel = new QLabel(QStringLiteral("CDI: ON COURSE (000°)"), navHeaderBox);
@@ -1257,13 +1257,13 @@ void MainWindow::setupUi()
         buttonRow->addWidget(btn);
     };
 
-    addCardBtn(QStringLiteral("🧭 North (000°)"), 0.0);
-    addCardBtn(QStringLiteral("🧭 East (090°)"), 90.0);
-    addCardBtn(QStringLiteral("🧭 South (180°)"), 180.0);
-    addCardBtn(QStringLiteral("🧭 West (270°)"), 270.0);
+    addCardBtn(QStringLiteral("North (000°)"), 0.0);
+    addCardBtn(QStringLiteral("East (090°)"), 90.0);
+    addCardBtn(QStringLiteral("South (180°)"), 180.0);
+    addCardBtn(QStringLiteral("West (270°)"), 270.0);
 
     // Align Button
-    auto *alignBtn = new QPushButton(QStringLiteral("⚡ Align Bug to Heading"), navControlsBox);
+    auto *alignBtn = new QPushButton(QStringLiteral("Align Bug to Heading"), navControlsBox);
     alignBtn->setCursor(Qt::PointingHandCursor);
     connect(alignBtn, &QPushButton::clicked, this, [=]() {
         double currentHdg = m_compassHeadingUp->heading();
@@ -1274,19 +1274,19 @@ void MainWindow::setupUi()
     buttonRow->addWidget(alignBtn);
 
     // Autopilot Button
-    m_autopilotButton = new QPushButton(QStringLiteral("🤖 Engage Autopilot Heading Hold"), navControlsBox);
+    m_autopilotButton = new QPushButton(QStringLiteral("Engage Autopilot Heading Hold"), navControlsBox);
     m_autopilotButton->setCheckable(true);
     m_autopilotButton->setCursor(Qt::PointingHandCursor);
     m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #242c3d; color: #00e5ff; font-weight: bold; padding: 6px 14px;"));
     connect(m_autopilotButton, &QPushButton::toggled, this, [this, autopilotStatusLabel](bool checked) {
         m_isAutopilotActive = checked;
         if (checked) {
-            m_autopilotButton->setText(QStringLiteral("⏹ Disengage Autopilot"));
+            m_autopilotButton->setText(QStringLiteral("Disengage Autopilot"));
             m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #eb3b5a; color: white; font-weight: bold; padding: 6px 14px;"));
             autopilotStatusLabel->setText(QStringLiteral("AUTOPILOT: LOCKED (HEADING HOLD)"));
             autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #2ecc71;"));
         } else {
-            m_autopilotButton->setText(QStringLiteral("🤖 Engage Autopilot Heading Hold"));
+            m_autopilotButton->setText(QStringLiteral("Engage Autopilot Heading Hold"));
             m_autopilotButton->setStyleSheet(QStringLiteral("background-color: #242c3d; color: #00e5ff; font-weight: bold; padding: 6px 14px;"));
             autopilotStatusLabel->setText(QStringLiteral("AUTOPILOT: STANDBY"));
             autopilotStatusLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; color: #a4b3c6;"));
@@ -1341,7 +1341,7 @@ void MainWindow::setupUi()
     });
 
     navLayout->addWidget(navControlsBox);
-    tabWidget->addTab(navTab, QStringLiteral("🧭 Directional Gyro && Marine Compass (Compass)"));
+    tabWidget->addTab(navTab, QStringLiteral("Compass"));
 
     // ------------------------------------------------------------------------
     // TAB 6: High-Rate DAQ Telemetry (StripChart)
@@ -1438,7 +1438,7 @@ void MainWindow::setupUi()
     daqControlsLayout->addWidget(m_daqMetricsLabel, 2, 2, 1, 2);
 
     daqLayout->addWidget(daqControlsBox);
-    tabWidget->addTab(daqTab, QStringLiteral("⚡ High-Rate DAQ (StripChart)"));
+    tabWidget->addTab(daqTab, QStringLiteral("High-Rate DAQ"));
 
     rootLayout->addWidget(tabWidget);
 }
@@ -1448,7 +1448,7 @@ void MainWindow::toggleSimulation()
     if (m_isSimulating) {
         m_simTimer.stop();
         m_isSimulating = false;
-        m_simButton->setText(QStringLiteral("▶ Start Simulation (50 Hz)"));
+        m_simButton->setText(QStringLiteral("Start Simulation (50 Hz)"));
         m_fpsLabel->setText(QStringLiteral("FPS: --"));
 
         m_runLed->setOn(false);
@@ -1464,7 +1464,7 @@ void MainWindow::toggleSimulation()
         m_lastFpsCheck = m_elapsedTimer.elapsed();
         m_simTimer.start(20); // 50 Hz (20 ms interval)
         m_isSimulating = true;
-        m_simButton->setText(QStringLiteral("⏹ Stop Simulation"));
+        m_simButton->setText(QStringLiteral("Stop Simulation"));
 
         m_runLed->setOn(true);
         m_pumpLed->setOn(true);
@@ -1477,7 +1477,7 @@ void MainWindow::toggleAutoTour()
     m_isAutoTourActive = !m_isAutoTourActive;
     if (m_isAutoTourActive) {
         m_tourButton->setChecked(true);
-        m_tourButton->setText(QStringLiteral("⏸ Auto-Tour (3.5s)"));
+        m_tourButton->setText(QStringLiteral("Auto-Tour (3.5s)"));
         m_tourButton->setStyleSheet(QStringLiteral(
             "QPushButton { background-color: #0984e3; border: 1px solid #74b9ff; color: #ffffff; font-weight: bold; padding: 6px 14px; border-radius: 4px; }"
             "QPushButton:hover { background-color: #0870c2; }"
@@ -1485,7 +1485,7 @@ void MainWindow::toggleAutoTour()
         m_tourTimer.start(3500);
     } else {
         m_tourButton->setChecked(false);
-        m_tourButton->setText(QStringLiteral("🔄 Auto-Tour (Off)"));
+        m_tourButton->setText(QStringLiteral("Auto-Tour (Off)"));
         m_tourButton->setStyleSheet(QString());
         m_tourTimer.stop();
         if (m_tabAnimation) {
@@ -1728,8 +1728,8 @@ void MainWindow::toggleTheme()
 void MainWindow::applyTheme(bool dark)
 {
     m_isDarkTheme = dark;
-    m_themeButton->setText(dark ? QStringLiteral("☀️ Switch to Light Theme")
-                                : QStringLiteral("🌙 Switch to Dark Theme"));
+    m_themeButton->setText(dark ? QStringLiteral("Switch to Light Theme")
+                                : QStringLiteral("Switch to Dark Theme"));
 
     if (m_tourButton) {
         if (m_isAutoTourActive) {
