@@ -5,15 +5,19 @@
 # Registers a test executable at the device pixel ratios the library supports. The DPR is set
 # with QT_SCALE_FACTOR (also honoured by the offscreen QPA): <name> runs at 1, <name>_dpr125 at
 # 1.25, <name>_dpr150 at 1.5 and <name>_hidpi at 2.
+#
+# QT_FORCE_STDERR_LOGGING=1: on Windows, without a console (as under ctest in CI), QtTest sends its
+# log to OutputDebugString instead of stdout, so ctest showed no output at all (#36).
 function(add_dpr_tests test_name)
+    set(log_env "QT_FORCE_STDERR_LOGGING=1")
     add_test(NAME ${test_name} COMMAND ${test_name})
-    set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1")
+    set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1;${log_env}")
     add_test(NAME ${test_name}_dpr125 COMMAND ${test_name})
-    set_tests_properties(${test_name}_dpr125 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.25")
+    set_tests_properties(${test_name}_dpr125 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.25;${log_env}")
     add_test(NAME ${test_name}_dpr150 COMMAND ${test_name})
-    set_tests_properties(${test_name}_dpr150 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.5")
+    set_tests_properties(${test_name}_dpr150 PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1.5;${log_env}")
     add_test(NAME ${test_name}_hidpi COMMAND ${test_name})
-    set_tests_properties(${test_name}_hidpi PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2")
+    set_tests_properties(${test_name}_hidpi PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=2;${log_env}")
 endfunction()
 
 function(add_industrial_widget_test test_name)
