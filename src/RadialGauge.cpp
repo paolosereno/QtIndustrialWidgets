@@ -524,8 +524,9 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     }
 
     // 4. Digital Display Background & Unit (Recessed pod below pivot), sized and placed clear of
-    //    the scale labels; the value font shrinks to fit the widest value, down to the label font.
-    //    The value has precedence: at that font the pod grows to hold it whole, even over a label (#43)
+    //    the scale labels: at its preferred place or below the labels, whichever gives the larger
+    //    value font (down to the label font). The value has precedence: at that font the pod grows
+    //    to hold it whole, even over a label (#43)
     if (d_ptr->m_digitalDisplayVisible) {
         const double pad = std::max(3.0, radius * 0.04);
         const int preferredValuePx = std::max(8, static_cast<int>(radius * 0.15));
@@ -553,17 +554,17 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         in.centerY = center.y();
         in.radius = radius;
         in.labelRects = labelRects;
-        in.minPodWidth = valueWidth(minimumValuePx) + 2.0 * pad;
-        in.minPodHeight = valueHeight(minimumValuePx);
         in.unitWidth = d_ptr->m_unit.isEmpty() ? 0.0 : QFontMetricsF(unitFont).horizontalAdvance(d_ptr->m_unit);
+        in.padding = pad;
+        in.preferredFontPx = preferredValuePx;
+        in.minimumFontPx = minimumValuePx;
+        in.valueWidth = valueWidth;
+        in.valueHeight = valueHeight;
         const internal::PodLayout layout = internal::layoutDigitalPod(in);
 
         const QRectF podRect(layout.pod.x, layout.pod.y, layout.pod.w, layout.pod.h);
-        const internal::FontFit fit = internal::fitFontPixelSize(preferredValuePx, minimumValuePx,
-                                                                 podRect.width() - 2.0 * pad, podRect.height(),
-                                                                 valueWidth, valueHeight);
         d_ptr->m_podRect = podRect;
-        d_ptr->m_valueFontPx = fit.pixelSize;
+        d_ptr->m_valueFontPx = layout.valueFontPx;
 
         if (!podRect.isEmpty()) {
             // Subtle recessed LCD box

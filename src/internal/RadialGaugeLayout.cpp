@@ -65,12 +65,19 @@ PodLayout layoutDigitalPod(const PodLayoutInput &in)
 {
     PodLayout out;
     if (!std::isfinite(in.centerX) || !std::isfinite(in.centerY) || !std::isfinite(in.radius) || in.radius <= 0.0
-        || !std::isfinite(in.minPodWidth) || !std::isfinite(in.minPodHeight) || !std::isfinite(in.unitWidth)) {
+        || !std::isfinite(in.unitWidth) || !std::isfinite(in.padding) || !in.valueWidth || !in.valueHeight) {
         return out;
     }
 
     const double r = in.radius;
-    const double podH = std::max(r * 0.28, in.minPodHeight);
+    const int minimumPx = std::max(1, in.minimumFontPx);
+    const int preferredPx = std::max(minimumPx, in.preferredFontPx);
+    const double minWidth = in.valueWidth(minimumPx) + 2.0 * in.padding;
+    const double minHeight = in.valueHeight(minimumPx);
+    if (!std::isfinite(minWidth) || !std::isfinite(minHeight)) {
+        return out;
+    }
+    const double podH = std::max(r * 0.28, minHeight);
     const double unitH = r * 0.14;
     const double preferredHalf = r * 0.34;
 
@@ -83,35 +90,52 @@ PodLayout layoutDigitalPod(const PodLayoutInput &in)
         return half * 2.0;
     };
 
-    double top = in.centerY + r * 0.28;
-    double width = widthAt(top);
+    struct Place {
+        double top{0.0};
+        double width{0.0};
+        FontFit fit;
+    };
+    auto placeAt = [&](double top) {
+        Place p;
+        p.top = top;
+        p.width = widthAt(top);
+        p.fit = fitFontPixelSize(preferredPx, minimumPx, p.width - 2.0 * in.padding, podH, in.valueWidth, in.valueHeight);
+        return p;
+    };
 
-    if (width < in.minPodWidth) {
-        // Move below the lowest label that lies under the centre and within the preferred width
-        const double m = podLabelMargin(r);
-        double lowest = top;
-        for (const LayoutRect &lr : in.labelRects) {
-            const bool below = lr.bottom() > in.centerY;
-            const bool inPreferredWidth = lr.x < in.centerX + preferredHalf && lr.right() > in.centerX - preferredHalf;
-            if (below && inPreferredWidth) {
-                lowest = std::max(lowest, lr.bottom() + m);
-            }
+    const Place preferred = placeAt(in.centerY + r * 0.28);
+    Place chosen = preferred;
+
+    // Below the lowest label that lies under the centre and within the preferred width
+    const double m = podLabelMargin(r);
+    double lowest = preferred.top;
+    for (const LayoutRect &lr : in.labelRects) {
+        const bool below = lr.bottom() > in.centerY;
+        const bool inPreferredWidth = lr.x < in.centerX + preferredHalf && lr.right() > in.centerX - preferredHalf;
+        if (below && inPreferredWidth) {
+            lowest = std::max(lowest, lr.bottom() + m);
         }
-        const double loweredWidth = widthAt(lowest);
-        if (lowest > top && loweredWidth > width) {
-            top = lowest;
-            width = loweredWidth;
+    }
+    if (lowest > preferred.top) {
+        const Place lowered = placeAt(lowest);
+        const bool bothFit = preferred.fit.fits && lowered.fit.fits;
+        const bool neitherFits = !preferred.fit.fits && !lowered.fit.fits;
+        if ((bothFit && lowered.fit.pixelSize > preferred.fit.pixelSize) || (lowered.fit.fits && !preferred.fit.fits)
+            || (neitherFits && lowered.width > preferred.width)) {
+            chosen = lowered;
             out.lowered = true;
         }
     }
 
-    out.clearOfLabels = width > 0.0 && width >= in.minPodWidth;
-    if (width < in.minPodWidth) {
-        width = in.minPodWidth; // the value has precedence over the labels
+    double width = chosen.width;
+    out.clearOfLabels = chosen.fit.fits;
+    if (!chosen.fit.fits) {
+        width = std::max(width, minWidth); // the value has precedence over the labels
     }
 
-    out.pod = {in.centerX - width * 0.5, top, width, width > 0.0 ? podH : 0.0};
-    out.unit = {in.centerX - width * 0.5, top - unitH, width, unitH};
+    out.pod = {in.centerX - width * 0.5, chosen.top, width, width > 0.0 ? podH : 0.0};
+    out.unit = {in.centerX - width * 0.5, chosen.top - unitH, width, unitH};
+    out.valueFontPx = chosen.fit.pixelSize;
     return out;
 }
 

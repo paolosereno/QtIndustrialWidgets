@@ -49,16 +49,20 @@ struct PodLayoutInput {
     double centerY{0.0};
     double radius{0.0};
     std::vector<LayoutRect> labelRects; ///< Bounding rectangles of the drawn scale labels
-    double minPodWidth{0.0};            ///< Width the pod needs for the widest value at the smallest value font
-    double minPodHeight{0.0};           ///< Height the pod needs for the value at the smallest value font
     double unitWidth{0.0};              ///< Width of the unit text (0 when there is no unit)
+    double padding{0.0};                ///< Horizontal space kept between the value and each pod side
+    int preferredFontPx{8};             ///< Largest value font
+    int minimumFontPx{8};               ///< Smallest value font
+    std::function<double(int)> valueWidth;  ///< Width of the widest value text at a pixel size
+    std::function<double(int)> valueHeight; ///< Height of the value text at a pixel size
 };
 
 /// Result of layoutDigitalPod().
 struct PodLayout {
-    LayoutRect pod;     ///< Digital display pod
-    LayoutRect unit;    ///< Band above the pod where the unit text is centred
-    bool lowered{false};       ///< The pod was moved below the labels that block it
+    LayoutRect pod;            ///< Digital display pod
+    LayoutRect unit;           ///< Band above the pod where the unit text is centred
+    int valueFontPx{0};        ///< Pixel size of the value font
+    bool lowered{false};       ///< The pod is below the labels instead of at its preferred place
     bool clearOfLabels{false}; ///< The pod and the unit band keep the margin from every label
 };
 
@@ -66,21 +70,25 @@ struct PodLayout {
 double podLabelMargin(double radius);
 
 /**
- * \brief Places the RadialGauge digital display pod clear of the scale labels.
+ * \brief Places the RadialGauge digital display pod clear of the scale labels and picks the value font.
  *
- * The pod is centred horizontally on the dial and is max(0.28 r, \a minPodHeight) high. Its
- * preferred place is the one used before #43: top at 0.28 r below the centre, 0.68 r wide. There
- * it is narrowed so that it keeps podLabelMargin() from every label rectangle that overlaps its
- * band vertically, and stays inside the inner dial (0.95 r). The unit band, 0.14 r high and
- * directly above the pod, must leave room for \a unitWidth in the same way.
+ * The pod is centred horizontally on the dial and is max(0.28 r, value height at the minimum
+ * font) high. Two places are considered:
+ * - the preferred place, the one used before #43: top at 0.28 r below the centre;
+ * - the lowered place: top just below the lowest label that lies under the centre within the
+ *   preferred width (0.68 r), when there is such a label.
  *
- * If the width is below \a minPodWidth, the pod is moved down to start just below the lowest
- * label that lies under the centre within the preferred width, and narrowed again there; the
- * lowered place is kept only if it is wider.
+ * At each place the pod is at most 0.68 r wide and is narrowed so that it keeps podLabelMargin()
+ * from every label rectangle that overlaps its band vertically and stays inside the inner dial
+ * (0.95 r); the unit band, 0.14 r high and directly above the pod, must leave room for
+ * \a unitWidth in the same way. The value font at a place is the largest size in
+ * [minimumFontPx, preferredFontPx] at which the widest value fits with \a padding on each side
+ * (fitFontPixelSize()). The place giving the larger font is used; on a tie, the preferred place.
  *
- * The value has precedence over the labels: if neither place leaves \a minPodWidth, the pod is
- * widened to \a minPodWidth anyway (clearOfLabels = false), so that the value is never clipped
- * or abbreviated. Non-finite inputs give an empty pod.
+ * The value has precedence over the labels: if the value fits at neither place even at the
+ * minimum font, the wider place is used (the preferred one on a tie) and the pod is widened to
+ * hold the value at the minimum font (clearOfLabels = false), so that the value is never clipped
+ * or abbreviated. Non-finite inputs or missing text metrics give an empty pod.
  */
 PodLayout layoutDigitalPod(const PodLayoutInput &in);
 
