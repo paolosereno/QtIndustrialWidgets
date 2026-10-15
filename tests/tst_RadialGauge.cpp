@@ -408,7 +408,7 @@ void tst_RadialGauge::valueReadoutHasNoNegativeZero_data()
 
 // #46: a negative value that rounds to zero is shown without the sign: the readout of -v is drawn
 // exactly like the readout of +v. The readout is the only text in textColor that depends on the
-// value (thresholds above the range, so its colour stays textColor).
+// value (thresholds above the range, so its colour stays textColor; the needle is transparent).
 void tst_RadialGauge::valueReadoutHasNoNegativeZero()
 {
     QFETCH(int, precision);
@@ -419,6 +419,11 @@ void tst_RadialGauge::valueReadoutHasNoNegativeZero()
     gauge.setUnit(QString());
     gauge.setWarningThreshold(9.0);
     gauge.setErrorThreshold(9.5);
+    // Near zero the needle points straight up and covers the scale label "0" at 12 o'clock; at -v
+    // and +v it covers slightly different label pixels (16 device px at DPR 1), which would make the
+    // two text-ink sets differ for a reason unrelated to the readout. A transparent needle leaves
+    // only the text to compare.
+    gauge.setNeedleColor(QColor(0, 0, 0, 0));
 
     auto readoutInk = [&](double value) {
         gauge.setValue(value);
