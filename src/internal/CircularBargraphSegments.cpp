@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "internal/CircularBargraphSegments.h"
+#include "internal/NumberFormat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -134,13 +135,13 @@ QString formatReadout(InputState state, double value, double minimum, double max
     case InputState::Invalid:
         return QStringLiteral("---");
     case InputState::Overrange:
-        return QLatin1Char('>') + QString::number(maximum, 'f', precision);
+        return QLatin1Char('>') + formatFixed(maximum, precision);
     case InputState::Underrange:
-        return QLatin1Char('<') + QString::number(minimum, 'f', precision);
+        return QLatin1Char('<') + formatFixed(minimum, precision);
     case InputState::Valid:
         break;
     }
-    return QString::number(value, 'f', precision);
+    return formatFixed(value, precision);
 }
 
 } // namespace internal

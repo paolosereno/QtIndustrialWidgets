@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/RadialGauge.h>
 
+#include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
 
 #include <QtGui/QPainter>
@@ -506,8 +507,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         painter.drawLine(p1, p2);
 
         // Label text
-        QString labelStr = (d_ptr->m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
-                                              : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1);
+        QString labelStr = internal::scaleLabelText(val, d_ptr->m_precision);
 
         QFontMetricsF fm(font);
         QRectF textRect = fm.boundingRect(labelStr);
@@ -531,8 +531,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         const double pad = std::max(3.0, radius * 0.04);
         const int preferredValuePx = std::max(8, static_cast<int>(radius * 0.15));
         const int minimumValuePx = std::max(8, geo.labelFontPx);
-        const QString minText = QString::number(d_ptr->m_minimum, 'f', d_ptr->m_precision);
-        const QString maxText = QString::number(d_ptr->m_maximum, 'f', d_ptr->m_precision);
+        const QString minText = internal::formatFixed(d_ptr->m_minimum, d_ptr->m_precision);
+        const QString maxText = internal::formatFixed(d_ptr->m_maximum, d_ptr->m_precision);
         QFont valFont = this->font();
         valFont.setBold(true);
         auto valueWidth = [&](int px) {
@@ -615,7 +615,7 @@ void RadialGauge::paintEvent(QPaintEvent *)
     if (d_ptr->m_digitalDisplayVisible && !d_ptr->m_podRect.isEmpty()) {
         const QRectF podRect = d_ptr->m_podRect;
 
-        QString valStr = QString::number(d_ptr->m_value, 'f', d_ptr->m_precision);
+        QString valStr = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
         QFont valFont = font();
         valFont.setPixelSize(d_ptr->m_valueFontPx);
         valFont.setBold(true);

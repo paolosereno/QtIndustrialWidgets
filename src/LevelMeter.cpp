@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtIndustrialWidgets/LevelMeter.h>
+
+#include "internal/NumberFormat.h"
+
 #include <QtCore/QTimer>
 #include <QtCore/QDateTime>
 #include <QtGui/QPixmap>
@@ -604,7 +607,7 @@ void LevelMeter::renderStaticBackground()
             if (d_ptr->m_unit == QStringLiteral("dB")) {
                 tickStr = (t > 0 ? QStringLiteral("+") : QString()) + QString::number(static_cast<int>(t));
             } else {
-                tickStr = QString::number(t, 'f', (std::abs(d_ptr->m_maximum - d_ptr->m_minimum) < 10) ? 1 : 0);
+                tickStr = internal::formatFixed(t, (std::abs(d_ptr->m_maximum - d_ptr->m_minimum) < 10) ? 1 : 0);
             }
 
             if (d_ptr->m_orientation == Qt::Vertical) {

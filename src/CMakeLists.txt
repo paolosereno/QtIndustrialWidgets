@@ -2,6 +2,26 @@
 #
 # SPDX-License-Identifier: MIT
 
+add_library(NumberFormat OBJECT
+    internal/NumberFormat.cpp
+    internal/NumberFormat.h
+)
+
+target_include_directories(NumberFormat
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(NumberFormat
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+)
+
+set_target_properties(NumberFormat PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(M4Decimator OBJECT
     internal/M4Decimator.cpp
     internal/M4Decimator.h
@@ -90,6 +110,7 @@ add_library(QtIndustrialWidgets SHARED
     AnnunciatorPanel.cpp
     Compass.cpp
     CircularBargraph.cpp
+    $<TARGET_OBJECTS:NumberFormat>
     $<TARGET_OBJECTS:M4Decimator>
     $<TARGET_OBJECTS:CircularBargraphSegments>
     $<TARGET_OBJECTS:LinearGaugeScale>

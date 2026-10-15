@@ -85,6 +85,7 @@ add_industrial_widget_test(tst_IndustrialKnob)
 add_executable(tst_StripChart
     tst_StripChart.cpp
     $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_StripChart
     PRIVATE
@@ -111,6 +112,7 @@ add_industrial_widget_test(tst_Compass)
 add_executable(tst_CircularBargraph
     tst_CircularBargraph.cpp
     $<TARGET_OBJECTS:CircularBargraphSegments>
+    $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_CircularBargraph
     PRIVATE
@@ -133,6 +135,7 @@ add_dpr_tests(tst_CircularBargraph)
 add_executable(tst_M4Decimator
     tst_M4Decimator.cpp
     $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_M4Decimator
     PRIVATE
@@ -151,6 +154,41 @@ set_target_properties(tst_M4Decimator PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_M4Decimator)
+
+# Fixed-point text without negative zero (#46)
+add_executable(tst_NumberFormat
+    tst_NumberFormat.cpp
+    $<TARGET_OBJECTS:NumberFormat>
+)
+target_link_libraries(tst_NumberFormat
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_NumberFormat
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_NumberFormat PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_NumberFormat)
+
+# No fixed-point formatting outside internal/NumberFormat (#46)
+add_executable(tst_FixedFormatUsage tst_FixedFormatUsage.cpp)
+target_link_libraries(tst_FixedFormatUsage
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_compile_definitions(tst_FixedFormatUsage
+    PRIVATE
+        QIW_SOURCE_DIR="${PROJECT_SOURCE_DIR}/src"
+)
+set_target_properties(tst_FixedFormatUsage PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_FixedFormatUsage)
 
 # Every public widget has a showcase in the gallery's image export list (#26)
 add_executable(tst_GalleryShowcases

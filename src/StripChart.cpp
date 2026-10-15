@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtIndustrialWidgets/StripChart.h>
+
+#include "internal/NumberFormat.h"
 #include "internal/StripChart_p.h"
 #include "internal/M4Decimator.h"
 #include "internal/StripChartGeometry.h"
@@ -1056,7 +1058,7 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
 
             // Y label on the left
-            QString labelStr = QString::number(val, 'f', (std::abs(val) >= 100.0) ? 0 : 1);
+            QString labelStr = internal::formatFixed(val, (std::abs(val) >= 100.0) ? 0 : 1);
             QRectF labelRect(0.0, y - fontSize * 0.7, plotRect.left() - 6.0, fontSize * 1.4);
             painter.setPen(d_ptr->m_textColor);
             painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, labelStr);
@@ -1160,7 +1162,7 @@ void StripChart::paintEvent(QPaintEvent *)
                         QDateTime dt = d_ptr->m_timeOrigin.addMSecs(tick.tNs / 1000000);
                         labelStr = dt.toString(spanNs < 10000000000LL ? QStringLiteral("HH:mm:ss.zzz") : QStringLiteral("HH:mm:ss"));
                     } else {
-                        labelStr = QStringLiteral("%1 s").arg(static_cast<double>(tick.tNs) / 1e9, 0, 'f', 1);
+                        labelStr = internal::formatFixed(static_cast<double>(tick.tNs) / 1e9, 1) + QStringLiteral(" s");
                     }
                     d_ptr->lastFrame.xTicks.push_back({tick.tNs, x, labelStr});
                 }
@@ -1180,7 +1182,7 @@ void StripChart::paintEvent(QPaintEvent *)
             double frac = static_cast<double>(i) / d_ptr->m_horizontalDivisions;
             double y = plotRect.bottom() - frac * plotRect.height();
             double val = d_ptr->m_yMinimum + frac * (d_ptr->m_yMaximum - d_ptr->m_yMinimum);
-            QString labelStr = QString::number(val, 'f', (std::abs(val) >= 100.0) ? 0 : 1);
+            QString labelStr = internal::formatFixed(val, (std::abs(val) >= 100.0) ? 0 : 1);
             d_ptr->lastFrame.yTicks.push_back({val, y, labelStr});
         }
     }
@@ -1222,7 +1224,7 @@ void StripChart::paintEvent(QPaintEvent *)
                 QDateTime dt = d_ptr->m_timeOrigin.addMSecs(tick.tNs / 1000000);
                 labelStr = dt.toString(spanNs < 10000000000LL ? QStringLiteral("HH:mm:ss.zzz") : QStringLiteral("HH:mm:ss"));
             } else {
-                labelStr = QStringLiteral("%1 s").arg(static_cast<double>(tick.tNs) / 1e9, 0, 'f', 1);
+                labelStr = internal::formatFixed(static_cast<double>(tick.tNs) / 1e9, 1) + QStringLiteral(" s");
             }
 
             QRectF labelRect(x - 40.0, plotRect.bottom() + 3.0, 80.0, fontSize * 1.4);
@@ -1717,11 +1719,14 @@ void StripChart::paintEvent(QPaintEvent *)
             curX += 14.0;
 
             // Channel name and latest numeric readout ("---" if non-finite)
-            QString valStr = std::isfinite(ch.latestValue) ? QString::number(ch.latestValue, 'f', 1) : QStringLiteral("---");
+            QString valStr = std::isfinite(ch.latestValue) ? internal::formatFixed(ch.latestValue, 1) : QStringLiteral("---");
             QString txt = QStringLiteral("%1: %2").arg(ch.name, valStr);
             QRectF txtRect = fm.boundingRect(txt);
             painter.setPen(d_ptr->m_textColor);
             painter.drawText(QPointF(curX, 19.0), txt);
+            if (d_ptr->recordDiagnostics) {
+                d_ptr->lastFrame.legendLabels.push_back(txt);
+            }
 
             curX += txtRect.width() + 18.0;
             if (curX > plotRect.right() - 20.0) break; // Don't overflow

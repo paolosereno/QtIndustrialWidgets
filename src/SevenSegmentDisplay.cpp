@@ -4,6 +4,8 @@
 
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 
+#include "internal/NumberFormat.h"
+
 #include <QtGui/QPainter>
 #include <QtGui/QPaintEvent>
 #include <QtCore/QtMath>
@@ -224,7 +226,7 @@ void SevenSegmentDisplay::updateFormattedText()
 
     QString s;
     if (d_ptr->m_decimalPlaces >= 0) {
-        s = QString::number(d_ptr->m_value, 'f', d_ptr->m_decimalPlaces);
+        s = internal::formatFixed(d_ptr->m_value, d_ptr->m_decimalPlaces);
     } else {
         s = QString::number(d_ptr->m_value);
     }

@@ -107,6 +107,11 @@ private Q_SLOTS:
     void timeSpanShorterThanWidth();
     void streamingDoesNotRebuildDecimationStream_data();
     void streamingDoesNotRebuildDecimationStream();
+    void yAxisLabelsHaveNoNegativeZero_data();
+    void yAxisLabelsHaveNoNegativeZero();
+    void legendHasNoNegativeZero_data();
+    void legendHasNoNegativeZero();
+    void absoluteSecondsLabelsHaveNoNegativeZero();
 };
 
 void tst_StripChart::defaultValues()
@@ -2940,6 +2945,89 @@ void tst_StripChart::streamingDoesNotRebuildDecimationStream()
     std::size_t drawnVertices = 0;
     for (const auto &seg : frame.channels[0].segments) drawnVertices += static_cast<std::size_t>(seg.size());
     QCOMPARE(drawnVertices, batchVertices);
+}
+
+void tst_StripChart::yAxisLabelsHaveNoNegativeZero_data()
+{
+    QTest::addColumn<int>("divisions");
+    for (int d : {5, 6, 8, 10}) {
+        QTest::addRow("%d divisions", d) << d;
+    }
+}
+
+// #46: with the range -0.1..0.1, the ticks closest to zero (e.g. -0.0333 with 6 divisions) are
+// labelled "0.0", never "-0.0"
+void tst_StripChart::yAxisLabelsHaveNoNegativeZero()
+{
+    QFETCH(int, divisions);
+    auto chart = makeChart(800, 400, -0.1, 0.1);
+    chart->setHorizontalDivisions(divisions);
+    renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+    QCOMPARE(static_cast<int>(frame.yTicks.size()), divisions + 1);
+    const YTickDiagnostic *closest = nullptr;
+    for (const auto &tick : frame.yTicks) {
+        QVERIFY2(tick.label != QStringLiteral("-0.0") && tick.label != QStringLiteral("-0"),
+                 qPrintable(QStringLiteral("tick %1 labelled '%2'").arg(tick.value).arg(tick.label)));
+        if (!closest || std::abs(tick.value) < std::abs(closest->value)) {
+            closest = &tick;
+        }
+    }
+    QCOMPARE(closest->label, QStringLiteral("0.0"));
+}
+
+void tst_StripChart::legendHasNoNegativeZero_data()
+{
+    QTest::addColumn<double>("value");
+    QTest::addColumn<QString>("expected");
+    QTest::addRow("-0.0157") << -0.0157 << QStringLiteral("Sine: 0.0");
+    // Protection only: with Qt 6 QString::number(-0.0, 'f', 1) is already "0.0", so this row does not fail on main
+    QTest::addRow("-0.0") << -0.0 << QStringLiteral("Sine: 0.0");
+    QTest::addRow("-0.05 (rounding boundary)") << -0.05 << QStringLiteral("Sine: -0.1");
+    QTest::addRow("0.04") << 0.04 << QStringLiteral("Sine: 0.0");
+    QTest::addRow("-1.24") << -1.24 << QStringLiteral("Sine: -1.2");
+    QTest::addRow("NaN") << std::numeric_limits<double>::quiet_NaN() << QStringLiteral("Sine: ---");
+}
+
+// #46: the legend readout of a negative value that rounds to zero has no sign
+void tst_StripChart::legendHasNoNegativeZero()
+{
+    QFETCH(double, value);
+    QFETCH(QString, expected);
+    auto chart = makeChart(800, 400, -1.5, 1.5);
+    const int ch = chart->addChannel(QStringLiteral("Sine"), Qt::cyan);
+    chart->addDataPoint(ch, 0.5);
+    chart->addDataPoint(ch, value);
+    renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    QCOMPARE(static_cast<int>(frame.legendLabels.size()), 1);
+    QCOMPARE(frame.legendLabels.front(), expected);
+}
+
+// #46: absolute time labels without a time origin ("<t> s") of ticks just below zero (explicit
+// negative timestamps) have no sign when they round to zero
+void tst_StripChart::absoluteSecondsLabelsHaveNoNegativeZero()
+{
+    auto chart = makeChart(800, 400, 0.0, 1.0);
+    chart->setXAxisMode(StripChart::XAxisMode::Time);
+    chart->setTimeLabelFormat(StripChart::TimeLabelFormat::Absolute);
+    chart->setTimeSpan(std::chrono::milliseconds(200));
+    const int ch = chart->addChannel(QStringLiteral("Ch0"), Qt::green);
+    for (int ms = -300; ms <= 0; ms += 5) {
+        chart->addSample(ch, std::chrono::milliseconds(ms), 0.5);
+    }
+    renderToImage(*chart);
+    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+
+    QVERIFY(frame.xTicks.size() >= 2);
+    bool belowZero = false;
+    for (const auto &tick : frame.xTicks) {
+        belowZero = belowZero || (tick.tNs < 0 && tick.tNs > -50000000);
+        QVERIFY2(!tick.label.startsWith(QStringLiteral("-0.0 ")) && !tick.label.startsWith(QStringLiteral("-0 ")),
+                 qPrintable(QStringLiteral("tick at %1 ns labelled '%2'").arg(tick.tNs).arg(tick.label)));
+    }
+    QVERIFY2(belowZero, "no tick between -50 ms and 0: the case is not exercised");
 }
 
 QTEST_MAIN(tst_StripChart)

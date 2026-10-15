@@ -24,6 +24,8 @@ private Q_SLOTS:
     void renderOffscreen();
     void extremeResizeNoCrash();
     void nanAndInfinityResilience();
+    void noNegativeZero_data();
+    void noNegativeZero();
 };
 
 void tst_SevenSegmentDisplay::defaultValues()
@@ -124,6 +126,30 @@ void tst_SevenSegmentDisplay::nanAndInfinityResilience()
     QPixmap pix(disp.size());
     disp.render(&pix);
     QVERIFY(!pix.isNull());
+}
+
+void tst_SevenSegmentDisplay::noNegativeZero_data()
+{
+    QTest::addColumn<int>("decimals");
+    QTest::addColumn<double>("magnitude");
+    QTest::addRow("1 decimal, 0.04") << 1 << 0.04;
+    QTest::addRow("0 decimals, 0.3") << 0 << 0.3;
+    QTest::addRow("2 decimals, 0.004") << 2 << 0.004;
+}
+
+// #46: a negative value that rounds to zero is displayed like the positive one, without the sign
+void tst_SevenSegmentDisplay::noNegativeZero()
+{
+    QFETCH(int, decimals);
+    QFETCH(double, magnitude);
+    SevenSegmentDisplay display;
+    display.setDecimalPlaces(decimals);
+    display.setValue(magnitude);
+    const QString positive = display.text();
+    display.setValue(-magnitude);
+    const QString negative = display.text();
+    QVERIFY2(!negative.contains(QLatin1Char('-')), qPrintable(QStringLiteral("text '%1'").arg(negative)));
+    QCOMPARE(negative, positive);
 }
 
 QTEST_MAIN(tst_SevenSegmentDisplay)
