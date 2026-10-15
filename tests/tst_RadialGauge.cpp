@@ -10,6 +10,8 @@
 #include <cmath>
 #include <limits>
 
+#include "TextInkTestUtils.h"
+
 using namespace QtIndustrialWidgets;
 
 namespace {
@@ -100,6 +102,9 @@ private Q_SLOTS:
     void valueTextInsideDigitalDisplay_data();
     void valueTextInsideDigitalDisplay();
     void valueFontNotReducedWhenLoweringAvoidsIt();
+    void valueReadoutHasNoNegativeZero_data();
+    void valueReadoutHasNoNegativeZero();
+    void scaleLabelsHaveNoNegativeZero();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -391,6 +396,81 @@ void tst_RadialGauge::valueFontNotReducedWhenLoweringAvoidsIt()
              qPrintable(QStringLiteral("value ink %1x%2 device px, reference (full font) %3x%4 (DPR %5)")
                             .arg(ink.width()).arg(ink.height()).arg(referenceInk.width()).arg(referenceInk.height())
                             .arg(gauge.grab().devicePixelRatio())));
+}
+
+void tst_RadialGauge::valueReadoutHasNoNegativeZero_data()
+{
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<double>("magnitude");
+    QTest::addRow("precision 1, 0.04") << 1 << 0.04;
+    QTest::addRow("precision 0, 0.3") << 0 << 0.3;
+}
+
+// #46: a negative value that rounds to zero is shown without the sign: the readout of -v is drawn
+// exactly like the readout of +v. The readout is the only text in textColor that depends on the
+// value (thresholds above the range, so its colour stays textColor).
+void tst_RadialGauge::valueReadoutHasNoNegativeZero()
+{
+    QFETCH(int, precision);
+    QFETCH(double, magnitude);
+
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{300, -10.0, 10.0, precision, -135.0, 270.0});
+    gauge.setUnit(QString());
+    gauge.setWarningThreshold(9.0);
+    gauge.setErrorThreshold(9.5);
+
+    auto readoutInk = [&](double value) {
+        gauge.setValue(value);
+        gauge.setTextColor(Qt::white);
+        const QImage white = renderGauge(gauge);
+        gauge.setTextColor(Qt::red);
+        return TextInk::sorted(TextInk::differingPixels(white, renderGauge(gauge)));
+    };
+    const QVector<QPoint> negative = readoutInk(-magnitude);
+    const QVector<QPoint> positive = readoutInk(magnitude);
+    QVERIFY(!positive.isEmpty());
+    QVERIFY2(negative == positive,
+             qPrintable(QStringLiteral("text ink differs between %1 and %2 (%3 vs %4 pixels, precision %5)")
+                            .arg(-magnitude).arg(magnitude).arg(negative.size()).arg(positive.size()).arg(precision)));
+}
+
+// #46: range -0.1..0.1 with 5 major ticks: tick 2 is -0.02 and tick 3 is +0.02, both "0.0". The two
+// labels sit symmetrically at -27 and +27 degrees (labels are 54 degrees apart); the label ink within
+// +-15 degrees of each tick must be equally wide (a minus sign makes tick 2 wider). 1 device px is
+// left to the sub-pixel position of the glyphs.
+void tst_RadialGauge::scaleLabelsHaveNoNegativeZero()
+{
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{300, -0.1, 0.1, 1, -135.0, 270.0});
+    gauge.setMajorTicks(5);
+    gauge.setDigitalDisplayVisible(false);
+
+    gauge.setTextColor(Qt::white);
+    const QImage white = renderGauge(gauge);
+    gauge.setTextColor(Qt::red);
+    const QImage red = renderGauge(gauge);
+    const qreal dpr = white.devicePixelRatio();
+    const QPointF centre(white.width() * 0.5, white.height() * 0.5);
+
+    const QVector<QPoint> ink = TextInk::differingPixels(white, red);
+    auto inkInSector = [&](double angleDeg) {
+        QRect box;
+        for (const QPoint &p : ink) {
+            const double a = std::atan2(p.x() + 0.5 - centre.x(), centre.y() - (p.y() + 0.5)) * 180.0 / M_PI;
+            if (std::abs(std::remainder(a - angleDeg, 360.0)) <= 15.0) {
+                box |= QRect(p, QSize(1, 1));
+            }
+        }
+        return box;
+    };
+    const QRect tick2 = inkInSector(-27.0);
+    const QRect tick3 = inkInSector(27.0);
+    QVERIFY(!tick2.isEmpty());
+    QVERIFY(!tick3.isEmpty());
+    QVERIFY2(std::abs(tick2.width() - tick3.width()) <= 1,
+             qPrintable(QStringLiteral("label at -0.02 is %1 device px wide, label at +0.02 is %2 (DPR %3)")
+                            .arg(tick2.width()).arg(tick3.width()).arg(dpr)));
 }
 
 QTEST_MAIN(tst_RadialGauge)

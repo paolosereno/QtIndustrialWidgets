@@ -947,6 +947,12 @@ void tst_CircularBargraph::readoutText()
     QCOMPARE(internal::formatReadout(IS::Overrange, 100.0, 0.0, 100.0, 1), QStringLiteral(">100.0"));
     QCOMPARE(internal::formatReadout(IS::Underrange, -20.0, -20.0, 80.0, 2), QStringLiteral("<-20.00"));
     QCOMPARE(internal::formatReadout(IS::Invalid, nan, 0.0, 100.0, 1), QStringLiteral("---"));
+    // #46: no negative zero in the readout, also for the out-of-range forms
+    QCOMPARE(internal::formatReadout(IS::Valid, -0.04, -1.0, 1.0, 1), QStringLiteral("0.0"));
+    QCOMPARE(internal::formatReadout(IS::Valid, -0.3, -1.0, 1.0, 0), QStringLiteral("0"));
+    QCOMPARE(internal::formatReadout(IS::Valid, -0.05, -1.0, 1.0, 1), QStringLiteral("-0.1"));
+    QCOMPARE(internal::formatReadout(IS::Underrange, -2.0, -0.04, 1.0, 1), QStringLiteral("<0.0"));
+    QCOMPARE(internal::formatReadout(IS::Overrange, 2.0, -1.0, -0.04, 1), QStringLiteral(">0.0"));
 
     QCOMPARE(internal::classifyInput(nan, 0.0, 100.0), IS::Invalid);
     QCOMPARE(internal::classifyInput(100.0, 0.0, 100.0), IS::Valid);

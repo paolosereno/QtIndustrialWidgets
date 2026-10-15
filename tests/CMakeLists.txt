@@ -152,6 +152,22 @@ set_target_properties(tst_M4Decimator PROPERTIES
 )
 add_dpr_tests(tst_M4Decimator)
 
+# No fixed-point formatting outside internal/NumberFormat (#46)
+add_executable(tst_FixedFormatUsage tst_FixedFormatUsage.cpp)
+target_link_libraries(tst_FixedFormatUsage
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_compile_definitions(tst_FixedFormatUsage
+    PRIVATE
+        QIW_SOURCE_DIR="${PROJECT_SOURCE_DIR}/src"
+)
+set_target_properties(tst_FixedFormatUsage PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_FixedFormatUsage)
+
 # Every public widget has a showcase in the gallery's image export list (#26)
 add_executable(tst_GalleryShowcases
     tst_GalleryShowcases.cpp
