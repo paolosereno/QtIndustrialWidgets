@@ -4,6 +4,8 @@
 
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
+#include "internal/NumberFormat.h"
+
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
@@ -518,8 +520,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
         if (d_ptr->m_mode == KnobMode::Discrete) {
             labelStr = QString::number(i + 1);
         } else {
-            labelStr = (d_ptr->m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
-                                          : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1);
+            labelStr = internal::scaleLabelText(val, d_ptr->m_precision);
         }
 
         QFontMetricsF fm(font);
@@ -687,7 +688,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
             int stepIdx = static_cast<int>(std::round((d_ptr->m_value - d_ptr->m_minimum) / ((d_ptr->m_maximum - d_ptr->m_minimum) / (d_ptr->m_discreteSteps - 1))));
             valStr = QStringLiteral("POS %1").arg(stepIdx + 1);
         } else {
-            valStr = QStringLiteral("%1 %2").arg(QString::number(d_ptr->m_value, 'f', d_ptr->m_precision), d_ptr->m_unit).trimmed();
+            valStr = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit).trimmed();
         }
 
         QFont valFont = font();

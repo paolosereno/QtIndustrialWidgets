@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 
 #include "internal/LinearGaugeScale.h"
+#include "internal/NumberFormat.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -60,8 +61,7 @@ public:
         for (int i = 0; i <= m_majorTicks; ++i) {
             const double frac = static_cast<double>(i) / m_majorTicks;
             const double val = m_minimum + frac * valRange;
-            texts << ((m_precision == 0) ? QString::number(static_cast<qint64>(std::round(val)))
-                                         : QString::number(val, 'f', (val == std::floor(val)) ? 0 : 1));
+            texts << internal::scaleLabelText(val, m_precision);
         }
         return texts;
     }
@@ -668,7 +668,7 @@ void LinearGauge::paintEvent(QPaintEvent *)
         // Digital display readout
         if (d_ptr->m_digitalDisplayVisible) {
             QRectF podRect(6.0, 6.0, width() - 12.0, 24.0);
-            QString txt = QStringLiteral("%1 %2").arg(QString::number(d_ptr->m_value, 'f', d_ptr->m_precision), d_ptr->m_unit);
+            QString txt = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit);
             QFont f = font();
             f.setPixelSize(12);
             f.setBold(true);
@@ -722,7 +722,7 @@ void LinearGauge::paintEvent(QPaintEvent *)
         if (d_ptr->m_digitalDisplayVisible) {
             double rightPadding = 55.0;
             QRectF podRect(width() - rightPadding + 4.0, 6.0, rightPadding - 10.0, height() - 12.0);
-            QString txt = QString::number(d_ptr->m_value, 'f', d_ptr->m_precision);
+            QString txt = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
             QFont f = font();
             f.setPixelSize(12);
             f.setBold(true);

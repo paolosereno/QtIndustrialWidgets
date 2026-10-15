@@ -5,6 +5,7 @@
  */
 
 #include "StripChartGeometry.h"
+#include "NumberFormat.h"
 #include "M4Decimator.h"
 #include <algorithm>
 #include <cmath>
@@ -169,7 +170,7 @@ TimeTicksResult computeTimeTicks(qint64 tStart, qint64 tEnd, double plotWidthPx,
             labelVal /= 60.0;
         }
 
-        QString labelStr = QString::number(labelVal, 'f',
+        QString labelStr = formatFixed(labelVal,
             (std::abs(labelVal) >= 10.0 || qFuzzyIsNull(std::remainder(labelVal, 1.0))) ? 0 : 1)
             + QLatin1Char(' ') + labelUnit;
 
