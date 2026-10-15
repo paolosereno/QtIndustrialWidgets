@@ -63,6 +63,21 @@ QRect boundingBox(const QVector<QPoint> &points)
     return box;
 }
 
+// Device-pixel ink box of the digital value. The value is drawn in errorColor (value >= error
+// threshold, bands hidden so that errorColor colours nothing else): a transparent errorColor
+// renders everything but the value.
+QRect valueInkBox(RadialGauge &gauge)
+{
+    gauge.setThresholdBandsVisible(false);
+    gauge.setWarningThreshold(gauge.minimum() + (gauge.maximum() - gauge.minimum()) * 0.5);
+    gauge.setErrorThreshold(gauge.minimum() + (gauge.maximum() - gauge.minimum()) * 0.6);
+    gauge.setValue(gauge.maximum());
+    gauge.setErrorColor(QColor(0, 0, 0, 0));
+    const QImage withoutValue = renderGauge(gauge);
+    gauge.setErrorColor(Qt::red);
+    return boundingBox(differingPixels(withoutValue, renderGauge(gauge)));
+}
+
 } // namespace
 
 class tst_RadialGauge : public QObject
@@ -84,6 +99,7 @@ private Q_SLOTS:
     void scaleLabelsNotHiddenByDigitalDisplay();
     void valueTextInsideDigitalDisplay_data();
     void valueTextInsideDigitalDisplay();
+    void valueFontNotReducedWhenLoweringAvoidsIt();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -350,6 +366,31 @@ void tst_RadialGauge::valueTextInsideDigitalDisplay()
                                                    .arg(value.x()).arg(value.y()).arg(value.width()).arg(value.height())
                                                    .arg(pod.x()).arg(pod.y()).arg(pod.width()).arg(pod.height())
                                                    .arg(margin).arg(dpr)));
+}
+
+// #43 (review of PR #48): between the preferred pod place and the place below the labels, the
+// one giving the larger value font is used. At 200 px with 0-100000 the value "100000" fits at the
+// full font only below the end labels; the reference is the same gauge with a 180-degree arc, whose
+// end labels are level with the centre and leave the preferred place free. The two ink heights
+// may differ by 1 device px with the vertical sub-pixel position of the text.
+void tst_RadialGauge::valueFontNotReducedWhenLoweringAvoidsIt()
+{
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{200, 0.0, 100000.0, 0, -135.0, 270.0});
+    gauge.setUnit(QString());
+    const QRect ink = valueInkBox(gauge);
+
+    RadialGauge reference;
+    configure(reference, GaugeConfig{200, 0.0, 100000.0, 0, -90.0, 180.0});
+    reference.setUnit(QString());
+    const QRect referenceInk = valueInkBox(reference);
+
+    QVERIFY(!ink.isEmpty());
+    QVERIFY(!referenceInk.isEmpty());
+    QVERIFY2(ink.height() >= referenceInk.height() - 1,
+             qPrintable(QStringLiteral("value ink %1x%2 device px, reference (full font) %3x%4 (DPR %5)")
+                            .arg(ink.width()).arg(ink.height()).arg(referenceInk.width()).arg(referenceInk.height())
+                            .arg(gauge.grab().devicePixelRatio())));
 }
 
 QTEST_MAIN(tst_RadialGauge)
