@@ -109,6 +109,10 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
    when the maintainer asks, or to post the plan of point 2. Issue texts are in English; show the text to the
    maintainer before publishing unless told to publish directly. Never close, delete or transfer issues, and never
    change their labels or assignees unless asked.
+9. Work every issue in its own git worktree, never in the main checkout:
+   `git worktree add ../qiw-issue-<n> -b issue-<n>-<short-slug> origin/main`. Build, test and export images inside
+   that worktree (its own `build/`). Never commit or switch branches in the main checkout, which the maintainer also
+   uses. Remove the worktree (`git worktree remove ../qiw-issue-<n>`) after the PR is merged.
 
 ## Map of the code worth knowing
 
