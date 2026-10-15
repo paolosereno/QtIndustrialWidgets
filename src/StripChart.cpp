@@ -1722,6 +1722,9 @@ void StripChart::paintEvent(QPaintEvent *)
             QRectF txtRect = fm.boundingRect(txt);
             painter.setPen(d_ptr->m_textColor);
             painter.drawText(QPointF(curX, 19.0), txt);
+            if (d_ptr->recordDiagnostics) {
+                d_ptr->lastFrame.legendLabels.push_back(txt);
+            }
 
             curX += txtRect.width() + 18.0;
             if (curX > plotRect.right() - 20.0) break; // Don't overflow

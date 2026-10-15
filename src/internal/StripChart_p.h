@@ -79,6 +79,9 @@ struct FrameDiagnostics {
     // Ticks
     std::vector<XTickDiagnostic> xTicks;
     std::vector<YTickDiagnostic> yTicks;
+
+    // Legend texts as drawn ("<name>: <latest value>"), in channel order, visible channels only
+    std::vector<QString> legendLabels;
 };
 
 struct ChannelInternal {
