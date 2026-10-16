@@ -498,7 +498,7 @@ void tst_IndustrialSwitch::labelsNotClipped()
 
 // #44 (found by CI on Windows): with a font whose glyph ink extends past the advance width (bold
 // serif), the layout draws the side labels so that their ink, measured here independently with
-// QFontMetricsF::boundingRect(), stays inside the space beside the guard: a right-aligned label
+// QFontMetricsF::tightBoundingRect(), stays inside the space beside the guard: a right-aligned label
 // ends its ink at the space's right edge, a left-aligned one starts it at the left edge.
 void tst_IndustrialSwitch::labelInkBeyondAdvanceStaysInPlate()
 {
@@ -510,12 +510,12 @@ void tst_IndustrialSwitch::labelInkBeyondAdvanceStaysInPlate()
     auto inkLeft = [&](const QRectF &rect, Qt::Alignment align, const QString &text) {
         const double adv = fm.horizontalAdvance(text);
         const double x = (align & Qt::AlignRight) ? rect.right() - adv : (align & Qt::AlignHCenter) ? rect.center().x() - adv * 0.5 : rect.left();
-        return x + fm.boundingRect(text).left();
+        return x + fm.tightBoundingRect(text).left();
     };
     auto inkRight = [&](const QRectF &rect, Qt::Alignment align, const QString &text) {
         const double adv = fm.horizontalAdvance(text);
         const double x = (align & Qt::AlignRight) ? rect.right() - adv : (align & Qt::AlignHCenter) ? rect.center().x() - adv * 0.5 : rect.left();
-        return x + fm.boundingRect(text).right();
+        return x + fm.tightBoundingRect(text).right();
     };
 
     internal::SwitchLayoutInput in;

@@ -55,7 +55,9 @@ TextMetrics measure(const QString &text, const QFont &font)
         return m;
     }
     const QFontMetricsF fm(font);
-    const QRectF ink = fm.boundingRect(text);
+    // tightBoundingRect(): the ink itself. boundingRect() is not reliable for this: with the
+    // offscreen platform on Windows it reports x = 100000 for every text (#44, CI diagnostics).
+    const QRectF ink = fm.tightBoundingRect(text);
     m.empty = false;
     m.advance = fm.horizontalAdvance(text);
     m.height = fm.height();
