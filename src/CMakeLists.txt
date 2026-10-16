@@ -120,6 +120,8 @@ set_target_properties(RadialGaugeLayout PROPERTIES
 )
 
 add_library(QtIndustrialWidgets SHARED
+    internal/LevelMeterLayout.cpp
+    internal/LevelMeterLayout.h
     RadialGauge.cpp
     LinearGauge.cpp
     SevenSegmentDisplay.cpp

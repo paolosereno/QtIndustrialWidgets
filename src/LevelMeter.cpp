@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/LevelMeter.h>
 
+#include "internal/LevelMeterLayout.h"
 #include "internal/NumberFormat.h"
 
 #include <QtCore/QTimer>
@@ -134,22 +135,28 @@ QVector<double> LevelMeter::values() const
 
 QSize LevelMeter::sizeHint() const
 {
+    // #40: the scale margin comes from the widest label (36 px at least, as before)
+    const internal::LevelMeterScaleMetrics m = internal::levelMeterScaleMetrics(d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_unit, font());
+    QSize hint;
     if (d_ptr->m_orientation == Qt::Vertical) {
-        int w = 24 + d_ptr->m_channelCount * 18 + (d_ptr->m_scaleVisible ? 38 : 0);
-        return {std::max(w, 65), 220};
+        const int scale = d_ptr->m_scaleVisible ? static_cast<int>(std::ceil(internal::levelMeterVerticalScaleMargin(m))) + 2 : 0;
+        const int w = 24 + d_ptr->m_channelCount * 18 + scale;
+        hint = QSize(std::max(w, 65), 220);
     } else {
         int h = 24 + d_ptr->m_channelCount * 18 + (d_ptr->m_scaleVisible ? 32 : 0);
-        return {220, std::max(h, 65)};
+        hint = QSize(220, std::max(h, 65));
     }
+    return hint.expandedTo(minimumSizeHint());
 }
 
 QSize LevelMeter::minimumSizeHint() const
 {
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        return {45, 100};
-    } else {
-        return {100, 45};
-    }
+    // #40: from this size up every scale label is whole and, on a horizontal linear scale,
+    // neighbouring labels do not overlap; computed from the real font metrics
+    const internal::LevelMeterScaleMetrics m = internal::levelMeterScaleMetrics(d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_unit, font());
+    const QSize base = d_ptr->m_orientation == Qt::Vertical ? QSize(45, 100) : QSize(100, 45);
+    return internal::levelMeterMinimumSize(d_ptr->m_orientation, d_ptr->m_channelCount, d_ptr->m_scaleVisible,
+                                           !d_ptr->m_channelLabels.isEmpty(), m, base);
 }
 
 void LevelMeter::setValue(double value)
@@ -266,6 +273,7 @@ void LevelMeter::setRange(double min, double max)
 
     d_ptr->m_cacheValid = false;
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    updateGeometry(); // the size hints depend on the scale labels (#40)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -368,6 +376,7 @@ void LevelMeter::setUnit(const QString &unit)
     if (d_ptr->m_unit == unit) return;
     d_ptr->m_unit = unit;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // the size hints depend on the scale labels (#40)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -385,6 +394,7 @@ void LevelMeter::setChannelLabels(const QStringList &labels)
 {
     d_ptr->m_channelLabels = labels;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // the size hints depend on the scale labels (#40)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -465,6 +475,8 @@ QVector<QRectF> LevelMeter::calculateBarRects(const QRectF &contentRect) const
     QVector<QRectF> rects;
     if (d_ptr->m_channelCount <= 0) return rects;
 
+    // #40: scale room from the real label widths (36 px at least for a vertical meter)
+    const internal::LevelMeterScaleMetrics metrics = internal::levelMeterScaleMetrics(d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_unit, font());
     double scaleMargin = d_ptr->m_scaleVisible ? 36.0 : 0.0;
     double labelMargin = !d_ptr->m_channelLabels.isEmpty() ? 16.0 : 0.0;
     double titleMargin = !d_ptr->m_title.isEmpty() ? 18.0 : 0.0;
@@ -473,7 +485,7 @@ QVector<QRectF> LevelMeter::calculateBarRects(const QRectF &contentRect) const
         QRectF area = contentRect;
         area.setTop(area.top() + titleMargin);
         area.setBottom(area.bottom() - labelMargin);
-        area.setRight(area.right() - scaleMargin);
+        area.setRight(area.right() - (d_ptr->m_scaleVisible ? internal::levelMeterVerticalScaleMargin(metrics) : 0.0));
 
         double totalW = area.width();
         double gap = 4.0;
@@ -486,7 +498,10 @@ QVector<QRectF> LevelMeter::calculateBarRects(const QRectF &contentRect) const
         }
     } else {
         QRectF area = contentRect;
-        area.setLeft(area.left() + labelMargin);
+        const internal::LevelMeterInsets insets = d_ptr->m_scaleVisible ? internal::levelMeterHorizontalInsets(metrics, labelMargin)
+                                                                          : internal::LevelMeterInsets{labelMargin, 0.0};
+        area.setLeft(area.left() + insets.left);
+        area.setRight(area.right() - insets.right);
         area.setTop(area.top() + titleMargin);
         area.setBottom(area.bottom() - scaleMargin);
 
@@ -579,22 +594,9 @@ void LevelMeter::renderStaticBackground()
         scaleFont.setPointSizeF(std::max(6.0, font().pointSizeF() * 0.7));
         painter.setFont(scaleFont);
 
-        // Determine nice tick values
-        QVector<double> ticks;
-        if (d_ptr->m_minimum < 0 && d_ptr->m_maximum > 0 && d_ptr->m_unit == QStringLiteral("dB")) {
-            // Standard logarithmic dB ladder marks
-            QVector<double> stdDb = {-60, -40, -30, -20, -12, -6, -3, 0, 3, 6};
-            for (double t : stdDb) {
-                if (t >= d_ptr->m_minimum && t <= d_ptr->m_maximum) ticks.append(t);
-            }
-        } else {
-            // Linear division (5 to 7 ticks)
-            int numDivs = 6;
-            double step = (d_ptr->m_maximum - d_ptr->m_minimum) / numDivs;
-            for (int i = 0; i <= numDivs; ++i) {
-                ticks.append(d_ptr->m_minimum + i * step);
-            }
-        }
+        // Tick values, texts and the widest label (#40: labels are as wide as their text, never clipped)
+        const std::vector<double> ticks = internal::levelMeterTicks(d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_unit);
+        const internal::LevelMeterScaleMetrics metrics = internal::levelMeterScaleMetrics(d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_unit, font());
 
         for (double t : ticks) {
             double norm = (t - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
@@ -603,12 +605,7 @@ void LevelMeter::renderStaticBackground()
             QColor tColor = colorForNormalizedValue(norm);
             painter.setPen(QPen(tColor, (t == 0.0 || t == d_ptr->m_errorThreshold) ? 1.5 : 1.0));
 
-            QString tickStr;
-            if (d_ptr->m_unit == QStringLiteral("dB")) {
-                tickStr = (t > 0 ? QStringLiteral("+") : QString()) + QString::number(static_cast<int>(t));
-            } else {
-                tickStr = internal::formatFixed(t, (std::abs(d_ptr->m_maximum - d_ptr->m_minimum) < 10) ? 1 : 0);
-            }
+            const QString tickStr = internal::levelMeterTickText(t, d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_unit);
 
             if (d_ptr->m_orientation == Qt::Vertical) {
                 double y = refBar.bottom() - norm * refBar.height();
@@ -616,18 +613,19 @@ void LevelMeter::renderStaticBackground()
                 double x2 = x1 + 4.0;
                 painter.drawLine(QPointF(x1, y), QPointF(x2, y));
 
-                QRectF textR(x2 + 3.0, y - 7.0, 24.0, 14.0);
+                QRectF textR(x2 + 3.0, y - 7.0, metrics.widest + 2.0, 14.0);
                 painter.setPen(tColor);
-                painter.drawText(textR, Qt::AlignLeft | Qt::AlignVCenter, tickStr);
+                painter.drawText(textR, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextDontClip, tickStr);
             } else {
                 double x = refBar.left() + norm * refBar.width();
                 double y1 = refBar.bottom() + 3.0;
                 double y2 = y1 + 4.0;
                 painter.drawLine(QPointF(x, y1), QPointF(x, y2));
 
-                QRectF textR(x - 12.0, y2 + 2.0, 24.0, 14.0);
+                const double textW = metrics.widest + 4.0;
+                QRectF textR(x - textW * 0.5, y2 + 2.0, textW, 14.0);
                 painter.setPen(tColor);
-                painter.drawText(textR, Qt::AlignCenter, tickStr);
+                painter.drawText(textR, Qt::AlignCenter | Qt::TextDontClip, tickStr);
             }
         }
 

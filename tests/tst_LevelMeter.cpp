@@ -4,12 +4,177 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/LevelMeter.h>
+#include <QtGui/QImage>
+#include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
+#include <vector>
 
 using namespace QtIndustrialWidgets;
+
+namespace {
+
+// #40: a meter whose zone colour paints only the scale ticks and labels: continuous mode, value at
+// the minimum (no fill), no peak marker, thresholds above the range, no title, unit or channel labels
+std::unique_ptr<LevelMeter> scaleOnlyMeter(Qt::Orientation o, double maximum, double pointSize, const QSize &size)
+{
+    auto m = std::make_unique<LevelMeter>();
+    m->setOrientation(o);
+    m->setChannelCount(1);
+    m->setRange(0.0, maximum);
+    m->setWarningThreshold(maximum * 2.0);
+    m->setErrorThreshold(maximum * 3.0);
+    m->setDisplayMode(LevelMeter::DisplayMode::Continuous);
+    m->setPeakHoldEnabled(false);
+    m->setUnit(QString());
+    m->setTitle(QString());
+    m->setValue(0.0);
+    QFont f = m->font();
+    f.setPointSizeF(pointSize);
+    m->setFont(f);
+    m->resize(size.isValid() ? size : m->minimumSizeHint());
+    return m;
+}
+
+QImage grabMeter(LevelMeter &m)
+{
+    return m.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+}
+
+// Pixels painted in the zone colour (ticks and labels only, see scaleOnlyMeter())
+std::vector<QPoint> scaleInk(LevelMeter &m)
+{
+    m.setNormalColor(QColor(255, 255, 255));
+    const QImage a = grabMeter(m);
+    m.setNormalColor(QColor(255, 0, 0));
+    const QImage b = grabMeter(m);
+    std::vector<QPoint> out;
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            if (a.pixel(x, y) != b.pixel(x, y)) {
+                out.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return out;
+}
+
+// Ink width (device px) of a text drawn alone with the scale font of the meter
+// (LevelMeter.cpp: the widget font at 70 %, at least 6 pt)
+int referenceInkWidth(const QString &text, const QFont &widgetFont, qreal dpr)
+{
+    QFont f = widgetFont;
+    f.setPointSizeF(std::max(6.0, widgetFont.pointSizeF() * 0.7));
+    const QFontMetricsF fm(f);
+    const QSize logical = (QSizeF(fm.horizontalAdvance(text) + 40, fm.height() + 20)).toSize();
+    QImage img(logical * dpr, QImage::Format_ARGB32);
+    img.setDevicePixelRatio(dpr);
+    img.fill(Qt::black);
+    {
+        QPainter p(&img);
+        p.setFont(f);
+        p.setPen(Qt::white);
+        p.drawText(QPointF(20, 10 + fm.ascent()), text);
+    }
+    int left = img.width(), right = -1;
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (img.pixel(x, y) != qRgb(0, 0, 0)) {
+                left = std::min(left, x);
+                right = std::max(right, x);
+            }
+        }
+    }
+    return right >= left ? right - left + 1 : 0;
+}
+
+// Runs of consecutive set indices: [first, last] pairs
+std::vector<std::pair<int, int>> runs(const std::vector<bool> &set)
+{
+    std::vector<std::pair<int, int>> out;
+    for (int i = 0; i < static_cast<int>(set.size()); ++i) {
+        if (!set[static_cast<size_t>(i)]) continue;
+        if (out.empty() || out.back().second != i - 1) out.push_back({i, i});
+        else out.back().second = i;
+    }
+    return out;
+}
+
+struct TickLabel {
+    double position;  // device px along the scale axis (tick centre)
+    QString text;
+    int inkFirst;     // device px along the label's long axis, -1 if no ink
+    int inkLast;
+};
+
+// Splits the scale ink into ticks and labels. The labels lie beyond a gap after the ticks: right of
+// them for a vertical meter, below them for a horizontal one. Linear range 0..maximum, 6 divisions.
+std::vector<TickLabel> measureLabels(LevelMeter &m, double maximum)
+{
+    const std::vector<QPoint> ink = scaleInk(m);
+    const QImage img = grabMeter(m);
+    const bool vertical = m.orientation() == Qt::Vertical;
+    // Across-axis projection: x for a vertical meter, y for a horizontal one
+    std::vector<bool> across(static_cast<size_t>(vertical ? img.width() : img.height()), false);
+    for (const QPoint &p : ink) across[static_cast<size_t>(vertical ? p.x() : p.y())] = true;
+    const auto acrossRuns = runs(across);
+    std::vector<TickLabel> out;
+    if (acrossRuns.size() < 2) return out;
+    const auto tickBand = acrossRuns.front();
+    const int labelStart = acrossRuns[1].first;
+    // Tick positions along the scale axis
+    std::vector<bool> along(static_cast<size_t>(vertical ? img.height() : img.width()), false);
+    for (const QPoint &p : ink) {
+        const int a = vertical ? p.x() : p.y();
+        if (a >= tickBand.first && a <= tickBand.second) along[static_cast<size_t>(vertical ? p.y() : p.x())] = true;
+    }
+    const auto tickRuns = runs(along);
+    for (size_t i = 0; i < tickRuns.size(); ++i) {
+        TickLabel t;
+        t.position = (tickRuns[i].first + tickRuns[i].second) * 0.5;
+        // vertical: bottom tick is the minimum; horizontal: left tick is the minimum
+        const size_t index = vertical ? tickRuns.size() - 1 - i : i;
+        t.text = QString::number(maximum * static_cast<double>(index) / 6.0, 'f', 0);
+        t.inkFirst = -1;
+        t.inkLast = -1;
+        out.push_back(t);
+    }
+    // Each label pixel belongs to the nearest tick along the scale axis
+    for (const QPoint &p : ink) {
+        const int a = vertical ? p.x() : p.y();
+        if (a < labelStart) continue;
+        const double along = vertical ? p.y() : p.x();
+        size_t best = 0;
+        for (size_t i = 1; i < out.size(); ++i) {
+            if (std::abs(out[i].position - along) < std::abs(out[best].position - along)) best = i;
+        }
+        const int extent = p.x(); // labels are horizontal text in both orientations
+        TickLabel &t = out[best];
+        t.inkFirst = t.inkFirst < 0 ? extent : std::min(t.inkFirst, extent);
+        t.inkLast = std::max(t.inkLast, extent);
+    }
+    return out;
+}
+
+void addScaleRows()
+{
+    QTest::addColumn<int>("orientation");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<double>("pointSize");
+    for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+        for (double maximum : {10000.0, 100000.0}) {
+            for (double pt : {9.0, 11.0, 13.0}) {
+                QTest::addRow("%s 0-%.0f %.0fpt", o == Qt::Vertical ? "V" : "H", maximum, pt) << static_cast<int>(o) << maximum << pt;
+            }
+        }
+    }
+}
+
+} // namespace
 
 class tst_LevelMeter : public QObject
 {
@@ -25,6 +190,11 @@ private Q_SLOTS:
     void renderOffscreen();
     void extremeResizeNoCrash();
     void nanAndInfinityResilience();
+    void scaleLabelsNotClipped_data() { addScaleRows(); }
+    void scaleLabelsNotClipped();
+    void horizontalLabelsDoNotOverlapAtMinimumSize_data();
+    void horizontalLabelsDoNotOverlapAtMinimumSize();
+    void sizeHintsFollowTheLabels();
 };
 
 void tst_LevelMeter::defaultValues()
@@ -175,6 +345,88 @@ void tst_LevelMeter::nanAndInfinityResilience()
     QPixmap pix(meter.size());
     meter.render(&pix);
     QVERIFY(!pix.isNull());
+}
+
+// #40: every scale label is drawn whole: its ink is as wide (within 1 device px) as the same text
+// drawn alone in the scale font. Generous sizes, at least minimumSizeHint().
+void tst_LevelMeter::scaleLabelsNotClipped()
+{
+    QFETCH(int, orientation);
+    QFETCH(double, maximum);
+    QFETCH(double, pointSize);
+    const Qt::Orientation o = static_cast<Qt::Orientation>(orientation);
+    auto m = scaleOnlyMeter(o, maximum, pointSize, o == Qt::Vertical ? QSize(220, 360) : QSize(720, 160));
+    m->resize(m->size().expandedTo(m->minimumSizeHint()));
+    const qreal dpr = grabMeter(*m).devicePixelRatio();
+
+    const std::vector<TickLabel> labels = measureLabels(*m, maximum);
+    QCOMPARE(static_cast<int>(labels.size()), 7);
+    for (const TickLabel &t : labels) {
+        QVERIFY2(t.inkFirst >= 0, qPrintable(QStringLiteral("label '%1' has no ink").arg(t.text)));
+        const int width = t.inkLast - t.inkFirst + 1;
+        const int reference = referenceInkWidth(t.text, m->font(), dpr);
+        QVERIFY2(std::abs(width - reference) <= 1, qPrintable(QStringLiteral("label '%1' is %2 device px wide, %3 when drawn alone (%4x%5, DPR %6)")
+                                                                .arg(t.text).arg(width).arg(reference).arg(m->width()).arg(m->height()).arg(dpr)));
+    }
+}
+
+void tst_LevelMeter::horizontalLabelsDoNotOverlapAtMinimumSize_data()
+{
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<double>("pointSize");
+    for (double maximum : {100.0, 10000.0, 100000.0}) {
+        for (double pt : {9.0, 11.0, 13.0}) {
+            QTest::addRow("0-%.0f %.0fpt", maximum, pt) << maximum << pt;
+        }
+    }
+}
+
+// #40: at minimumSizeHint() of a horizontal meter with a linear scale, every label is whole and the
+// labels of neighbouring ticks do not overlap (same rule as IndustrialSwitch, #44)
+void tst_LevelMeter::horizontalLabelsDoNotOverlapAtMinimumSize()
+{
+    QFETCH(double, maximum);
+    QFETCH(double, pointSize);
+    auto m = scaleOnlyMeter(Qt::Horizontal, maximum, pointSize, QSize());
+    const qreal dpr = grabMeter(*m).devicePixelRatio();
+    const std::vector<TickLabel> labels = measureLabels(*m, maximum);
+    QCOMPARE(static_cast<int>(labels.size()), 7);
+    for (size_t i = 0; i < labels.size(); ++i) {
+        const TickLabel &t = labels[i];
+        const int reference = referenceInkWidth(t.text, m->font(), dpr);
+        QVERIFY2(t.inkFirst >= 0 && std::abs((t.inkLast - t.inkFirst + 1) - reference) <= 1,
+                 qPrintable(QStringLiteral("label '%1' is not whole at minimumSizeHint %2x%3 (ink %4..%5, %6 px alone)")
+                                .arg(t.text).arg(m->width()).arg(m->height()).arg(t.inkFirst).arg(t.inkLast).arg(reference)));
+        if (i > 0) {
+            QVERIFY2(labels[i - 1].inkLast < t.inkFirst,
+                     qPrintable(QStringLiteral("labels '%1' and '%2' overlap at minimumSizeHint %3x%4")
+                                    .arg(labels[i - 1].text, t.text).arg(m->width()).arg(m->height())));
+        }
+    }
+}
+
+// #40: with labels that fit the previous 36 px scale margin (dB scale, default font) sizeHint() is
+// the one used before; the minimum now includes the scale (it was a fixed 45 px, narrower than the
+// chassis margins, bars and 36 px scale together); wider labels make both grow; sizeHint() is never
+// below minimumSizeHint()
+void tst_LevelMeter::sizeHintsFollowTheLabels()
+{
+    LevelMeter db;
+    db.setChannelCount(2);
+    db.setRange(-60.0, 6.0);
+    db.setUnit(QStringLiteral("dB"));
+    QCOMPARE(db.sizeHint(), QSize(24 + 2 * 18 + 38, 220));
+    QCOMPARE(db.minimumSizeHint(), QSize(22 + 2 * 6 + 4 + 36, 100));
+
+    for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+        auto wide = scaleOnlyMeter(o, 100000.0, 13.0, QSize(200, 200));
+        const QSize min = wide->minimumSizeHint();
+        const QSize hint = wide->sizeHint();
+        QVERIFY2(hint.width() >= min.width() && hint.height() >= min.height(),
+                 qPrintable(QStringLiteral("sizeHint %1x%2 below minimumSizeHint %3x%4").arg(hint.width()).arg(hint.height()).arg(min.width()).arg(min.height())));
+        QVERIFY2(o == Qt::Vertical ? min.width() > 45 : min.width() > 100,
+                 qPrintable(QStringLiteral("minimumSizeHint %1x%2 did not grow for 6-digit labels at 13 pt").arg(min.width()).arg(min.height())));
+    }
 }
 
 QTEST_MAIN(tst_LevelMeter)
