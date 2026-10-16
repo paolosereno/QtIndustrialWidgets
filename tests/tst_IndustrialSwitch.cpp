@@ -205,6 +205,7 @@ private Q_SLOTS:
     void closedGuardLabelsReadable();
     void labelsNotClipped_data() { addSwitchRows(); }
     void labelsNotClipped();
+    void labelInkBeyondAdvanceStaysInPlate();
     void sizeHintKeepsGuardedThreePositionSwitchReadable_data();
     void sizeHintKeepsGuardedThreePositionSwitchReadable();
 };
@@ -458,6 +459,27 @@ void tst_IndustrialSwitch::labelsNotClipped()
             const QRect plate = QRect(QPoint(0, 0), sw->size() * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
             QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("label '%1' ink outside the plate").arg(labels[i])));
         }
+    }
+}
+
+// #44 (found by CI on Windows): with a font whose glyph ink extends past the advance width (bold
+// serif "AUTO"), the label beside the guard of a vertical 3-position switch must still stay inside
+// the plate. The layout has to reserve room for the ink, not only for the advance.
+void tst_IndustrialSwitch::labelInkBeyondAdvanceStaysInPlate()
+{
+    // The property holds for any font; where DejaVu Serif is missing, Qt substitutes another one
+    QFont serif = QApplication::font();
+    serif.setFamily(QStringLiteral("DejaVu Serif"));
+    for (bool guard : {false, true}) {
+        SwitchTexts one;
+        one.title = one.on = one.off = QString();
+        auto sw = makeSwitch(SwitchConfig{IndustrialSwitch::SwitchType::ToggleLever, Qt::Vertical, QSize(120, 190), 3}, guard, true, one);
+        sw->setFont(serif);
+        const QRect ink = boundingBox(textInk(*sw));
+        const qreal dpr = grabImage(*sw).devicePixelRatio();
+        const QRect plate = QRect(QPoint(0, 0), sw->size() * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
+        QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("'AUTO' ink x %1..%2 outside the plate x %3..%4 (guard %5, DPR %6)")
+                                                     .arg(ink.left()).arg(ink.right()).arg(plate.left()).arg(plate.right()).arg(guard).arg(dpr)));
     }
 }
 
