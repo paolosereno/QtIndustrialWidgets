@@ -119,9 +119,28 @@ set_target_properties(RadialGaugeLayout PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
-add_library(QtIndustrialWidgets SHARED
+add_library(LevelMeterLayout OBJECT
     internal/LevelMeterLayout.cpp
     internal/LevelMeterLayout.h
+)
+
+target_include_directories(LevelMeterLayout
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(LevelMeterLayout
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+)
+
+set_target_properties(LevelMeterLayout PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
+add_library(QtIndustrialWidgets SHARED
     RadialGauge.cpp
     LinearGauge.cpp
     SevenSegmentDisplay.cpp
@@ -139,6 +158,7 @@ add_library(QtIndustrialWidgets SHARED
     $<TARGET_OBJECTS:LinearGaugeScale>
     $<TARGET_OBJECTS:RadialGaugeLayout>
     $<TARGET_OBJECTS:IndustrialSwitchLayout>
+    $<TARGET_OBJECTS:LevelMeterLayout>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h

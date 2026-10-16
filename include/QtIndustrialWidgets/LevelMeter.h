@@ -27,6 +27,16 @@
  * - Realistic Peak Hold indicator bar with configurable hold dwell time and smooth gravity ballistic decay.
  * - High-DPI cached background scale ticks, channel division gutters, and labels.
  *
+ * Every scale tick is drawn, but only the labels that keep max(4 px, half the scale font height) from
+ * each other: drawn labels never overlap. The first and last labels (the ends of the scale) are always
+ * drawn; if they are too close to each other only the first one is (an end always wins). On a linear
+ * scale every k-th label is drawn, k the smallest divisor of 6 that keeps the gap. On the dB ladder
+ * (unit "dB" with a range across 0) labels are taken in priority order, each one only if it keeps the
+ * gap from those already taken: the ends, 0 dB, then -20, -6, -40, -12, -30, -3, +3, then any other tick
+ * in increasing order; ticks outside the range are skipped. A unit is drawn clear of the scale labels:
+ * above the bars of a vertical meter (in a band reserved only when the unit is not empty), right of the
+ * bars of a horizontal one. From minimumSizeHint() up every label of a horizontal linear scale is drawn.
+ *
  * \code
  * auto *meter = new LevelMeter(parent);
  * meter->setChannelCount(2);

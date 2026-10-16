@@ -114,6 +114,8 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
    `git worktree add ../qiw-issue-<n> -b issue-<n>-<short-slug> origin/main`. Build, test and export images inside
    that worktree (its own `build/`). Never commit or switch branches in the main checkout, which the maintainer also
    uses. Remove the worktree (`git worktree remove ../qiw-issue-<n>`) after the PR is merged.
+   Do not use `git stash`: the stash is shared by all worktrees. To set work aside, commit it as WIP on the issue
+   branch or save `git diff > file.patch` in the scratchpad.
 
 ## Map of the code worth knowing
 
