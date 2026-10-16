@@ -34,6 +34,8 @@ struct LevelMeterScaleMetrics {
     double lineHeight{0.0}; ///< line height of the scale font (also the unit font)
     double minGap{4.0};     ///< scaleLabelMinGap() of the scale font (#57)
     double unitWidth{0.0};  ///< width of the unit text in the scale font (0 without a unit)
+    double endsWidth{0.0};  ///< half the sum of the widths of the first and last tick labels
+    double endsFraction{1.0}; ///< fraction of the range between the first and last ticks
 };
 
 LevelMeterScaleMetrics levelMeterScaleMetrics(double minimum, double maximum, const QString &unit, const QFont &widgetFont);
@@ -47,9 +49,14 @@ double levelMeterVerticalScaleMargin(const LevelMeterScaleMetrics &m);
 /// label, keeps minGap from it (#57); 0 without a unit, so such meters keep their layout.
 double levelMeterVerticalUnitBand(const LevelMeterScaleMetrics &m);
 
-/// Horizontal meter: height reserved below the bars for the scale (tick, gap and a label line of
-/// the scale font), never less than the 36 px used before #57.
+/// Horizontal meter: height reserved below the bars for the scale (tick, gap and the label
+/// rectangle), never less than the 36 px used before #57.
 double levelMeterHorizontalScaleMargin(const LevelMeterScaleMetrics &m);
+
+/// Horizontal meter: height of the rectangle a scale label is centred in, 2 px below the tick: the
+/// 14 px used before, or the line height of the scale font when taller, so that the text never
+/// rises over the ticks (#57).
+double levelMeterHorizontalLabelHeight(const LevelMeterScaleMetrics &m);
 
 /// Horizontal meter with a unit: distance from the end of the bars to the left of the unit text. The
 /// unit is vertically centred on the last bar (\a barHeight high); 4 px when its line keeps minGap
@@ -95,9 +102,10 @@ std::vector<double> levelMeterLabelExtents(Qt::Orientation orientation, double m
  * \brief Minimum size of a LevelMeter from its scale labels (#40).
  *
  * Vertical: room for the bars (6 px each, 4 px gaps) and the scale margin. Horizontal: room for the
- * end-label insets (and the unit) and, for a linear scale, bars long enough that neighbouring labels
- * keep minGap between them, so that every linear label is drawn (#57); height for the margins, the
- * title, the bars and the scale (#57). Never smaller than \a base.
+ * end-label insets (and the unit) and bars long enough that the two end labels (centred on their
+ * ticks) keep minGap between them and, for a linear scale, that neighbouring labels do too, so that
+ * every linear label and both dB ends are drawn (#57); height for the margins, the title, the bars and
+ * the scale (#57). Never smaller than \a base.
  */
 QSize levelMeterMinimumSize(Qt::Orientation orientation, int channels, bool scaleVisible, bool channelLabels,
                             bool title, const LevelMeterScaleMetrics &m, const QSize &base);

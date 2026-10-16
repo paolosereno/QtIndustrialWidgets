@@ -642,7 +642,7 @@ void LevelMeter::renderStaticBackground()
 
                 if (labelDrawn) {
                     const double textW = metrics.widest + 4.0;
-                    QRectF textR(x - textW * 0.5, y2 + 2.0, textW, 14.0);
+                    QRectF textR(x - textW * 0.5, y2 + 2.0, textW, internal::levelMeterHorizontalLabelHeight(metrics));
                     painter.setPen(tColor);
                     painter.drawText(textR, Qt::AlignCenter | Qt::TextDontClip, tickStr);
                 }

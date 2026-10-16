@@ -78,6 +78,11 @@ LevelMeterScaleMetrics levelMeterScaleMetrics(double minimum, double maximum, co
         if (ticks[i] <= minimum) m.first = w;
         if (ticks[i] >= maximum) m.last = w;
     }
+    if (!ticks.empty()) {
+        m.endsWidth = 0.5 * (inkWidth(levelMeterTickText(ticks.front(), minimum, maximum, unit), fm)
+                             + inkWidth(levelMeterTickText(ticks.back(), minimum, maximum, unit), fm));
+        m.endsFraction = (ticks.back() - ticks.front()) / (maximum - minimum);
+    }
     m.lineHeight = fm.height();
     m.minGap = scaleLabelMinGap(m.lineHeight);
     m.unitWidth = unit.isEmpty() ? 0.0 : fm.horizontalAdvance(unit);
@@ -99,9 +104,14 @@ double levelMeterVerticalUnitBand(const LevelMeterScaleMetrics &m)
 
 double levelMeterHorizontalScaleMargin(const LevelMeterScaleMetrics &m)
 {
-    // Tick 3..7 px below the bars, label rectangle 2 px lower and 14 px high with the text line
-    // centred in it (so its bottom is 16 + lineHeight / 2 below the bars), then 2 px
-    return std::max(36.0, 16.0 + m.lineHeight * 0.5 + 2.0);
+    // Tick 3..7 px below the bars, label rectangle 2 px lower and levelMeterHorizontalLabelHeight()
+    // high, then 2 px
+    return std::max(36.0, 9.0 + levelMeterHorizontalLabelHeight(m) + 2.0);
+}
+
+double levelMeterHorizontalLabelHeight(const LevelMeterScaleMetrics &m)
+{
+    return std::max(14.0, m.lineHeight);
 }
 
 double levelMeterHorizontalUnitOffset(const LevelMeterScaleMetrics &m, double barHeight)
@@ -230,8 +240,10 @@ QSize levelMeterMinimumSize(Qt::Orientation orientation, int channels, bool scal
     double width = 0.0;
     if (scaleVisible) {
         const LevelMeterInsets insets = levelMeterHorizontalInsets(m, channelLabels ? 16.0 : 0.0, 6.0);
-        // 6 divisions: neighbouring linear labels keep minGap, so all of them are drawn (#57)
-        const double length = m.linear ? 6.0 * (m.widest + m.minGap) : 0.0;
+        // The end labels, centred on the end ticks, keep minGap (both ends drawn); on a linear scale
+        // the 6 divisions also keep it between neighbours, so all of them are drawn (#57)
+        const double ends = m.endsFraction > 0.0 ? (m.endsWidth + m.minGap) / m.endsFraction : 0.0;
+        const double length = m.linear ? std::max(6.0 * (m.widest + m.minGap), ends) : ends;
         width = 2 * kChassisAndContentMargin + insets.left + insets.right + length;
     }
     return base.expandedTo(QSize(static_cast<int>(std::ceil(width)), static_cast<int>(std::ceil(height))));
