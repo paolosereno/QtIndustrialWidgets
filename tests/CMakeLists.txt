@@ -105,7 +105,27 @@ set_target_properties(tst_StripChart PROPERTIES
 )
 add_dpr_tests(tst_StripChart)
 
-add_industrial_widget_test(tst_IndustrialSwitch)
+add_executable(tst_IndustrialSwitch
+    tst_IndustrialSwitch.cpp
+    $<TARGET_OBJECTS:IndustrialSwitchLayout>
+)
+target_link_libraries(tst_IndustrialSwitch
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_IndustrialSwitch
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_IndustrialSwitch PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_IndustrialSwitch)
 add_industrial_widget_test(tst_LevelMeter)
 add_industrial_widget_test(tst_AnnunciatorPanel)
 add_industrial_widget_test(tst_Compass)

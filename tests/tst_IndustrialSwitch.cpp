@@ -4,6 +4,7 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
+#include "internal/IndustrialSwitchLayout.h"
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
 
@@ -48,7 +49,13 @@ std::unique_ptr<IndustrialSwitch> makeSwitch(const SwitchConfig &c, bool guard, 
     sw->setLabelOff(t.off);
     sw->setLabelCenter(c.positions == 3 ? t.center : QString());
     sw->setChecked(true); // LED lit, with its glow
-    sw->resize(c.size);
+    if (c.size.isEmpty()) {
+        // "sizeHint" rows: the size hint of the same switch with a guard
+        auto guarded = makeSwitch(SwitchConfig{c.type, c.orientation, QSize(100, 100), c.positions}, true, false, t);
+        sw->resize(guarded->sizeHint());
+    } else {
+        sw->resize(c.size);
+    }
     return sw;
 }
 
@@ -155,6 +162,11 @@ void addSwitchRows()
                     << static_cast<int>(type) << static_cast<int>(Qt::Horizontal) << size << positions;
             }
         }
+        // At sizeHint() of the switch with a guard and 3 positions
+        for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+            QTest::addRow("%s %s sizeHint 3-pos", type == T::Rocker ? "rocker" : "toggle", o == Qt::Vertical ? "V" : "H")
+                << static_cast<int>(type) << static_cast<int>(o) << QSize() << 3;
+        }
     }
 }
 
@@ -193,6 +205,8 @@ private Q_SLOTS:
     void closedGuardLabelsReadable();
     void labelsNotClipped_data() { addSwitchRows(); }
     void labelsNotClipped();
+    void sizeHintKeepsGuardedThreePositionSwitchReadable_data();
+    void sizeHintKeepsGuardedThreePositionSwitchReadable();
 };
 
 void tst_IndustrialSwitch::defaultValues()
@@ -441,10 +455,49 @@ void tst_IndustrialSwitch::labelsNotClipped()
                      qPrintable(QStringLiteral("label '%1' (guard %2) is %3 device px wide, %4 when nothing clips it")
                                     .arg(labels[i]).arg(guard).arg(ink.width()).arg(full.width())));
             const qreal dpr = grabImage(*sw).devicePixelRatio();
-            const QRect plate = QRect(QPoint(0, 0), c.size * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
+            const QRect plate = QRect(QPoint(0, 0), sw->size() * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
             QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("label '%1' ink outside the plate").arg(labels[i])));
         }
     }
+}
+
+void tst_IndustrialSwitch::sizeHintKeepsGuardedThreePositionSwitchReadable_data()
+{
+    QTest::addColumn<int>("type");
+    QTest::addColumn<int>("orientation");
+    using T = IndustrialSwitch::SwitchType;
+    for (T type : {T::ToggleLever, T::Rocker}) {
+        for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+            QTest::addRow("%s %s", type == T::Rocker ? "rocker" : "toggle", o == Qt::Vertical ? "V" : "H")
+                << static_cast<int>(type) << static_cast<int>(o);
+        }
+    }
+}
+
+// #44: at sizeHint() a switch with a guard and 3 positions is laid out without scaling the switch
+// down (scale 1: the size it has when nothing needs room) and everything fits in the plate
+void tst_IndustrialSwitch::sizeHintKeepsGuardedThreePositionSwitchReadable()
+{
+    QFETCH(int, type);
+    QFETCH(int, orientation);
+    const SwitchConfig c{static_cast<IndustrialSwitch::SwitchType>(type), static_cast<Qt::Orientation>(orientation), QSize(100, 100), 3};
+    auto sw = makeSwitch(c, true, false);
+    const QSize hint = sw->sizeHint();
+
+    internal::SwitchLayoutInput in;
+    in.size = hint;
+    in.orientation = c.orientation;
+    in.positions = 3;
+    in.guard = true;
+    in.font = sw->font();
+    in.title = sw->label();
+    in.on = sw->labelOn();
+    in.off = sw->labelOff();
+    in.center = sw->labelCenter();
+    const internal::SwitchLayout layout = internal::layoutSwitch(in);
+    QVERIFY2(layout.fits, qPrintable(QStringLiteral("layout does not fit at sizeHint %1x%2").arg(hint.width()).arg(hint.height())));
+    QVERIFY2(layout.scale >= 1.0, qPrintable(QStringLiteral("switch scaled to %1 at sizeHint %2x%3")
+                                                 .arg(layout.scale).arg(hint.width()).arg(hint.height())));
 }
 
 QTEST_MAIN(tst_IndustrialSwitch)
