@@ -4,6 +4,7 @@
 
 #include <QtTest/QtTest>
 
+#include "internal/LinearGaugeScale.h"
 #include "internal/RadialGaugeLayout.h"
 
 #include <algorithm>
@@ -58,6 +59,56 @@ bool clearOf(const LayoutRect &box, const std::vector<LayoutRect> &labels, doubl
     return std::none_of(labels.begin(), labels.end(), [&](const LayoutRect &l) { return expanded(box, margin).intersects(l); });
 }
 
+// Boxes of the major labels of a synthetic dial (#50): majorTicks + 1 labels at the label radius
+// of a dial of the given side, on an arc from startAngle (0 deg = 12 o'clock, clockwise) over
+// spanAngle; label i is characters[i] characters wide (synthetic metrics above) at the label font
+std::vector<LayoutRect> arcLabels(double side, double startAngle, double spanAngle, const std::vector<int> &characters)
+{
+    const RadialScaleGeometry g = radialScaleGeometry(side);
+    const int n = static_cast<int>(characters.size()) - 1;
+    std::vector<LayoutRect> boxes;
+    for (int i = 0; i <= n; ++i) {
+        const double rad = (startAngle + spanAngle * (n == 0 ? 0.0 : static_cast<double>(i) / n) - 90.0) * M_PI / 180.0;
+        boxes.push_back(labelAt(side * 0.5 + g.labelRadius * std::cos(rad), side * 0.5 + g.labelRadius * std::sin(rad),
+                                widthOf(characters[static_cast<size_t>(i)])(g.labelFontPx), lineHeight(g.labelFontPx)));
+    }
+    return boxes;
+}
+
+// Characters of the labels of a linear range with 10 major ticks (integer tick values)
+std::vector<int> rangeCharacters(double minimum, double maximum)
+{
+    std::vector<int> out;
+    for (int i = 0; i <= 10; ++i) {
+        out.push_back(static_cast<int>(QString::number(static_cast<qint64>(std::round(minimum + (maximum - minimum) * i / 10.0))).size()));
+    }
+    return out;
+}
+
+// True when every pair of the given labels keeps minGap
+bool allPairsKeepGap(const std::vector<LayoutRect> &boxes, const std::vector<int> &indices, double minGap)
+{
+    for (size_t a = 0; a < indices.size(); ++a) {
+        for (size_t b = a + 1; b < indices.size(); ++b) {
+            if (layoutRectGap(boxes[static_cast<size_t>(indices[a])], boxes[static_cast<size_t>(indices[b])]) < minGap) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+std::vector<int> multiplesOf(int step, int n, bool withLast)
+{
+    std::vector<int> out;
+    for (int i = 0; i <= n; i += step) {
+        if (i < n || withLast) {
+            out.push_back(i);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 class tst_RadialGaugeLayout : public QObject
@@ -79,6 +130,13 @@ private Q_SLOTS:
     void nonFiniteInputGivesEmptyPod();
     void fontFitPicksLargestFittingSize();
     void fontFitFallsBackToMinimum();
+    void labelGapAlongSeparatingAxis();
+    void scaleLabelsKeepMinimumGap_data();
+    void scaleLabelsKeepMinimumGap();
+    void primeMajorTicksKeepOnlyEndLabels();
+    void fullCircleDropsLastLabel();
+    void fullCircleChecksEveryPair();
+    void degenerateLabelInput();
 };
 
 // #43: the scale radius and the label font are those of main (formulas copied from 84ada40)
@@ -302,6 +360,120 @@ void tst_RadialGaugeLayout::fontFitFallsBackToMinimum()
     fit = fitFontPixelSize(5, 8, 1000.0, 100.0, width, height);
     QVERIFY(fit.fits);
     QCOMPARE(fit.pixelSize, 8);
+}
+
+// #50: free space between two boxes along the axis that separates them; negative on overlap
+void tst_RadialGaugeLayout::labelGapAlongSeparatingAxis()
+{
+    const LayoutRect a{0.0, 0.0, 10.0, 5.0};
+    QCOMPARE(layoutRectGap(a, LayoutRect{14.0, 0.0, 10.0, 5.0}), 4.0);  // side by side
+    QCOMPARE(layoutRectGap(LayoutRect{14.0, 0.0, 10.0, 5.0}, a), 4.0);  // symmetric
+    QCOMPARE(layoutRectGap(a, LayoutRect{0.0, 8.0, 10.0, 5.0}), 3.0);   // stacked
+    QCOMPARE(layoutRectGap(a, LayoutRect{12.0, 9.0, 10.0, 5.0}), 4.0);  // diagonal: the larger distance
+    QCOMPARE(layoutRectGap(a, LayoutRect{10.0, 0.0, 10.0, 5.0}), 0.0);  // touching
+    QCOMPARE(layoutRectGap(a, LayoutRect{8.0, 1.0, 10.0, 5.0}), -2.0);  // overlapping
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    QCOMPARE(layoutRectGap(a, LayoutRect{nan, 0.0, 10.0, 5.0}), -std::numeric_limits<double>::infinity());
+}
+
+void tst_RadialGaugeLayout::scaleLabelsKeepMinimumGap_data()
+{
+    QTest::addColumn<double>("side");
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+
+    // The configurations measured in #50, default 270-degree arc
+    struct Range { const char *name; double min; double max; };
+    const Range ranges[] = {{"0-8000", 0.0, 8000.0}, {"0-100000", 0.0, 100000.0}, {"0-10000000", 0.0, 10000000.0},
+                            {"0-100", 0.0, 100.0}, {"-1000-1000", -1000.0, 1000.0}};
+    for (double side : {160.0, 200.0, 260.0, 300.0, 400.0}) {
+        for (const Range &r : ranges) {
+            QTest::addRow("%.0f px, %s", side, r.name) << side << r.min << r.max;
+        }
+    }
+}
+
+// #50: the drawn labels keep scaleLabelMinGap() pairwise, the end labels are drawn, and the step is
+// the smallest divisor of majorTicks that achieves it
+void tst_RadialGaugeLayout::scaleLabelsKeepMinimumGap()
+{
+    QFETCH(double, side);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+
+    const std::vector<LayoutRect> boxes = arcLabels(side, -135.0, 270.0, rangeCharacters(minimum, maximum));
+    const double minGap = scaleLabelMinGap(lineHeight(radialScaleGeometry(side).labelFontPx));
+    const RadialScaleLabels labels = layoutRadialScaleLabels(boxes, minGap);
+
+    QVERIFY(labels.step >= 1 && 10 % labels.step == 0);
+    QCOMPARE(labels.drawn, multiplesOf(labels.step, 10, true));
+    QVERIFY2(allPairsKeepGap(boxes, labels.drawn, minGap), qPrintable(QStringLiteral("step %1").arg(labels.step)));
+    for (int d = 1; d < labels.step; ++d) {
+        if (10 % d == 0) {
+            QVERIFY2(!allPairsKeepGap(boxes, multiplesOf(d, 10, true), minGap),
+                     qPrintable(QStringLiteral("step %1 chosen, but %2 also keeps the gap").arg(labels.step).arg(d)));
+        }
+    }
+}
+
+// #50: when no smaller divisor fits, only the first and last labels are drawn
+void tst_RadialGaugeLayout::primeMajorTicksKeepOnlyEndLabels()
+{
+    const std::vector<LayoutRect> boxes = arcLabels(200.0, -135.0, 270.0, std::vector<int>(8, 12));
+    const RadialScaleLabels labels = layoutRadialScaleLabels(boxes, 4.0);
+    QCOMPARE(labels.step, 7);
+    QCOMPARE(labels.drawn, (std::vector<int>{0, 7}));
+
+    // Narrow labels: every label
+    const RadialScaleLabels narrow = layoutRadialScaleLabels(arcLabels(400.0, -135.0, 270.0, std::vector<int>(8, 1)), 4.0);
+    QCOMPARE(narrow.step, 1);
+    QCOMPARE(narrow.drawn, multiplesOf(1, 7, true));
+}
+
+// #50: on a 360-degree span the last label lies on the first one: it is not drawn and the others
+// are chosen in the same way
+void tst_RadialGaugeLayout::fullCircleDropsLastLabel()
+{
+    const RadialScaleLabels narrow = layoutRadialScaleLabels(arcLabels(400.0, 0.0, 360.0, std::vector<int>(11, 1)), 4.0);
+    QCOMPARE(narrow.step, 1);
+    QCOMPARE(narrow.drawn, multiplesOf(1, 10, false));
+
+    const std::vector<LayoutRect> wideBoxes = arcLabels(300.0, 0.0, 360.0, rangeCharacters(0.0, 10000000.0));
+    const double minGap = scaleLabelMinGap(lineHeight(radialScaleGeometry(300.0).labelFontPx));
+    const RadialScaleLabels wide = layoutRadialScaleLabels(wideBoxes, minGap);
+    QVERIFY(wide.step > 1);
+    QCOMPARE(wide.drawn, multiplesOf(wide.step, 10, false));
+    QVERIFY(allPairsKeepGap(wideBoxes, wide.drawn, minGap));
+}
+
+// #50: every pair of drawn labels is checked, not only neighbouring indices: on a 720-degree span
+// labels 0, 2 and 4 of 4 major ticks share a place, so only label 0 remains
+void tst_RadialGaugeLayout::fullCircleChecksEveryPair()
+{
+    const RadialScaleLabels labels = layoutRadialScaleLabels(arcLabels(400.0, 0.0, 720.0, std::vector<int>(5, 1)), 4.0);
+    QCOMPARE(labels.step, 4);
+    QCOMPARE(labels.drawn, (std::vector<int>{0}));
+}
+
+void tst_RadialGaugeLayout::degenerateLabelInput()
+{
+    const RadialScaleLabels none = layoutRadialScaleLabels({}, 4.0);
+    QCOMPARE(none.step, 0);
+    QVERIFY(none.drawn.empty());
+
+    const RadialScaleLabels single = layoutRadialScaleLabels({LayoutRect{0.0, 0.0, 10.0, 5.0}}, 4.0);
+    QCOMPARE(single.step, 1);
+    QCOMPARE(single.drawn, (std::vector<int>{0}));
+
+    // Non-finite minimum gap: treated as 0, so touching labels are all drawn
+    const std::vector<LayoutRect> touching{{0.0, 0.0, 10.0, 5.0}, {10.0, 0.0, 10.0, 5.0}, {20.0, 0.0, 10.0, 5.0}};
+    const RadialScaleLabels nanGap = layoutRadialScaleLabels(touching, std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(nanGap.drawn, (std::vector<int>{0, 1, 2}));
+
+    // A non-finite box clashes with every other one: only the end labels remain
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::vector<LayoutRect> broken{{0.0, 0.0, 10.0, 5.0}, {inf, 0.0, 10.0, 5.0}, {40.0, 0.0, 10.0, 5.0}};
+    QCOMPARE(layoutRadialScaleLabels(broken, 4.0).drawn, (std::vector<int>{0, 2}));
 }
 
 QTEST_MAIN(tst_RadialGaugeLayout)

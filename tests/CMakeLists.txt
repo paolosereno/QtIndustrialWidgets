@@ -86,6 +86,7 @@ add_dpr_tests(tst_LinearGauge)
 add_executable(tst_RadialGaugeLayout
     tst_RadialGaugeLayout.cpp
     $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:LinearGaugeScale>
 )
 target_link_libraries(tst_RadialGaugeLayout
     PRIVATE

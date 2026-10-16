@@ -43,6 +43,34 @@ struct RadialScaleGeometry {
 /// Scale geometry of a dial of the given side (the smaller widget dimension).
 RadialScaleGeometry radialScaleGeometry(double side);
 
+/**
+ * \brief Free space between two rectangles along the axis that separates them.
+ *
+ * The larger of the horizontal and the vertical distance between the edges; negative when the
+ * rectangles overlap. Non-finite inputs give -infinity (treated as overlapping).
+ */
+double layoutRectGap(const LayoutRect &a, const LayoutRect &b);
+
+/// Result of layoutRadialScaleLabels().
+struct RadialScaleLabels {
+    int step{0};            ///< Every step-th major label is drawn (0 when there are none)
+    std::vector<int> drawn; ///< Major-tick indices of the drawn labels, in increasing order
+};
+
+/**
+ * \brief Chooses which major labels a RadialGauge scale draws (#50).
+ *
+ * \a boxes holds the rectangle of every major label (majorTicks + 1 of them, centred on their
+ * label positions). The step is the smallest divisor k of majorTicks for which every pair of drawn
+ * labels (indices 0, k, 2k, ..., majorTicks), not only neighbouring ones, keeps at least \a minGap
+ * between them (layoutRectGap()). If no smaller divisor fits, the step is majorTicks: the first
+ * and last labels are drawn anyway. When the first and last labels themselves are closer than
+ * \a minGap (a span of 360 degrees or more), the last one is never drawn and the others are
+ * chosen in the same way. With majorTicks = 0 the single label is drawn with step 1; with no
+ * boxes nothing is drawn. A non-finite \a minGap is treated as 0.
+ */
+RadialScaleLabels layoutRadialScaleLabels(const std::vector<LayoutRect> &boxes, double minGap);
+
 /// Input of layoutDigitalPod().
 struct PodLayoutInput {
     double centerX{0.0};
