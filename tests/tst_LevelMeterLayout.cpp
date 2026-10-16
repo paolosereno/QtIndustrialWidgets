@@ -58,6 +58,7 @@ private Q_SLOTS:
     void linearStepIsSmallestDivisor();
     void degenerateInput();
     void horizontalMinimumKeepsEveryLinearLabel();
+    void horizontalMinimumKeepsBothDbEnds();
     void verticalUnitBandOnlyWithUnit();
 };
 
@@ -213,6 +214,30 @@ void tst_LevelMeterLayout::horizontalMinimumKeepsEveryLinearLabel()
             const std::vector<double> extents = levelMeterLabelExtents(Qt::Horizontal, range.first, range.second, QString(), font);
             QCOMPARE(levelMeterSelectLabels(ticks, centresOf(ticks, range.first, range.second, length), extents, true, m.minGap).size(),
                      ticks.size());
+        }
+    }
+}
+
+// #57: at the minimum width of a horizontal dB meter both end labels are drawn, also with wide labels
+// (letter spacing 200 % and 300 %, 16-24 pt) and with a unit taking room at the right end of the bars
+void tst_LevelMeterLayout::horizontalMinimumKeepsBothDbEnds()
+{
+    for (double spacing : {100.0, 200.0, 300.0}) {
+        for (double pt : {9.0, 11.0, 13.0, 16.0, 20.0, 24.0}) {
+            QFont font;
+            font.setPointSizeF(pt);
+            font.setLetterSpacing(QFont::PercentageSpacing, spacing);
+            const QString unit = QStringLiteral("dB");
+            const LevelMeterScaleMetrics m = levelMeterScaleMetrics(-60.0, 6.0, unit, font);
+            const QSize min = levelMeterMinimumSize(Qt::Horizontal, 1, true, false, false, m, QSize(100, 45));
+            const LevelMeterInsets insets = levelMeterHorizontalInsets(m, 0.0, 6.0);
+            const double length = min.width() - 22.0 - insets.left - insets.right;
+            const std::vector<double> ticks = levelMeterTicks(-60.0, 6.0, unit);
+            const std::vector<int> drawn = levelMeterSelectLabels(ticks, centresOf(ticks, -60.0, 6.0, length),
+                                                                  levelMeterLabelExtents(Qt::Horizontal, -60.0, 6.0, unit, font), false, m.minGap);
+            QVERIFY2(!drawn.empty() && drawn.front() == 0 && drawn.back() == static_cast<int>(ticks.size()) - 1,
+                     qPrintable(QStringLiteral("%1 pt, spacing %2 %: minimum width %3 (bars %4 px) does not hold both end labels")
+                                    .arg(pt).arg(spacing).arg(min.width()).arg(length)));
         }
     }
 }

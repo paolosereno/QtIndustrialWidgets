@@ -329,6 +329,8 @@ private Q_SLOTS:
     void sizeHintsFollowTheLabels();
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
+    void endLabelsDistinctAtMinimumSize_data();
+    void endLabelsDistinctAtMinimumSize();
     void contentInsideChassisAtMinimumSize_data();
     void contentInsideChassisAtMinimumSize();
     void unitKeepsMinimumGapFromScale_data();
@@ -599,16 +601,116 @@ void tst_LevelMeter::scaleLabelsKeepMinimumGap_data()
     }
 }
 
+namespace {
+
+// Scale label clusters of a meter (#57). Label pixels are the zone-colour pixels beyond the tick band
+// (see labelMeter()), grouped into clusters: two pixels are in the same cluster when fewer than
+// (minGap - 1) x DPR free device pixels separate them (1 px logical allowed for glyphs that exceed the
+// font metrics the layout uses). The end ticks are located from the outermost tick ink.
+struct ScaleScan {
+    std::vector<QPoint> labelInk;
+    std::vector<QRect> labels;
+    QSize largest;     ///< largest label drawn alone (device px)
+    double minGap{0};  ///< logical px
+    double threshold{0};
+    double minEnd{0};  ///< device position of the minimum end tick along the scale
+    double maxEnd{0};
+    qreal dpr{1};
+    bool valid{false};
+};
+
+ScaleScan scanScale(LevelMeter &m, double minimum, double maximum, const QString &unit)
+{
+    ScaleScan scan;
+    const bool vertical = m.orientation() == Qt::Vertical;
+    const std::vector<QPoint> ink = scaleInk(m);
+    const QImage img = grabMeter(m);
+    scan.dpr = img.devicePixelRatio();
+    std::vector<bool> across(static_cast<size_t>(vertical ? img.width() : img.height()), false);
+    for (const QPoint &p : ink) across[static_cast<size_t>(vertical ? p.x() : p.y())] = true;
+    const auto acrossRuns = runs(across);
+    if (acrossRuns.size() < 2) return scan;
+    const auto tickBand = acrossRuns.front();
+    const int labelStart = acrossRuns[1].first;
+    int alongLo = std::numeric_limits<int>::max();
+    int alongHi = std::numeric_limits<int>::min();
+    for (const QPoint &p : ink) {
+        const int a = vertical ? p.x() : p.y();
+        const int along = vertical ? p.y() : p.x();
+        if (a >= labelStart) {
+            scan.labelInk.push_back(p);
+        } else if (a >= tickBand.first && a <= tickBand.second) {
+            alongLo = std::min(alongLo, along);
+            alongHi = std::max(alongHi, along);
+        }
+    }
+    const QFont scaleFont = internal::levelMeterScaleFont(m.font());
+    scan.minGap = scaleMinGap(m.font());
+    scan.threshold = (scan.minGap - 1.0) * scan.dpr;
+    const std::vector<double> ticks = internal::levelMeterTicks(minimum, maximum, unit);
+    for (double t : ticks) {
+        scan.largest = scan.largest.expandedTo(inkBoxAlone(internal::levelMeterTickText(t, minimum, maximum, unit), scaleFont, scan.dpr).size());
+    }
+    scan.labels = clusters(scan.labelInk, scan.threshold);
+    // Pixel centres of the outermost tick ink; the end ticks of the ladder may lie inside the range
+    const double low = alongLo + 0.5 * scan.dpr;
+    const double high = alongHi + 1.0 - 0.5 * scan.dpr;
+    auto tickAt = [&](double t) {
+        const double norm = (t - minimum) / (maximum - minimum);
+        return vertical ? high - norm * (high - low) : low + norm * (high - low);
+    };
+    scan.minEnd = tickAt(ticks.front());
+    scan.maxEnd = tickAt(ticks.back());
+    scan.valid = true;
+    return scan;
+}
+
+// Along-scale distance from a position to a cluster (0 inside it)
+double alongDistance(const QRect &c, bool vertical, double at)
+{
+    const double lo = vertical ? c.top() : c.left();
+    const double hi = (vertical ? c.bottom() : c.right()) + 1.0;
+    return std::max({lo - at, 0.0, at - hi});
+}
+
+// #57: the clusters nearest to the two end ticks are two distinct clusters, the one of the minimum
+// on the side of the minimum. Empty when they are, otherwise what is wrong.
+QString endLabelsDistinct(const ScaleScan &scan, bool vertical)
+{
+    if (scan.labels.empty()) return QStringLiteral("no label ink");
+    auto nearest = [&](double at) {
+        size_t best = 0;
+        for (size_t i = 1; i < scan.labels.size(); ++i) {
+            if (alongDistance(scan.labels[i], vertical, at) < alongDistance(scan.labels[best], vertical, at)) best = i;
+        }
+        return best;
+    };
+    const size_t lo = nearest(scan.minEnd);
+    const size_t hi = nearest(scan.maxEnd);
+    const QRect &a = scan.labels[lo];
+    const QRect &b = scan.labels[hi];
+    if (lo == hi) {
+        return QStringLiteral("one label (ink %1x%2 at (%3, %4)) for both ends").arg(a.width()).arg(a.height()).arg(a.x()).arg(a.y());
+    }
+    const double ca = vertical ? a.center().y() : a.center().x();
+    const double cb = vertical ? b.center().y() : b.center().x();
+    if (vertical ? ca <= cb : ca >= cb) {
+        return QStringLiteral("the label of the minimum (at %1) is not on the side of the minimum (maximum at %2)").arg(ca).arg(cb);
+    }
+    return QString();
+}
+
+} // namespace
+
 // #57: drawn scale labels keep scaleLabelMinGap() (on the scale font height) and both ends carry a
-// label. Label pixels are the zone-colour pixels beyond the tick band (see labelMeter()). They are
-// grouped into clusters: two pixels are in the same cluster when fewer than (minGap - 1) x DPR free
-// device pixels separate them (1 px logical allowed for glyphs that exceed the font metrics the
-// layout uses). Each label is one cluster; labels closer than the minimum merge into a cluster larger
-// than any label drawn alone (+1 px logical). Both ends of the scale carry a label: some label ink lies
-// within half a label (the largest drawn alone, along the scale) of each end tick. Which labels are
-// drawn (the ends themselves, 0 dB, every linear label at the minimum) is checked by the helper tests
-// (tst_LevelMeterLayout): without fonts (Windows offscreen CI) glyphs are boxes whose ink does not
-// follow the font metrics, so the pixels cannot tell neighbouring labels apart reliably.
+// label. Each label is one cluster (scanScale()); labels closer than the minimum merge into a cluster
+// larger than any label drawn alone (+1 px logical).
+// Ends: on the dB rows at minimumSizeHint() the labels nearest to the two end ticks must be two
+// distinct clusters, the minimum's on its side (endLabelsDistinct()); on the other rows some label ink
+// lies within half a label (the largest drawn alone, along the scale) of each end tick. Which labels
+// are drawn (the ends themselves, 0 dB, every linear label at the minimum) is checked by the helper
+// tests (tst_LevelMeterLayout): without fonts (Windows offscreen CI) glyphs are boxes whose ink does
+// not follow the font metrics, so the pixels cannot tell neighbouring labels apart reliably.
 void tst_LevelMeter::scaleLabelsKeepMinimumGap()
 {
     QFETCH(int, orientation);
@@ -631,67 +733,61 @@ void tst_LevelMeter::scaleLabelsKeepMinimumGap()
     }
     m->resize(size);
 
-    const std::vector<QPoint> ink = scaleInk(*m);
-    const qreal dpr = grabMeter(*m).devicePixelRatio();
-    const QImage img = grabMeter(*m);
-    // Tick band: the first run of the across-axis projection; labels lie beyond it
-    std::vector<bool> across(static_cast<size_t>(vertical ? img.width() : img.height()), false);
-    for (const QPoint &p : ink) across[static_cast<size_t>(vertical ? p.x() : p.y())] = true;
-    const auto acrossRuns = runs(across);
-    QVERIFY2(acrossRuns.size() >= 2, "no tick band and label band");
-    const auto tickBand = acrossRuns.front();
-    const int labelStart = acrossRuns[1].first;
-    std::vector<QPoint> labelInk;
-    int alongLo = std::numeric_limits<int>::max();
-    int alongHi = std::numeric_limits<int>::min();
-    for (const QPoint &p : ink) {
-        const int a = vertical ? p.x() : p.y();
-        const int along = vertical ? p.y() : p.x();
-        if (a >= labelStart) {
-            labelInk.push_back(p);
-        } else if (a >= tickBand.first && a <= tickBand.second) {
-            alongLo = std::min(alongLo, along);
-            alongHi = std::max(alongHi, along);
-        }
-    }
-
-    const QFont scaleFont = internal::levelMeterScaleFont(m->font());
-    const double minGap = scaleMinGap(m->font());
-    const double threshold = (minGap - 1.0) * dpr;
+    const ScaleScan scan = scanScale(*m, minimum, maximum, unit);
+    QVERIFY2(scan.valid, "no tick band and label band");
+    const qreal dpr = scan.dpr;
     const int tolerance = static_cast<int>(std::ceil(dpr));
-    const std::vector<double> ticks = internal::levelMeterTicks(minimum, maximum, unit);
-    QSize largest;
-    for (double t : ticks) {
-        largest = largest.expandedTo(inkBoxAlone(internal::levelMeterTickText(t, minimum, maximum, unit), scaleFont, dpr).size());
-    }
-
-    const std::vector<QRect> labels = clusters(labelInk, threshold);
-    for (const QRect &c : labels) {
-        QVERIFY2(c.width() <= largest.width() + tolerance && c.height() <= largest.height() + tolerance,
+    for (const QRect &c : scan.labels) {
+        QVERIFY2(c.width() <= scan.largest.width() + tolerance && c.height() <= scan.largest.height() + tolerance,
                  qPrintable(QStringLiteral("label ink %1x%2 at (%3, %4) is larger than the largest label alone %5x%6: labels "
                                            "closer than %7 device px (minimum gap %8 px, %9x%10, DPR %11)")
-                                .arg(c.width()).arg(c.height()).arg(c.x()).arg(c.y()).arg(largest.width()).arg(largest.height())
-                                .arg(threshold).arg(minGap).arg(size.width()).arg(size.height()).arg(dpr)));
+                                .arg(c.width()).arg(c.height()).arg(c.x()).arg(c.y()).arg(scan.largest.width()).arg(scan.largest.height())
+                                .arg(scan.threshold).arg(scan.minGap).arg(size.width()).arg(size.height()).arg(dpr)));
     }
 
-    // Tick positions along the scale from the extreme ticks (pixel centres of the outermost tick ink)
-    const double low = alongLo + 0.5 * dpr;
-    const double high = alongHi + 1.0 - 0.5 * dpr;
-    auto tickAt = [&](double t) {
-        const double norm = (t - minimum) / (maximum - minimum);
-        return vertical ? high - norm * (high - low) : low + norm * (high - low);
-    };
-    const double halfLabel = 0.5 * (vertical ? largest.height() : largest.width());
-    for (size_t j : {size_t(0), ticks.size() - 1}) {
-        const double at = tickAt(ticks[j]);
-        const bool found = std::any_of(labels.begin(), labels.end(), [&](const QRect &c) {
-            const double lo = vertical ? c.top() : c.left();
-            const double hi = (vertical ? c.bottom() : c.right()) + 1.0;
-            return std::max({lo - at, 0.0, at - hi}) <= halfLabel;
-        });
-        QVERIFY2(found, qPrintable(QStringLiteral("no label ink within %1 device px of the end tick '%2' (device %3, %4x%5, DPR %6)")
-                                       .arg(halfLabel).arg(internal::levelMeterTickText(ticks[j], minimum, maximum, unit))
-                                       .arg(at).arg(size.width()).arg(size.height()).arg(dpr)));
+    if (unit == QLatin1String("dB") && sizeKind == AtMinimum) {
+        const QString problem = endLabelsDistinct(scan, vertical);
+        QVERIFY2(problem.isEmpty(), qPrintable(QStringLiteral("%1 (%2x%3, DPR %4)").arg(problem).arg(size.width()).arg(size.height()).arg(dpr)));
+        return;
+    }
+    const double halfLabel = 0.5 * (vertical ? scan.largest.height() : scan.largest.width());
+    for (double at : {scan.minEnd, scan.maxEnd}) {
+        const bool found = std::any_of(scan.labels.begin(), scan.labels.end(),
+                                       [&](const QRect &c) { return alongDistance(c, vertical, at) <= halfLabel; });
+        QVERIFY2(found, qPrintable(QStringLiteral("no label ink within %1 device px of the end tick at device %2 (%3x%4, DPR %5)")
+                                       .arg(halfLabel).arg(at).arg(size.width()).arg(size.height()).arg(dpr)));
+    }
+}
+
+void tst_LevelMeter::endLabelsDistinctAtMinimumSize_data()
+{
+    QTest::addColumn<double>("pointSize");
+    for (double pt : {16.0, 20.0, 24.0}) {
+        QTest::addRow("%.0fpt", pt) << pt;
+    }
+}
+
+// #57: a horizontal dB meter (unit "dB") at minimumSizeHint() with a large font (16, 20, 24 pt): both
+// ends carry a label (two distinct clusters, the minimum's on its side, see endLabelsDistinct()) and
+// all the label ink lies inside the chassis (#44 rule at the minimum). Found on Windows CI, whose box
+// glyphs are wider than the font metrics. Large sizes, not letter spacing: spaced glyphs would split a
+// label into several clusters.
+void tst_LevelMeter::endLabelsDistinctAtMinimumSize()
+{
+    QFETCH(double, pointSize);
+    auto m = labelMeter(Qt::Horizontal, -60.0, 6.0, QStringLiteral("dB"), pointSize, 1);
+    m->resize(m->minimumSizeHint());
+
+    const ScaleScan scan = scanScale(*m, -60.0, 6.0, QStringLiteral("dB"));
+    QVERIFY2(scan.valid, "no tick band and label band");
+    const QString problem = endLabelsDistinct(scan, false);
+    QVERIFY2(problem.isEmpty(), qPrintable(QStringLiteral("%1 (minimumSizeHint %2x%3, DPR %4)")
+                                               .arg(problem).arg(m->width()).arg(m->height()).arg(scan.dpr)));
+    const QRectF chassis(3.0 * scan.dpr, 3.0 * scan.dpr, (m->width() - 6.0) * scan.dpr, (m->height() - 6.0) * scan.dpr);
+    for (const QPoint &p : scan.labelInk) {
+        QVERIFY2(p.x() >= chassis.left() && p.x() + 1 <= chassis.right() && p.y() >= chassis.top() && p.y() + 1 <= chassis.bottom(),
+                 qPrintable(QStringLiteral("label ink at device (%1, %2) outside the chassis at minimumSizeHint %3x%4 (DPR %5)")
+                                .arg(p.x()).arg(p.y()).arg(m->width()).arg(m->height()).arg(scan.dpr)));
     }
 }
 
