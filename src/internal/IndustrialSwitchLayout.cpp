@@ -28,6 +28,11 @@ QFont switchLabelFont(const QFont &base)
     return f;
 }
 
+double switchScrewRadius(const QSizeF &size)
+{
+    return std::clamp(std::min(size.width(), size.height()) * 0.04, 3.0, 5.0);
+}
+
 namespace {
 
 constexpr double kOpenGuardMinThickness = 3.0;
@@ -85,6 +90,12 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
     L.titleRect = vertical ? QRectF(P.left(), P.top() + 6, P.width(), 16) : QRectF(P.left() + 6, P.top() + 6, P.width() - 12, 14);
     L.titleBox = textBox(L.titleRect, Qt::AlignCenter, in.title, titleFont);
     const double titleBottom = L.titleBox.isEmpty() ? P.top() + 2.0 : L.titleBox.bottom();
+    // The title does not depend on the switch size: scaling the switch cannot make it fit. It must
+    // stay clear of the corner screws (centred 2.2 radii from the plate corner).
+    const double screwClearance = switchScrewRadius(in.size) * 3.2 + 1.0;
+    const bool titleFits = L.titleBox.isEmpty()
+        || (fitsHorizontally(L.titleBox, L.titleRect) && L.titleBox.left() >= P.left() + screwClearance
+            && L.titleBox.right() <= P.right() - screwClearance);
 
     for (int step = 0; step <= 70; ++step) {
         const double k = 1.0 - step * 0.01;
@@ -143,7 +154,7 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
         ok = ok && (L.onBox.isEmpty() || L.onBox.top() >= titleBottom + 1.0) && O.top() >= titleBottom + 1.0;
         ok = ok && L.openGuard.left() >= P.left() + 1.0 && L.openGuard.bottom() <= P.bottom() - 1.0;
         ok = ok && (vertical ? L.offRect.bottom() <= P.bottom() - 2.0 : (L.centerBox.isEmpty() || L.centerBox.bottom() <= P.bottom() - 2.0));
-        L.fits = ok;
+        L.fits = ok && titleFits;
         if (ok) {
             break;
         }

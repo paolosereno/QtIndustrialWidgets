@@ -128,10 +128,12 @@ QColor IndustrialSwitch::guardColor() const { Q_D(const IndustrialSwitch); retur
 
 QSize IndustrialSwitch::sizeHint() const
 {
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        return {75, 125};
+    const QSize base = d_ptr->m_orientation == Qt::Vertical ? QSize(75, 125) : QSize(125, 75);
+    if (d_ptr->m_hasSafetyGuard && d_ptr->m_positionCount == 3) {
+        // #44: large enough for the guard, the three labels and the switch at its natural size
+        return internal::switchSizeHint(layoutInput(*this, d_ptr.get()), base);
     }
-    return {125, 75};
+    return base;
 }
 
 QSize IndustrialSwitch::minimumSizeHint() const
@@ -161,6 +163,7 @@ void IndustrialSwitch::setPositionCount(int count)
         d_ptr->m_currentPos = static_cast<double>(d_ptr->m_position);
     }
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -220,6 +223,7 @@ void IndustrialSwitch::setHasSafetyGuard(bool guard)
     d_ptr->m_isGuardOpen = false;
     d_ptr->m_guardOpenFactor = 0.0;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -263,6 +267,7 @@ void IndustrialSwitch::setLabel(const QString &label)
     if (d_ptr->m_label == label) return;
     d_ptr->m_label = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -272,6 +277,7 @@ void IndustrialSwitch::setLabelOff(const QString &label)
     if (d_ptr->m_labelOff == label) return;
     d_ptr->m_labelOff = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -281,6 +287,7 @@ void IndustrialSwitch::setLabelOn(const QString &label)
     if (d_ptr->m_labelOn == label) return;
     d_ptr->m_labelOn = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -290,6 +297,7 @@ void IndustrialSwitch::setLabelCenter(const QString &label)
     if (d_ptr->m_labelCenter == label) return;
     d_ptr->m_labelCenter = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -466,7 +474,7 @@ void IndustrialSwitch::renderStaticBackground()
     painter.drawRoundedRect(plateRect, radius, radius);
 
     // 4 Corner Screws
-    double screwRadius = std::clamp(std::min(width(), height()) * 0.04, 3.0, 5.0);
+    double screwRadius = internal::switchScrewRadius(size());
     double screwMargin = screwRadius * 2.2;
     drawScrew(painter, QPointF(plateRect.left() + screwMargin, plateRect.top() + screwMargin), screwRadius);
     drawScrew(painter, QPointF(plateRect.right() - screwMargin, plateRect.top() + screwMargin), screwRadius);

@@ -20,6 +20,9 @@ QFont switchTitleFont(const QFont &base);
 /// Font of the IndustrialSwitch position labels: bold, 80 % of the widget font (at least 6.5 pt).
 QFont switchLabelFont(const QFont &base);
 
+/// Radius of the four corner screws of the plate: 4 % of the smaller widget side, 3..5 px.
+double switchScrewRadius(const QSizeF &size);
+
 constexpr double kSwitchLedRadius = 4.5;
 constexpr double kSwitchLedGlow = kSwitchLedRadius * 2.5; ///< Radius of the glow of a lit LED
 constexpr double kClosedGuardOpacity = 0.9;
@@ -49,7 +52,7 @@ struct SwitchLayout {
     QPointF led;      ///< Centre of the status LED, next to the ON label
     QRectF openGuard; ///< The open guard, seen edge-on in free plate space
     double scale{1.0}; ///< Factor applied to the natural switch size to make room (1 = not scaled down)
-    bool fits{false};  ///< All the constraints below are met at this scale
+    bool fits{false};  ///< All the constraints of layoutSwitch() are met at this scale, title included
 };
 
 /**
@@ -62,9 +65,11 @@ struct SwitchLayout {
  * is drawn edge-on in free plate space: left of the switch (vertical) or below it and below the
  * centre label (horizontal), between 3 px and 17 % of the guard thick.
  *
- * If a text would not fit in its rectangle, the LED glow would reach the title or leave the
- * plate, the guard would reach the title, or the open guard or a label would leave the plate, the
- * switch is scaled down about its centre in steps of 1 %, down to 30 % (then fits is false).
+ * If a position label would not fit in its rectangle, the LED glow would reach the title or leave
+ * the plate, the guard would reach the title, or the open guard or a label would leave the plate,
+ * the switch is scaled down about its centre in steps of 1 %, down to 30 % (then fits is false).
+ * The title must also fit in its rectangle, clear of the corner screws, for fits to be true;
+ * scaling the switch does not change that.
  */
 SwitchLayout layoutSwitch(const SwitchLayoutInput &in);
 
