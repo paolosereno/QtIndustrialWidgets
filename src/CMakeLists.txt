@@ -83,6 +83,27 @@ set_target_properties(LinearGaugeScale PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(IndustrialSwitchLayout OBJECT
+    internal/IndustrialSwitchLayout.cpp
+    internal/IndustrialSwitchLayout.h
+)
+
+target_include_directories(IndustrialSwitchLayout
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(IndustrialSwitchLayout
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+)
+
+set_target_properties(IndustrialSwitchLayout PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(RadialGaugeLayout OBJECT
     internal/RadialGaugeLayout.cpp
     internal/RadialGaugeLayout.h
@@ -115,6 +136,7 @@ add_library(QtIndustrialWidgets SHARED
     $<TARGET_OBJECTS:CircularBargraphSegments>
     $<TARGET_OBJECTS:LinearGaugeScale>
     $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:IndustrialSwitchLayout>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h
