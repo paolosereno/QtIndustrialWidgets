@@ -595,6 +595,8 @@ void tst_LevelMeter::scaleLabelsKeepMinimumGap_data()
         // Horizontal: every label at minimumSizeHint() (#40, #57), thinned below it
         QTest::addRow("H 0-100000 min %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 100000.0 << QString() << pt << int(AtMinimum) << int(AllLabels);
         QTest::addRow("H 0-10000 min %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 10000.0 << QString() << pt << int(AtMinimum) << int(AllLabels);
+        // Labels all as wide as the widest: the gap at the minimum is exactly scaleLabelMinGap()
+        QTest::addRow("H 100000-700000 min %.0fpt", pt) << int(Qt::Horizontal) << 100000.0 << 700000.0 << QString() << pt << int(AtMinimum) << int(AllLabels);
         QTest::addRow("H 0-100000 220 %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 100000.0 << QString() << pt << int(Width220) << int(Ends);
     }
 }

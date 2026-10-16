@@ -146,9 +146,10 @@ std::vector<int> levelMeterSelectLabels(const std::vector<double> &ticks, const 
         return {0};
     }
     const double gap = std::isfinite(minGap) ? minGap : 0.0;
-    const bool endsClash = labelGap(centres, extents, 0, n - 1) < gap;
+    const bool endsClash = labelGap(centres, extents, 0, n - 1) < gap - 1e-6;
     auto keepsGap = [&](const std::vector<int> &taken, int candidate) {
-        return std::all_of(taken.begin(), taken.end(), [&](int t) { return labelGap(centres, extents, t, candidate) >= gap; });
+        // 1e-6 px: rounding must not drop a label that keeps exactly the gap (e.g. at minimumSizeHint())
+        return std::all_of(taken.begin(), taken.end(), [&](int t) { return labelGap(centres, extents, t, candidate) >= gap - 1e-6; });
     };
 
     std::vector<int> drawn;

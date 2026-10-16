@@ -52,6 +52,7 @@ private Q_SLOTS:
     void dbLadderPriority();
     void dbLadderAnyRange();
     void endsWinOverZero();
+    void priorityDecidesBetweenClashingLabels();
     void endsClashKeepsFirst();
     void linearStepIsSmallestDivisor_data();
     void linearStepIsSmallestDivisor();
@@ -139,6 +140,18 @@ void tst_LevelMeterLayout::endsWinOverZero()
     QVERIFY(std::find(values.begin(), values.end(), 0.0) == values.end());
 }
 
+// #57: when two labels clash, the one earlier in the priority list is drawn: 0 dB over -3 dB and
+// -20 dB over -40 dB (both later in increasing order), every other label far from the rest
+void tst_LevelMeterLayout::priorityDecidesBetweenClashingLabels()
+{
+    const std::vector<double> ticks = levelMeterTicks(-60.0, 6.0, QStringLiteral("dB"));
+    QCOMPARE(ticks, (std::vector<double>{-60, -40, -30, -20, -12, -6, -3, 0, 3, 6}));
+    //                              -60  -40    -30  -20    -12  -6   -3   0    +3   +6
+    const std::vector<double> centres{0, 105, 200, 110, 300, 400, 500, 505, 600, 700};
+    const std::vector<int> drawn = levelMeterSelectLabels(ticks, centres, std::vector<double>(ticks.size(), 10.0), false, 4.0);
+    QCOMPARE(valuesOf(ticks, drawn), (std::vector<double>{-60, -30, -20, -12, -6, 0, 3, 6}));
+}
+
 // #57: if the two ends clash, only the first is drawn (linear and dB)
 void tst_LevelMeterLayout::endsClashKeepsFirst()
 {
@@ -185,18 +198,22 @@ void tst_LevelMeterLayout::degenerateInput()
 
 // #57 (a): the horizontal minimum keeps scaleLabelMinGap() between linear labels, so the selection
 // draws all of them at the minimum width
+// (100000-700000: every label as wide as the widest, so the gap at the minimum is exactly minGap)
 void tst_LevelMeterLayout::horizontalMinimumKeepsEveryLinearLabel()
 {
-    for (double pt : {9.0, 11.0, 13.0}) {
-        QFont font;
-        font.setPointSizeF(pt);
-        const LevelMeterScaleMetrics m = levelMeterScaleMetrics(0.0, 100000.0, QString(), font);
-        const QSize min = levelMeterMinimumSize(Qt::Horizontal, 1, true, false, false, m, QSize(100, 45));
-        const LevelMeterInsets insets = levelMeterHorizontalInsets(m, 0.0, 6.0);
-        const double length = min.width() - 22.0 - insets.left - insets.right;
-        const std::vector<double> ticks = levelMeterTicks(0.0, 100000.0, QString());
-        const std::vector<double> extents = levelMeterLabelExtents(Qt::Horizontal, 0.0, 100000.0, QString(), font);
-        QCOMPARE(levelMeterSelectLabels(ticks, centresOf(ticks, 0.0, 100000.0, length), extents, true, m.minGap).size(), ticks.size());
+    for (const auto &range : {std::pair<double, double>{0.0, 100000.0}, std::pair<double, double>{100000.0, 700000.0}}) {
+        for (double pt : {9.0, 11.0, 13.0}) {
+            QFont font;
+            font.setPointSizeF(pt);
+            const LevelMeterScaleMetrics m = levelMeterScaleMetrics(range.first, range.second, QString(), font);
+            const QSize min = levelMeterMinimumSize(Qt::Horizontal, 1, true, false, false, m, QSize(100, 45));
+            const LevelMeterInsets insets = levelMeterHorizontalInsets(m, 0.0, 6.0);
+            const double length = min.width() - 22.0 - insets.left - insets.right;
+            const std::vector<double> ticks = levelMeterTicks(range.first, range.second, QString());
+            const std::vector<double> extents = levelMeterLabelExtents(Qt::Horizontal, range.first, range.second, QString(), font);
+            QCOMPARE(levelMeterSelectLabels(ticks, centresOf(ticks, range.first, range.second, length), extents, true, m.minGap).size(),
+                     ticks.size());
+        }
     }
 }
 
