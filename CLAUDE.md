@@ -7,8 +7,9 @@ SPDX-License-Identifier: MIT
 # QtIndustrialWidgets — instructions for Claude Code
 
 C++17 widget library for industrial instrumentation (gauges, strip chart, annunciator, …) built on Qt Widgets.
-Supported: **Qt 6.2+ and Qt 5.15**, Linux / Windows / macOS. The library is being turned into a commercial
-product: correctness, honest documentation and traceable changes matter more than speed of delivery.
+Supported: **Qt 6.2+**, Linux / Windows / macOS (Qt 5.15 is not supported at the moment, see #53). The library is
+being turned into a commercial product: correctness, honest documentation and traceable changes matter more than
+speed of delivery.
 
 ## Commands
 

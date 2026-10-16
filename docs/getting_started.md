@@ -14,7 +14,7 @@ Welcome to the **QtIndustrialWidgets** documentation! This guide will help you i
 
 - **C++17** compatible compiler (GCC 9+, Clang 10+, MSVC 2019+)
 - **CMake 3.16** or newer
-- **Qt 6** (6.2+) or **Qt 5** (5.15 LTS) with `Core`, `Gui`, and `Widgets` modules.
+- **Qt 6.2+** with `Core`, `Gui`, and `Widgets` modules. Qt 5.15 is not supported at the moment, see [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
 
 ---
 
