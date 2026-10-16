@@ -23,7 +23,7 @@ enum class Theme { Dark, Light };
 struct Showcase {
     QString widgetClass; ///< Class name in namespace QtIndustrialWidgets, e.g. "RadialGauge"
     QString variant;     ///< Kebab-case variant, e.g. "warning"
-    QSize size;          ///< Logical size of the rendered widget
+    QSize size;          ///< Logical size of the rendered widget; QSize() means the widget's sizeHint()
     /// Creates the configured widget (no parent). It must not need the event loop: the export
     /// renders it right away, so timers (blinking, peak decay) never fire and the output is fixed.
     std::function<QWidget *(Theme)> create;

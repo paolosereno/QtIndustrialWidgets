@@ -93,7 +93,13 @@ void tst_GalleryShowcases::showcasesBuildTheirWidget()
     QVERIFY(widget);
     QCOMPARE(QString::fromLatin1(widget->metaObject()->className()),
              QStringLiteral("QtIndustrialWidgets::") + s.widgetClass);
-    QVERIFY(s.size.width() > 0 && s.size.height() > 0);
+    const QSize size = s.size.isValid() ? s.size : widget->sizeHint();
+    QVERIFY(size.width() > 0 && size.height() > 0);
+    // Showcases are rendered at their widget's minimum size or larger (#44)
+    const QSize min = widget->minimumSizeHint();
+    QVERIFY2(size.width() >= min.width() && size.height() >= min.height(),
+             qPrintable(QStringLiteral("%1 is rendered at %2x%3, below its minimumSizeHint %4x%5")
+                            .arg(s.fileStem(GalleryShowcase::Theme::Dark)).arg(size.width()).arg(size.height()).arg(min.width()).arg(min.height())));
 }
 
 void tst_GalleryShowcases::fileNamesAreStableAndUnique()

@@ -193,11 +193,30 @@ QWidget *switchGuardedToggle(Theme)
     s->setHasSafetyGuard(true);
     s->setGuardColor(QColor(220, 53, 69));
     s->setLedColor(QColor(235, 59, 90));
-    s->setGuardOpen(false); // closed: the open guard is drawn over the labels
+    s->setGuardOpen(false); // closed; the open guard is shown by "guarded-three-position"
     s->setLabel(QStringLiteral("EMERGENCY"));
     s->setLabelOn(QStringLiteral("ARMED"));
     s->setLabelOff(QStringLiteral("SAFE"));
     s->setChecked(true);
+    return s;
+}
+
+// #44: a guarded 3-position switch at its sizeHint(), guard open
+QWidget *switchGuardedThreePosition(Theme)
+{
+    auto *s = new IndustrialSwitch;
+    s->setAnimated(false);
+    s->setSwitchType(IndustrialSwitch::SwitchType::ToggleLever);
+    s->setPositionCount(3);
+    s->setHasSafetyGuard(true);
+    s->setGuardColor(QColor(220, 53, 69));
+    s->setLedColor(QColor(254, 211, 48));
+    s->setLabel(QStringLiteral("SYS MODE"));
+    s->setLabelOff(QStringLiteral("MAN"));
+    s->setLabelCenter(QStringLiteral("OFF"));
+    s->setLabelOn(QStringLiteral("AUTO"));
+    s->setGuardOpen(true);
+    s->setPosition(2);
     return s;
 }
 
@@ -394,6 +413,7 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("IndustrialKnob"), QStringLiteral("continuous"), QSize(220, 240), knobContinuous},
         {QStringLiteral("IndustrialKnob"), QStringLiteral("discrete"), QSize(220, 240), knobDiscrete},
         {QStringLiteral("IndustrialSwitch"), QStringLiteral("guarded-toggle"), QSize(180, 220), switchGuardedToggle},
+        {QStringLiteral("IndustrialSwitch"), QStringLiteral("guarded-three-position"), QSize(), switchGuardedThreePosition},
         {QStringLiteral("IndustrialSwitch"), QStringLiteral("rocker"), QSize(120, 190), switchRocker},
         {QStringLiteral("LedIndicator"), QStringLiteral("on"), QSize(140, 56), ledOn},
         {QStringLiteral("LedIndicator"), QStringLiteral("rectangular"), QSize(160, 56), ledRectangular},

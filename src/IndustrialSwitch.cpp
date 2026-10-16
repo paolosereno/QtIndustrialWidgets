@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
+
+#include "internal/IndustrialSwitchLayout.h"
+
 #include <QtCore/QVariantAnimation>
 #include <QtCore/QEasingCurve>
 #include <QtGui/QPixmap>
@@ -21,6 +24,11 @@ namespace QtIndustrialWidgets {
 
 class IndustrialSwitchPrivate {
 public:
+    // #44: size hints computed from the font metrics, cached for the inputs they depend on
+    mutable QString m_hintKey;
+    mutable QSize m_minimumHint;
+    mutable QSize m_preferredHint;
+
     IndustrialSwitch::SwitchType m_switchType = IndustrialSwitch::SwitchType::ToggleLever;
     int m_positionCount = 2; // 2 or 3
     int m_position = 0;      // 0, 1 (or 2 if 3-pos)
@@ -51,6 +59,30 @@ public:
     bool m_cacheValid = false;
     bool m_isDragging = false;
 };
+
+namespace {
+
+internal::SwitchLayoutInput layoutInput(const QWidget &w, const IndustrialSwitchPrivate *d)
+{
+    internal::SwitchLayoutInput in;
+    in.size = w.size();
+    in.orientation = d->m_orientation;
+    in.positions = d->m_positionCount;
+    in.guard = d->m_hasSafetyGuard;
+    in.font = w.font();
+    in.title = d->m_label;
+    in.on = d->m_labelOn;
+    in.off = d->m_labelOff;
+    in.center = d->m_labelCenter;
+    return in;
+}
+
+internal::SwitchLayout layoutOf(const QWidget &w, const IndustrialSwitchPrivate *d)
+{
+    return internal::layoutSwitch(layoutInput(w, d));
+}
+
+} // namespace
 
 IndustrialSwitch::IndustrialSwitch(QWidget *parent)
     : QWidget(parent)
@@ -99,20 +131,41 @@ QColor IndustrialSwitch::textColor() const { Q_D(const IndustrialSwitch); return
 QColor IndustrialSwitch::guardColor() const { Q_D(const IndustrialSwitch); return d->m_guardColor; }
 
 
+// #44: both size hints depend on the font, orientation, positions, guard and texts; they are
+// computed when one of these changes (the font is compared by value, so setFont() is covered)
+static void updateSizeHints(const IndustrialSwitch &w, const IndustrialSwitchPrivate *d)
+{
+    const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+                            .arg(w.font().toString())
+                            .arg(static_cast<int>(d->m_orientation))
+                            .arg(d->m_positionCount)
+                            .arg(d->m_hasSafetyGuard)
+                            .arg(d->m_label, d->m_labelOn, d->m_labelOff, d->m_labelCenter);
+    if (key == d->m_hintKey) {
+        return;
+    }
+    const bool vertical = d->m_orientation == Qt::Vertical;
+    const internal::SwitchLayoutInput in = layoutInput(w, d);
+    d->m_minimumHint = internal::switchMinimumSize(in, vertical ? QSize(50, 80) : QSize(80, 50));
+    const QSize base = vertical ? QSize(75, 125) : QSize(125, 75);
+    // With a guard and 3 positions: large enough for the switch at its natural size
+    const QSize preferred = (d->m_hasSafetyGuard && d->m_positionCount == 3) ? internal::switchSizeHint(in, base) : base;
+    d->m_preferredHint = preferred.expandedTo(d->m_minimumHint);
+    d->m_hintKey = key;
+}
+
 QSize IndustrialSwitch::sizeHint() const
 {
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        return {75, 125};
-    }
-    return {125, 75};
+    updateSizeHints(*this, d_ptr.get());
+    return d_ptr->m_preferredHint;
 }
 
 QSize IndustrialSwitch::minimumSizeHint() const
 {
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        return {50, 80};
-    }
-    return {80, 50};
+    // #44: the smallest size at which every text fits whole in the plate and nothing covers it,
+    // from the real metrics of the widget font (guard, number of positions and texts included)
+    updateSizeHints(*this, d_ptr.get());
+    return d_ptr->m_minimumHint;
 }
 
 void IndustrialSwitch::setSwitchType(SwitchType type)
@@ -134,6 +187,7 @@ void IndustrialSwitch::setPositionCount(int count)
         d_ptr->m_currentPos = static_cast<double>(d_ptr->m_position);
     }
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -193,6 +247,7 @@ void IndustrialSwitch::setHasSafetyGuard(bool guard)
     d_ptr->m_isGuardOpen = false;
     d_ptr->m_guardOpenFactor = 0.0;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -236,6 +291,7 @@ void IndustrialSwitch::setLabel(const QString &label)
     if (d_ptr->m_label == label) return;
     d_ptr->m_label = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -245,6 +301,7 @@ void IndustrialSwitch::setLabelOff(const QString &label)
     if (d_ptr->m_labelOff == label) return;
     d_ptr->m_labelOff = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -254,6 +311,7 @@ void IndustrialSwitch::setLabelOn(const QString &label)
     if (d_ptr->m_labelOn == label) return;
     d_ptr->m_labelOn = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -263,6 +321,7 @@ void IndustrialSwitch::setLabelCenter(const QString &label)
     if (d_ptr->m_labelCenter == label) return;
     d_ptr->m_labelCenter = label;
     d_ptr->m_cacheValid = false;
+    updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -317,29 +376,12 @@ void IndustrialSwitch::resizeEvent(QResizeEvent *event)
 
 QRectF IndustrialSwitch::calculateSwitchRect() const
 {
-    QRectF r = rect().adjusted(10, 10, -10, -10);
-    double w = r.width();
-    double h = r.height();
-
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        double switchH = h * 0.55;
-        double switchW = std::min(w * 0.7, switchH * 0.65);
-        double top = r.top() + (h - switchH) * 0.52;
-        double left = r.left() + (w - switchW) * 0.5;
-        return {left, top, switchW, switchH};
-    } else {
-        double switchW = w * 0.55;
-        double switchH = std::min(h * 0.7, switchW * 0.65);
-        double left = r.left() + (w - switchW) * 0.52;
-        double top = r.top() + (h - switchH) * 0.5;
-        return {left, top, switchW, switchH};
-    }
+    return layoutOf(*this, d_ptr.get()).switchRect;
 }
 
 QRectF IndustrialSwitch::calculateGuardRect() const
 {
-    QRectF sw = calculateSwitchRect();
-    return sw.adjusted(-8, -12, 8, 12);
+    return layoutOf(*this, d_ptr.get()).guard;
 }
 
 void IndustrialSwitch::drawScrew(QPainter &painter, const QPointF &center, double radius)
@@ -456,7 +498,7 @@ void IndustrialSwitch::renderStaticBackground()
     painter.drawRoundedRect(plateRect, radius, radius);
 
     // 4 Corner Screws
-    double screwRadius = std::clamp(std::min(width(), height()) * 0.04, 3.0, 5.0);
+    double screwRadius = internal::switchScrewRadius(size());
     double screwMargin = screwRadius * 2.2;
     drawScrew(painter, QPointF(plateRect.left() + screwMargin, plateRect.top() + screwMargin), screwRadius);
     drawScrew(painter, QPointF(plateRect.right() - screwMargin, plateRect.top() + screwMargin), screwRadius);
@@ -467,63 +509,24 @@ void IndustrialSwitch::renderStaticBackground()
     painter.setFont(font());
     painter.setPen(d_ptr->m_textColor);
 
+    const internal::SwitchLayout layout = layoutOf(*this, d_ptr.get());
     if (!d_ptr->m_label.isEmpty()) {
-        QFont titleFont = font();
-        titleFont.setBold(true);
-        titleFont.setPointSizeF(std::max(7.0, font().pointSizeF() * 0.85));
-        painter.setFont(titleFont);
-
-        QRectF titleRect;
-        if (d_ptr->m_orientation == Qt::Vertical) {
-            titleRect = QRectF(plateRect.left(), plateRect.top() + 6, plateRect.width(), 16);
-        } else {
-            titleRect = QRectF(plateRect.left() + 6, plateRect.top() + 6, plateRect.width() - 12, 14);
-        }
-        painter.drawText(titleRect, Qt::AlignCenter, d_ptr->m_label);
+        painter.setFont(internal::switchTitleFont(font()));
+        painter.drawText(layout.titleRect, Qt::AlignCenter | Qt::TextDontClip, d_ptr->m_label);
     }
 
-    // Position Labels ("ON", "OFF", "AUTO", etc.)
-    QRectF switchRect = calculateSwitchRect();
-    QFont labelFont = font();
-    labelFont.setBold(true);
-    labelFont.setPointSizeF(std::max(6.5, font().pointSizeF() * 0.8));
-    painter.setFont(labelFont);
-
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        // Upper label (ON)
-        QRectF topLabelRect(plateRect.left(), switchRect.top() - 16, plateRect.width(), 14);
-        painter.setPen(d_ptr->m_textColor.lighter(110));
-        painter.drawText(topLabelRect, Qt::AlignCenter, d_ptr->m_labelOn);
-
-        // Lower label (OFF)
-        QRectF botLabelRect(plateRect.left(), switchRect.bottom() + 3, plateRect.width(), 14);
-        painter.setPen(d_ptr->m_textColor.darker(110));
-        painter.drawText(botLabelRect, Qt::AlignCenter, d_ptr->m_labelOff);
-
-        // Center label if 3-position
-        if (d_ptr->m_positionCount == 3) {
-            QRectF centerLabelRect(switchRect.right() + 4, switchRect.center().y() - 7, plateRect.right() - switchRect.right() - 6, 14);
-            painter.setPen(d_ptr->m_textColor);
-            painter.drawText(centerLabelRect, Qt::AlignLeft | Qt::AlignVCenter, d_ptr->m_labelCenter);
-        }
-    } else {
-        // Horizontal orientation
-        // Left label (OFF)
-        QRectF leftLabelRect(plateRect.left() + 4, switchRect.top(), switchRect.left() - plateRect.left() - 6, switchRect.height());
-        painter.setPen(d_ptr->m_textColor.darker(110));
-        painter.drawText(leftLabelRect, Qt::AlignRight | Qt::AlignVCenter, d_ptr->m_labelOff);
-
-        // Right label (ON)
-        QRectF rightLabelRect(switchRect.right() + 6, switchRect.top(), plateRect.right() - switchRect.right() - 8, switchRect.height());
-        painter.setPen(d_ptr->m_textColor.lighter(110));
-        painter.drawText(rightLabelRect, Qt::AlignLeft | Qt::AlignVCenter, d_ptr->m_labelOn);
-
-        // Center label if 3-position
-        if (d_ptr->m_positionCount == 3) {
-            QRectF centerLabelRect(switchRect.left(), switchRect.bottom() + 2, switchRect.width(), 14);
-            painter.setPen(d_ptr->m_textColor);
-            painter.drawText(centerLabelRect, Qt::AlignCenter, d_ptr->m_labelCenter);
-        }
+    // Position Labels ("ON", "OFF", "AUTO", etc.), placed around the guard so that it never covers
+    // them, in rectangles wide enough for the text (#44). TextDontClip: the glyphs can exceed the
+    // font advance by a pixel (as in #31 / #35); the rectangle only positions the label.
+    const QRectF switchRect = layout.switchRect;
+    painter.setFont(internal::switchLabelFont(font()));
+    painter.setPen(d_ptr->m_textColor.lighter(110));
+    painter.drawText(layout.onRect, layout.onAlign | Qt::TextDontClip, d_ptr->m_labelOn);
+    painter.setPen(d_ptr->m_textColor.darker(110));
+    painter.drawText(layout.offRect, layout.offAlign | Qt::TextDontClip, d_ptr->m_labelOff);
+    if (d_ptr->m_positionCount == 3) {
+        painter.setPen(d_ptr->m_textColor);
+        painter.drawText(layout.centerRect, layout.centerAlign | Qt::TextDontClip, d_ptr->m_labelCenter);
     }
 
     // Switch Socket Base
@@ -810,16 +813,31 @@ void IndustrialSwitch::drawSafetyGuard(QPainter &painter, const QRectF & /*switc
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
 
-    QRectF guardBase = calculateGuardRect();
-    double openFactor = d_ptr->m_guardOpenFactor; // 0.0 = closed, 1.0 = fully open
+    const internal::SwitchLayout layout = layoutOf(*this, d_ptr.get());
+    QRectF guardBase = layout.guard;
+    const double openFactor = d_ptr->m_guardOpenFactor; // 0.0 = closed, 1.0 = fully open
 
-    // Hinge position (at the bottom or top of switch area)
-    QPointF hinge = QPointF(guardBase.center().x(), guardBase.top() + 6);
-
-    painter.translate(hinge);
-    // When opening, rotate up by 105 degrees and shrink/scale slightly in perspective
-    painter.rotate(-openFactor * 105.0);
-    painter.translate(-hinge);
+    // #44: the open guard is the cover seen edge-on, in free plate space next to the switch (never
+    // over a label, never outside the widget). While opening, it fades in as the cover fades out.
+    if (openFactor > 0.0) {
+        const QRectF strip = layout.openGuard;
+        painter.save();
+        painter.setOpacity(openFactor);
+        QLinearGradient stripGrad(strip.topLeft(), d_ptr->m_orientation == Qt::Vertical ? strip.topRight() : strip.bottomLeft());
+        stripGrad.setColorAt(0.0, d_ptr->m_guardColor.darker(150));
+        stripGrad.setColorAt(0.5, d_ptr->m_guardColor.lighter(120));
+        stripGrad.setColorAt(1.0, d_ptr->m_guardColor);
+        painter.setPen(QPen(QColor(40, 10, 15), 1.0));
+        painter.setBrush(stripGrad);
+        painter.drawRoundedRect(strip, 2.0, 2.0);
+        painter.restore();
+    }
+    if (openFactor >= 1.0) {
+        painter.restore();
+        return;
+    }
+    // The closed cover, nearly opaque; the labels are around it, not under it
+    painter.setOpacity(internal::kClosedGuardOpacity * (1.0 - openFactor));
 
     // Guard Cover Polygon
     QRectF coverRect = guardBase.adjusted(0, 0, 0, 0);
@@ -904,14 +922,8 @@ void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
 
     // Draw Status LED if enabled
     if (d_ptr->m_hasLed) {
-        QRectF plateRect = rect().adjusted(3, 3, -3, -3);
-        QPointF ledCenter;
-        if (d_ptr->m_orientation == Qt::Vertical) {
-            ledCenter = QPointF(plateRect.center().x(), switchRect.top() - 26);
-        } else {
-            ledCenter = QPointF(switchRect.right() + 18, plateRect.center().y());
-        }
-        drawLed(painter, ledCenter, 4.5, isChecked());
+        // Next to the ON label, its glow clear of every text (#44)
+        drawLed(painter, layoutOf(*this, d_ptr.get()).led, internal::kSwitchLedRadius, isChecked());
     }
 
     // Draw Safety Guard over the switch if enabled
@@ -934,9 +946,9 @@ void IndustrialSwitch::mousePressEvent(QMouseEvent *event)
             setGuardOpen(true);
             return;
         } else {
-            // Guard is open: click on upper area flips the guard closed
-            QRectF guardRect = calculateGuardRect();
-            if (event->position().y() < guardRect.top() + 15) {
+            // Guard is open: a click on the open guard (with a 4 px margin) closes it
+            const QRectF openGuard = layoutOf(*this, d_ptr.get()).openGuard;
+            if (openGuard.adjusted(-4, -4, 4, 4).contains(event->position())) {
                 setGuardOpen(false);
                 return;
             }

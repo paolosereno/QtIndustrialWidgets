@@ -41,7 +41,7 @@ Only the dark theme at DPR 2 is committed. CI exports both themes and uploads th
 
 ## What is exported
 
-- **One image per widget showcase**, each widget rendered on its own at a fixed logical size on the gallery's
+- **One image per widget showcase**, each widget rendered on its own at a fixed logical size (or at its `sizeHint()`) on the gallery's
   group-box colour: `<widget>-<variant>[-light].png`, e.g. `radial-gauge-warning.png`,
   `circular-bargraph-overrange.png`.
 - **One image per gallery tab** at 1200×820: `tab-<name>[-light].png`, e.g. `tab-daq.png`.
@@ -70,5 +70,6 @@ Every public widget needs at least one showcase: `tst_GalleryShowcases` reads th
 
 1. In `examples/gallery/Showcases.cpp`, write a factory that builds and configures the widget for a `Theme` (no
    parent, no event loop needed, fixed data only).
-2. Add an entry to `showcases()`: widget class name, kebab-case variant, logical size and factory.
+2. Add an entry to `showcases()`: widget class name, kebab-case variant, logical size and factory. A size of
+   `QSize()` renders the widget at its own `sizeHint()`.
 3. Rebuild, run `tst_GalleryShowcases`, regenerate the images and add the new PNG to the README table.
