@@ -47,9 +47,10 @@ bool exportShowcase(const GalleryShowcase::Showcase &showcase, GalleryShowcase::
         *error = QStringLiteral("could not be created");
         return false;
     }
-    widget->resize(showcase.size);
     widget->ensurePolished();
-    QImage image(showcase.size * options.dpr, QImage::Format_ARGB32_Premultiplied);
+    const QSize size = showcase.size.isValid() ? showcase.size : widget->sizeHint();
+    widget->resize(size);
+    QImage image(size * options.dpr, QImage::Format_ARGB32_Premultiplied);
     image.setDevicePixelRatio(options.dpr);
     image.fill(GalleryShowcase::backgroundColor(theme));
     {

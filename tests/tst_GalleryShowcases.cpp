@@ -93,7 +93,8 @@ void tst_GalleryShowcases::showcasesBuildTheirWidget()
     QVERIFY(widget);
     QCOMPARE(QString::fromLatin1(widget->metaObject()->className()),
              QStringLiteral("QtIndustrialWidgets::") + s.widgetClass);
-    QVERIFY(s.size.width() > 0 && s.size.height() > 0);
+    const QSize size = s.size.isValid() ? s.size : widget->sizeHint();
+    QVERIFY(size.width() > 0 && size.height() > 0);
 }
 
 void tst_GalleryShowcases::fileNamesAreStableAndUnique()
