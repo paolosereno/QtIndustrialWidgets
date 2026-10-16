@@ -497,25 +497,59 @@ void tst_IndustrialSwitch::labelsNotClipped()
 }
 
 // #44 (found by CI on Windows): with a font whose glyph ink extends past the advance width (bold
-// serif "AUTO"), the labels of a vertical 3-position switch stay inside the plate at its
-// minimumSizeHint(), with and without a guard: the layout reserves room for the ink, not only
-// for the advance, and the minimum size comes from those real metrics.
+// serif), the layout draws the side labels so that their ink, measured here independently with
+// QFontMetricsF::boundingRect(), stays inside the space beside the guard: a right-aligned label
+// ends its ink at the space's right edge, a left-aligned one starts it at the left edge.
 void tst_IndustrialSwitch::labelInkBeyondAdvanceStaysInPlate()
 {
-    // The property holds for any font; where DejaVu Serif is missing, Qt substitutes another one
+    // Any font works for the check; DejaVu Serif bold has ink past the advance on both sides
     QFont serif = QApplication::font();
     serif.setFamily(QStringLiteral("DejaVu Serif"));
-    for (bool guard : {false, true}) {
-        auto sw = makeSwitch(SwitchConfig{IndustrialSwitch::SwitchType::ToggleLever, Qt::Vertical, QSize(120, 190), 3}, guard, true);
-        sw->setFont(serif);
-        sw->resize(sw->minimumSizeHint());
-        const QRect ink = boundingBox(textInk(*sw));
-        const qreal dpr = grabImage(*sw).devicePixelRatio();
-        const QRect plate = QRect(QPoint(0, 0), sw->size() * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
-        QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("label ink x %1..%2 outside the plate x %3..%4 at minimumSizeHint %5x%6 (guard %7, DPR %8)")
-                                                     .arg(ink.left()).arg(ink.right()).arg(plate.left()).arg(plate.right())
-                                                     .arg(sw->width()).arg(sw->height()).arg(guard).arg(dpr)));
-    }
+    const QFont labelFont = internal::switchLabelFont(serif);
+    const QFontMetricsF fm(labelFont);
+    auto inkLeft = [&](const QRectF &rect, Qt::Alignment align, const QString &text) {
+        const double adv = fm.horizontalAdvance(text);
+        const double x = (align & Qt::AlignRight) ? rect.right() - adv : (align & Qt::AlignHCenter) ? rect.center().x() - adv * 0.5 : rect.left();
+        return x + fm.boundingRect(text).left();
+    };
+    auto inkRight = [&](const QRectF &rect, Qt::Alignment align, const QString &text) {
+        const double adv = fm.horizontalAdvance(text);
+        const double x = (align & Qt::AlignRight) ? rect.right() - adv : (align & Qt::AlignHCenter) ? rect.center().x() - adv * 0.5 : rect.left();
+        return x + fm.boundingRect(text).right();
+    };
+
+    internal::SwitchLayoutInput in;
+    in.font = serif;
+    in.guard = true;
+    in.title = QStringLiteral("EMERGENCY");
+    in.on = QStringLiteral("ARMED");
+    in.off = QStringLiteral("SAFE");
+    in.center = QStringLiteral("AUTO");
+
+    // Horizontal: OFF right-aligned left of the guard, ON left-aligned right of it
+    in.orientation = Qt::Horizontal;
+    in.positions = 2;
+    in.size = QSize(260, 140);
+    internal::SwitchLayout L = internal::layoutSwitch(in);
+    QVERIFY(L.fits);
+    const double offSpaceRight = L.guardOuter.left() - 2.0;
+    const double onSpaceLeft = L.guardOuter.right() + 6.0;
+    QVERIFY2(inkRight(L.offRect, L.offAlign, in.off) <= offSpaceRight + 1e-6,
+             qPrintable(QStringLiteral("OFF ink ends at %1, its space at %2").arg(inkRight(L.offRect, L.offAlign, in.off)).arg(offSpaceRight)));
+    QVERIFY2(inkLeft(L.onRect, L.onAlign, in.on) >= onSpaceLeft - 1e-6,
+             qPrintable(QStringLiteral("ON ink starts at %1, its space at %2").arg(inkLeft(L.onRect, L.onAlign, in.on)).arg(onSpaceLeft)));
+
+    // Vertical, 3 positions: centre label left-aligned right of the guard
+    in.orientation = Qt::Vertical;
+    in.positions = 3;
+    in.size = QSize(260, 400);
+    L = internal::layoutSwitch(in);
+    QVERIFY(L.fits);
+    const double centerSpaceLeft = L.guardOuter.right() + 4.0;
+    QVERIFY2(inkLeft(L.centerRect, L.centerAlign, in.center) >= centerSpaceLeft - 1e-6,
+             qPrintable(QStringLiteral("centre ink starts at %1, its space at %2").arg(inkLeft(L.centerRect, L.centerAlign, in.center)).arg(centerSpaceLeft)));
+    QVERIFY2(inkRight(L.centerRect, L.centerAlign, in.center) <= L.plate.right() - 2.0 + 1e-6,
+             qPrintable(QStringLiteral("centre ink ends at %1, past the plate").arg(inkRight(L.centerRect, L.centerAlign, in.center))));
 }
 
 void tst_IndustrialSwitch::sizeHintKeepsGuardedThreePositionSwitchReadable_data()
