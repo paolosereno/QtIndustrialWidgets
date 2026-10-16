@@ -568,7 +568,6 @@ void tst_LevelMeter::sizeHintsFollowTheLabels()
 }
 
 enum SizeKind { AtMinimum, AtHint, Large, Width220, Height150 };
-enum Required { Ends, EndsAndZero, AllLabels };
 
 void tst_LevelMeter::scaleLabelsKeepMinimumGap_data()
 {
@@ -578,40 +577,38 @@ void tst_LevelMeter::scaleLabelsKeepMinimumGap_data()
     QTest::addColumn<QString>("unit");
     QTest::addColumn<double>("pointSize");
     QTest::addColumn<int>("sizeKind");
-    QTest::addColumn<int>("required");
 
     for (double pt : {9.0, 11.0, 13.0}) {
         for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
             const char *on = o == Qt::Vertical ? "V" : "H";
-            // dB ladder: the ends always; 0 dB where it has room (400 px)
-            QTest::addRow("%s dB min %.0fpt", on, pt) << int(o) << -60.0 << 6.0 << QStringLiteral("dB") << pt << int(AtMinimum) << int(Ends);
-            QTest::addRow("%s dB hint %.0fpt", on, pt) << int(o) << -60.0 << 6.0 << QStringLiteral("dB") << pt << int(AtHint) << int(Ends);
-            QTest::addRow("%s dB 400 %.0fpt", on, pt) << int(o) << -60.0 << 6.0 << QStringLiteral("dB") << pt << int(Large) << int(EndsAndZero);
+            // dB ladder
+            QTest::addRow("%s dB min %.0fpt", on, pt) << int(o) << -60.0 << 6.0 << QStringLiteral("dB") << pt << int(AtMinimum);
+            QTest::addRow("%s dB hint %.0fpt", on, pt) << int(o) << -60.0 << 6.0 << QStringLiteral("dB") << pt << int(AtHint);
+            QTest::addRow("%s dB 400 %.0fpt", on, pt) << int(o) << -60.0 << 6.0 << QStringLiteral("dB") << pt << int(Large);
         }
         // Linear scale: vertical at the fixed 100 px minimum height, 150 px and the hint
-        QTest::addRow("V 0-100000 min %.0fpt", pt) << int(Qt::Vertical) << 0.0 << 100000.0 << QString() << pt << int(AtMinimum) << int(Ends);
-        QTest::addRow("V 0-100000 150 %.0fpt", pt) << int(Qt::Vertical) << 0.0 << 100000.0 << QString() << pt << int(Height150) << int(Ends);
-        QTest::addRow("V 0-100 min %.0fpt", pt) << int(Qt::Vertical) << 0.0 << 100.0 << QString() << pt << int(AtMinimum) << int(Ends);
-        // Horizontal: every label at minimumSizeHint() (#40, #57), thinned below it
-        QTest::addRow("H 0-100000 min %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 100000.0 << QString() << pt << int(AtMinimum) << int(AllLabels);
-        QTest::addRow("H 0-10000 min %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 10000.0 << QString() << pt << int(AtMinimum) << int(AllLabels);
+        QTest::addRow("V 0-100000 min %.0fpt", pt) << int(Qt::Vertical) << 0.0 << 100000.0 << QString() << pt << int(AtMinimum);
+        QTest::addRow("V 0-100000 150 %.0fpt", pt) << int(Qt::Vertical) << 0.0 << 100000.0 << QString() << pt << int(Height150);
+        QTest::addRow("V 0-100 min %.0fpt", pt) << int(Qt::Vertical) << 0.0 << 100.0 << QString() << pt << int(AtMinimum);
+        // Horizontal: at minimumSizeHint() (every label, see tst_LevelMeterLayout) and below it
+        QTest::addRow("H 0-100000 min %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 100000.0 << QString() << pt << int(AtMinimum);
+        QTest::addRow("H 0-10000 min %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 10000.0 << QString() << pt << int(AtMinimum);
         // Labels all as wide as the widest: the gap at the minimum is exactly scaleLabelMinGap()
-        QTest::addRow("H 100000-700000 min %.0fpt", pt) << int(Qt::Horizontal) << 100000.0 << 700000.0 << QString() << pt << int(AtMinimum) << int(AllLabels);
-        QTest::addRow("H 0-100000 220 %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 100000.0 << QString() << pt << int(Width220) << int(Ends);
+        QTest::addRow("H 100000-700000 min %.0fpt", pt) << int(Qt::Horizontal) << 100000.0 << 700000.0 << QString() << pt << int(AtMinimum);
+        QTest::addRow("H 0-100000 220 %.0fpt", pt) << int(Qt::Horizontal) << 0.0 << 100000.0 << QString() << pt << int(Width220);
     }
 }
 
-// #57: drawn scale labels keep scaleLabelMinGap() (on the scale font height) and the required labels
-// are drawn. Label pixels are the zone-colour pixels beyond the tick band (see labelMeter()). They are
+// #57: drawn scale labels keep scaleLabelMinGap() (on the scale font height) and both ends carry a
+// label. Label pixels are the zone-colour pixels beyond the tick band (see labelMeter()). They are
 // grouped into clusters: two pixels are in the same cluster when fewer than (minGap - 1) x DPR free
 // device pixels separate them (1 px logical allowed for glyphs that exceed the font metrics the
 // layout uses). Each label is one cluster; labels closer than the minimum merge into a cluster larger
-// than any label drawn alone (+1 px logical). A required label is drawn when the extent of some
-// cluster along the scale contains the position of its tick (+-1 px logical): a label is centred on
-// its tick, so its ink always covers it. Limit: where ticks are closer than a label is wide, this
-// checks that a label is drawn at that place, not which one; which labels are drawn is checked by
-// the helper tests (tst_LevelMeterLayout). 0 dB is required only in rows where the -3 dB and +3 dB
-// ticks lie more than half a label away from it (checked below).
+// than any label drawn alone (+1 px logical). Both ends of the scale carry a label: some label ink lies
+// within half a label (the largest drawn alone, along the scale) of each end tick. Which labels are
+// drawn (the ends themselves, 0 dB, every linear label at the minimum) is checked by the helper tests
+// (tst_LevelMeterLayout): without fonts (Windows offscreen CI) glyphs are boxes whose ink does not
+// follow the font metrics, so the pixels cannot tell neighbouring labels apart reliably.
 void tst_LevelMeter::scaleLabelsKeepMinimumGap()
 {
     QFETCH(int, orientation);
@@ -620,7 +617,6 @@ void tst_LevelMeter::scaleLabelsKeepMinimumGap()
     QFETCH(QString, unit);
     QFETCH(double, pointSize);
     QFETCH(int, sizeKind);
-    QFETCH(int, required);
     const Qt::Orientation o = static_cast<Qt::Orientation>(orientation);
     const bool vertical = o == Qt::Vertical;
 
@@ -685,31 +681,16 @@ void tst_LevelMeter::scaleLabelsKeepMinimumGap()
         const double norm = (t - minimum) / (maximum - minimum);
         return vertical ? high - norm * (high - low) : low + norm * (high - low);
     };
-    std::vector<size_t> wanted;
-    if (required == AllLabels) {
-        for (size_t j = 0; j < ticks.size(); ++j) wanted.push_back(j);
-    } else {
-        wanted = {0, ticks.size() - 1};
-        if (required == EndsAndZero) {
-            const auto zero = std::find(ticks.begin(), ticks.end(), 0.0);
-            QVERIFY(zero != ticks.end());
-            const size_t z = static_cast<size_t>(zero - ticks.begin());
-            // Precondition of the row: the neighbouring ticks are more than half a label away
-            const double halfLabel = 0.5 * (vertical ? largest.height() : largest.width());
-            QVERIFY2(std::abs(tickAt(ticks[z - 1]) - tickAt(0.0)) > halfLabel && std::abs(tickAt(ticks[z + 1]) - tickAt(0.0)) > halfLabel,
-                     "the ticks next to 0 dB are not more than half a label away: 0 dB cannot be told apart");
-            wanted.push_back(z);
-        }
-    }
-    for (size_t j : wanted) {
+    const double halfLabel = 0.5 * (vertical ? largest.height() : largest.width());
+    for (size_t j : {size_t(0), ticks.size() - 1}) {
         const double at = tickAt(ticks[j]);
         const bool found = std::any_of(labels.begin(), labels.end(), [&](const QRect &c) {
-            const double lo = (vertical ? c.top() : c.left()) - dpr;
-            const double hi = (vertical ? c.bottom() : c.right()) + 1.0 + dpr;
-            return at >= lo && at <= hi;
+            const double lo = vertical ? c.top() : c.left();
+            const double hi = (vertical ? c.bottom() : c.right()) + 1.0;
+            return std::max({lo - at, 0.0, at - hi}) <= halfLabel;
         });
-        QVERIFY2(found, qPrintable(QStringLiteral("no label at the tick of '%1' (device %2, %3x%4, DPR %5)")
-                                       .arg(internal::levelMeterTickText(ticks[j], minimum, maximum, unit))
+        QVERIFY2(found, qPrintable(QStringLiteral("no label ink within %1 device px of the end tick '%2' (device %3, %4x%5, DPR %6)")
+                                       .arg(halfLabel).arg(internal::levelMeterTickText(ticks[j], minimum, maximum, unit))
                                        .arg(at).arg(size.width()).arg(size.height()).arg(dpr)));
     }
 }
@@ -784,7 +765,7 @@ void tst_LevelMeter::unitKeepsMinimumGapFromScale_data()
 }
 
 // #57: the unit text keeps scaleLabelMinGap() (1 px logical allowed, as for the labels) from every
-// scale pixel (ticks and labels). The channel labels are blank, so textColor paints only the unit.
+// scale pixel (ticks and labels). The channel labels are empty, so textColor paints only the unit.
 void tst_LevelMeter::unitKeepsMinimumGapFromScale()
 {
     QFETCH(int, orientation);
@@ -795,7 +776,7 @@ void tst_LevelMeter::unitKeepsMinimumGapFromScale()
     QFETCH(int, sizeKind);
 
     auto m = labelMeter(static_cast<Qt::Orientation>(orientation), minimum, maximum, unit, pointSize, 1);
-    m->setChannelLabels({QStringLiteral(" ")});
+    m->setChannelLabels({QString()}); // empty, not " ": without fonts a space is drawn as a box
     m->resize(sizeKind == AtHint ? m->sizeHint() : m->minimumSizeHint());
     const qreal dpr = grabMeter(*m).devicePixelRatio();
     QRect unitBox;
