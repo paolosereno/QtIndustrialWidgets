@@ -45,6 +45,7 @@ class QTINDUSTRIALWIDGETS_EXPORT LedIndicator : public QWidget
     Q_PROPERTY(bool glowEffect READ hasGlowEffect WRITE setGlowEffect NOTIFY appearanceChanged)
     Q_PROPERTY(LedShape shape READ shape WRITE setShape NOTIFY appearanceChanged)
     Q_PROPERTY(QString labelText READ labelText WRITE setLabelText NOTIFY appearanceChanged)
+    Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
     Q_PROPERTY(bool clickable READ isClickable WRITE setClickable NOTIFY appearanceChanged)
 
 public:
@@ -88,6 +89,11 @@ public:
     [[nodiscard]] LedShape shape() const;
     /** \brief Returns the status caption label text. */
     [[nodiscard]] QString labelText() const;
+    /**
+     * \brief Returns the label text color. Invalid by default: the label then follows the widget
+     * palette's QPalette::WindowText.
+     */
+    [[nodiscard]] QColor textColor() const;
     /** \brief Returns true if user mouse clicks emit clicked() and toggle state. */
     [[nodiscard]] bool isClickable() const;
 
@@ -119,6 +125,11 @@ public Q_SLOTS:
     void setShape(LedShape shape);
     /** \brief Sets the status caption label text. */
     void setLabelText(const QString &text);
+    /**
+     * \brief Sets the label text color. An invalid QColor() (the default) makes the label follow the
+     * widget palette's QPalette::WindowText again.
+     */
+    void setTextColor(const QColor &color);
     /** \brief Toggles interactive mouse click support. */
     void setClickable(bool clickable);
 
