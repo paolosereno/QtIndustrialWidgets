@@ -171,6 +171,26 @@ set_target_properties(tst_LevelMeter PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_LevelMeter)
+add_executable(tst_LevelMeterLayout
+    tst_LevelMeterLayout.cpp
+    $<TARGET_OBJECTS:LevelMeterLayout>
+    $<TARGET_OBJECTS:NumberFormat>
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_LevelMeterLayout
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_LevelMeterLayout
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_LevelMeterLayout PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_LevelMeterLayout)
 add_industrial_widget_test(tst_AnnunciatorPanel)
 add_industrial_widget_test(tst_Compass)
 add_executable(tst_CircularBargraph
