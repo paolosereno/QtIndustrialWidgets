@@ -8,6 +8,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -623,16 +624,41 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap()
                                 .arg(largest.width()).arg(largest.height()).arg(threshold).arg(minGap).arg(dpr)));
     }
 
-    // The first and last labels: a cluster contains their centre (+1 px logical)
+    // The first and last labels: the cluster nearest to the label centre is nearer to it than to the
+    // centre of any other label, i.e. it is that label (the glyph ink need not contain the centre:
+    // with the box glyphs of a platform without fonts it lies above the middle of the line)
     const QPointF centre(side * 0.5 * dpr, side * 0.5 * dpr);
-    for (int i : {0, majorTicks}) {
+    std::vector<QPointF> labelCentres;
+    for (int i = 0; i <= majorTicks; ++i) {
         const double rad = (gauge.startAngle() + gauge.spanAngle() * i / majorTicks - 90.0) * M_PI / 180.0;
-        const QPoint p = (centre + QPointF(std::cos(rad), std::sin(rad)) * geo.labelRadius * dpr).toPoint();
-        bool found = false;
+        labelCentres.push_back(centre + QPointF(std::cos(rad), std::sin(rad)) * geo.labelRadius * dpr);
+    }
+    auto distance = [](const QRect &r, const QPointF &p) {
+        const double dx = std::max({static_cast<double>(r.left()) - p.x(), 0.0, p.x() - (r.right() + 1)});
+        const double dy = std::max({static_cast<double>(r.top()) - p.y(), 0.0, p.y() - (r.bottom() + 1)});
+        return std::hypot(dx, dy);
+    };
+    for (int i : {0, majorTicks}) {
+        const QPointF p = labelCentres[static_cast<size_t>(i)];
+        QRect nearest;
+        double best = std::numeric_limits<double>::infinity();
         for (const QRect &c : qAsConst(clusters)) {
-            found = found || c.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(p);
+            if (distance(c, p) < best) {
+                best = distance(c, p);
+                nearest = c;
+            }
         }
-        QVERIFY2(found, qPrintable(QStringLiteral("label %1 is not drawn").arg(i)));
+        int owner = i;
+        for (int j = 0; j <= majorTicks; ++j) {
+            if (distance(nearest, labelCentres[static_cast<size_t>(j)]) < distance(nearest, labelCentres[static_cast<size_t>(owner)])) {
+                owner = j;
+            }
+        }
+        QVERIFY2(owner == i,
+                 qPrintable(QStringLiteral("label %1 is not drawn: the nearest ink %2x%3 at (%4, %5), %6 device px from its "
+                                           "centre (%7, %8), is nearer to label %9")
+                                .arg(i).arg(nearest.width()).arg(nearest.height()).arg(nearest.x()).arg(nearest.y())
+                                .arg(best).arg(p.x()).arg(p.y()).arg(owner)));
     }
 }
 
