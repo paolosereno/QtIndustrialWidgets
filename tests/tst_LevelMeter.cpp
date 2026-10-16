@@ -194,6 +194,7 @@ private Q_SLOTS:
     void scaleLabelsNotClipped();
     void horizontalLabelsDoNotOverlapAtMinimumSize_data();
     void horizontalLabelsDoNotOverlapAtMinimumSize();
+    void sizeHintsFollowTheLabels();
 };
 
 void tst_LevelMeter::defaultValues()
@@ -401,6 +402,30 @@ void tst_LevelMeter::horizontalLabelsDoNotOverlapAtMinimumSize()
                      qPrintable(QStringLiteral("labels '%1' and '%2' overlap at minimumSizeHint %3x%4")
                                     .arg(labels[i - 1].text, t.text).arg(m->width()).arg(m->height())));
         }
+    }
+}
+
+// #40: with labels that fit the previous 36 px scale margin (dB scale, default font) sizeHint() is
+// the one used before; the minimum now includes the scale (it was a fixed 45 px, narrower than the
+// chassis margins, bars and 36 px scale together); wider labels make both grow; sizeHint() is never
+// below minimumSizeHint()
+void tst_LevelMeter::sizeHintsFollowTheLabels()
+{
+    LevelMeter db;
+    db.setChannelCount(2);
+    db.setRange(-60.0, 6.0);
+    db.setUnit(QStringLiteral("dB"));
+    QCOMPARE(db.sizeHint(), QSize(24 + 2 * 18 + 38, 220));
+    QCOMPARE(db.minimumSizeHint(), QSize(22 + 2 * 6 + 4 + 36, 100));
+
+    for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+        auto wide = scaleOnlyMeter(o, 100000.0, 13.0, QSize(200, 200));
+        const QSize min = wide->minimumSizeHint();
+        const QSize hint = wide->sizeHint();
+        QVERIFY2(hint.width() >= min.width() && hint.height() >= min.height(),
+                 qPrintable(QStringLiteral("sizeHint %1x%2 below minimumSizeHint %3x%4").arg(hint.width()).arg(hint.height()).arg(min.width()).arg(min.height())));
+        QVERIFY2(o == Qt::Vertical ? min.width() > 45 : min.width() > 100,
+                 qPrintable(QStringLiteral("minimumSizeHint %1x%2 did not grow for 6-digit labels at 13 pt").arg(min.width()).arg(min.height())));
     }
 }
 
