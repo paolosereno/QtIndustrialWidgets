@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <limits>
 
 #include "TextInkTestUtils.h"
@@ -111,6 +112,7 @@ private Q_SLOTS:
     void scaleLabelsHaveNoNegativeZero();
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
+    void digitalDisplayIgnoresUndrawnLabels();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -632,6 +634,44 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap()
         }
         QVERIFY2(found, qPrintable(QStringLiteral("label %1 is not drawn").arg(i)));
     }
+}
+
+// #50: the digital display is laid out against the drawn labels only. On a 360-degree arc from
+// -100000 to 100000 with 10 major ticks, every other label is drawn (0, 2, ..., 8; the last one
+// lies on the first): the same labels as with 5 major ticks. The label under the pod (index 5, "0")
+// is not drawn, so the pod and the value must be exactly those of the 5-tick gauge.
+void tst_RadialGauge::digitalDisplayIgnoresUndrawnLabels()
+{
+    auto make = [](int majorTicks) {
+        auto g = std::make_unique<RadialGauge>();
+        configure(*g, GaugeConfig{300, -100000.0, 100000.0, 0, 0.0, 360.0});
+        g->setMajorTicks(majorTicks);
+        g->setUnit(QStringLiteral("RPM"));
+        return g;
+    };
+    auto labelPixels = [](RadialGauge &g) {
+        g.setDigitalDisplayVisible(false);
+        g.setTextColor(Qt::white);
+        const QImage white = renderGauge(g);
+        g.setTextColor(Qt::red);
+        const QImage red = renderGauge(g);
+        g.setDigitalDisplayVisible(true);
+        return differingPixels(white, red);
+    };
+
+    auto ten = make(10);
+    auto five = make(5);
+    const QVector<QPoint> tenLabels = labelPixels(*ten);
+    QVERIFY(tenLabels.size() > 100);
+    QVERIFY2(tenLabels == labelPixels(*five), "the 10-tick gauge does not draw the labels of the 5-tick gauge");
+
+    const QRect tenValue = valueInkBox(*ten);
+    const QRect fiveValue = valueInkBox(*five);
+    QVERIFY(!fiveValue.isEmpty());
+    QVERIFY2(tenValue == fiveValue,
+             qPrintable(QStringLiteral("value ink %1x%2 at (%3, %4) with 10 ticks, %5x%6 at (%7, %8) with 5")
+                            .arg(tenValue.width()).arg(tenValue.height()).arg(tenValue.x()).arg(tenValue.y())
+                            .arg(fiveValue.width()).arg(fiveValue.height()).arg(fiveValue.x()).arg(fiveValue.y())));
 }
 
 QTEST_MAIN(tst_RadialGauge)
