@@ -228,6 +228,8 @@ private Q_SLOTS:
     void labelsNotClipped_data() { addSwitchRows(); }
     void labelsNotClipped();
     void labelInkBeyondAdvanceStaysInPlate();
+    void widerFontFullCriterionAtMinimumSize_data();
+    void widerFontFullCriterionAtMinimumSize();
     void sizeHintKeepsGuardedThreePositionSwitchReadable_data();
     void sizeHintKeepsGuardedThreePositionSwitchReadable();
 };
@@ -550,6 +552,81 @@ void tst_IndustrialSwitch::labelInkBeyondAdvanceStaysInPlate()
              qPrintable(QStringLiteral("centre ink starts at %1, its space at %2").arg(inkLeft(L.centerRect, L.centerAlign, in.center)).arg(centerSpaceLeft)));
     QVERIFY2(inkRight(L.centerRect, L.centerAlign, in.center) <= L.plate.right() - 2.0 + 1e-6,
              qPrintable(QStringLiteral("centre ink ends at %1, past the plate").arg(inkRight(L.centerRect, L.centerAlign, in.center))));
+}
+
+void tst_IndustrialSwitch::widerFontFullCriterionAtMinimumSize_data()
+{
+    QTest::addColumn<int>("type");
+    QTest::addColumn<int>("orientation");
+    QTest::addColumn<int>("positions");
+    using T = IndustrialSwitch::SwitchType;
+    for (T type : {T::ToggleLever, T::Rocker}) {
+        for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+            for (int positions : {2, 3}) {
+                QTest::addRow("%s %s %d-pos", type == T::Rocker ? "rocker" : "toggle", o == Qt::Vertical ? "V" : "H", positions)
+                    << static_cast<int>(type) << static_cast<int>(o) << positions;
+            }
+        }
+    }
+}
+
+// #44: with a wider font whose ink extends past the advance (DejaVu Serif bold), the full criterion
+// holds at minimumSizeHint(), with the guard: no label clipped (ink as wide as in a large switch
+// with the same font) or outside the plate, and neither the lit LED nor the guard covers a label.
+// On platforms without DejaVu Serif, Qt substitutes another font; on the Windows CI (offscreen)
+// there is no real font at all (box glyphs), so the wider-font case is exercised on Linux.
+void tst_IndustrialSwitch::widerFontFullCriterionAtMinimumSize()
+{
+    QFETCH(int, type);
+    QFETCH(int, orientation);
+    QFETCH(int, positions);
+    QFont serif = QApplication::font();
+    serif.setFamily(QStringLiteral("DejaVu Serif"));
+    const SwitchConfig c{static_cast<IndustrialSwitch::SwitchType>(type), static_cast<Qt::Orientation>(orientation), QSize(100, 100), positions};
+    const SwitchConfig large{c.type, c.orientation, c.orientation == Qt::Vertical ? QSize(600, 800) : QSize(800, 400), positions};
+
+    auto atMinimum = [&](bool open, const SwitchTexts &t) {
+        auto sw = makeSwitch(c, true, open, t);
+        sw->setFont(serif);
+        sw->resize(sw->minimumSizeHint());
+        return sw;
+    };
+
+    // No label covered by the LED or the guard
+    auto closed = atMinimum(false, {});
+    auto open = atMinimum(true, {});
+    const std::vector<QPoint> closedText = textInk(*closed);
+    const std::vector<QPoint> openText = textInk(*open);
+    QVERIFY(!openText.empty());
+    QVERIFY2(closedText == openText, "the closed guard changes label pixels at minimumSizeHint()");
+    QCOMPARE(commonPixels(guardPixels(*open), openText), 0);
+    QCOMPARE(commonPixels(ledPixels(*open), openText), 0);
+
+    // No label clipped or outside the plate
+    const SwitchTexts all;
+    const QString labels[] = {all.title, all.on, all.off, all.center};
+    for (int i = 0; i < (positions == 3 ? 4 : 3); ++i) {
+        SwitchTexts one;
+        one.title = i == 0 ? labels[0] : QString();
+        one.on = i == 1 ? labels[1] : QString();
+        one.off = i == 2 ? labels[2] : QString();
+        one.center = i == 3 ? labels[3] : QString();
+        // the size is that of the switch with all its labels
+        auto sw = makeSwitch(c, true, true, one);
+        sw->setFont(serif);
+        sw->resize(open->size());
+        auto reference = makeSwitch(large, true, true, one);
+        reference->setFont(serif);
+        const QRect ink = boundingBox(textInk(*sw));
+        const QRect full = boundingBox(textInk(*reference));
+        QVERIFY(!full.isEmpty());
+        QVERIFY2(std::abs(ink.width() - full.width()) <= 1,
+                 qPrintable(QStringLiteral("label '%1' is %2 device px wide at minimumSizeHint %3x%4, %5 when nothing clips it")
+                                .arg(labels[i]).arg(ink.width()).arg(sw->width()).arg(sw->height()).arg(full.width())));
+        const qreal dpr = grabImage(*sw).devicePixelRatio();
+        const QRect plate = QRect(QPoint(0, 0), sw->size() * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
+        QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("label '%1' ink outside the plate at minimumSizeHint").arg(labels[i])));
+    }
 }
 
 void tst_IndustrialSwitch::sizeHintKeepsGuardedThreePositionSwitchReadable_data()
