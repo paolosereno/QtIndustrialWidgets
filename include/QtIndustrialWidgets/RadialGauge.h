@@ -28,6 +28,11 @@
  * the pod grows to hold the whole value and may then cover part of a label. The value is never clipped or
  * abbreviated. The scale radius and the scale label font do not depend on the pod.
  *
+ * Every major tick is drawn, but only every k-th scale label: k is the smallest divisor of majorTicks for
+ * which the drawn labels keep max(4 px, half the label font height) between each other; the first and last
+ * labels are always drawn. On a span of 360° or more the maximum lies on the minimum: there the label of the
+ * minimum is drawn and that of the maximum is not.
+ *
  * The dial scale, graduation ticks, numbers, and threshold bands are rendered into a high-DPI cached QPixmap
  * that updates only when geometry or visual properties change, allowing 60+ FPS needle animation with minimal CPU usage.
  *

@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/RadialGauge.h>
 
+#include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
 
@@ -490,7 +491,9 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     painter.setFont(font);
 
     QPen majorPen(d_ptr->m_scaleColor, std::max(1.8, radius * 0.022), Qt::SolidLine, Qt::RoundCap);
-    std::vector<internal::LayoutRect> labelRects;
+    const QFontMetricsF fm(font);
+    std::vector<QString> labelTexts;
+    std::vector<internal::LayoutRect> allLabelRects;
 
     for (int i = 0; i <= d_ptr->m_majorTicks; ++i) {
         double frac = static_cast<double>(i) / d_ptr->m_majorTicks;
@@ -506,21 +509,27 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         QPointF p2(center.x() + tickOuter * cosR, center.y() + tickOuter * sinR);
         painter.drawLine(p1, p2);
 
-        // Label text
+        // Label box, centred at the label radius
         QString labelStr = internal::scaleLabelText(val, d_ptr->m_precision);
-
-        QFontMetricsF fm(font);
         QRectF textRect = fm.boundingRect(labelStr);
         QPointF labelCenter(center.x() + labelRadius * cosR, center.y() + labelRadius * sinR);
-        QRectF drawRect(labelCenter.x() - textRect.width() * 0.5,
-                       labelCenter.y() - textRect.height() * 0.5,
-                       textRect.width(), textRect.height());
+        labelTexts.push_back(labelStr);
+        allLabelRects.push_back({labelCenter.x() - textRect.width() * 0.5, labelCenter.y() - textRect.height() * 0.5,
+                                 textRect.width(), textRect.height()});
+    }
 
-        painter.setPen(d_ptr->m_textColor);
+    // Labels: every k-th one, so that the drawn labels keep the LinearGauge minimum gap (#50);
+    // all ticks are drawn above
+    const internal::RadialScaleLabels drawnLabels =
+        internal::layoutRadialScaleLabels(allLabelRects, internal::scaleLabelMinGap(fm.height()));
+    std::vector<internal::LayoutRect> labelRects;
+    painter.setPen(d_ptr->m_textColor);
+    for (int i : drawnLabels.drawn) {
+        const internal::LayoutRect &r = allLabelRects[static_cast<size_t>(i)];
         // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
         // the rectangle only positions the label
-        painter.drawText(drawRect, Qt::AlignCenter | Qt::TextDontClip, labelStr);
-        labelRects.push_back({drawRect.x(), drawRect.y(), drawRect.width(), drawRect.height()});
+        painter.drawText(QRectF(r.x, r.y, r.w, r.h), Qt::AlignCenter | Qt::TextDontClip, labelTexts[static_cast<size_t>(i)]);
+        labelRects.push_back(r);
     }
 
     // 4. Digital Display Background & Unit (Recessed pod below pivot), sized and placed clear of

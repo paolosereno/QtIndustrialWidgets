@@ -5,12 +5,18 @@
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtGui/QImage>
+#include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
+#include <memory>
 #include <limits>
 
 #include "TextInkTestUtils.h"
+#include "internal/LinearGaugeScale.h"
+#include "internal/RadialGaugeLayout.h"
 
 using namespace QtIndustrialWidgets;
 
@@ -105,6 +111,9 @@ private Q_SLOTS:
     void valueReadoutHasNoNegativeZero_data();
     void valueReadoutHasNoNegativeZero();
     void scaleLabelsHaveNoNegativeZero();
+    void scaleLabelsKeepMinimumGap_data();
+    void scaleLabelsKeepMinimumGap();
+    void digitalDisplayIgnoresUndrawnLabels();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -476,6 +485,219 @@ void tst_RadialGauge::scaleLabelsHaveNoNegativeZero()
     QVERIFY2(std::abs(tick2.width() - tick3.width()) <= 1,
              qPrintable(QStringLiteral("label at -0.02 is %1 device px wide, label at +0.02 is %2 (DPR %3)")
                             .arg(tick2.width()).arg(tick3.width()).arg(dpr)));
+}
+
+
+void tst_RadialGauge::scaleLabelsKeepMinimumGap_data()
+{
+    QTest::addColumn<int>("side");
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("precision");
+
+    struct Range { const char *name; double min; double max; int precision; };
+    // Wide values that overlap on main (#50) and narrow ones where every label fits
+    const Range ranges[] = {{"0-100000", 0.0, 100000.0, 0}, {"0-10000000", 0.0, 10000000.0, 0},
+                            {"0-100", 0.0, 100.0, 1}, {"-1000-1000", -1000.0, 1000.0, 0}};
+    for (int side : {200, 300}) {
+        for (const Range &r : ranges) {
+            QTest::addRow("%d px, %s", side, r.name) << side << r.min << r.max << r.precision;
+        }
+    }
+}
+
+// Device-pixel ink box of a text drawn alone in the given font at the given device pixel ratio
+QRect inkBoxAlone(const QString &text, const QFont &font, qreal dpr)
+{
+    const QFontMetricsF fm(font);
+    const QSizeF logical(fm.horizontalAdvance(text) + 40.0, fm.height() + 40.0);
+    QImage img((logical * dpr).toSize(), QImage::Format_ARGB32);
+    img.setDevicePixelRatio(dpr);
+    img.fill(Qt::black);
+    {
+        QPainter p(&img);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.setFont(font);
+        p.setPen(Qt::white);
+        p.drawText(QPointF(20.0, 20.0 + fm.ascent()), text);
+    }
+    QRect box;
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (img.pixel(x, y) != qRgb(0, 0, 0)) {
+                box |= QRect(x, y, 1, 1);
+            }
+        }
+    }
+    return box;
+}
+
+// #50: drawn scale labels keep the LinearGauge minimum gap (scaleLabelMinGap() on the label font
+// height) and the first and last labels are always drawn. Label pixels are those that change with
+// textColor while the display is hidden. They are grouped into clusters: two pixels belong to the
+// same cluster when fewer than (minGap - 1) x DPR free device pixels separate them along the axis
+// that separates them (1 px logical allowed for glyphs that exceed the font bounding rectangle the
+// layout uses). The glyphs of one label are closer than that, so each label is one cluster; two
+// labels closer than the minimum merge into one cluster, which is then larger than any label
+// drawn alone (+1 px logical).
+void tst_RadialGauge::scaleLabelsKeepMinimumGap()
+{
+    QFETCH(int, side);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    const GaugeConfig config{side, minimum, maximum, precision, -135.0, 270.0};
+
+    RadialGauge gauge;
+    configure(gauge, config);
+    gauge.setDigitalDisplayVisible(false);
+    gauge.setValue(minimum);
+    gauge.setTextColor(Qt::white);
+    const QImage white = renderGauge(gauge);
+    gauge.setTextColor(Qt::red);
+    const QImage red = renderGauge(gauge);
+    const qreal dpr = white.devicePixelRatio();
+    const QVector<QPoint> ink = differingPixels(white, red);
+    QVERIFY2(ink.size() > 100, qPrintable(QStringLiteral("only %1 label pixels").arg(ink.size())));
+
+    const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(side);
+    QFont labelFont = gauge.font();
+    labelFont.setPixelSize(geo.labelFontPx);
+    labelFont.setBold(true);
+    const double minGap = internal::scaleLabelMinGap(QFontMetricsF(labelFont).height());
+    const double threshold = (minGap - 1.0) * dpr;
+
+    // Largest label drawn alone. Every row has integer tick values, which the gauge prints as
+    // integers at any precision (scaleLabelText())
+    const int majorTicks = gauge.majorTicks();
+    QSize largest;
+    for (int i = 0; i <= majorTicks; ++i) {
+        const double v = minimum + (maximum - minimum) * i / majorTicks;
+        QCOMPARE(v, std::round(v));
+        largest = largest.expandedTo(inkBoxAlone(QString::number(static_cast<qint64>(v)), labelFont, dpr).size());
+    }
+    const int tolerance = static_cast<int>(std::ceil(dpr));
+
+    // Clusters (union-find over the ink pixels, neighbours searched on a grid)
+    const int reach = static_cast<int>(std::ceil(threshold));
+    QHash<qint64, int> at;
+    auto key = [](int x, int y) { return (static_cast<qint64>(y) << 32) | static_cast<quint32>(x); };
+    for (int i = 0; i < ink.size(); ++i) {
+        at.insert(key(ink[i].x(), ink[i].y()), i);
+    }
+    std::vector<int> parent(static_cast<size_t>(ink.size()));
+    for (int i = 0; i < ink.size(); ++i) {
+        parent[static_cast<size_t>(i)] = i;
+    }
+    std::function<int(int)> root = [&](int i) {
+        while (parent[static_cast<size_t>(i)] != i) {
+            parent[static_cast<size_t>(i)] = parent[static_cast<size_t>(parent[static_cast<size_t>(i)])];
+            i = parent[static_cast<size_t>(i)];
+        }
+        return i;
+    };
+    for (int i = 0; i < ink.size(); ++i) {
+        for (int dy = -reach; dy <= reach; ++dy) {
+            for (int dx = -reach; dx <= reach; ++dx) {
+                // free pixels between the two along the separating axis
+                const int free = std::max(std::abs(dx), std::abs(dy)) - 1;
+                if (free >= threshold) {
+                    continue;
+                }
+                const auto it = at.constFind(key(ink[i].x() + dx, ink[i].y() + dy));
+                if (it != at.constEnd()) {
+                    parent[static_cast<size_t>(root(i))] = root(it.value());
+                }
+            }
+        }
+    }
+    QHash<int, QRect> clusters;
+    for (int i = 0; i < ink.size(); ++i) {
+        clusters[root(i)] |= QRect(ink[i], QSize(1, 1));
+    }
+
+    for (const QRect &c : qAsConst(clusters)) {
+        QVERIFY2(c.width() <= largest.width() + tolerance && c.height() <= largest.height() + tolerance,
+                 qPrintable(QStringLiteral("label ink %1x%2 at (%3, %4) is larger than the largest label alone %5x%6: "
+                                           "labels closer than %7 device px (minimum gap %8 px, DPR %9)")
+                                .arg(c.width()).arg(c.height()).arg(c.x()).arg(c.y())
+                                .arg(largest.width()).arg(largest.height()).arg(threshold).arg(minGap).arg(dpr)));
+    }
+
+    // The first and last labels: the cluster nearest to the label centre is nearer to it than to the
+    // centre of any other label, i.e. it is that label (the glyph ink need not contain the centre:
+    // with the box glyphs of a platform without fonts it lies above the middle of the line)
+    const QPointF centre(side * 0.5 * dpr, side * 0.5 * dpr);
+    std::vector<QPointF> labelCentres;
+    for (int i = 0; i <= majorTicks; ++i) {
+        const double rad = (gauge.startAngle() + gauge.spanAngle() * i / majorTicks - 90.0) * M_PI / 180.0;
+        labelCentres.push_back(centre + QPointF(std::cos(rad), std::sin(rad)) * geo.labelRadius * dpr);
+    }
+    auto distance = [](const QRect &r, const QPointF &p) {
+        const double dx = std::max({static_cast<double>(r.left()) - p.x(), 0.0, p.x() - (r.right() + 1)});
+        const double dy = std::max({static_cast<double>(r.top()) - p.y(), 0.0, p.y() - (r.bottom() + 1)});
+        return std::hypot(dx, dy);
+    };
+    for (int i : {0, majorTicks}) {
+        const QPointF p = labelCentres[static_cast<size_t>(i)];
+        QRect nearest;
+        double best = std::numeric_limits<double>::infinity();
+        for (const QRect &c : qAsConst(clusters)) {
+            if (distance(c, p) < best) {
+                best = distance(c, p);
+                nearest = c;
+            }
+        }
+        int owner = i;
+        for (int j = 0; j <= majorTicks; ++j) {
+            if (distance(nearest, labelCentres[static_cast<size_t>(j)]) < distance(nearest, labelCentres[static_cast<size_t>(owner)])) {
+                owner = j;
+            }
+        }
+        QVERIFY2(owner == i,
+                 qPrintable(QStringLiteral("label %1 is not drawn: the nearest ink %2x%3 at (%4, %5), %6 device px from its "
+                                           "centre (%7, %8), is nearer to label %9")
+                                .arg(i).arg(nearest.width()).arg(nearest.height()).arg(nearest.x()).arg(nearest.y())
+                                .arg(best).arg(p.x()).arg(p.y()).arg(owner)));
+    }
+}
+
+// #50: the digital display is laid out against the drawn labels only. On a 360-degree arc from
+// -100000 to 100000 with 10 major ticks, every other label is drawn (0, 2, ..., 8; the last one
+// lies on the first): the same labels as with 5 major ticks. The label under the pod (index 5, "0")
+// is not drawn, so the pod and the value must be exactly those of the 5-tick gauge.
+void tst_RadialGauge::digitalDisplayIgnoresUndrawnLabels()
+{
+    auto make = [](int majorTicks) {
+        auto g = std::make_unique<RadialGauge>();
+        configure(*g, GaugeConfig{300, -100000.0, 100000.0, 0, 0.0, 360.0});
+        g->setMajorTicks(majorTicks);
+        g->setUnit(QStringLiteral("RPM"));
+        return g;
+    };
+    auto labelPixels = [](RadialGauge &g) {
+        g.setDigitalDisplayVisible(false);
+        g.setTextColor(Qt::white);
+        const QImage white = renderGauge(g);
+        g.setTextColor(Qt::red);
+        const QImage red = renderGauge(g);
+        g.setDigitalDisplayVisible(true);
+        return differingPixels(white, red);
+    };
+
+    auto ten = make(10);
+    auto five = make(5);
+    const QVector<QPoint> tenLabels = labelPixels(*ten);
+    QVERIFY(tenLabels.size() > 100);
+    QVERIFY2(tenLabels == labelPixels(*five), "the 10-tick gauge does not draw the labels of the 5-tick gauge");
+
+    const QRect tenValue = valueInkBox(*ten);
+    const QRect fiveValue = valueInkBox(*five);
+    QVERIFY(!fiveValue.isEmpty());
+    QVERIFY2(tenValue == fiveValue,
+             qPrintable(QStringLiteral("value ink %1x%2 at (%3, %4) with 10 ticks, %5x%6 at (%7, %8) with 5")
+                            .arg(tenValue.width()).arg(tenValue.height()).arg(tenValue.x()).arg(tenValue.y())
+                            .arg(fiveValue.width()).arg(fiveValue.height()).arg(fiveValue.x()).arg(fiveValue.y())));
 }
 
 QTEST_MAIN(tst_RadialGauge)

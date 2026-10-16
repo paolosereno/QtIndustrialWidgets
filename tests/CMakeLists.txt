@@ -40,7 +40,28 @@ function(add_industrial_widget_test test_name)
     add_dpr_tests(${test_name})
 endfunction()
 
-add_industrial_widget_test(tst_RadialGauge)
+add_executable(tst_RadialGauge
+    tst_RadialGauge.cpp
+    $<TARGET_OBJECTS:LinearGaugeScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+)
+target_link_libraries(tst_RadialGauge
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_RadialGauge
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_RadialGauge PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_RadialGauge)
 add_executable(tst_LinearGauge
     tst_LinearGauge.cpp
     $<TARGET_OBJECTS:LinearGaugeScale>
@@ -65,6 +86,7 @@ add_dpr_tests(tst_LinearGauge)
 add_executable(tst_RadialGaugeLayout
     tst_RadialGaugeLayout.cpp
     $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:LinearGaugeScale>
 )
 target_link_libraries(tst_RadialGaugeLayout
     PRIVATE

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace QtIndustrialWidgets {
 namespace internal {
@@ -22,6 +23,62 @@ RadialScaleGeometry radialScaleGeometry(double side)
     g.labelRadius = g.majorTickInner - g.radius * 0.12;
     g.labelFontPx = std::max(7, static_cast<int>(g.radius * 0.082));
     return g;
+}
+
+double layoutRectGap(const LayoutRect &a, const LayoutRect &b)
+{
+    const double gapX = std::max(b.x - a.right(), a.x - b.right());
+    const double gapY = std::max(b.y - a.bottom(), a.y - b.bottom());
+    const double gap = std::max(gapX, gapY);
+    return std::isfinite(gap) ? gap : -std::numeric_limits<double>::infinity();
+}
+
+RadialScaleLabels layoutRadialScaleLabels(const std::vector<LayoutRect> &boxes, double minGap)
+{
+    RadialScaleLabels out;
+    if (boxes.empty()) {
+        return out;
+    }
+    const int n = static_cast<int>(boxes.size()) - 1;
+    if (n == 0) {
+        out.step = 1;
+        out.drawn = {0};
+        return out;
+    }
+    const double gap = std::isfinite(minGap) ? minGap : 0.0;
+    auto box = [&](int i) { return boxes[static_cast<size_t>(i)]; };
+    // On a span of 360 degrees or more the last label lies on (or near) the first one
+    const bool endsClash = layoutRectGap(box(0), box(n)) < gap;
+
+    // Smallest divisor of n whose labels all keep the gap; with d = n only the first label (and
+    // the last one unless it clashes with it) remains, which always fits
+    for (int d = 1; d <= n; ++d) {
+        if (n % d != 0) {
+            continue;
+        }
+        std::vector<int> drawn;
+        for (int i = 0; i <= n; i += d) {
+            if (i == n && endsClash) {
+                continue;
+            }
+            drawn.push_back(i);
+        }
+        bool fits = true;
+        for (size_t a = 0; a < drawn.size() && fits; ++a) {
+            for (size_t b = a + 1; b < drawn.size(); ++b) {
+                if (layoutRectGap(box(drawn[a]), box(drawn[b])) < gap) {
+                    fits = false;
+                    break;
+                }
+            }
+        }
+        if (fits || d == n) {
+            out.step = d;
+            out.drawn = drawn;
+            return out;
+        }
+    }
+    return out;
 }
 
 double podLabelMargin(double radius)
