@@ -17,7 +17,6 @@
 #include <QtIndustrialWidgets/StripChart.h>
 
 
-#include <QtGui/QPalette>
 #include <QtWidgets/QWidget>
 
 #include <chrono>
@@ -32,12 +31,10 @@ namespace {
 
 bool isDark(Theme theme) { return theme == Theme::Dark; }
 
-// Text drawn with the widget palette (e.g. LedIndicator labels) must be readable on the background
-void setPaletteText(QWidget *w, Theme theme)
+// LedIndicator label colour, readable on the showcase background (#45)
+QColor ledTextColor(Theme theme)
 {
-    QPalette pal = w->palette();
-    pal.setColor(QPalette::WindowText, isDark(theme) ? QColor(225, 231, 236) : QColor(30, 39, 46));
-    w->setPalette(pal);
+    return isDark(theme) ? QColor(225, 231, 236) : QColor(30, 39, 46);
 }
 
 // Colours as in MainWindow::applyTheme()
@@ -150,7 +147,7 @@ QWidget *ledOn(Theme theme)
     auto *l = new LedIndicator(QColor(46, 204, 113));
     l->setLabelText(QStringLiteral("RUN"));
     l->setOn(true);
-    setPaletteText(l, theme);
+    l->setTextColor(ledTextColor(theme));
     return l;
 }
 
@@ -160,7 +157,7 @@ QWidget *ledRectangular(Theme theme)
     l->setShape(LedIndicator::LedShape::Rectangular);
     l->setLabelText(QStringLiteral("AUX PUMP"));
     l->setOn(true);
-    setPaletteText(l, theme);
+    l->setTextColor(ledTextColor(theme));
     return l;
 }
 

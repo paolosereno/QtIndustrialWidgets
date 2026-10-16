@@ -30,6 +30,7 @@ public:
     bool m_glowEffect{true};
     LedIndicator::LedShape m_shape{LedIndicator::LedShape::Circular};
     QString m_labelText;
+    QColor m_textColor; // invalid: follow QPalette::WindowText
     bool m_clickable{false};
 
     QTimer m_blinkTimer;
@@ -66,6 +67,7 @@ bool LedIndicator::isBezelVisible() const { Q_D(const LedIndicator); return d->m
 bool LedIndicator::hasGlowEffect() const { Q_D(const LedIndicator); return d->m_glowEffect; }
 LedIndicator::LedShape LedIndicator::shape() const { Q_D(const LedIndicator); return d->m_shape; }
 QString LedIndicator::labelText() const { Q_D(const LedIndicator); return d->m_labelText; }
+QColor LedIndicator::textColor() const { Q_D(const LedIndicator); return d->m_textColor; }
 bool LedIndicator::isClickable() const { Q_D(const LedIndicator); return d->m_clickable; }
 
 
@@ -165,6 +167,14 @@ void LedIndicator::setBezelColor(const QColor &color)
 {
     if (d_ptr->m_bezelColor == color) return;
     d_ptr->m_bezelColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void LedIndicator::setTextColor(const QColor &color)
+{
+    if (d_ptr->m_textColor == color) return;
+    d_ptr->m_textColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
@@ -382,7 +392,7 @@ void LedIndicator::paintEvent(QPaintEvent *)
 
     // 4. Draw Label Text (if present)
     if (!d_ptr->m_labelText.isEmpty()) {
-        painter.setPen(palette().color(QPalette::WindowText));
+        painter.setPen(d_ptr->m_textColor.isValid() ? d_ptr->m_textColor : palette().color(QPalette::WindowText));
         painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, d_ptr->m_labelText);
     }
 }
