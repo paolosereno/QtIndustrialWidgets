@@ -68,8 +68,9 @@ struct SwitchLayout {
  * If a position label would not fit in its rectangle, the LED glow would reach the title or leave
  * the plate, the guard would reach the title, or the open guard or a label would leave the plate,
  * the switch is scaled down about its centre in steps of 1 %, down to 30 % (then fits is false).
- * The title must also fit in its rectangle, clear of the corner screws, for fits to be true;
- * scaling the switch does not change that.
+ * The title must also fit in its rectangle, clear of the corner screws, and (vertical layout) the
+ * LED glow must stay inside the plate, for fits to be true; scaling the switch does not change
+ * those two, so they never make the switch smaller.
  */
 SwitchLayout layoutSwitch(const SwitchLayoutInput &in);
 

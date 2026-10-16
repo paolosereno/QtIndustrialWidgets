@@ -148,13 +148,18 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
             L.openGuard = QRectF(L.guard.left(), top, L.guard.width(), t);
         }
 
+        // Constraints that a smaller switch can satisfy
         bool ok = fitsHorizontally(L.onBox, L.onRect) && fitsHorizontally(L.offBox, L.offRect) && fitsHorizontally(L.centerBox, L.centerRect);
         ok = ok && L.led.y() - kSwitchLedGlow >= titleBottom + 1.0;
-        ok = ok && L.led.x() - kSwitchLedGlow >= P.left() + 1.0 && L.led.x() + kSwitchLedGlow <= P.right() - 1.0;
+        // The LED inside the plate: horizontally it moves with the switch only in the horizontal layout
+        const bool ledInside = L.led.x() - kSwitchLedGlow >= P.left() + 1.0 && L.led.x() + kSwitchLedGlow <= P.right() - 1.0;
+        if (!vertical) {
+            ok = ok && ledInside;
+        }
         ok = ok && (L.onBox.isEmpty() || L.onBox.top() >= titleBottom + 1.0) && O.top() >= titleBottom + 1.0;
         ok = ok && L.openGuard.left() >= P.left() + 1.0 && L.openGuard.bottom() <= P.bottom() - 1.0;
         ok = ok && (vertical ? L.offRect.bottom() <= P.bottom() - 2.0 : (L.centerBox.isEmpty() || L.centerBox.bottom() <= P.bottom() - 2.0));
-        L.fits = ok && titleFits;
+        L.fits = ok && titleFits && ledInside;
         if (ok) {
             break;
         }
