@@ -37,22 +37,59 @@ namespace {
 
 constexpr double kOpenGuardMinThickness = 3.0;
 
-// Box of a single-line text drawn in rect with the given alignment
-QRectF textBox(const QRectF &rect, Qt::Alignment align, const QString &text, const QFont &font)
+// Horizontal metrics of a single-line text, measured once per layout: advance, height, and how far
+// the glyph ink extends past the advance on each side (bold serif or Segoe UI glyphs can; #44,
+// found on Windows)
+struct TextMetrics {
+    bool empty{true};
+    double advance{0.0};
+    double height{0.0};
+    double inkLeft{0.0};  ///< ink before the start of the advance
+    double inkRight{0.0}; ///< ink after the end of the advance
+};
+
+TextMetrics measure(const QString &text, const QFont &font)
 {
+    TextMetrics m;
     if (text.isEmpty()) {
-        return {};
+        return m;
     }
     const QFontMetricsF fm(font);
-    const double w = fm.horizontalAdvance(text);
-    const double h = fm.height();
+    const QRectF ink = fm.boundingRect(text);
+    m.empty = false;
+    m.advance = fm.horizontalAdvance(text);
+    m.height = fm.height();
+    m.inkLeft = std::max(0.0, -ink.left());
+    m.inkRight = std::max(0.0, ink.right() - m.advance);
+    return m;
+}
+
+// Rectangle to draw a text into so that its ink, not only its advance, starts or ends at the
+// rectangle's aligned side
+QRectF drawRect(QRectF rect, Qt::Alignment align, const TextMetrics &m)
+{
+    if (align & Qt::AlignRight) {
+        rect.setRight(rect.right() - m.inkRight);
+    } else if (!(align & Qt::AlignHCenter)) {
+        rect.setLeft(rect.left() + m.inkLeft);
+    }
+    return rect;
+}
+
+// Box of a single-line text drawn in rect with the given alignment: horizontally it covers both
+// the advance and the glyph ink
+QRectF textBox(const QRectF &rect, Qt::Alignment align, const TextMetrics &m)
+{
+    if (m.empty) {
+        return {};
+    }
     double x = rect.left();
     if (align & Qt::AlignHCenter) {
-        x = rect.center().x() - w * 0.5;
+        x = rect.center().x() - m.advance * 0.5;
     } else if (align & Qt::AlignRight) {
-        x = rect.right() - w;
+        x = rect.right() - m.advance;
     }
-    return {x, rect.center().y() - h * 0.5, w, h};
+    return {x - m.inkLeft, rect.center().y() - m.height * 0.5, m.advance + m.inkLeft + m.inkRight, m.height};
 }
 
 bool fitsHorizontally(const QRectF &box, const QRectF &rect)
@@ -88,7 +125,11 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
     L.plate = all.adjusted(3, 3, -3, -3);
     const QRectF &P = L.plate;
     L.titleRect = vertical ? QRectF(P.left(), P.top() + 6, P.width(), 16) : QRectF(P.left() + 6, P.top() + 6, P.width() - 12, 14);
-    L.titleBox = textBox(L.titleRect, Qt::AlignCenter, in.title, titleFont);
+    const TextMetrics titleM = measure(in.title, titleFont);
+    const TextMetrics onM = measure(in.on, labelFont);
+    const TextMetrics offM = measure(in.off, labelFont);
+    const TextMetrics centerM = measure(in.positions == 3 ? in.center : QString(), labelFont);
+    L.titleBox = textBox(L.titleRect, Qt::AlignCenter, titleM);
     const double titleBottom = L.titleBox.isEmpty() ? P.top() + 2.0 : L.titleBox.bottom();
     // The title does not depend on the switch size: scaling the switch cannot make it fit. It must
     // stay clear of the corner screws (centred 2.2 radii from the plate corner).
@@ -123,9 +164,15 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
             L.onAlign = Qt::AlignLeft | Qt::AlignVCenter;
             L.centerAlign = Qt::AlignCenter;
         }
-        L.onBox = textBox(L.onRect, L.onAlign, in.on, labelFont);
-        L.offBox = textBox(L.offRect, L.offAlign, in.off, labelFont);
-        L.centerBox = in.positions == 3 ? textBox(L.centerRect, L.centerAlign, in.center, labelFont) : QRectF();
+        // Rectangles available to the labels; the texts are drawn into them shifted by their ink
+        // overhang on the aligned side, and must fit with their ink
+        const QRectF onSpace = L.onRect, offSpace = L.offRect, centerSpace = L.centerRect;
+        L.onRect = drawRect(onSpace, L.onAlign, onM);
+        L.offRect = drawRect(offSpace, L.offAlign, offM);
+        L.centerRect = drawRect(centerSpace, L.centerAlign, centerM);
+        L.onBox = textBox(L.onRect, L.onAlign, onM);
+        L.offBox = textBox(L.offRect, L.offAlign, offM);
+        L.centerBox = textBox(L.centerRect, L.centerAlign, centerM);
 
         if (vertical) {
             L.led = L.onBox.isEmpty() ? L.onRect.center() : QPointF(L.onBox.left() - 2.0 - kSwitchLedGlow, L.onRect.center().y());
@@ -149,7 +196,7 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
         }
 
         // Constraints that a smaller switch can satisfy
-        bool ok = fitsHorizontally(L.onBox, L.onRect) && fitsHorizontally(L.offBox, L.offRect) && fitsHorizontally(L.centerBox, L.centerRect);
+        bool ok = fitsHorizontally(L.onBox, onSpace) && fitsHorizontally(L.offBox, offSpace) && fitsHorizontally(L.centerBox, centerSpace);
         ok = ok && L.led.y() - kSwitchLedGlow >= titleBottom + 1.0;
         // The LED inside the plate: horizontally it moves with the switch only in the horizontal layout
         const bool ledInside = L.led.x() - kSwitchLedGlow >= P.left() + 1.0 && L.led.x() + kSwitchLedGlow <= P.right() - 1.0;
@@ -167,18 +214,51 @@ SwitchLayout layoutSwitch(const SwitchLayoutInput &in)
     return L;
 }
 
-QSize switchSizeHint(SwitchLayoutInput in, const QSize &base)
+namespace {
+
+// Smallest s in [1, 4], on a 0.05 grid, for which ok(base x s) holds, found coarse (0.25) then fine;
+// the constraints only get easier as the size grows. Returns base when none holds.
+template <typename Ok>
+QSize searchSize(const QSize &base, Ok ok)
 {
-    for (int step = 0; step <= 60; ++step) {
-        const double s = 1.0 + step * 0.05;
-        const QSize size(static_cast<int>(std::ceil(base.width() * s)), static_cast<int>(std::ceil(base.height() * s)));
-        in.size = size;
-        const SwitchLayout L = layoutSwitch(in);
-        if (L.fits && L.scale >= 1.0) {
-            return size;
+    auto sized = [&](double s) {
+        return QSize(static_cast<int>(std::ceil(base.width() * s)), static_cast<int>(std::ceil(base.height() * s)));
+    };
+    double coarse = -1.0;
+    for (double s = 1.0; s <= 4.0 + 1e-9; s += 0.25) {
+        if (ok(sized(s))) {
+            coarse = s;
+            break;
         }
     }
-    return base;
+    if (coarse < 0.0) {
+        return base;
+    }
+    for (double s = std::max(1.0, coarse - 0.20); s < coarse - 1e-9; s += 0.05) {
+        if (ok(sized(s))) {
+            return sized(s);
+        }
+    }
+    return sized(coarse);
+}
+
+} // namespace
+
+QSize switchMinimumSize(SwitchLayoutInput in, const QSize &base)
+{
+    return searchSize(base, [&](const QSize &size) {
+        in.size = size;
+        return layoutSwitch(in).fits;
+    });
+}
+
+QSize switchSizeHint(SwitchLayoutInput in, const QSize &base)
+{
+    return searchSize(base, [&](const QSize &size) {
+        in.size = size;
+        const SwitchLayout L = layoutSwitch(in);
+        return L.fits && L.scale >= 1.0;
+    });
 }
 
 } // namespace internal

@@ -46,9 +46,9 @@ struct SwitchLayout {
     QRectF switchRect; ///< Lever socket or rocker
     QRectF guard;      ///< Safety guard cover (equal to switchRect without a guard)
     QRectF guardOuter; ///< Guard plus its drop shadow, lift tab and hinge brackets
-    QRectF titleRect, onRect, offRect, centerRect; ///< Rectangles the texts are drawn into
+    QRectF titleRect, onRect, offRect, centerRect; ///< Rectangles the texts are drawn into (aligned side shifted by the ink overhang)
     Qt::Alignment onAlign, offAlign, centerAlign;
-    QRectF titleBox, onBox, offBox, centerBox;     ///< Boxes of the texts (empty for an empty text)
+    QRectF titleBox, onBox, offBox, centerBox;     ///< Boxes of the texts, advance and glyph ink (empty for an empty text)
     QPointF led;      ///< Centre of the status LED, next to the ON label
     QRectF openGuard; ///< The open guard, seen edge-on in free plate space
     double scale{1.0}; ///< Factor applied to the natural switch size to make room (1 = not scaled down)
@@ -73,6 +73,13 @@ struct SwitchLayout {
  * those two, so they never make the switch smaller.
  */
 SwitchLayout layoutSwitch(const SwitchLayoutInput &in);
+
+/**
+ * \brief Smallest size, with the aspect ratio of \a base and not smaller than it, at which the
+ * layout fits (the switch may be scaled down); \a base if none up to 4x. Text sizes come from
+ * the real metrics of \a in.font, glyph ink included.
+ */
+QSize switchMinimumSize(SwitchLayoutInput in, const QSize &base);
 
 /**
  * \brief Smallest size, with the aspect ratio of \a base and not smaller than it, at which the

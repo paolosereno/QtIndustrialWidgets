@@ -24,6 +24,11 @@ namespace QtIndustrialWidgets {
 
 class IndustrialSwitchPrivate {
 public:
+    // #44: size hints computed from the font metrics, cached for the inputs they depend on
+    mutable QString m_hintKey;
+    mutable QSize m_minimumHint;
+    mutable QSize m_preferredHint;
+
     IndustrialSwitch::SwitchType m_switchType = IndustrialSwitch::SwitchType::ToggleLever;
     int m_positionCount = 2; // 2 or 3
     int m_position = 0;      // 0, 1 (or 2 if 3-pos)
@@ -126,22 +131,41 @@ QColor IndustrialSwitch::textColor() const { Q_D(const IndustrialSwitch); return
 QColor IndustrialSwitch::guardColor() const { Q_D(const IndustrialSwitch); return d->m_guardColor; }
 
 
+// #44: both size hints depend on the font, orientation, positions, guard and texts; they are
+// computed when one of these changes (the font is compared by value, so setFont() is covered)
+static void updateSizeHints(const IndustrialSwitch &w, const IndustrialSwitchPrivate *d)
+{
+    const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+                            .arg(w.font().toString())
+                            .arg(static_cast<int>(d->m_orientation))
+                            .arg(d->m_positionCount)
+                            .arg(d->m_hasSafetyGuard)
+                            .arg(d->m_label, d->m_labelOn, d->m_labelOff, d->m_labelCenter);
+    if (key == d->m_hintKey) {
+        return;
+    }
+    const bool vertical = d->m_orientation == Qt::Vertical;
+    const internal::SwitchLayoutInput in = layoutInput(w, d);
+    d->m_minimumHint = internal::switchMinimumSize(in, vertical ? QSize(50, 80) : QSize(80, 50));
+    const QSize base = vertical ? QSize(75, 125) : QSize(125, 75);
+    // With a guard and 3 positions: large enough for the switch at its natural size
+    const QSize preferred = (d->m_hasSafetyGuard && d->m_positionCount == 3) ? internal::switchSizeHint(in, base) : base;
+    d->m_preferredHint = preferred.expandedTo(d->m_minimumHint);
+    d->m_hintKey = key;
+}
+
 QSize IndustrialSwitch::sizeHint() const
 {
-    const QSize base = d_ptr->m_orientation == Qt::Vertical ? QSize(75, 125) : QSize(125, 75);
-    if (d_ptr->m_hasSafetyGuard && d_ptr->m_positionCount == 3) {
-        // #44: large enough for the guard, the three labels and the switch at its natural size
-        return internal::switchSizeHint(layoutInput(*this, d_ptr.get()), base);
-    }
-    return base;
+    updateSizeHints(*this, d_ptr.get());
+    return d_ptr->m_preferredHint;
 }
 
 QSize IndustrialSwitch::minimumSizeHint() const
 {
-    if (d_ptr->m_orientation == Qt::Vertical) {
-        return {50, 80};
-    }
-    return {80, 50};
+    // #44: the smallest size at which every text fits whole in the plate and nothing covers it,
+    // from the real metrics of the widget font (guard, number of positions and texts included)
+    updateSizeHints(*this, d_ptr.get());
+    return d_ptr->m_minimumHint;
 }
 
 void IndustrialSwitch::setSwitchType(SwitchType type)

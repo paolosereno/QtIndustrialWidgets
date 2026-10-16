@@ -112,7 +112,19 @@ public:
     /** \brief Returns the safety guard cover color. */
     [[nodiscard]] QColor guardColor() const;
 
+    /**
+     * \brief Preferred size: 75x125 (vertical) or 125x75 (horizontal), never smaller than
+     * minimumSizeHint(). With a safety guard and 3 positions, the smallest size with that aspect
+     * at which the switch is drawn at its natural size and every text fits.
+     */
     [[nodiscard]] QSize sizeHint() const override;
+    /**
+     * \brief Smallest size at which every label is drawn whole inside the plate and nothing covers
+     * it, computed from the real metrics of the widget font, the safety guard, the number of
+     * positions and the texts. At this size or larger, no label is clipped or covered (the switch
+     * may be drawn smaller to make room). Below it, the LED and the guard still never cover a
+     * label, but labels may be clipped or extend past the plate.
+     */
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:

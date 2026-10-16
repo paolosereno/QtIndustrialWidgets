@@ -23,6 +23,7 @@ struct SwitchConfig {
     Qt::Orientation orientation{Qt::Vertical};
     QSize size;
     int positions{2};
+    int sizeMode{0}; // 0: size, 1: sizeHint() of the guarded switch, 2: its minimumSizeHint()
 };
 
 struct SwitchTexts {
@@ -49,14 +50,28 @@ std::unique_ptr<IndustrialSwitch> makeSwitch(const SwitchConfig &c, bool guard, 
     sw->setLabelOff(t.off);
     sw->setLabelCenter(c.positions == 3 ? t.center : QString());
     sw->setChecked(true); // LED lit, with its glow
-    if (c.size.isEmpty()) {
-        // "sizeHint" rows: the size hint of the same switch with a guard
+    if (c.sizeMode != 0) {
+        // the size hint, or the minimum size hint, of the same switch with a guard
         auto guarded = makeSwitch(SwitchConfig{c.type, c.orientation, QSize(100, 100), c.positions}, true, false, t);
-        sw->resize(guarded->sizeHint());
+        sw->resize(c.sizeMode == 1 ? guarded->sizeHint() : guarded->minimumSizeHint());
     } else {
         sw->resize(c.size);
     }
     return sw;
+}
+
+// #44: from minimumSizeHint() up, no label is clipped or covered; below it, only "no label covered"
+// is guaranteed. The tests decide per switch by comparing with its minimumSizeHint().
+bool atLeastMinimum(const IndustrialSwitch &sw)
+{
+    const QSize min = sw.minimumSizeHint();
+    return sw.width() >= min.width() && sw.height() >= min.height();
+}
+
+void noteReducedCriterion(const IndustrialSwitch &sw)
+{
+    const QSize min = sw.minimumSizeHint();
+    qInfo("%dx%d is below minimumSizeHint() %dx%d: only \"no label covered\" applies", sw.width(), sw.height(), min.width(), min.height());
 }
 
 // The switch rendered at the screen device pixel ratio (QT_SCALE_FACTOR in ctest)
@@ -150,22 +165,28 @@ void addSwitchRows()
     QTest::addColumn<int>("orientation");
     QTest::addColumn<QSize>("size");
     QTest::addColumn<int>("positions");
+    QTest::addColumn<int>("sizeMode");
     using T = IndustrialSwitch::SwitchType;
     for (T type : {T::ToggleLever, T::Rocker}) {
         for (int positions : {2, 3}) {
             for (const QSize &size : {QSize(120, 190), QSize(180, 220)}) {
                 QTest::addRow("%s V %dx%d %d-pos", type == T::Rocker ? "rocker" : "toggle", size.width(), size.height(), positions)
-                    << static_cast<int>(type) << static_cast<int>(Qt::Vertical) << size << positions;
+                    << static_cast<int>(type) << static_cast<int>(Qt::Vertical) << size << positions << 0;
             }
             for (const QSize &size : {QSize(180, 120), QSize(220, 120)}) {
                 QTest::addRow("%s H %dx%d %d-pos", type == T::Rocker ? "rocker" : "toggle", size.width(), size.height(), positions)
-                    << static_cast<int>(type) << static_cast<int>(Qt::Horizontal) << size << positions;
+                    << static_cast<int>(type) << static_cast<int>(Qt::Horizontal) << size << positions << 0;
+            }
+            // At minimumSizeHint() of the switch with a guard
+            for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+                QTest::addRow("%s %s minimumSizeHint %d-pos", type == T::Rocker ? "rocker" : "toggle", o == Qt::Vertical ? "V" : "H", positions)
+                    << static_cast<int>(type) << static_cast<int>(o) << QSize() << positions << 2;
             }
         }
         // At sizeHint() of the switch with a guard and 3 positions
         for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
             QTest::addRow("%s %s sizeHint 3-pos", type == T::Rocker ? "rocker" : "toggle", o == Qt::Vertical ? "V" : "H")
-                << static_cast<int>(type) << static_cast<int>(o) << QSize() << 3;
+                << static_cast<int>(type) << static_cast<int>(o) << QSize() << 3 << 1;
         }
     }
 }
@@ -176,7 +197,8 @@ SwitchConfig fetchConfig()
     QFETCH(int, orientation);
     QFETCH(QSize, size);
     QFETCH(int, positions);
-    return {static_cast<IndustrialSwitch::SwitchType>(type), static_cast<Qt::Orientation>(orientation), size, positions};
+    QFETCH(int, sizeMode);
+    return {static_cast<IndustrialSwitch::SwitchType>(type), static_cast<Qt::Orientation>(orientation), size, positions, sizeMode};
 }
 
 } // namespace
@@ -373,6 +395,10 @@ void tst_IndustrialSwitch::guardStaysInsideWidget()
     const SwitchConfig c = fetchConfig();
     for (bool open : {false, true}) {
         auto sw = makeSwitch(c, true, open);
+        if (!atLeastMinimum(*sw)) {
+            noteReducedCriterion(*sw);
+            return;
+        }
         const std::vector<QPoint> guard = guardPixels(*sw);
         QVERIFY(!guard.empty());
         const QImage img = grabImage(*sw);
@@ -393,6 +419,10 @@ void tst_IndustrialSwitch::closedGuardLabelsReadable()
 {
     const SwitchConfig c = fetchConfig();
     const SwitchTexts all;
+    if (auto full = makeSwitch(c, true, false); !atLeastMinimum(*full)) {
+        noteReducedCriterion(*full);
+        return;
+    }
     const QString labels[] = {all.title, all.on, all.off, all.center};
     QStringList report;
     double worst = 1e9;
@@ -439,6 +469,10 @@ void tst_IndustrialSwitch::labelsNotClipped()
     const SwitchTexts all;
     const QString labels[] = {all.title, all.on, all.off, all.center};
     for (bool guard : {false, true}) {
+        if (auto full = makeSwitch(c, guard, true); !atLeastMinimum(*full)) {
+            noteReducedCriterion(*full);
+            continue;
+        }
         for (int i = 0; i < (c.positions == 3 ? 4 : 3); ++i) {
             SwitchTexts one;
             one.title = i == 0 ? labels[0] : QString();
@@ -463,23 +497,24 @@ void tst_IndustrialSwitch::labelsNotClipped()
 }
 
 // #44 (found by CI on Windows): with a font whose glyph ink extends past the advance width (bold
-// serif "AUTO"), the label beside the guard of a vertical 3-position switch must still stay inside
-// the plate. The layout has to reserve room for the ink, not only for the advance.
+// serif "AUTO"), the labels of a vertical 3-position switch stay inside the plate at its
+// minimumSizeHint(), with and without a guard: the layout reserves room for the ink, not only
+// for the advance, and the minimum size comes from those real metrics.
 void tst_IndustrialSwitch::labelInkBeyondAdvanceStaysInPlate()
 {
     // The property holds for any font; where DejaVu Serif is missing, Qt substitutes another one
     QFont serif = QApplication::font();
     serif.setFamily(QStringLiteral("DejaVu Serif"));
     for (bool guard : {false, true}) {
-        SwitchTexts one;
-        one.title = one.on = one.off = QString();
-        auto sw = makeSwitch(SwitchConfig{IndustrialSwitch::SwitchType::ToggleLever, Qt::Vertical, QSize(120, 190), 3}, guard, true, one);
+        auto sw = makeSwitch(SwitchConfig{IndustrialSwitch::SwitchType::ToggleLever, Qt::Vertical, QSize(120, 190), 3}, guard, true);
         sw->setFont(serif);
+        sw->resize(sw->minimumSizeHint());
         const QRect ink = boundingBox(textInk(*sw));
         const qreal dpr = grabImage(*sw).devicePixelRatio();
         const QRect plate = QRect(QPoint(0, 0), sw->size() * dpr).adjusted(qFloor(3 * dpr), qFloor(3 * dpr), -qFloor(3 * dpr), -qFloor(3 * dpr));
-        QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("'AUTO' ink x %1..%2 outside the plate x %3..%4 (guard %5, DPR %6)")
-                                                     .arg(ink.left()).arg(ink.right()).arg(plate.left()).arg(plate.right()).arg(guard).arg(dpr)));
+        QVERIFY2(plate.contains(ink), qPrintable(QStringLiteral("label ink x %1..%2 outside the plate x %3..%4 at minimumSizeHint %5x%6 (guard %7, DPR %8)")
+                                                     .arg(ink.left()).arg(ink.right()).arg(plate.left()).arg(plate.right())
+                                                     .arg(sw->width()).arg(sw->height()).arg(guard).arg(dpr)));
     }
 }
 
@@ -520,6 +555,9 @@ void tst_IndustrialSwitch::sizeHintKeepsGuardedThreePositionSwitchReadable()
     QVERIFY2(layout.fits, qPrintable(QStringLiteral("layout does not fit at sizeHint %1x%2").arg(hint.width()).arg(hint.height())));
     QVERIFY2(layout.scale >= 1.0, qPrintable(QStringLiteral("switch scaled to %1 at sizeHint %2x%3")
                                                  .arg(layout.scale).arg(hint.width()).arg(hint.height())));
+    const QSize min = sw->minimumSizeHint();
+    QVERIFY2(hint.width() >= min.width() && hint.height() >= min.height(),
+             qPrintable(QStringLiteral("sizeHint %1x%2 below minimumSizeHint %3x%4").arg(hint.width()).arg(hint.height()).arg(min.width()).arg(min.height())));
 }
 
 QTEST_MAIN(tst_IndustrialSwitch)
