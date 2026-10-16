@@ -4,9 +4,37 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/LedIndicator.h>
+#include <QtGui/QImage>
+#include <QtGui/QPainter>
+#include <QtGui/QPalette>
 #include <QtGui/QPixmap>
 
 using namespace QtIndustrialWidgets;
+
+namespace {
+
+// The LED with a label rendered on a known background, at the screen device pixel ratio
+// (QT_SCALE_FACTOR in ctest), without the window background
+QImage renderLed(LedIndicator &led)
+{
+    const qreal dpr = led.devicePixelRatioF();
+    QImage img((QSizeF(led.size()) * dpr).toSize(), QImage::Format_ARGB32);
+    img.setDevicePixelRatio(dpr);
+    img.fill(QColor(30, 36, 48));
+    QPainter p(&img);
+    led.render(&p, QPoint(), QRegion(), QWidget::RenderFlags());
+    p.end();
+    return img;
+}
+
+void setPaletteText(LedIndicator &led, const QColor &color)
+{
+    QPalette pal = led.palette();
+    pal.setColor(QPalette::WindowText, color);
+    led.setPalette(pal);
+}
+
+} // namespace
 
 class tst_LedIndicator : public QObject
 {
@@ -21,6 +49,9 @@ private Q_SLOTS:
     void clickableMouseInteraction();
     void renderOffscreen();
     void extremeResizeNoCrash();
+    void labelUsesTextColor();
+    void textColorDefaultFollowsPalette();
+    void textColorSignal();
 };
 
 void tst_LedIndicator::defaultValues()
@@ -125,6 +156,66 @@ void tst_LedIndicator::extremeResizeNoCrash()
     QPixmap pixLarge(led.size());
     led.render(&pixLarge);
     QVERIFY(!pixLarge.isNull());
+}
+
+// #45: the label is drawn in textColor. The same colour reached two ways must give the same image:
+// A = palette WindowText #ff00ff with textColor unset, B = palette WindowText #00ff00 with textColor
+// #ff00ff. Only the label uses WindowText, so B must equal A exactly. A must differ from the render
+// with WindowText #00ff00 (the label is there and drawn in that colour).
+void tst_LedIndicator::labelUsesTextColor()
+{
+    LedIndicator led(QColor(46, 204, 113));
+    led.setLabelText(QStringLiteral("RUN"));
+    led.setOn(true);
+    led.resize(140, 56);
+
+    setPaletteText(led, QColor(255, 0, 255));
+    const QImage a = renderLed(led);
+    setPaletteText(led, QColor(0, 255, 0));
+    const QImage green = renderLed(led);
+    led.setTextColor(QColor(255, 0, 255));
+    const QImage b = renderLed(led);
+
+    QVERIFY(a != green);
+    QVERIFY2(b == a, "the label is not drawn in textColor (render differs from the same colour via the palette)");
+}
+
+// #45: by default (invalid textColor) the label follows QPalette::WindowText, as before; setting an
+// invalid colour again restores that
+void tst_LedIndicator::textColorDefaultFollowsPalette()
+{
+    LedIndicator led(QColor(46, 204, 113));
+    led.setLabelText(QStringLiteral("RUN"));
+    led.resize(140, 56);
+    QVERIFY(!led.textColor().isValid());
+
+    setPaletteText(led, QColor(255, 0, 255));
+    const QImage magenta = renderLed(led);
+    setPaletteText(led, QColor(0, 255, 0));
+    const QImage initial = renderLed(led);
+    QVERIFY2(initial != magenta, "the label does not follow QPalette::WindowText");
+
+    led.setTextColor(Qt::magenta);
+    QVERIFY(renderLed(led) != initial);
+    led.setTextColor(QColor());
+    QVERIFY(!led.textColor().isValid());
+    QCOMPARE(renderLed(led), initial);
+}
+
+// #45: appearanceChanged is emitted once per change of textColor, not when the same colour is set
+void tst_LedIndicator::textColorSignal()
+{
+    LedIndicator led;
+    QSignalSpy spy(&led, &LedIndicator::appearanceChanged);
+    led.setTextColor(Qt::red);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(led.textColor(), QColor(Qt::red));
+    led.setTextColor(Qt::red);
+    QCOMPARE(spy.count(), 1);
+    led.setTextColor(QColor());
+    QCOMPARE(spy.count(), 2);
+    led.setTextColor(QColor());
+    QCOMPARE(spy.count(), 2);
 }
 
 QTEST_MAIN(tst_LedIndicator)
