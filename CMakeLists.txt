@@ -27,7 +27,8 @@ elseif(MSVC)
     add_compile_options(/W4 /permissive-)
 endif()
 
-# Qt Setup: Supports Qt 6 (primary) and Qt 5.15
+# Qt Setup: supported Qt 6.2+. Qt 5.15 is not supported at the moment (see #53): it is not built
+# or tested, although find_package still accepts it
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
 

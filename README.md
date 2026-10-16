@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 # QtIndustrialWidgets ⚡
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
-[![Qt 6 & 5.15](https://img.shields.io/badge/Qt-6.x%20%7C%205.15-brightgreen.svg)](https://www.qt.io/)
+[![Qt 6.2+](https://img.shields.io/badge/Qt-6.2%2B-brightgreen.svg)](https://www.qt.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
@@ -45,8 +45,8 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
   Paints seamlessly across system light and dark themes using `palette()` and configurable styling properties.
 - **Strict Architectural Separation**:
   The core library `QtIndustrialWidgets` depends **only** on `Qt::Core`, `Qt::Gui`, and `Qt::Widgets`. The Qt Designer plugin is isolated in a separate module (`QtIndustrialWidgetsPlugin`), guaranteeing zero unwanted Designer dependencies in production applications.
-- **Standard C++17 & Dual Qt 6 / Qt 5.15 Support**:
-  Designed for modern C++ standards and compatible with Qt 6.x and Qt 5.15 LTS.
+- **Standard C++17 & Qt 6**:
+  Designed for modern C++ standards and Qt 6.2+. Qt 5.15 is not supported at the moment, see [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
 
 ---
 
@@ -170,7 +170,7 @@ High-contrast circular arc indicator composed of discrete curved LED segments.
 ### Prerequisites
 - CMake 3.16 or newer
 - C++17 compiler (GCC 9+, Clang 10+, MSVC 2019+)
-- Qt 6 (6.2+) or Qt 5 (5.15) (`Core`, `Gui`, `Widgets`, and optionally `Designer` / `UiPlugin`)
+- Qt 6.2+ (`Core`, `Gui`, `Widgets`, and optionally `Designer` / `UiPlugin`). Qt 5.15 is not supported at the moment, see [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
 - Doxygen & Graphviz (optional, for generating HTML API documentation and class diagrams)
 
 ### Quick Build (Linux / macOS / Windows)
