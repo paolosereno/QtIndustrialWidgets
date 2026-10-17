@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/LinearGauge.h>
 
+#include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 
@@ -15,6 +16,7 @@
 #include <QtGui/QLinearGradient>
 #include <QtCore/QStringList>
 #include <QtCore/QtMath>
+#include <QtWidgets/QApplication>
 #include <algorithm>
 #include <cmath>
 
@@ -401,20 +403,18 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
     if (d_ptr->m_orientation == Qt::Vertical) {
         // Top area: optional digital display
         double topPadding = d_ptr->m_digitalDisplayVisible ? 36.0 : 16.0;
-        double bottomPadding = 16.0;
         double tubeWidth = std::clamp(w * 0.16, 10.0, 26.0);
 
         if (d_ptr->m_thermometerMode) {
             d_ptr->m_bulbRadius = tubeWidth * 1.35;
-            bottomPadding = d_ptr->m_bulbRadius * 2.0 + 12.0;
         } else {
             d_ptr->m_bulbRadius = 0.0;
         }
 
         double tubeX = d_ptr->m_scaleVisible ? (w * 0.32 - tubeWidth * 0.5) : (w * 0.5 - tubeWidth * 0.5);
         double tubeTop = topPadding;
-        double tubeBottom = h - bottomPadding;
-        double tubeHeight = std::max(10.0, tubeBottom - tubeTop);
+        // #37 point 2: the scale length comes from the helper shared with the tests
+        double tubeHeight = internal::linearGaugeScaleLength(true, w, h, d_ptr->m_thermometerMode, d_ptr->m_digitalDisplayVisible);
 
         d_ptr->m_tubeRect = QRectF(tubeX, tubeTop, tubeWidth, tubeHeight);
         d_ptr->m_bulbCenter = QPointF(tubeX + tubeWidth * 0.5, h - d_ptr->m_bulbRadius - 8.0);
@@ -460,10 +460,27 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             }
 
             // Major ticks and labels
-            int fontSize = std::clamp(static_cast<int>(h * 0.04), 8, 12);
-            QFont f = font(); // #51: the widget font, not the application font of the pixmap painter
-            f.setPixelSize(fontSize);
-            f.setBold(true);
+            // #37 point 1 / #51: the largest size between 8 px and the height-derived one at which at
+            // least every other label is drawn; both limits scaled by the widget font (rule (b))
+            const QStringList labelTexts = d_ptr->majorLabelTexts();
+            const double fontScale = internal::fontScale(font(), QApplication::font());
+            auto labelFontAt = [this](int px) {
+                QFont lf = font(); // #51: the widget font, not the application font of the pixmap painter
+                lf.setPixelSize(px);
+                lf.setBold(true);
+                return lf;
+            };
+            const int fontSize = internal::chooseLabelPixelSize(
+                internal::scalePixelSize(internal::linearGaugeBaseLabelPixelSize(true, h), fontScale),
+                internal::scalePixelSize(8, fontScale), d_ptr->m_tubeRect.height(),
+                [&](int px) {
+                    const QFontMetricsF m(labelFontAt(px));
+                    std::vector<double> e;
+                    for (const QString &t : labelTexts) e.push_back(m.boundingRect(t).height());
+                    return e;
+                },
+                [&](int px) { return internal::scaleLabelMinGap(QFontMetricsF(labelFontAt(px)).height()); });
+            QFont f = labelFontAt(fontSize);
             painter.setFont(f);
 
             painter.setPen(QPen(d_ptr->m_scaleColor, 1.6));
@@ -477,7 +494,7 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             // Labels: only those that keep the minimum gap, the end ones inside the scale.
             // Positions along the scale run upwards from the tube bottom.
             const QFontMetricsF fm(f);
-            const QStringList texts = d_ptr->majorLabelTexts();
+            const QStringList &texts = labelTexts;
             std::vector<double> extents;
             for (const QString &s : texts) {
                 extents.push_back(fm.boundingRect(s).height());
@@ -495,7 +512,8 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
 
         // Digital display static pod (top)
         if (d_ptr->m_digitalDisplayVisible) {
-            QRectF podRect(6.0, 6.0, w - 12.0, 24.0);
+            const internal::GaugeRect pod = internal::linearGaugeDisplayRect(true, w, h);
+            QRectF podRect(pod.x, pod.y, pod.w, pod.h);
             painter.setPen(QPen(d_ptr->m_bezelColor.darker(140), 1.0));
             painter.setBrush(QColor(16, 20, 26, 220));
             painter.drawRoundedRect(podRect, 3.0, 3.0);
@@ -503,7 +521,6 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
     } else {
         // Horizontal orientation
         double leftPadding = 16.0;
-        double rightPadding = d_ptr->m_digitalDisplayVisible ? 55.0 : 16.0;
         double tubeHeight = std::clamp(h * 0.16, 10.0, 26.0);
 
         if (d_ptr->m_thermometerMode) {
@@ -515,8 +532,8 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
 
         double tubeY = d_ptr->m_scaleVisible ? (h * 0.40 - tubeHeight * 0.5) : (h * 0.5 - tubeHeight * 0.5);
         double tubeLeft = leftPadding;
-        double tubeRight = w - rightPadding;
-        double tubeWidth = std::max(10.0, tubeRight - tubeLeft);
+        // #37 point 2: the scale length comes from the helper shared with the tests
+        double tubeWidth = internal::linearGaugeScaleLength(false, w, h, d_ptr->m_thermometerMode, d_ptr->m_digitalDisplayVisible);
 
         d_ptr->m_tubeRect = QRectF(tubeLeft, tubeY, tubeWidth, tubeHeight);
         d_ptr->m_bulbCenter = QPointF(d_ptr->m_bulbRadius + 8.0, tubeY + tubeHeight * 0.5);
@@ -559,10 +576,27 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
                 }
             }
 
-            int fontSize = std::clamp(static_cast<int>(h * 0.12), 8, 12);
-            QFont f = font(); // #51: the widget font, not the application font of the pixmap painter
-            f.setPixelSize(fontSize);
-            f.setBold(true);
+            // #37 point 1 / #51: the largest size between 8 px and the height-derived one at which at
+            // least every other label is drawn; both limits scaled by the widget font (rule (b))
+            const QStringList labelTexts = d_ptr->majorLabelTexts();
+            const double fontScale = internal::fontScale(font(), QApplication::font());
+            auto labelFontAt = [this](int px) {
+                QFont lf = font(); // #51: the widget font, not the application font of the pixmap painter
+                lf.setPixelSize(px);
+                lf.setBold(true);
+                return lf;
+            };
+            const int fontSize = internal::chooseLabelPixelSize(
+                internal::scalePixelSize(internal::linearGaugeBaseLabelPixelSize(false, h), fontScale),
+                internal::scalePixelSize(8, fontScale), d_ptr->m_tubeRect.width(),
+                [&](int px) {
+                    const QFontMetricsF m(labelFontAt(px));
+                    std::vector<double> e;
+                    for (const QString &t : labelTexts) e.push_back(m.boundingRect(t).width());
+                    return e;
+                },
+                [&](int px) { return internal::scaleLabelMinGap(QFontMetricsF(labelFontAt(px)).height()); });
+            QFont f = labelFontAt(fontSize);
             painter.setFont(f);
 
             painter.setPen(QPen(d_ptr->m_scaleColor, 1.6));
@@ -575,7 +609,7 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             // Labels: only those that keep the minimum gap, the end ones inside the scale
             // (the last one no longer reaches under the digital display)
             const QFontMetricsF fm(f);
-            const QStringList texts = d_ptr->majorLabelTexts();
+            const QStringList &texts = labelTexts;
             std::vector<double> extents;
             for (const QString &s : texts) {
                 extents.push_back(fm.boundingRect(s).width());
@@ -594,7 +628,8 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
 
         // Digital display static pod (right)
         if (d_ptr->m_digitalDisplayVisible) {
-            QRectF podRect(w - rightPadding + 4.0, 6.0, rightPadding - 10.0, h - 12.0);
+            const internal::GaugeRect pod = internal::linearGaugeDisplayRect(false, w, h);
+            QRectF podRect(pod.x, pod.y, pod.w, pod.h);
             painter.setPen(QPen(d_ptr->m_bezelColor.darker(140), 1.0));
             painter.setBrush(QColor(16, 20, 26, 220));
             painter.drawRoundedRect(podRect, 3.0, 3.0);
@@ -668,10 +703,11 @@ void LinearGauge::paintEvent(QPaintEvent *)
 
         // Digital display readout
         if (d_ptr->m_digitalDisplayVisible) {
-            QRectF podRect(6.0, 6.0, width() - 12.0, 24.0);
+            const internal::GaugeRect pod = internal::linearGaugeDisplayRect(true, width(), height());
+            QRectF podRect(pod.x, pod.y, pod.w, pod.h);
             QString txt = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit);
             QFont f = font();
-            f.setPixelSize(12);
+            f.setPixelSize(internal::scalePixelSize(12, internal::fontScale(font(), QApplication::font())));
             f.setBold(true);
             painter.setFont(f);
             painter.setPen(activeColor);
@@ -721,11 +757,11 @@ void LinearGauge::paintEvent(QPaintEvent *)
 
         // Digital display readout
         if (d_ptr->m_digitalDisplayVisible) {
-            double rightPadding = 55.0;
-            QRectF podRect(width() - rightPadding + 4.0, 6.0, rightPadding - 10.0, height() - 12.0);
+            const internal::GaugeRect pod = internal::linearGaugeDisplayRect(false, width(), height());
+            QRectF podRect(pod.x, pod.y, pod.w, pod.h);
             QString txt = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
             QFont f = font();
-            f.setPixelSize(12);
+            f.setPixelSize(internal::scalePixelSize(12, internal::fontScale(font(), QApplication::font())));
             f.setBold(true);
             painter.setFont(f);
             painter.setPen(activeColor);

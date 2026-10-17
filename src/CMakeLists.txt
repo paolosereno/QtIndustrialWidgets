@@ -119,6 +119,27 @@ set_target_properties(RadialGaugeLayout PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(FontScale OBJECT
+    internal/FontScale.cpp
+    internal/FontScale.h
+)
+
+target_include_directories(FontScale
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(FontScale
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+)
+
+set_target_properties(FontScale PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(LevelMeterLayout OBJECT
     internal/LevelMeterLayout.cpp
     internal/LevelMeterLayout.h
@@ -159,6 +180,7 @@ add_library(QtIndustrialWidgets SHARED
     $<TARGET_OBJECTS:RadialGaugeLayout>
     $<TARGET_OBJECTS:IndustrialSwitchLayout>
     $<TARGET_OBJECTS:LevelMeterLayout>
+    $<TARGET_OBJECTS:FontScale>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h

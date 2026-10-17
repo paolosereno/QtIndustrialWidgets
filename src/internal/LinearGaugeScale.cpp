@@ -80,5 +80,48 @@ ScaleLabelLayout layoutScaleLabels(const std::vector<double> &extents, double sc
     return layout;
 }
 
+int linearGaugeBaseLabelPixelSize(bool vertical, double height)
+{
+    return std::clamp(static_cast<int>(finiteOrZero(height) * (vertical ? 0.04 : 0.12)), 8, 12);
+}
+
+int chooseLabelPixelSize(int preferredPx, int minimumPx, double scaleLength,
+                         const std::function<std::vector<double>(int)> &extentsAt,
+                         const std::function<double(int)> &minGapAt)
+{
+    if (!extentsAt || !minGapAt) {
+        return preferredPx;
+    }
+    for (int px = preferredPx; px >= minimumPx && px > 0; --px) {
+        if (layoutScaleLabels(extentsAt(px), scaleLength, minGapAt(px)).step <= 2) {
+            return px;
+        }
+    }
+    return preferredPx;
+}
+
+double linearGaugeScaleLength(bool vertical, double width, double height, bool thermometer, bool displayVisible)
+{
+    if (vertical) {
+        const double tubeWidth = std::clamp(width * 0.16, 10.0, 26.0);
+        const double top = displayVisible ? 36.0 : 16.0;
+        const double bottom = thermometer ? tubeWidth * 1.35 * 2.0 + 12.0 : 16.0;
+        return std::max(10.0, (height - bottom) - top);
+    }
+    const double tubeHeight = std::clamp(height * 0.16, 10.0, 26.0);
+    const double left = thermometer ? tubeHeight * 1.35 * 2.0 + 12.0 : 16.0;
+    const double right = displayVisible ? 55.0 : 16.0;
+    return std::max(10.0, (width - right) - left);
+}
+
+GaugeRect linearGaugeDisplayRect(bool vertical, double width, double height)
+{
+    if (vertical) {
+        return {6.0, 6.0, width - 12.0, 24.0};
+    }
+    // The tube leaves 55 px on the right for the display
+    return {width - 55.0 + 4.0, 6.0, 55.0 - 10.0, height - 12.0};
+}
+
 } // namespace internal
 } // namespace QtIndustrialWidgets

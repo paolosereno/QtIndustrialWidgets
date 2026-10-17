@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/StripChart.h>
 
+#include "internal/FontScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/StripChart_p.h"
 #include "internal/M4Decimator.h"
@@ -18,6 +19,7 @@
 #include <QtCore/QtMath>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QVarLengthArray>
+#include <QtWidgets/QApplication>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -939,10 +941,12 @@ void StripChart::updateAutoScaling()
 
 QRectF StripChart::plotArea() const
 {
-    double leftMargin = 42.0; // Room for Y-axis labels
+    // #51 rule (b): the room for the labels and the legend grows with the widget font
+    const double scale = internal::fontScale(font(), QApplication::font());
+    double leftMargin = 42.0 * scale; // Room for Y-axis labels
     double rightMargin = 12.0;
-    double topMargin = d_ptr->m_legendVisible ? 30.0 : 12.0;
-    double bottomMargin = (d_ptr->m_xAxisMode == XAxisMode::Time) ? 26.0 : 16.0;
+    double topMargin = (d_ptr->m_legendVisible ? 30.0 : 12.0) * scale;
+    double bottomMargin = ((d_ptr->m_xAxisMode == XAxisMode::Time) ? 26.0 : 16.0) * scale;
 
     double w = std::max(10.0, width() - leftMargin - rightMargin);
     double h = std::max(10.0, height() - topMargin - bottomMargin);
@@ -1015,7 +1019,8 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
         QPen fineGridPen(d_ptr->m_gridColor, 1.0, Qt::DotLine);
         QPen solidGridPen(d_ptr->m_gridColor.lighter(130), 1.0, Qt::SolidLine);
 
-        int fontSize = 9;
+        // #51 rule (b): the label font follows the widget font size
+        const int fontSize = internal::scalePixelSize(9, internal::fontScale(this->font(), QApplication::font()));
         QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
         font.setPixelSize(fontSize);
         painter.setFont(font);
@@ -1033,7 +1038,7 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
             // shorter than W_dev ns is shown as a W_dev ns window)
             const int widthDev = std::max(1, static_cast<int>(std::round(plotRect.width() * dpr)));
             const qint64 spanNs = internal::effectiveTimeSpan(d_ptr->m_timeSpan.count(), widthDev);
-            auto tickResult = internal::computeTimeTicks(0, spanNs, plotRect.width(), 60.0);
+            auto tickResult = internal::computeTimeTicks(0, spanNs, plotRect.width(), 60.0 * internal::fontScale(this->font(), QApplication::font()));
 
             for (const auto &tick : tickResult.ticks) {
                 double frac = static_cast<double>(tick.tNs) / static_cast<double>(spanNs);
@@ -1135,7 +1140,7 @@ void StripChart::paintEvent(QPaintEvent *)
             if (d_ptr->m_timeLabelFormat == TimeLabelFormat::Relative) {
                 // Same ticks as the static grid: effective window length
                 const qint64 windowNs = internal::effectiveTimeSpan(spanNs, W_dev);
-                auto tickResult = internal::computeTimeTicks(0, windowNs, plotRect.width(), 60.0);
+                auto tickResult = internal::computeTimeTicks(0, windowNs, plotRect.width(), 60.0 * internal::fontScale(this->font(), QApplication::font()));
                 d_ptr->lastFrame.xTicks.reserve(tickResult.ticks.size());
                 for (const auto &tick : tickResult.ticks) {
                     double frac = static_cast<double>(tick.tNs) / static_cast<double>(windowNs);
@@ -1154,7 +1159,7 @@ void StripChart::paintEvent(QPaintEvent *)
                 }
                 auto win = internal::computeTimeWindow(tLatest, spanNs, W_dev);
                 const internal::PlotXMapping tickMap = internal::makePlotXMapping(win.grid, win.kStart, plotLeftDevExact);
-                auto tickResult = internal::computeTimeTicks(win.tStart, win.tEnd, plotRect.width(), 60.0);
+                auto tickResult = internal::computeTimeTicks(win.tStart, win.tEnd, plotRect.width(), 60.0 * internal::fontScale(this->font(), QApplication::font()));
                 d_ptr->lastFrame.xTicks.reserve(tickResult.ticks.size());
                 for (const auto &tick : tickResult.ticks) {
                     double x = toLogicalX(tickMap.positionDev(tick.tNs));
@@ -1206,10 +1211,11 @@ void StripChart::paintEvent(QPaintEvent *)
         qint64 tEnd = win.tEnd;
         qint64 tStart = win.tStart;
 
-        auto tickResult = internal::computeTimeTicks(tStart, tEnd, plotRect.width(), 60.0);
+        auto tickResult = internal::computeTimeTicks(tStart, tEnd, plotRect.width(), 60.0 * internal::fontScale(this->font(), QApplication::font()));
 
         QPen fineGridPen(d_ptr->m_gridColor, 1.0, Qt::DotLine);
-        int fontSize = 9;
+        // #51 rule (b): the label font follows the widget font size
+        const int fontSize = internal::scalePixelSize(9, internal::fontScale(this->font(), QApplication::font()));
         QFont font = painter.font();
         font.setPixelSize(fontSize);
         painter.setFont(font);
@@ -1703,7 +1709,7 @@ void StripChart::paintEvent(QPaintEvent *)
     // 3. Channel Legend and Real-Time Readouts (Top Bar)
     if (d_ptr->m_legendVisible && !d_ptr->m_channels.empty()) {
         double curX = plotRect.left() + 4.0;
-        int fontSize = 10;
+        const int fontSize = internal::scalePixelSize(10, internal::fontScale(this->font(), QApplication::font()));
         QFont f = font();
         f.setPixelSize(fontSize);
         f.setBold(true);

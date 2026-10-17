@@ -4,11 +4,14 @@
 
 #include "QtIndustrialWidgets/Compass.h"
 
+#include "internal/FontScale.h"
+
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
 #include <QtGui/QMouseEvent>
 #include <QtCore/QtMath>
+#include <QtWidgets/QApplication>
 #include <algorithm>
 #include <cmath>
 
@@ -411,17 +414,19 @@ void Compass::renderCompassCard(const QSize &size)
     const double majorTickR = radius - 3.0 - (radius * 0.12);
     const double textR      = radius - 3.0 - (radius * 0.22);
 
+    // #51 rule (b): geometry-derived sizes scaled by the widget font
+    const double fontScale = internal::fontScale(font(), QApplication::font());
     QFont cardinalFont = font();
     cardinalFont.setBold(true);
-    cardinalFont.setPointSizeF(std::clamp(radius * 0.13, 8.0, 22.0));
+    cardinalFont.setPointSizeF(internal::scalePointSize(std::clamp(radius * 0.13, 8.0, 22.0), fontScale));
 
     QFont intercardinalFont = font();
     intercardinalFont.setBold(true);
-    intercardinalFont.setPointSizeF(std::clamp(radius * 0.08, 6.5, 14.0));
+    intercardinalFont.setPointSizeF(internal::scalePointSize(std::clamp(radius * 0.08, 6.5, 14.0), fontScale));
 
     QFont numberFont = font();
     numberFont.setBold(false);
-    numberFont.setPointSizeF(std::clamp(radius * 0.07, 6.0, 12.0));
+    numberFont.setPointSizeF(internal::scalePointSize(std::clamp(radius * 0.07, 6.0, 12.0), fontScale));
 
     // Outer track circle line
     p.setPen(QPen(QColor(d_ptr->m_textColor.red(), d_ptr->m_textColor.green(), d_ptr->m_textColor.blue(), 60), 1.0));
@@ -700,7 +705,7 @@ void Compass::paintEvent(QPaintEvent *)
         // Digital Heading Readout text (e.g. "045°")
         QFont podFont = font();
         podFont.setBold(true);
-        podFont.setPointSizeF(std::clamp(podH * 0.48, 8.0, 20.0));
+        podFont.setPointSizeF(internal::scalePointSize(std::clamp(podH * 0.48, 8.0, 20.0), internal::fontScale(font(), QApplication::font())));
         painter.setFont(podFont);
         painter.setPen(d_ptr->m_textColor);
 
