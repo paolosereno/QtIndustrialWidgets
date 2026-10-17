@@ -5,6 +5,8 @@
 #include "FontScale.h"
 
 #include <QtGui/QFontInfo>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
 
 #include <algorithm>
 #include <cmath>
@@ -12,14 +14,31 @@
 namespace QtIndustrialWidgets {
 namespace internal {
 
+double effectivePixelSize(const QFont &font)
+{
+    const int resolved = QFontInfo(font).pixelSize();
+    if (resolved > 0) {
+        return resolved;
+    }
+    if (font.pixelSize() > 0) {
+        return font.pixelSize();
+    }
+    if (font.pointSizeF() > 0.0) {
+        const QScreen *screen = QGuiApplication::primaryScreen();
+        const double dpi = screen ? screen->logicalDotsPerInchY() : 96.0;
+        return font.pointSizeF() * dpi / 72.0;
+    }
+    return -1.0;
+}
+
 double fontScale(const QFont &widgetFont, const QFont &applicationFont)
 {
-    const int widgetPx = QFontInfo(widgetFont).pixelSize();
-    const int applicationPx = QFontInfo(applicationFont).pixelSize();
-    if (widgetPx <= 0 || applicationPx <= 0 || widgetPx == applicationPx) {
+    const double widgetPx = effectivePixelSize(widgetFont);
+    const double applicationPx = effectivePixelSize(applicationFont);
+    if (!(widgetPx > 0.0) || !(applicationPx > 0.0) || widgetPx == applicationPx) {
         return 1.0;
     }
-    return static_cast<double>(widgetPx) / static_cast<double>(applicationPx);
+    return widgetPx / applicationPx;
 }
 
 int scalePixelSize(int px, double scale)

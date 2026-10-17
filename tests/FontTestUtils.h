@@ -57,7 +57,14 @@ inline int differingPixelCount(const QImage &a, const QImage &b)
 inline QFont doubledFont()
 {
     QFont f = QApplication::font();
-    f.setPixelSize(2 * QFontInfo(QApplication::font()).pixelSize());
+    const int resolved = QFontInfo(f).pixelSize();
+    if (resolved > 0) {
+        f.setPixelSize(2 * resolved);
+    } else if (f.pixelSize() > 0) {
+        f.setPixelSize(2 * f.pixelSize()); // no installed font (Windows offscreen CI): the requested size
+    } else {
+        f.setPointSizeF(2.0 * f.pointSizeF());
+    }
     return f;
 }
 

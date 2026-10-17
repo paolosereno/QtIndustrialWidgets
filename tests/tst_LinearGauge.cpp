@@ -21,6 +21,7 @@
 #include <algorithm>
 
 #include <cmath>
+#include <functional>
 #include <limits>
 
 using namespace QtIndustrialWidgets;
@@ -676,8 +677,7 @@ void tst_LinearGauge::textFollowsWidgetFontSize()
 // #37 point 1 / #51 (rule R1b): the horizontal label font is the largest pixel size between 8 px and
 // the height-derived one with which at least every other label is drawn. At its size hint, 280x100,
 // a horizontal 0-250 gauge drew 12 px labels and only 0 / 125 / 250 (#37); with DejaVu Sans it must
-// draw 6 labels (0 / 50 / ... / 250). Labels are counted as runs of label-coloured pixels along the
-// scale, grouped with the largest gap inside one label drawn alone (8-12 px).
+// draw 6 labels (0 / 50 / ... / 250). Labels are counted as clusters of label-coloured pixels.
 void tst_LinearGauge::sizeHintShowsEveryOtherLabel()
 {
     QFont font = QApplication::font();
@@ -692,20 +692,65 @@ void tst_LinearGauge::sizeHintShowsEveryOtherLabel()
     gauge.setTextColor(QColor::fromRgb(kLabelColor));
     gauge.setScaleColor(QColor::fromRgb(kTickColor));
     gauge.resize(280, 100);
-    const QImage img = gauge.grab().toImage();
+    const QImage img = gauge.grab().toImage().convertToFormat(QImage::Format_ARGB32);
     const qreal dpr = img.devicePixelRatio();
-    const QRgb background = labelBackground(img);
-    double innerGap = 0.0;
-    for (int px = 8; px <= 12; ++px) {
-        QFont f = font;
-        f.setPixelSize(px);
-        f.setBold(true);
-        for (int i = 0; i <= gauge.majorTicks(); ++i) {
-            innerGap = std::max(innerGap, referenceInk(scaleLabelText(250.0 * i / gauge.majorTicks(), 0), f, Qt::Horizontal, dpr, background).maxInnerGap);
+    // Labels counted as 2D clusters of label-coloured pixels (the #50 criterion): two pixels belong
+    // to the same label when fewer than (4 - 1) x DPR free device pixels separate them (4 px is the
+    // smallest scaleLabelMinGap(), at the 8 px floor). A 1D projection does not work without fonts:
+    // the boxes drawn for missing glyphs are hollow, so the gap inside a box is as wide as the box.
+    std::vector<QPoint> ink;
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (isLabelPixel(img.pixel(x, y))) ink.push_back(QPoint(x, y));
         }
     }
-    const QVector<Run> labels = groupIntoLabels(runsAlong(img, Qt::Horizontal, -1.0, isLabelPixel), innerGap + 0.5);
-    QVERIFY2(labels.size() == 6, qPrintable(QStringLiteral("%1 labels drawn at the size hint 280x100, 6 expected").arg(labels.size())));
+    const double threshold = 3.0 * dpr;
+    const int reach = static_cast<int>(std::ceil(threshold));
+    std::vector<int> parent(ink.size());
+    for (size_t i = 0; i < parent.size(); ++i) parent[i] = static_cast<int>(i);
+    std::function<int(int)> root = [&](int i) { return parent[static_cast<size_t>(i)] == i ? i : (parent[static_cast<size_t>(i)] = root(parent[static_cast<size_t>(i)])); };
+    QHash<qint64, int> at;
+    for (size_t i = 0; i < ink.size(); ++i) at.insert((static_cast<qint64>(ink[i].y()) << 32) | static_cast<quint32>(ink[i].x()), static_cast<int>(i));
+    for (size_t i = 0; i < ink.size(); ++i) {
+        for (int dy = -reach; dy <= reach; ++dy) {
+            for (int dx = -reach; dx <= reach; ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) - 1 >= threshold) continue;
+                const auto it = at.constFind((static_cast<qint64>(ink[i].y() + dy) << 32) | static_cast<quint32>(ink[i].x() + dx));
+                if (it != at.constEnd()) parent[static_cast<size_t>(root(static_cast<int>(i)))] = root(it.value());
+            }
+        }
+    }
+    QSet<int> roots;
+    for (size_t i = 0; i < ink.size(); ++i) roots.insert(root(static_cast<int>(i)));
+    struct { qsizetype size() const { return n; } qsizetype n; } labels{roots.size()};
+    // With DejaVu Sans resolved: 6 labels (#37). With another real font: the count R1b predicts from
+    // its metrics. Without any installed font (Windows offscreen CI): see below
+    int expected = 6;
+    if (QFontInfo(font).family() != QStringLiteral("DejaVu Sans")) {
+        auto fontAt = [&](int px) { QFont f = font; f.setPixelSize(px); f.setBold(true); return f; };
+        QStringList texts;
+        for (int i = 0; i <= gauge.majorTicks(); ++i) texts << scaleLabelText(250.0 * i / gauge.majorTicks(), 0);
+        auto extentsAt = [&](int px) {
+            const QFontMetricsF m(fontAt(px));
+            std::vector<double> e;
+            for (const QString &t : texts) e.push_back(m.boundingRect(t).width());
+            return e;
+        };
+        auto gapAt = [&](int px) { return internal::scaleLabelMinGap(QFontMetricsF(fontAt(px)).height()); };
+        const double length = internal::linearGaugeScaleLength(false, 280.0, 100.0, false, true);
+        const int px = internal::chooseLabelPixelSize(internal::linearGaugeBaseLabelPixelSize(false, 100.0), 8, length, extentsAt, gapAt);
+        const internal::ScaleLabelLayout predicted = internal::layoutScaleLabels(extentsAt(px), length, gapAt(px));
+        if (QFontInfo(font).family().isEmpty()) {
+            // No installed font at all: glyphs are hollow boxes that do not follow the metrics and can
+            // split a label into several clusters, so the pixels cannot be counted; check the rule on
+            // the real metrics instead (every other label at the size it picks)
+            QVERIFY2(predicted.step <= 2, qPrintable(QStringLiteral("R1b picked %1 px with step %2").arg(px).arg(predicted.step)));
+            return;
+        }
+        expected = static_cast<int>(predicted.labels.size());
+    }
+    QVERIFY2(labels.size() == expected, qPrintable(QStringLiteral("%1 labels drawn at the size hint 280x100, %2 expected (font %3)")
+                                                      .arg(labels.size()).arg(expected).arg(QFontInfo(font).family())));
 }
 
 // #37 point 1 / #51 rule R1b: the largest size between the minimum and the preferred one at which
@@ -745,12 +790,16 @@ void tst_LinearGauge::fontScaleFromEffectiveSize()
 {
     const QFont app = QApplication::font();
     QCOMPARE(internal::fontScale(app, app), 1.0);
+    const double appPx = internal::effectivePixelSize(app);
+    QVERIFY(appPx > 0.0);
+    // A font set by pixel size (pointSize() == -1) at twice the application font's effective size
     QFont pixel = app;
-    pixel.setPixelSize(2 * QFontInfo(app).pixelSize());
+    pixel.setPixelSize(static_cast<int>(std::lround(2.0 * appPx)));
     QCOMPARE(pixel.pointSize(), -1);
-    QCOMPARE(internal::fontScale(pixel, app), 2.0);
+    QVERIFY(std::abs(internal::fontScale(pixel, app) - 2.0) < 0.1);
+    // A font set by point size, 1.5 times the application's
     QFont point = app;
-    point.setPointSizeF(QFontInfo(app).pointSizeF() * 1.5);
+    point.setPointSizeF(app.pointSizeF() * 1.5);
     QVERIFY(std::abs(internal::fontScale(point, app) - 1.5) < 0.1);
     QCOMPARE(internal::scalePixelSize(9, 1.0), 9);
     QCOMPARE(internal::scalePixelSize(9, 2.0), 18);
