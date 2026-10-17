@@ -421,6 +421,26 @@ void tst_AnalysisChart::gapsMatchStripChart_data()
 
     // The same irregular data with a user threshold
     QTest::addRow("user threshold") << t2 << v2 << qint64(5000000);
+
+    // Jittered ~1 ms steps (0.8 .. 1.2 ms), a 25 ms hole, then the rate drops to 10 ms for the last
+    // 5 steps. The automatic threshold depends on the EMA weights: 0.9 / 0.1 ends near 4.7 ms
+    // (threshold ~19 ms, the hole breaks the trace), 0.5 / 0.5 would end near 9.7 ms (threshold
+    // ~39 ms, no break), so the row fails if the EMA differs from StripChart's
+    std::vector<qint64> t3;
+    std::vector<double> v3;
+    qint64 at = 0;
+    for (int i = 0; i < 300; ++i) {
+        at += 800000 + static_cast<qint64>((i * 7919) % 5) * 100000;
+        if (i == 150) at += 25000000;
+        t3.push_back(at);
+        v3.push_back(std::sin(i / 15.0));
+    }
+    for (int i = 0; i < 5; ++i) {
+        at += 10000000;
+        t3.push_back(at);
+        v3.push_back(0.5);
+    }
+    QTest::addRow("jitter and rate change") << t3 << v3 << qint64(0);
 }
 
 // #25 D4: the same data gives the same trace breaks in StripChart and in AnalysisChart (raw drawing:
