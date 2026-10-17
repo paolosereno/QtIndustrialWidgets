@@ -10,6 +10,7 @@
 
 #include <QtCore/QDateTime>
 #include <QtCore/QList>
+#include <QtCore/QStringList>
 #include <QtGui/QColor>
 #include <QtWidgets/QWidget>
 
@@ -40,6 +41,20 @@ class AnalysisChartTestAccess;
  * Time axis labels: Relative shows the time elapsed since dataStart(); Absolute shows
  * timeOrigin() + t as wall-clock time (HH:mm:ss.zzz), or t itself when timeOrigin() is invalid.
  *
+ * Interaction: the wheel zooms X around the mouse (x1.25 per step), Ctrl+wheel zooms Y around the mouse,
+ * a left drag pans, a right drag (or Shift+left drag) zooms to a box, a double-click or Home resets the
+ * view, + and - zoom X around the centre, the left and right arrows pan X and the up and down arrows
+ * pan Y by 10 % of the view. A left drag that starts within 4 logical pixels of a visible cursor moves
+ * that cursor instead of panning.
+ *
+ * Cursors: two vertical cursors, A and B, hidden until shown. When the first data is loaded they are
+ * placed at 1/3 and 2/3 of the view. The readout band below the plot shows, for each visible cursor,
+ * its time, then for each visible channel the nearest sample in time (no interpolation), Δt and Δy;
+ * "---" when the cursor lies outside the channel's data or the nearest sample is non-finite. The band
+ * shows at most 6 channel rows; further channels are summarised in a last row (their readouts stay
+ * available through cursorReadout()). The band is part of minimumSizeHint(), so from that size up no
+ * text of the band is clipped.
+ *
  * Fonts: the texts use the widget font at sizes derived from the widget geometry and scaled by the
  * ratio between the effective pixel sizes of the widget font and of the application font, as in
  * StripChart; the room kept for the axis labels and the legend grows with it.
@@ -58,14 +73,20 @@ class QTINDUSTRIALWIDGETS_EXPORT AnalysisChart : public QWidget
     Q_PROPERTY(double yMaximum READ yMaximum NOTIFY viewChanged)
     Q_PROPERTY(bool gridVisible READ isGridVisible WRITE setGridVisible NOTIFY appearanceChanged)
     Q_PROPERTY(bool legendVisible READ isLegendVisible WRITE setLegendVisible NOTIFY appearanceChanged)
+    Q_PROPERTY(bool readoutVisible READ isReadoutVisible WRITE setReadoutVisible NOTIFY appearanceChanged)
     Q_PROPERTY(QColor gridColor READ gridColor WRITE setGridColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
+    Q_PROPERTY(QColor cursorColor READ cursorColor WRITE setCursorColor NOTIFY appearanceChanged)
     Q_PROPERTY(TimeLabelFormat timeLabelFormat READ timeLabelFormat WRITE setTimeLabelFormat NOTIFY appearanceChanged)
     Q_PROPERTY(QDateTime timeOrigin READ timeOrigin WRITE setTimeOrigin NOTIFY appearanceChanged)
 
 public:
+    /** \brief The two measurement cursors. */
+    enum class Cursor { A, B };
+    Q_ENUM(Cursor)
+
     /** \brief Time axis labels. */
     enum class TimeLabelFormat {
         Relative, ///< Time elapsed since dataStart() (default)
@@ -146,14 +167,31 @@ public:
     /** \brief Sets the visible value range; ignored unless both are finite and minimum < maximum. */
     void setYRange(double minimum, double maximum);
 
+    // --- Cursors ---
+
+    /** \brief Cursors are hidden until shown. */
+    [[nodiscard]] bool isCursorVisible(Cursor cursor) const;
+    void setCursorVisible(Cursor cursor, bool visible);
+    /** \brief Absolute time of a cursor; placed at 1/3 (A) and 2/3 (B) of the view at the first data. */
+    [[nodiscard]] std::chrono::nanoseconds cursorPosition(Cursor cursor) const;
+    void setCursorPosition(Cursor cursor, std::chrono::nanoseconds t);
+    /** \brief nearestSample() at the cursor; nullopt if the cursor is hidden or outside the channel's data. */
+    [[nodiscard]] std::optional<Sample> cursorReadout(int channelId, Cursor cursor) const;
+    /** \brief Time from cursor A to cursor B (their positions): t_B - t_A. */
+    [[nodiscard]] std::chrono::nanoseconds cursorDeltaTime() const;
+    /** \brief y_B - y_A of a channel; nullopt if either readout is missing or non-finite ("---"). */
+    [[nodiscard]] std::optional<double> cursorDeltaValue(int channelId) const;
+
     // --- Appearance ---
 
     [[nodiscard]] bool isGridVisible() const;
     [[nodiscard]] bool isLegendVisible() const;
+    [[nodiscard]] bool isReadoutVisible() const;
     [[nodiscard]] QColor gridColor() const;
     [[nodiscard]] QColor backgroundColor() const;
     [[nodiscard]] QColor bezelColor() const;
     [[nodiscard]] QColor textColor() const;
+    [[nodiscard]] QColor cursorColor() const;
     [[nodiscard]] TimeLabelFormat timeLabelFormat() const;
     [[nodiscard]] QDateTime timeOrigin() const;
 
@@ -167,10 +205,13 @@ public Q_SLOTS:
     void resetView();
     void setGridVisible(bool visible);
     void setLegendVisible(bool visible);
+    /** \brief Shows the readout band (when at least one cursor is visible). */
+    void setReadoutVisible(bool visible);
     void setGridColor(const QColor &color);
     void setBackgroundColor(const QColor &color);
     void setBezelColor(const QColor &color);
     void setTextColor(const QColor &color);
+    void setCursorColor(const QColor &color);
     void setTimeLabelFormat(TimeLabelFormat format);
     void setTimeOrigin(const QDateTime &origin);
 
@@ -179,6 +220,8 @@ Q_SIGNALS:
     void viewChanged();
     /** \brief A channel was added or removed, or its data or metadata changed. */
     void channelsChanged();
+    /** \brief A cursor moved, was shown or hidden, or its readouts changed (new data). */
+    void cursorsChanged();
     /** \brief An appearance property changed. */
     void appearanceChanged();
 
@@ -186,9 +229,19 @@ protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     [[nodiscard]] QRectF plotArea() const;
+    [[nodiscard]] double readoutBandHeight() const;
+    [[nodiscard]] double readoutBandWidth() const;
+    [[nodiscard]] QList<QStringList> readoutRows() const;
+    [[nodiscard]] qint64 readoutResolution() const;
     void clampViewToData();
 
     std::unique_ptr<AnalysisChartPrivate> d_ptr;

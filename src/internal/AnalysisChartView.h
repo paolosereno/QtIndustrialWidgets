@@ -94,5 +94,32 @@ std::vector<AxisTick> timeAxisTicks(XRange view, qint64 origin, double plotWidth
  */
 std::vector<AxisTick> valueAxisTicks(double minimum, double maximum, double plotHeightPx, double minSpacingPx);
 
+/**
+ * \brief Zooms the time range around \p anchor (ns): the span is divided by \p factor (> 1 zooms in)
+ *        and \p anchor keeps its relative position. Not clamped (see clampXRange()).
+ */
+XRange zoomXAround(XRange view, double anchor, double factor);
+
+/** \brief Zooms a value range around \p anchor in the same way; unchanged if the result is degenerate. */
+YRange zoomYAround(double minimum, double maximum, double anchor, double factor);
+
+/** \brief Wheel zoom factor of \p angleDelta (1/8 degree units, 120 per notch): 1.25 per notch. */
+double wheelZoomFactor(int angleDelta);
+
+/** \brief Maximum number of channel rows of the readout band; further channels share one last row. */
+constexpr int kReadoutChannelRows = 6;
+
+/** \brief Time shown in the readout: elapsed since \p origin, or wall clock (see timeAxisTicks()). */
+QString readoutTimeText(qint64 t, qint64 origin, bool absolute, const QDateTime &wallClockOrigin, qint64 resolutionNs);
+
+/** \brief Elapsed time text (signed) at \p resolutionNs, e.g. a cursor delta. */
+QString durationText(qint64 ns, qint64 resolutionNs);
+
+/** \brief Value shown in the readout: \p decimals digits after the point, "---" if absent or non-finite. */
+QString readoutValueText(const double *value, int decimals);
+
+/** \brief Decimals of the value axis labels for the range (valueAxisTicks()); the readout shows one more. */
+int valueAxisDecimals(double minimum, double maximum, double plotHeightPx, double minSpacingPx);
+
 } // namespace internal
 } // namespace QtIndustrialWidgets

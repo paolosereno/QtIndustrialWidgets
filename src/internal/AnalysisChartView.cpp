@@ -244,5 +244,90 @@ std::vector<AxisTick> valueAxisTicks(double minimum, double maximum, double plot
     return out;
 }
 
+XRange zoomXAround(XRange view, double anchor, double factor)
+{
+    if (!(factor > 0.0) || !std::isfinite(factor) || !std::isfinite(anchor) || view.span() <= 0) {
+        return view;
+    }
+    const double start = static_cast<double>(view.start);
+    const double span = static_cast<double>(view.span());
+    const double newSpan = std::max(1.0, span / factor);
+    const double rel = (anchor - start) / span;
+    const double newStart = anchor - rel * newSpan;
+    const qint64 s0 = static_cast<qint64>(std::llround(newStart));
+    return {s0, s0 + static_cast<qint64>(std::llround(newSpan))};
+}
+
+YRange zoomYAround(double minimum, double maximum, double anchor, double factor)
+{
+    YRange r{minimum, maximum, true};
+    if (!(factor > 0.0) || !std::isfinite(factor) || !std::isfinite(anchor) || !(maximum > minimum)) {
+        return r;
+    }
+    const double span = (maximum - minimum) / factor;
+    const double rel = (anchor - minimum) / (maximum - minimum);
+    const double lo = anchor - rel * span;
+    const double hi = lo + span;
+    // Keep a span that the axis can still label
+    if (!std::isfinite(lo) || !std::isfinite(hi) || !(hi > lo)
+        || span < 1e-12 * std::max(1.0, std::max(std::abs(lo), std::abs(hi)))) {
+        return r;
+    }
+    r.minimum = lo;
+    r.maximum = hi;
+    return r;
+}
+
+double wheelZoomFactor(int angleDelta)
+{
+    return std::pow(1.25, static_cast<double>(angleDelta) / 120.0);
+}
+
+namespace {
+
+// Elapsed time in the unit of 10 x the resolution (the axis step), with the decimals of the resolution
+QString readoutElapsed(qint64 ns, qint64 resolutionNs)
+{
+    QString unit;
+    double divisor = 1.0;
+    unitOf(resolutionNs >= std::numeric_limits<qint64>::max() / 10 ? resolutionNs : resolutionNs * 10, unit, divisor);
+    return formatFixed(static_cast<double>(ns) / divisor, decimalsFor(static_cast<double>(resolutionNs) / divisor))
+        + QLatin1Char(' ') + unit;
+}
+
+} // namespace
+
+QString readoutTimeText(qint64 t, qint64 origin, bool absolute, const QDateTime &wallClockOrigin, qint64 resolutionNs)
+{
+    resolutionNs = std::max<qint64>(1, resolutionNs);
+    if (absolute && wallClockOrigin.isValid()) {
+        return wallClockLabel(wallClockOrigin, t, resolutionNs);
+    }
+    return readoutElapsed(t - (absolute ? 0 : origin), resolutionNs);
+}
+
+QString durationText(qint64 ns, qint64 resolutionNs)
+{
+    return readoutElapsed(ns, std::max<qint64>(1, resolutionNs));
+}
+
+QString readoutValueText(const double *value, int decimals)
+{
+    if (value == nullptr || !std::isfinite(*value)) {
+        return QStringLiteral("---");
+    }
+    return formatFixed(*value, std::clamp(decimals, 0, 12));
+}
+
+int valueAxisDecimals(double minimum, double maximum, double plotHeightPx, double minSpacingPx)
+{
+    const auto ticks = valueAxisTicks(minimum, maximum, plotHeightPx, minSpacingPx);
+    if (ticks.size() < 2) {
+        return 2;
+    }
+    const double step = ticks[1].position - ticks[0].position;
+    return std::max(0, -static_cast<int>(std::floor(std::log10(step) + 1e-9)));
+}
+
 } // namespace internal
 } // namespace QtIndustrialWidgets
