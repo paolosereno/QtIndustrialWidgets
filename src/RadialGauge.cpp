@@ -485,7 +485,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     }
 
     // Major ticks and labels font setup
-    QFont font = painter.font();
+    QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
     font.setPixelSize(geo.labelFontPx);
     font.setBold(true);
     painter.setFont(font);

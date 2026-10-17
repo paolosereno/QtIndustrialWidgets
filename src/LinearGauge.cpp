@@ -460,7 +460,7 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
 
             // Major ticks and labels
             int fontSize = std::clamp(static_cast<int>(h * 0.04), 8, 12);
-            QFont f = painter.font();
+            QFont f = font(); // #51: the widget font, not the application font of the pixmap painter
             f.setPixelSize(fontSize);
             f.setBold(true);
             painter.setFont(f);
@@ -559,7 +559,7 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             }
 
             int fontSize = std::clamp(static_cast<int>(h * 0.12), 8, 12);
-            QFont f = painter.font();
+            QFont f = font(); // #51: the widget font, not the application font of the pixmap painter
             f.setPixelSize(fontSize);
             f.setBold(true);
             painter.setFont(f);
