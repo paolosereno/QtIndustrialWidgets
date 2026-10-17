@@ -22,6 +22,12 @@
  *
  * Scale geometry, graduation ticks, and recessed trough background are cached in a Hi-DPI QPixmap for high-frequency updates.
  *
+ * Fonts: the texts use the widget font (setFont(), style sheets) at sizes derived from the widget
+ * geometry and scaled by the ratio between the effective pixel sizes of the widget font and of the
+ * application font, so a larger widget font gives larger texts (the application font: unchanged).
+ * The scale labels take the largest size between 8 px and the height-derived one at which at least
+ * every other label is drawn (both limits scaled by that ratio).
+ *
  * \code
  * auto *gauge = new LinearGauge(parent);
  * gauge->setOrientation(Qt::Vertical);

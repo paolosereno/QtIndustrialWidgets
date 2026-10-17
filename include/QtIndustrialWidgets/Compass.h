@@ -33,6 +33,10 @@ class CompassPrivate;
  * - Recessed central digital readout pod with 3-digit padded heading angle (e.g. `045°`).
  * - Hardware-accelerated Hi-DPI circular card pixmap caching for 60+ FPS rendering.
  *
+ * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
+ * their sizes come from the widget geometry and do not follow the size of the widget font, because
+ * the layout does not yet make room for larger text.
+ *
  * \code
  * auto *compass = new qiw::Compass(parent);
  * compass->setDisplayMode(qiw::Compass::DisplayMode::HeadingUp);

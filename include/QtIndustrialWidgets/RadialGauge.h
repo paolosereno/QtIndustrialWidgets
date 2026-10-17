@@ -36,6 +36,10 @@
  * The dial scale, graduation ticks, numbers, and threshold bands are rendered into a high-DPI cached QPixmap
  * that updates only when geometry or visual properties change, allowing 60+ FPS needle animation with minimal CPU usage.
  *
+ * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
+ * their sizes come from the widget geometry and do not follow the size of the widget font, because
+ * the layout does not yet make room for larger text.
+ *
  * \code
  * auto *gauge = new RadialGauge(parent);
  * gauge->setRange(0.0, 100.0);

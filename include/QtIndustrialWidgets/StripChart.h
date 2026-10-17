@@ -36,6 +36,11 @@ class StripChartTestAccess;
  * - Multi-channel legend overlay with live telemetry readouts.
  * - Real-time axis (std::chrono::nanoseconds) and high-speed M4 min/max decimation at 60 FPS.
  *
+ * Fonts: the texts use the widget font (setFont(), style sheets) at sizes derived from the widget
+ * geometry and scaled by the ratio between the effective pixel sizes of the widget font and of the
+ * application font, so a larger widget font gives larger texts (the application font: unchanged).
+ * The room kept for the axis labels and the legend (plot margins) grows with it.
+ *
  * \code
  * auto *chart = new StripChart(parent);
  * chart->setCapacity(1000000);

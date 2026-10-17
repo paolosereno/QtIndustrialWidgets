@@ -24,6 +24,10 @@ class IndustrialKnobPrivate;
  *
  * It features high-DPI caching for background ticks and scales to ensure smooth 60 FPS rotation interaction.
  *
+ * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
+ * their sizes come from the widget geometry and do not follow the size of the widget font, because
+ * the layout does not yet make room for larger text.
+ *
  * \code
  * auto *knob = new IndustrialKnob(parent);
  * knob->setRange(0.0, 100.0);

@@ -97,6 +97,7 @@ class tst_RadialGauge : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void textSizeIgnoresWidgetFontSize();
     void fontChangeRefreshesCache();
     void labelsFollowWidgetFont();
     void initTestCase();
@@ -755,6 +756,27 @@ void tst_RadialGauge::fontChangeRefreshesCache()
     QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
     const int stale = FontTest::differingPixelCount(after, expected);
     QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
+}
+
+// #51: this widget follows rule (a): its texts take family and style from the widget font, their
+// size from the widget geometry, until its layout makes room for larger text. A widget font twice
+// as large leaves the tallest glyph drawn in textColor unchanged
+void tst_RadialGauge::textSizeIgnoresWidgetFontSize()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<RadialGauge>();
+        if (font) g->setFont(*font);
+        g->setDigitalDisplayVisible(false);
+        g->resize(300, 300);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont doubled = FontTest::doubledFont();
+    auto large = make(&doubled);
+    const int base = FontTest::textGlyphHeight(*standard);
+    const int grown = FontTest::textGlyphHeight(*large);
+    QVERIFY2(base > 0, "no text drawn in textColor");
+    QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
 }
 
 QTEST_MAIN(tst_RadialGauge)

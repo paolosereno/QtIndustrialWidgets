@@ -4,6 +4,10 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/Compass.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include <QtGui/QPixmap>
 #include <QtGui/QPainter>
 
@@ -17,6 +21,7 @@ class tst_Compass : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void textSizeIgnoresWidgetFontSize();
     void initTestCase();
     void defaultValues();
     void headingNormalization();
@@ -319,6 +324,27 @@ void tst_Compass::nanAndInfinityResilience()
     QPixmap pixNorth(compass.size());
     compass.render(&pixNorth);
     QVERIFY(!pixNorth.isNull());
+}
+
+// #51: this widget follows rule (a): its texts take family and style from the widget font, their
+// size from the widget geometry, until its layout makes room for larger text. A widget font twice
+// as large leaves the tallest glyph drawn in textColor unchanged
+void tst_Compass::textSizeIgnoresWidgetFontSize()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<Compass>();
+        if (font) g->setFont(*font);
+        g->setDigitalReadoutVisible(false);
+        g->resize(300, 300);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont doubled = FontTest::doubledFont();
+    auto large = make(&doubled);
+    const int base = FontTest::textGlyphHeight(*standard);
+    const int grown = FontTest::textGlyphHeight(*large);
+    QVERIFY2(base > 0, "no text drawn in textColor");
+    QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
 }
 
 QTEST_MAIN(tst_Compass)

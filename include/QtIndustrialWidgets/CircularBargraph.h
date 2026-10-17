@@ -34,6 +34,10 @@ class CircularBargraphPrivate;
  *   bound with a blinking end segment and a '<' / '>' readout; a NaN input is shown as
  *   \c Invalid (all segments ghost, readout "---"). D-pointer ABI stability.
  *
+ * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
+ * their sizes come from the widget geometry and do not follow the size of the widget font, because
+ * the layout does not yet make room for larger text.
+ *
  * \code
  * auto *bargraph = new qiw::CircularBargraph(parent);
  * bargraph->setRange(0.0, 100.0);

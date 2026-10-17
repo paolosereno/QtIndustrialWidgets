@@ -4,6 +4,10 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/CircularBargraph.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include "internal/CircularBargraphSegments.h"
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
@@ -223,6 +227,7 @@ class tst_CircularBargraph : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void textSizeIgnoresWidgetFontSize();
     void defaultValues();
     void settersAndClamping();
     void signalEmission();
@@ -1118,6 +1123,26 @@ void tst_CircularBargraph::peakDecayStepIndependentOfFma()
     s = internal::decayPeakStep(24.025000000000002, 20.0, 25.0, 0.161);
     QCOMPARE(s.finished, false);
     QVERIFY(s.peak >= 20.0);
+}
+
+// #51: this widget follows rule (a): its texts take family and style from the widget font, their
+// size from the widget geometry, until its layout makes room for larger text. A widget font twice
+// as large leaves the tallest glyph drawn in textColor unchanged
+void tst_CircularBargraph::textSizeIgnoresWidgetFontSize()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<CircularBargraph>();
+        if (font) g->setFont(*font);
+        g->resize(220, 220);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont doubled = FontTest::doubledFont();
+    auto large = make(&doubled);
+    const int base = FontTest::textGlyphHeight(*standard);
+    const int grown = FontTest::textGlyphHeight(*large);
+    QVERIFY2(base > 0, "no text drawn in textColor");
+    QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
 }
 
 QTEST_MAIN(tst_CircularBargraph)

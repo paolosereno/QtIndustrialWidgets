@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <functional>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -52,6 +53,39 @@ double scaleLabelMinGap(double fontHeight);
  * nothing is drawn. Non-finite inputs are treated as 0.
  */
 ScaleLabelLayout layoutScaleLabels(const std::vector<double> &extents, double scaleLength, double minGap);
+
+/// Label pixel size derived from the gauge geometry, before the size rule (#31): the height times
+/// 0.04 (vertical) or 0.12 (horizontal), clamped to [8, 12] px.
+int linearGaugeBaseLabelPixelSize(bool vertical, double height);
+
+/**
+ * \brief Label pixel size of a LinearGauge scale (#37 point 1, #51 rule R1b).
+ *
+ * The largest pixel size in [\a minimumPx, \a preferredPx] at which layoutScaleLabels() draws at
+ * least every other label (step <= 2), with the extents and minimum gap of that size given by
+ * \a extentsAt and \a minGapAt. If no size reaches step <= 2, \a preferredPx (the size would not
+ * bring the labels back, so the text keeps its size).
+ */
+int chooseLabelPixelSize(int preferredPx, int minimumPx, double scaleLength,
+                         const std::function<std::vector<double>(int)> &extentsAt,
+                         const std::function<double(int)> &minGapAt);
+
+/// Length of the LinearGauge scale (the tube, along its axis): the widget size less the padding at
+/// each end (16 px; the bulb of a thermometer at the minimum end; 36 px above a vertical tube or
+/// 55 px right of a horizontal one when the digital display is visible), at least 10 px.
+double linearGaugeScaleLength(bool vertical, double width, double height, bool thermometer, bool displayVisible);
+
+/// Axis-aligned rectangle (widget coordinates).
+struct GaugeRect {
+    double x{0.0};
+    double y{0.0};
+    double w{0.0};
+    double h{0.0};
+};
+
+/// Rectangle of the LinearGauge digital display pod: right of the tube for a horizontal gauge,
+/// on top for a vertical one (shared by the widget and its tests, #37 point 2).
+GaugeRect linearGaugeDisplayRect(bool vertical, double width, double height);
 
 } // namespace internal
 } // namespace QtIndustrialWidgets
