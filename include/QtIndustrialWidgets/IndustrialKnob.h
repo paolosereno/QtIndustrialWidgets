@@ -22,7 +22,7 @@ class IndustrialKnobPrivate;
  * IndustrialKnob provides an interactive rotary control with brushed metal texture, notched grips,
  * continuous or discrete indexed stepping, mouse dragging, mouse wheel, and keyboard arrow controls.
  *
- * It features high-DPI caching for background ticks and scales to ensure smooth 60 FPS rotation interaction.
+ * The background ticks and scale are cached in a high-DPI pixmap, so a rotation redraws only the moving parts.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because

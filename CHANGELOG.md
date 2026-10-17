@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.2.0] - 2026-10-17
+
 ### Added
 - **`CircularBargraph` widget**: High-contrast circular arc indicator composed of discrete curved LED segments (`qiw::CircularBargraph`). Supports progressive Bar mode and single-cursor Dot mode, configurable angular sweep (e.g. 180°, 270°, 360°) and segment resolution (16, 24, 32, 48 segments), 3-stage threshold color zones by segment position (Normal, Warning, Critical; each segment takes the zone containing its centre, unlit segments show a dimmed tint of their zone) with `warningThreshold <= errorThreshold` kept by the setters (a setter that would break the order moves the other threshold too), value state (`ValueState`: `Valid`, `Underrange`, `Overrange`, `Invalid`; `valueState` property and `valueStateChanged` signal; out-of-range shown at the bound with a blinking end segment and `<` / `>` readout, `NaN` shown as `Invalid` with readout `---`) and read-only `rawValue`, ballistic peak-hold with decaying falloff starting at the end of the hold, centered digital readout pod, full Qt property bindings, and Qt Designer plugin integration (#17).
 - **`LedIndicator::textColor` property** (#45): `textColor()` / `setTextColor()` set the label colour like the `textColor` of the other widgets. The default (invalid colour) keeps following `QPalette::WindowText`, so existing code renders as before.
