@@ -6,6 +6,7 @@
 
 #include "internal/IndustrialSwitchLayout.h"
 
+#include <QtCore/QEvent>
 #include <QtCore/QVariantAnimation>
 #include <QtCore/QEasingCurve>
 #include <QtGui/QPixmap>
@@ -372,6 +373,17 @@ void IndustrialSwitch::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     d_ptr->m_cacheValid = false;
+}
+
+void IndustrialSwitch::changeEvent(QEvent *event)
+{
+    // #51: the cached background draws text with the widget font, and the size hints depend on it
+    if (event->type() == QEvent::FontChange) {
+        d_ptr->m_cacheValid = false;
+        updateGeometry();
+        update();
+    }
+    QWidget::changeEvent(event);
 }
 
 QRectF IndustrialSwitch::calculateSwitchRect() const

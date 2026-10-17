@@ -7,6 +7,7 @@
 #include "internal/LevelMeterLayout.h"
 #include "internal/NumberFormat.h"
 
+#include <QtCore/QEvent>
 #include <QtCore/QTimer>
 #include <QtCore/QDateTime>
 #include <QtGui/QPixmap>
@@ -457,6 +458,17 @@ void LevelMeter::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     d_ptr->m_cacheValid = false;
+}
+
+void LevelMeter::changeEvent(QEvent *event)
+{
+    // #51: the cached background draws text with the widget font, and the size hints depend on it
+    if (event->type() == QEvent::FontChange) {
+        d_ptr->m_cacheValid = false;
+        updateGeometry();
+        update();
+    }
+    QWidget::changeEvent(event);
 }
 
 QColor LevelMeter::colorForNormalizedValue(double norm) const

@@ -345,7 +345,8 @@ void RadialGauge::resizeEvent(QResizeEvent *event)
 
 void RadialGauge::changeEvent(QEvent *event)
 {
-    if (event->type() == QEvent::PaletteChange) {
+    // #51: the cached text uses the widget font, so a font change invalidates it too
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
         invalidateCache();
         update();
     }
