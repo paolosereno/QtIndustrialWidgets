@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.2.0` tag archive instead of an all-zero placeholder (never set since 1.0.x), and `vcpkg.json` declares the host dependencies `vcpkg-cmake` and `vcpkg-cmake-config` that the portfile needs. Not verified with `vcpkg install`; the port remains experimental. An in-repo port can carry the hash of a tag only on `main` after the tag, not in the tagged commit.
+- **Standalone Doxygen configuration**: `docs/Doxyfile` no longer states version 1.0.0; the version comes from `CMakeLists.txt` through `QIW_VERSION` (README).
+
 ---
 
 ## [2.2.0] - 2026-10-17
