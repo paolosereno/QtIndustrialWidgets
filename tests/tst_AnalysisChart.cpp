@@ -9,7 +9,12 @@
 #include "StripChartTestAccess.h"
 #include "internal/AnalysisChartTestAccess.h"
 
+#include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
+#include <QtGui/QWheelEvent>
+#include <QtWidgets/QApplication>
 
 #include <chrono>
 #include <cmath>
@@ -62,6 +67,61 @@ std::vector<int> stripSegments(const StripChart &chart, int channelId)
     return out;
 }
 
+// Synthetic input, delivered synchronously
+void mouse(QWidget &w, QEvent::Type type, QPointF pos, Qt::MouseButton button, Qt::MouseButtons buttons,
+           Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    QMouseEvent e(type, pos, w.mapToGlobal(pos), button, buttons, mods);
+    QApplication::sendEvent(&w, &e);
+}
+
+void drag(QWidget &w, QPointF from, QPointF to, Qt::MouseButton button = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    mouse(w, QEvent::MouseButtonPress, from, button, button, mods);
+    mouse(w, QEvent::MouseMove, (from + to) * 0.5, Qt::NoButton, button, mods);
+    mouse(w, QEvent::MouseMove, to, Qt::NoButton, button, mods);
+    mouse(w, QEvent::MouseButtonRelease, to, button, Qt::NoButton, mods);
+}
+
+void wheel(QWidget &w, QPointF pos, int delta, Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    QWheelEvent e(pos, w.mapToGlobal(pos), QPoint(), QPoint(0, delta), Qt::NoButton, mods, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(&w, &e);
+}
+
+void key(QWidget &w, int k)
+{
+    QKeyEvent e(QEvent::KeyPress, k, Qt::NoModifier);
+    QApplication::sendEvent(&w, &e);
+}
+
+// x of time t in the plot of the chart's current view
+double xOf(const AnalysisChart &chart, qint64 t)
+{
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    return plot.left() + static_cast<double>(t - chart.xStart().count()) * plot.width()
+        / static_cast<double>((chart.xEnd() - chart.xStart()).count());
+}
+
+// ns of the "<number> <unit>" at the end of a readout text, -1 if it has none
+qint64 durationNs(const QString &text)
+{
+    const QStringList parts = text.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (parts.size() < 2) return -1;
+    const QString unit = parts.back();
+    bool ok = false;
+    const double v = parts[parts.size() - 2].toDouble(&ok);
+    if (!ok) return -1;
+    double f = 0.0;
+    if (unit == QStringLiteral("ns")) f = 1.0;
+    else if (unit == QString(QChar(0x00B5)) + QLatin1Char('s')) f = 1e3;
+    else if (unit == QStringLiteral("ms")) f = 1e6;
+    else if (unit == QStringLiteral("s")) f = 1e9;
+    else if (unit == QStringLiteral("min")) f = 60e9;
+    else return -1;
+    return static_cast<qint64>(std::llround(v * f));
+}
+
 QString describe(const std::vector<int> &v)
 {
     QStringList parts;
@@ -93,6 +153,19 @@ private Q_SLOTS:
     void gapsMatchStripChart();
     void timeLabels();
     void valueLabelsGetRoom();
+    void cursorsStartAtThirdsHidden();
+    void cursorReadoutsAndDeltas();
+    void bandShowsReadouts();
+    void bandTextsIgnoreWidgetSize();
+    void bandRowsAreLimited();
+    void bandFitsAtMinimumSize_data();
+    void bandFitsAtMinimumSize();
+    void cursorLinesArePainted();
+    void dragNearACursorMovesIt();
+    void dragPans();
+    void boxZoom();
+    void wheelZoomKeepsTheAnchor();
+    void doubleClickAndKeys();
 };
 
 // #25 D1: ids are stable, never reused, unaffected by removing other channels
@@ -522,6 +595,508 @@ void tst_AnalysisChart::valueLabelsGetRoom()
     for (const auto &tick : internal::AnalysisChartTestAccess::lastFrame(chart).yTicks) {
         QVERIFY(!tick.label.isEmpty());
     }
+}
+
+// #25 addition (1): cursors are hidden until shown and the first data places them at 1/3 and 2/3 of the view
+void tst_AnalysisChart::cursorsStartAtThirdsHidden()
+{
+    AnalysisChart chart;
+    QVERIFY(!chart.isCursorVisible(AnalysisChart::Cursor::A));
+    QVERIFY(!chart.isCursorVisible(AnalysisChart::Cursor::B));
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::red);
+    const Series s = uniformSeries(3000, 100, 31); // 3000 .. 6000 ns
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 31));
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::A), nanoseconds(4000));
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::B), nanoseconds(5000));
+    QVERIFY(!chart.isCursorVisible(AnalysisChart::Cursor::A));
+    QVERIFY(!chart.cursorReadout(a, AnalysisChart::Cursor::A).has_value()); // hidden: no readout
+    // Later data does not move them
+    const Series later = uniformSeries(0, 1000, 21);
+    QVERIFY(chart.setChannelData(a, later.t.data(), later.v.data(), 21));
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::A), nanoseconds(4000));
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::B), nanoseconds(5000));
+
+    // Showing, moving and hiding emit cursorsChanged() only on a change
+    QSignalSpy spy(&chart, &AnalysisChart::cursorsChanged);
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(4500));
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(4500));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::A), nanoseconds(4500));
+}
+
+// #25: readouts are the nearest sample (no interpolation); outside the data or hidden: nullopt;
+// deltas are t_B - t_A and y_B - y_A
+void tst_AnalysisChart::cursorReadoutsAndDeltas()
+{
+    AnalysisChart chart;
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::red);
+    const std::vector<nanoseconds> t{nanoseconds(0), nanoseconds(100), nanoseconds(200), nanoseconds(300)};
+    const std::vector<double> v{1.0, 2.0, kNaN, 8.0};
+    QVERIFY(chart.setChannelData(a, t.data(), v.data(), 4));
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorVisible(AnalysisChart::Cursor::B, true);
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(130));
+    chart.setCursorPosition(AnalysisChart::Cursor::B, nanoseconds(280));
+    const auto ra = chart.cursorReadout(a, AnalysisChart::Cursor::A);
+    const auto rb = chart.cursorReadout(a, AnalysisChart::Cursor::B);
+    QVERIFY(ra && rb);
+    QCOMPARE(ra->t, nanoseconds(100));
+    QCOMPARE(ra->value, 2.0);
+    QCOMPARE(rb->t, nanoseconds(300));
+    QCOMPARE(rb->value, 8.0);
+    QCOMPARE(chart.cursorDeltaTime(), nanoseconds(150));
+    QCOMPARE(chart.cursorDeltaValue(a), std::optional<double>(6.0));
+    // Nearest sample non-finite: a readout, but no delta
+    chart.setCursorPosition(AnalysisChart::Cursor::B, nanoseconds(210));
+    QVERIFY(chart.cursorReadout(a, AnalysisChart::Cursor::B).has_value());
+    QVERIFY(std::isnan(chart.cursorReadout(a, AnalysisChart::Cursor::B)->value));
+    QVERIFY(!chart.cursorDeltaValue(a).has_value());
+    // Outside the data
+    chart.setCursorPosition(AnalysisChart::Cursor::B, nanoseconds(301));
+    QVERIFY(!chart.cursorReadout(a, AnalysisChart::Cursor::B).has_value());
+    QVERIFY(!chart.cursorDeltaValue(a).has_value());
+    QCOMPARE(chart.cursorDeltaTime(), nanoseconds(171)); // positions, not samples
+    // Hidden
+    chart.setCursorPosition(AnalysisChart::Cursor::B, nanoseconds(280));
+    chart.setCursorVisible(AnalysisChart::Cursor::A, false);
+    QVERIFY(!chart.cursorReadout(a, AnalysisChart::Cursor::A).has_value());
+    QVERIFY(!chart.cursorDeltaValue(a).has_value());
+}
+
+// #25: the band lists the cursor times, Δt and per channel y_A, y_B, Δy ("---" when missing)
+void tst_AnalysisChart::bandShowsReadouts()
+{
+    AnalysisChart chart;
+    chart.resize(800, 400);
+    const int a = chart.addChannel(QStringLiteral("Pressure"), Qt::red);
+    const int b = chart.addChannel(QStringLiteral("Flow"), Qt::green);
+    const qint64 ms = 1000000;
+    std::vector<nanoseconds> t;
+    std::vector<double> va, vb;
+    for (int i = 0; i <= 100; ++i) {
+        t.push_back(nanoseconds(5000 * ms + i * 10 * ms)); // 5 .. 6 s every 10 ms
+        va.push_back(i * 0.25);                // 0 .. 25
+        vb.push_back(i < 50 ? kNaN : 3.0);
+    }
+    QVERIFY(chart.setChannelData(a, t.data(), va.data(), 101));
+    QVERIFY(chart.setChannelData(b, t.data(), vb.data(), 101));
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    chart.grab();
+    QVERIFY(internal::AnalysisChartTestAccess::lastFrame(chart).band.empty()); // no visible cursor, no band
+
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorVisible(AnalysisChart::Cursor::B, true);
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(5200 * ms));
+    chart.setCursorPosition(AnalysisChart::Cursor::B, nanoseconds(5700 * ms));
+    chart.grab();
+    const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+    QCOMPARE(frame.band.size(), std::size_t(3));
+    const QStringList header = frame.band[0].cells;
+    // Times in the unit of the time axis: 200 ms, 700 ms after the data start, 500 ms apart
+    QVERIFY2(header[1].startsWith(QStringLiteral("A ")) && durationNs(header[1]) == 200 * ms, qPrintable(header[1]));
+    QVERIFY2(header[2].startsWith(QStringLiteral("B ")) && durationNs(header[2]) == 700 * ms, qPrintable(header[2]));
+    QVERIFY2(durationNs(header[3]) == 500 * ms, qPrintable(header[3]));
+    QCOMPARE(frame.band[1].cells[0], QStringLiteral("Pressure"));
+    QVERIFY2(frame.band[1].cells[1].startsWith(QStringLiteral("5.0")), qPrintable(frame.band[1].cells[1]));
+    QVERIFY2(frame.band[1].cells[2].startsWith(QStringLiteral("17.5")), qPrintable(frame.band[1].cells[2]));
+    QVERIFY2(frame.band[1].cells[3].endsWith(QStringLiteral(" 12.5")) || frame.band[1].cells[3].contains(QStringLiteral(" 12.50")),
+             qPrintable(frame.band[1].cells[3]));
+    QCOMPARE(frame.band[2].cells[0], QStringLiteral("Flow"));
+    QCOMPARE(frame.band[2].cells[1], QStringLiteral("---"));
+    QVERIFY2(frame.band[2].cells[2].startsWith(QStringLiteral("3.0")), qPrintable(frame.band[2].cells[2]));
+    QVERIFY2(frame.band[2].cells[3].endsWith(QStringLiteral("---")), qPrintable(frame.band[2].cells[3]));
+    // The band lies below the plot
+    QVERIFY(frame.bandRect.top() >= internal::AnalysisChartTestAccess::plotArea(chart).bottom());
+    // The texts do not depend on the widget size (so the band fits at minimumSizeHint())
+    std::vector<QStringList> wide;
+    for (const auto &row : frame.band) wide.push_back(row.cells);
+    for (const QSize size : {QSize(400, 300), QSize(1200, 500)}) {
+        chart.resize(size);
+        chart.grab();
+        const auto &band = internal::AnalysisChartTestAccess::lastFrame(chart).band;
+        QCOMPARE(band.size(), wide.size());
+        for (std::size_t r = 0; r < band.size(); ++r) QCOMPARE(band[r].cells, wide[r]);
+    }
+    chart.resize(800, 400);
+
+    // Only cursor B: no A column, no deltas
+    chart.setCursorVisible(AnalysisChart::Cursor::A, false);
+    chart.grab();
+    const auto &onlyB = internal::AnalysisChartTestAccess::lastFrame(chart);
+    QCOMPARE(onlyB.band.size(), std::size_t(3));
+    QVERIFY(onlyB.band[1].cells[1].isEmpty());
+    QVERIFY(onlyB.band[1].cells[3].isEmpty());
+    QVERIFY(!onlyB.band[1].cells[2].isEmpty());
+
+    // readoutVisible off: no band, and the plot takes its room
+    const double withBand = internal::AnalysisChartTestAccess::plotArea(chart).bottom();
+    chart.setReadoutVisible(false);
+    chart.grab();
+    QVERIFY(internal::AnalysisChartTestAccess::lastFrame(chart).band.empty());
+    QVERIFY(internal::AnalysisChartTestAccess::plotArea(chart).bottom() > withBand);
+}
+
+// #25 addition (3): the band texts do not depend on the widget size, so the band computed for
+// minimumSizeHint() is the band drawn at that size (spans where the axis step at 400 px and at
+// 1200 px falls in different units)
+void tst_AnalysisChart::bandTextsIgnoreWidgetSize()
+{
+    for (const qint64 span : {qint64(4000000000LL), qint64(30000000LL), qint64(10000000000LL)}) {
+        AnalysisChart chart;
+        const int a = chart.addChannel(QStringLiteral("A"), Qt::red);
+        const Series s = uniformSeries(1000000000LL, span / 400, 401);
+        QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 401));
+        chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+        chart.setCursorVisible(AnalysisChart::Cursor::B, true);
+        internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+        std::vector<QStringList> first;
+        for (const QSize size : {QSize(400, 300), QSize(800, 400), QSize(1200, 500)}) {
+            chart.resize(size);
+            chart.grab();
+            const auto &band = internal::AnalysisChartTestAccess::lastFrame(chart).band;
+            QCOMPARE(band.size(), std::size_t(2));
+            if (first.empty()) {
+                for (const auto &row : band) first.push_back(row.cells);
+                continue;
+            }
+            for (std::size_t r = 0; r < band.size(); ++r) {
+                QVERIFY2(band[r].cells == first[r], qPrintable(QStringLiteral("span %1 at %2 px: '%3' vs '%4'")
+                                                                    .arg(span).arg(size.width())
+                                                                    .arg(band[r].cells.join(QLatin1Char('|')), first[r].join(QLatin1Char('|')))));
+            }
+        }
+    }
+}
+
+// #25 addition (3): at most 6 channel rows, further visible channels summarised in one last row
+void tst_AnalysisChart::bandRowsAreLimited()
+{
+    AnalysisChart chart;
+    chart.resize(800, 600);
+    const Series s = uniformSeries(0, 1000, 50);
+    QList<int> ids;
+    for (int i = 0; i < 9; ++i) {
+        ids << chart.addChannel(QStringLiteral("Ch%1").arg(i), QColor::fromHsv(i * 40, 255, 255));
+        QVERIFY(chart.setChannelData(ids.back(), s.t.data(), s.v.data(), 50));
+    }
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    chart.grab();
+    {
+        const auto &band = internal::AnalysisChartTestAccess::lastFrame(chart).band;
+        QCOMPARE(band.size(), std::size_t(1 + 6 + 1));
+        for (int r = 1; r <= 6; ++r) {
+            QCOMPARE(band[static_cast<std::size_t>(r)].cells[0], QStringLiteral("Ch%1").arg(r - 1));
+            QCOMPARE(band[static_cast<std::size_t>(r)].swatch, chart.channelColor(ids[r - 1]));
+        }
+        QCOMPARE(band.back().cells[0], QStringLiteral("+3 more"));
+        QVERIFY(!band.back().swatch.isValid());
+    }
+    // Readouts of the channels not listed stay available
+    QVERIFY(chart.cursorReadout(ids[8], AnalysisChart::Cursor::A).has_value());
+    // Hidden channels are not listed nor counted
+    chart.setChannelVisible(ids[0], false);
+    chart.setChannelVisible(ids[1], false);
+    chart.grab();
+    {
+        const auto &band = internal::AnalysisChartTestAccess::lastFrame(chart).band;
+        QCOMPARE(band.size(), std::size_t(1 + 6 + 1));
+        QCOMPARE(band[1].cells[0], QStringLiteral("Ch2"));
+        QCOMPARE(band[1].swatch, chart.channelColor(ids[2])); // the swatch follows the listed channel
+        QCOMPARE(band[6].swatch, chart.channelColor(ids[7]));
+        QCOMPARE(band.back().cells[0], QStringLiteral("+1 more"));
+    }
+    chart.setChannelVisible(ids[2], false);
+    chart.grab();
+    {
+        const auto &band = internal::AnalysisChartTestAccess::lastFrame(chart).band;
+        QCOMPARE(band.size(), std::size_t(1 + 6));
+        QCOMPARE(band.back().cells[0], QStringLiteral("Ch8"));
+    }
+}
+
+void tst_AnalysisChart::bandFitsAtMinimumSize_data()
+{
+    QTest::addColumn<int>("channels");
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<double>("pointSizeFactor");
+    QTest::addRow("1 channel") << 1 << QStringLiteral("T") << 1.0;
+    QTest::addRow("6 channels") << 6 << QStringLiteral("Temperature") << 1.0;
+    QTest::addRow("9 channels") << 9 << QStringLiteral("Temperature") << 1.0;
+    QTest::addRow("long names") << 3 << QStringLiteral("Main steam header pressure, line 2") << 1.0;
+    QTest::addRow("large font") << 9 << QStringLiteral("Temperature") << 2.0;
+}
+
+// #25 addition (3), #44 rule: at minimumSizeHint() the readout band is whole: every row inside the
+// widget, every cell wide enough for its text, and the plot keeps some height
+void tst_AnalysisChart::bandFitsAtMinimumSize()
+{
+    QFETCH(int, channels);
+    QFETCH(QString, name);
+    QFETCH(double, pointSizeFactor);
+    AnalysisChart chart;
+    QFont f = chart.font();
+    f.setPointSizeF(f.pointSizeF() * pointSizeFactor);
+    chart.setFont(f);
+    const Series s = uniformSeries(0, 1000, 50);
+    for (int i = 0; i < channels; ++i) {
+        const int id = chart.addChannel(name + QString::number(i), Qt::red);
+        QVERIFY(chart.setChannelData(id, s.t.data(), s.v.data(), 50));
+    }
+    const QSize withoutBand = chart.minimumSizeHint();
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorVisible(AnalysisChart::Cursor::B, true);
+    const QSize hint = chart.minimumSizeHint();
+    // The band adds to the minimum height (above the 160 px floor)
+    QVERIFY2(hint.height() >= withoutBand.height() && (channels < 6 || hint.height() > withoutBand.height()),
+             qPrintable(QStringLiteral("%1 -> %2").arg(withoutBand.height()).arg(hint.height())));
+    chart.resize(hint);
+    chart.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&chart));
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    chart.grab();
+    const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+    QCOMPARE(frame.band.size(), std::size_t(1 + std::min(channels, 6) + (channels > 6 ? 1 : 0)));
+    const QRectF widget(0, 0, chart.width(), chart.height());
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    QVERIFY2(plot.height() >= 20.0, qPrintable(QStringLiteral("plot height %1").arg(plot.height())));
+    QVERIFY(frame.bandRect.top() >= plot.bottom());
+    const QFontMetricsF fm(frame.bandFont);
+    for (const auto &row : frame.band) {
+        QCOMPARE(row.cellRects.size(), static_cast<std::size_t>(row.cells.size()));
+        for (int c = 0; c < row.cells.size(); ++c) {
+            const QRectF r = row.cellRects[static_cast<std::size_t>(c)];
+            const QString what = QStringLiteral("'%1' in %2,%3 %4x%5, widget %6x%7")
+                                     .arg(row.cells[c]).arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height())
+                                     .arg(chart.width()).arg(chart.height());
+            QVERIFY2(widget.contains(r), qPrintable(what));
+            QVERIFY2(r.width() + 0.01 >= fm.horizontalAdvance(row.cells[c]), qPrintable(what));
+        }
+    }
+}
+
+// #25: each visible cursor is a line of the cursor colour across the plot at its time
+void tst_AnalysisChart::cursorLinesArePainted()
+{
+    AnalysisChart chart;
+    chart.resize(600, 320);
+    chart.setGridVisible(false);
+    chart.setCursorColor(QColor(255, 0, 255));
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 101); // 0 .. 100 us
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 101));
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(25000));
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    const QImage img = chart.grab().toImage();
+    const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    QVERIFY(std::abs(frame.cursorX[0] - xOf(chart, 25000)) < 0.01);
+    QCOMPARE(frame.cursorX[1], -1.0); // B hidden: not drawn
+    const double dpr = img.devicePixelRatio();
+    // Share of the plot rows where the line deposits its whole ink around x: the magenta coverage over
+    // the background, summed over +-2 device pixels (an antialiased 1 px line at a fractional DPR
+    // spreads over two pixels), is at least 0.9
+    const int bgX = static_cast<int>(plot.left() * dpr) + 3;
+    auto magentaRows = [&](double x) {
+        int hits = 0;
+        int rows = 0;
+        for (int y = static_cast<int>(std::ceil(plot.top() * dpr)) + 1; y < static_cast<int>(plot.bottom() * dpr) - 1; ++y, ++rows) {
+            const QColor bg = img.pixelColor(bgX, y);
+            double ink = 0.0;
+            for (int dx = -2; dx <= 2; ++dx) {
+                const QColor c = img.pixelColor(static_cast<int>(x * dpr) + dx, y);
+                const bool magenta = c.green() <= bg.green() + 16 && std::abs(c.red() - c.blue()) <= 24;
+                if (magenta) ink += std::max(0.0, static_cast<double>(c.red() - bg.red()) / (255.0 - bg.red()));
+            }
+            hits += ink >= 0.9 ? 1 : 0;
+        }
+        return rows > 0 ? static_cast<double>(hits) / rows : 0.0;
+    };
+    QVERIFY2(magentaRows(frame.cursorX[0]) > 0.9, qPrintable(QString::number(magentaRows(frame.cursorX[0]))));
+    QVERIFY2(magentaRows(xOf(chart, 75000)) < 0.1, qPrintable(QString::number(magentaRows(xOf(chart, 75000)))));
+}
+
+// #25 D3: a left drag that starts within 4 logical px of a visible cursor moves it; farther away it pans
+void tst_AnalysisChart::dragNearACursorMovesIt()
+{
+    AnalysisChart chart;
+    chart.resize(600, 320);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 1001); // 0 .. 1 ms
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 1001));
+    chart.setCursorVisible(AnalysisChart::Cursor::A, true);
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(500000));
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    const double y = plot.center().y();
+    const double x = xOf(chart, 500000);
+    const qint64 start = chart.xStart().count();
+    const qint64 end = chart.xEnd().count();
+
+    // 3.5 px away: grabs the cursor, the view stays
+    drag(chart, QPointF(x + 3.5, y), QPointF(xOf(chart, 200000), y));
+    QCOMPARE(chart.xStart().count(), start);
+    QCOMPARE(chart.xEnd().count(), end);
+    QVERIFY2(std::abs(chart.cursorPosition(AnalysisChart::Cursor::A).count() - 200000) <= 1,
+             qPrintable(QString::number(chart.cursorPosition(AnalysisChart::Cursor::A).count())));
+
+    // 6 px away: pans, the cursor keeps its time
+    chart.setCursorPosition(AnalysisChart::Cursor::A, nanoseconds(500000));
+    chart.setXRange(nanoseconds(250000), nanoseconds(750000));
+    const double x2 = xOf(chart, 500000);
+    drag(chart, QPointF(x2 + 6.0, y), QPointF(x2 + 106.0, y));
+    QVERIFY(chart.xStart().count() < 250000);
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::A), nanoseconds(500000));
+
+    // A hidden cursor is not grabbed
+    chart.setXRange(nanoseconds(250000), nanoseconds(750000));
+    chart.setCursorVisible(AnalysisChart::Cursor::A, false);
+    drag(chart, QPointF(x2, y), QPointF(x2 + 100.0, y));
+    QVERIFY(chart.xStart().count() < 250000);
+    QCOMPARE(chart.cursorPosition(AnalysisChart::Cursor::A), nanoseconds(500000));
+}
+
+// #25 D3: a left drag pans X and Y by the distance dragged
+void tst_AnalysisChart::dragPans()
+{
+    AnalysisChart chart;
+    chart.resize(600, 320);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 1001);
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 1001));
+    chart.setXRange(nanoseconds(400000), nanoseconds(600000));
+    chart.setYRange(0.0, 1.0);
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    const QPointF from = plot.center();
+    drag(chart, from, from + QPointF(plot.width() / 4.0, plot.height() / 2.0));
+    // Right by 1/4 of the width: 1/4 of the span earlier; down by half the height: half the range higher
+    QVERIFY2(std::abs(chart.xStart().count() - 350000) <= 1, qPrintable(QString::number(chart.xStart().count())));
+    QVERIFY2(std::abs(chart.xEnd().count() - 550000) <= 1, qPrintable(QString::number(chart.xEnd().count())));
+    QVERIFY(std::abs(chart.yMinimum() - 0.5) < 1e-9);
+    QVERIFY(std::abs(chart.yMaximum() - 1.5) < 1e-9);
+    // A press outside the plot does nothing
+    const qint64 before = chart.xStart().count();
+    drag(chart, QPointF(2, 2), QPointF(200, 2));
+    QCOMPARE(chart.xStart().count(), before);
+}
+
+// #25 D3: Shift + left drag or right drag draws a box and zooms to it; a box under 4 px is ignored
+void tst_AnalysisChart::boxZoom()
+{
+    AnalysisChart chart;
+    chart.resize(600, 320);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 1001);
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 1001));
+    chart.setYRange(0.0, 10.0);
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    auto at = [&](double fx, double fy) { return QPointF(plot.left() + fx * plot.width(), plot.top() + fy * plot.height()); };
+
+    // While dragging, the box is drawn
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    mouse(chart, QEvent::MouseButtonPress, at(0.25, 0.2), Qt::RightButton, Qt::RightButton);
+    mouse(chart, QEvent::MouseMove, at(0.5, 0.6), Qt::NoButton, Qt::RightButton);
+    chart.grab();
+    const QRectF box = internal::AnalysisChartTestAccess::lastFrame(chart).boxRect;
+    QVERIFY2(std::abs(box.left() - at(0.25, 0).x()) < 0.01 && std::abs(box.bottom() - at(0, 0.6).y()) < 0.01,
+             qPrintable(QStringLiteral("%1,%2 %3x%4").arg(box.x()).arg(box.y()).arg(box.width()).arg(box.height())));
+    mouse(chart, QEvent::MouseButtonRelease, at(0.5, 0.6), Qt::RightButton, Qt::NoButton);
+    QVERIFY2(std::abs(chart.xStart().count() - 250000) <= 1, qPrintable(QString::number(chart.xStart().count())));
+    QVERIFY2(std::abs(chart.xEnd().count() - 500000) <= 1, qPrintable(QString::number(chart.xEnd().count())));
+    QVERIFY(std::abs(chart.yMinimum() - 4.0) < 1e-9);
+    QVERIFY(std::abs(chart.yMaximum() - 8.0) < 1e-9);
+    chart.grab();
+    QVERIFY(internal::AnalysisChartTestAccess::lastFrame(chart).boxRect.isNull()); // gone after the release
+
+    // Shift + left drag, the other way round
+    chart.resetView();
+    chart.setYRange(0.0, 10.0);
+    drag(chart, at(0.75, 0.5), at(0.5, 0.0), Qt::LeftButton, Qt::ShiftModifier);
+    QVERIFY2(std::abs(chart.xStart().count() - 500000) <= 1, qPrintable(QString::number(chart.xStart().count())));
+    QVERIFY(std::abs(chart.xEnd().count() - 750000) <= 1);
+    QVERIFY(std::abs(chart.yMinimum() - 5.0) < 1e-9);
+    QVERIFY(std::abs(chart.yMaximum() - 10.0) < 1e-9);
+
+    // Under 4 px in one direction: a click, not a zoom
+    chart.resetView();
+    chart.setYRange(0.0, 10.0);
+    drag(chart, at(0.25, 0.25), at(0.25, 0.25) + QPointF(100.0, 3.5), Qt::RightButton);
+    QCOMPARE(chart.xStart().count(), qint64(0));
+    QCOMPARE(chart.xEnd().count(), qint64(1000000));
+    QCOMPARE(chart.yMaximum(), 10.0);
+}
+
+// #25 D3: the wheel zooms X by 1.25 per notch around the mouse; with Ctrl it zooms Y
+void tst_AnalysisChart::wheelZoomKeepsTheAnchor()
+{
+    AnalysisChart chart;
+    chart.resize(600, 320);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 1001);
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 1001));
+    chart.setYRange(0.0, 10.0);
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    const QPointF p(plot.left() + 0.25 * plot.width(), plot.top() + 0.5 * plot.height()); // t = 250 us, v = 5
+    wheel(chart, p, 120);
+    QVERIFY2(std::abs((chart.xEnd() - chart.xStart()).count() - 800000) <= 1, qPrintable(QString::number((chart.xEnd() - chart.xStart()).count())));
+    QVERIFY(std::abs(chart.xStart().count() - 50000) <= 1); // 250000 - 0.25 * 800000
+    QCOMPARE(chart.yMaximum(), 10.0);
+    wheel(chart, p, -120);
+    QVERIFY(std::abs(chart.xStart().count()) <= 1);
+    QVERIFY(std::abs(chart.xEnd().count() - 1000000) <= 1);
+    // Ctrl: Y around the value under the mouse
+    wheel(chart, p, 120, Qt::ControlModifier);
+    QVERIFY(std::abs(chart.yMinimum() - 1.0) < 1e-9);
+    QVERIFY(std::abs(chart.yMaximum() - 9.0) < 1e-9);
+    QVERIFY(std::abs(chart.xStart().count()) <= 1);
+}
+
+// #25 D3: double-click and Home reset the view; + and - zoom X around the centre; arrows pan by 10 %
+void tst_AnalysisChart::doubleClickAndKeys()
+{
+    AnalysisChart chart;
+    chart.resize(600, 320);
+    QCOMPARE(chart.focusPolicy(), Qt::StrongFocus);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 1001);
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 1001));
+    const double yMin = chart.yMinimum();
+    const double yMax = chart.yMaximum();
+    chart.setXRange(nanoseconds(100000), nanoseconds(300000));
+    chart.setYRange(0.0, 1.0);
+    const QPointF c = internal::AnalysisChartTestAccess::plotArea(chart).center();
+    mouse(chart, QEvent::MouseButtonPress, c, Qt::LeftButton, Qt::LeftButton);
+    mouse(chart, QEvent::MouseButtonRelease, c, Qt::LeftButton, Qt::NoButton);
+    mouse(chart, QEvent::MouseButtonDblClick, c, Qt::LeftButton, Qt::LeftButton);
+    mouse(chart, QEvent::MouseButtonRelease, c, Qt::LeftButton, Qt::NoButton);
+    QCOMPARE(chart.xStart().count(), qint64(0));
+    QCOMPARE(chart.xEnd().count(), qint64(1000000));
+    QCOMPARE(chart.yMinimum(), yMin);
+    QCOMPARE(chart.yMaximum(), yMax);
+
+    chart.setXRange(nanoseconds(400000), nanoseconds(600000));
+    chart.setYRange(0.0, 1.0);
+    key(chart, Qt::Key_Right);
+    QCOMPARE(chart.xStart().count(), qint64(420000));
+    key(chart, Qt::Key_Left);
+    key(chart, Qt::Key_Left);
+    QCOMPARE(chart.xStart().count(), qint64(380000));
+    key(chart, Qt::Key_Up);
+    QVERIFY(std::abs(chart.yMinimum() - 0.1) < 1e-9);
+    key(chart, Qt::Key_Down);
+    key(chart, Qt::Key_Down);
+    QVERIFY(std::abs(chart.yMinimum() + 0.1) < 1e-9);
+    key(chart, Qt::Key_Plus); // centre 480000, span 200000 / 1.25
+    QCOMPARE(chart.xEnd().count() - chart.xStart().count(), qint64(160000));
+    QCOMPARE(chart.xStart().count(), qint64(400000));
+    key(chart, Qt::Key_Minus);
+    QCOMPARE(chart.xEnd().count() - chart.xStart().count(), qint64(200000));
+    QCOMPARE(chart.xStart().count(), qint64(380000));
+    key(chart, Qt::Key_Home);
+    QCOMPARE(chart.xStart().count(), qint64(0));
+    QCOMPARE(chart.yMaximum(), yMax);
 }
 
 QTEST_MAIN(tst_AnalysisChart)
