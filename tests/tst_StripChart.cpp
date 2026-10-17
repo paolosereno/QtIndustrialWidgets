@@ -4,6 +4,10 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/StripChart.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include <internal/StripChartGeometry.h>
 #include <internal/M4Decimator.h>
 #include "StripChartTestUtils.h"
@@ -39,6 +43,7 @@ class tst_StripChart : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void labelsFollowWidgetFont();
     void defaultValues();
     void channelManagement();
     void circularBufferInsertion();
@@ -3028,6 +3033,25 @@ void tst_StripChart::absoluteSecondsLabelsHaveNoNegativeZero()
                  qPrintable(QStringLiteral("tick at %1 ns labelled '%2'").arg(tick.tNs).arg(tick.label)));
     }
     QVERIFY2(belowZero, "no tick between -50 ms and 0: the case is not exercised");
+}
+
+// #51: the axis labels (empty chart, legend hidden) are drawn into the static cache with the widget font (family, style, spacing),
+// not with the application font: a widget created with another font of the same size draws other
+// text pixels. Before #51 the cached text used painter.font() (the application font on a pixmap)
+void tst_StripChart::labelsFollowWidgetFont()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<StripChart>();
+        if (font) g->setFont(*font);
+        g->setLegendVisible(false);
+        g->resize(640, 300);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont other = FontTest::otherFont(standard->font());
+    auto changed = make(&other);
+    const int pixels = FontTest::differingPixelCount(FontTest::render(*standard), FontTest::render(*changed));
+    QVERIFY2(pixels > 100, qPrintable(QStringLiteral("only %1 pixels change with the widget font").arg(pixels)));
 }
 
 QTEST_MAIN(tst_StripChart)

@@ -4,6 +4,10 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/RadialGauge.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
@@ -93,6 +97,7 @@ class tst_RadialGauge : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void labelsFollowWidgetFont();
     void initTestCase();
     void defaultValues();
     void rangeAndClamping();
@@ -698,6 +703,25 @@ void tst_RadialGauge::digitalDisplayIgnoresUndrawnLabels()
              qPrintable(QStringLiteral("value ink %1x%2 at (%3, %4) with 10 ticks, %5x%6 at (%7, %8) with 5")
                             .arg(tenValue.width()).arg(tenValue.height()).arg(tenValue.x()).arg(tenValue.y())
                             .arg(fiveValue.width()).arg(fiveValue.height()).arg(fiveValue.x()).arg(fiveValue.y())));
+}
+
+// #51: the scale labels (digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),
+// not with the application font: a widget created with another font of the same size draws other
+// text pixels. Before #51 the cached text used painter.font() (the application font on a pixmap)
+void tst_RadialGauge::labelsFollowWidgetFont()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<RadialGauge>();
+        if (font) g->setFont(*font);
+        g->setDigitalDisplayVisible(false);
+        g->resize(300, 300);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont other = FontTest::otherFont(standard->font());
+    auto changed = make(&other);
+    const int pixels = FontTest::differingPixelCount(FontTest::render(*standard), FontTest::render(*changed));
+    QVERIFY2(pixels > 100, qPrintable(QStringLiteral("only %1 pixels change with the widget font").arg(pixels)));
 }
 
 QTEST_MAIN(tst_RadialGauge)

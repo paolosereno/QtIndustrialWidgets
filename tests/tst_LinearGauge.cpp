@@ -5,6 +5,10 @@
 #include <QtTest/QtTest>
 #include <QtWidgets/QApplication>
 #include <QtIndustrialWidgets/LinearGauge.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -24,6 +28,7 @@ class tst_LinearGauge : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void labelsFollowWidgetFont();
     void initTestCase();
     void defaultValues();
     void rangeAndClamping();
@@ -563,6 +568,26 @@ void tst_LinearGauge::scaleLabelsReadable()
     if (expectedLabels >= 0) {
         QCOMPARE(labels.size(), expectedLabels);
     }
+}
+
+// #51: the scale labels (horizontal, digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),
+// not with the application font: a widget created with another font of the same size draws other
+// text pixels. Before #51 the cached text used painter.font() (the application font on a pixmap)
+void tst_LinearGauge::labelsFollowWidgetFont()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<LinearGauge>();
+        if (font) g->setFont(*font);
+        g->setOrientation(Qt::Horizontal);
+        g->setDigitalDisplayVisible(false);
+        g->resize(420, 110);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont other = FontTest::otherFont(standard->font());
+    auto changed = make(&other);
+    const int pixels = FontTest::differingPixelCount(FontTest::render(*standard), FontTest::render(*changed));
+    QVERIFY2(pixels > 100, qPrintable(QStringLiteral("only %1 pixels change with the widget font").arg(pixels)));
 }
 
 QTEST_MAIN(tst_LinearGauge)

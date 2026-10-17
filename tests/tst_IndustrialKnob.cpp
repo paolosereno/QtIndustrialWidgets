@@ -4,6 +4,10 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include <QtGui/QPixmap>
 
 #include <cmath>
@@ -16,6 +20,7 @@ class tst_IndustrialKnob : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void labelsFollowWidgetFont();
     void defaultValues();
     void rangeAndClamping();
     void modes();
@@ -157,6 +162,25 @@ void tst_IndustrialKnob::nanAndInfinityResilience()
     QPixmap pix(knob.size());
     knob.render(&pix);
     QVERIFY(!pix.isNull());
+}
+
+// #51: the scale labels (value display hidden) are drawn into the static cache with the widget font (family, style, spacing),
+// not with the application font: a widget created with another font of the same size draws other
+// text pixels. Before #51 the cached text used painter.font() (the application font on a pixmap)
+void tst_IndustrialKnob::labelsFollowWidgetFont()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<IndustrialKnob>();
+        if (font) g->setFont(*font);
+        g->setValueDisplayVisible(false);
+        g->resize(220, 240);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont other = FontTest::otherFont(standard->font());
+    auto changed = make(&other);
+    const int pixels = FontTest::differingPixelCount(FontTest::render(*standard), FontTest::render(*changed));
+    QVERIFY2(pixels > 100, qPrintable(QStringLiteral("only %1 pixels change with the widget font").arg(pixels)));
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
