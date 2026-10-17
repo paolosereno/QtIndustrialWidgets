@@ -10,8 +10,11 @@
 
 #include "AnalysisChartView.h"
 
+#include <QtCore/QPointF>
+#include <QtGui/QFont>
 #include <QtCore/QRectF>
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtGui/QColor>
 
 #include <limits>
@@ -41,12 +44,23 @@ public:
         int id{0};
         std::vector<std::vector<qint64>> segments; // timestamps of the samples of each drawn polyline
     };
+    // One row of the readout band: its cells (columns: label, A, B, delta) and where each was drawn
+    struct BandRow {
+        QStringList cells;
+        std::vector<QRectF> cellRects;
+        QColor swatch; // the channel colour drawn before the name, invalid if none
+    };
     struct FrameDiagnostics {
         QRectF plotRect;
         internal::XRange view;
         std::vector<ChannelDiagnostics> channels;
         std::vector<internal::AxisTick> xTicks;
         std::vector<internal::AxisTick> yTicks;
+        double cursorX[2]{-1.0, -1.0}; // logical x of the drawn cursors, -1 if not drawn
+        QRectF bandRect;
+        QFont bandFont;
+        std::vector<BandRow> band;
+        QRectF boxRect; // the box-zoom rectangle being dragged, empty if none
     };
 
     Channel *channel(int id)
@@ -82,6 +96,21 @@ public:
     QColor textColor{QColor(210, 220, 235)};
     AnalysisChart::TimeLabelFormat timeLabelFormat{AnalysisChart::TimeLabelFormat::Relative};
     QDateTime timeOrigin;
+
+    // Cursors (index 0 = A, 1 = B) and the readout band
+    bool cursorVisible[2]{false, false};
+    qint64 cursorPos[2]{0, 0};
+    bool readoutVisible{true};
+    QColor cursorColor{QColor(255, 196, 0)};
+
+    // Mouse interaction in progress
+    enum class Drag { None, Pan, Box, CursorA, CursorB };
+    Drag drag{Drag::None};
+    QPointF pressPos;
+    QPointF currentPos;
+    internal::XRange pressView;
+    double pressYMinimum{0.0};
+    double pressYMaximum{1.0};
 
     bool recordDiagnostics{false};
     FrameDiagnostics lastFrame;

@@ -29,6 +29,11 @@ private Q_SLOTS:
     void absoluteTimeTicks();
     void timeLabelsAreDistinct();
     void valueTicks();
+    void zoomXKeepsTheAnchor();
+    void zoomYKeepsTheAnchor();
+    void wheelFactor();
+    void readoutValues();
+    void readoutTimes();
 };
 
 // #25 D4: the automatic gap threshold is StripChart's: 4 x an EMA of the strictly positive steps,
@@ -199,6 +204,94 @@ void tst_AnalysisChartView::valueTicks()
     // No ticks for an empty or invalid range
     QVERIFY(valueAxisTicks(1.0, 1.0, 300.0, 30.0).empty());
     QVERIFY(valueAxisTicks(std::numeric_limits<double>::quiet_NaN(), 1.0, 300.0, 30.0).empty());
+}
+
+// #25 D3: the span is divided by the factor and the anchor keeps its relative position
+void tst_AnalysisChartView::zoomXKeepsTheAnchor()
+{
+    const XRange in = zoomXAround({0, 1000}, 250.0, 2.0);
+    QCOMPARE(in.start, qint64(125));
+    QCOMPARE(in.end, qint64(625));
+    const XRange out = zoomXAround({0, 1000}, 250.0, 0.5);
+    QCOMPARE(out.start, qint64(-250));
+    QCOMPARE(out.end, qint64(1750));
+    // Anchor at the right edge stays there
+    const XRange right = zoomXAround({1000, 2000}, 2000.0, 1.25);
+    QCOMPARE(right.end, qint64(2000));
+    QCOMPARE(right.span(), qint64(800));
+    // Invalid factor or anchor: unchanged
+    for (double f : {0.0, -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        const XRange same = zoomXAround({0, 1000}, 500.0, f);
+        QCOMPARE(same.start, qint64(0));
+        QCOMPARE(same.end, qint64(1000));
+    }
+    QCOMPARE(zoomXAround({0, 1000}, std::numeric_limits<double>::quiet_NaN(), 2.0).end, qint64(1000));
+}
+
+void tst_AnalysisChartView::zoomYKeepsTheAnchor()
+{
+    const YRange in = zoomYAround(0.0, 10.0, 5.0, 2.0);
+    QCOMPARE(in.minimum, 2.5);
+    QCOMPARE(in.maximum, 7.5);
+    const YRange bottom = zoomYAround(0.0, 10.0, 0.0, 2.0);
+    QCOMPARE(bottom.minimum, 0.0);
+    QCOMPARE(bottom.maximum, 5.0);
+    const YRange out = zoomYAround(-1.0, 1.0, 0.0, 0.8);
+    QCOMPARE(out.minimum, -1.25);
+    QCOMPARE(out.maximum, 1.25);
+    // Degenerate input or result: unchanged
+    const YRange flat = zoomYAround(1.0, 1.0, 1.0, 2.0);
+    QCOMPARE(flat.minimum, 1.0);
+    QCOMPARE(flat.maximum, 1.0);
+    const YRange tiny = zoomYAround(0.0, 1e-300, 0.0, 1e300);
+    QCOMPARE(tiny.maximum, 1e-300);
+}
+
+// #25 D3: 1.25 per wheel notch (120 units), fractional for high-resolution wheels
+void tst_AnalysisChartView::wheelFactor()
+{
+    QCOMPARE(wheelZoomFactor(120), 1.25);
+    QCOMPARE(wheelZoomFactor(-120), 0.8);
+    QCOMPARE(wheelZoomFactor(240), 1.5625);
+    QCOMPARE(wheelZoomFactor(60), std::sqrt(1.25));
+    QCOMPARE(wheelZoomFactor(0), 1.0);
+}
+
+// #25: values with the given decimals, "---" for a missing or non-finite sample, no negative zero
+void tst_AnalysisChartView::readoutValues()
+{
+    const double v = 1.5;
+    QCOMPARE(readoutValueText(&v, 2), QStringLiteral("1.50"));
+    const double small = -0.0001;
+    QCOMPARE(readoutValueText(&small, 2), QStringLiteral("0.00"));
+    const double neg = -12.345;
+    QCOMPARE(readoutValueText(&neg, 1), QStringLiteral("-12.3"));
+    QCOMPARE(readoutValueText(nullptr, 2), QStringLiteral("---"));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    QCOMPARE(readoutValueText(&nan, 2), QStringLiteral("---"));
+    const double inf = -std::numeric_limits<double>::infinity();
+    QCOMPARE(readoutValueText(&inf, 2), QStringLiteral("---"));
+    // The decimals of the value axis labels
+    QCOMPARE(valueAxisDecimals(0.0, 1.0, 300.0, 30.0), 1);   // step 0.1
+    QCOMPARE(valueAxisDecimals(0.0, 1000.0, 300.0, 30.0), 0); // step 100
+    QCOMPARE(valueAxisDecimals(0.0, 0.01, 300.0, 30.0), 3);  // step 0.001
+}
+
+// #25 D6: readout times count from the data start (Relative) or are timeOrigin + t (Absolute), in the
+// unit of the axis step (10 x the resolution) with the decimals of the resolution
+void tst_AnalysisChartView::readoutTimes()
+{
+    const qint64 s = 1000000000LL;
+    QCOMPARE(readoutTimeText(7 * s + s / 2, 7 * s, false, QDateTime(), 100000000LL), QStringLiteral("0.5 s"));
+    QCOMPARE(readoutTimeText(7 * s + 123456789LL, 7 * s, false, QDateTime(), 1000000LL), QStringLiteral("123 ms"));
+    const QDateTime origin(QDate(2026, 10, 17), QTime(12, 0, 0), Qt::UTC);
+    QCOMPARE(readoutTimeText(1500000000LL, 7 * s, true, origin, 100000000LL), QStringLiteral("12:00:01.500"));
+    // Absolute without an origin: t itself, as elapsed time from 0
+    QCOMPARE(readoutTimeText(7 * s + s / 2, 7 * s, true, QDateTime(), 100000000LL), QStringLiteral("7.5 s"));
+    // Signed durations
+    QCOMPARE(durationText(1500000000LL, 100000000LL), QStringLiteral("1.5 s"));
+    QCOMPARE(durationText(-250000000LL, 10000000LL), QStringLiteral("-250 ms"));
+    QCOMPARE(durationText(0, 10000000LL), QStringLiteral("0 ms"));
 }
 
 QTEST_MAIN(tst_AnalysisChartView)

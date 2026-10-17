@@ -11,7 +11,10 @@
 #include <QtCore/QEvent>
 #include <QtCore/QtDebug>
 #include <QtGui/QFontMetricsF>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
+#include <QtGui/QWheelEvent>
 #include <QtGui/QPolygonF>
 #include <QtWidgets/QApplication>
 
@@ -24,6 +27,8 @@ namespace QtIndustrialWidgets {
 namespace {
 
 constexpr qint64 kDefaultSpanNs = 1000000000; // view without data: 1 s
+constexpr double kReadoutColumnGap = 16.0;     // logical px between the columns of the readout band
+constexpr double kNominalAxisPx = 1000.0;      // axis length of the readout resolution, 10 ticks
 
 // Pixel size of the axis and legend labels (as StripChart), scaled by the widget font (#51 rule (b))
 QFont labelFont(const QWidget &w, double scale)
@@ -33,6 +38,32 @@ QFont labelFont(const QWidget &w, double scale)
     return f;
 }
 
+// Visible channels as listed in the readout band (the first kReadoutChannelRows of them)
+const AnalysisChartPrivate::Channel *readoutChannelAt(const AnalysisChartPrivate &d, int row)
+{
+    int i = 0;
+    for (const auto &ch : d.channels) {
+        if (!ch.visible) continue;
+        if (i == row) return row < internal::kReadoutChannelRows ? &ch : nullptr;
+        ++i;
+    }
+    return nullptr;
+}
+
+// Widest cell of each column (label, A, B, delta), with room for the swatch in the label column
+std::vector<double> readoutColumnWidths(const QList<QStringList> &rows, const QFontMetricsF &fm)
+{
+    std::vector<double> widths(4, 0.0);
+    for (int r = 0; r < rows.size(); ++r) {
+        for (int c = 0; c < rows[r].size() && c < 4; ++c) {
+            double w = fm.horizontalAdvance(rows[r][c]) + 2.0;
+            if (c == 0 && r > 0) w += std::round(fm.height() * 0.7) + 4.0;
+            widths[static_cast<std::size_t>(c)] = std::max(widths[static_cast<std::size_t>(c)], w);
+        }
+    }
+    return widths;
+}
+
 } // namespace
 
 AnalysisChart::AnalysisChart(QWidget *parent)
@@ -40,6 +71,7 @@ AnalysisChart::AnalysisChart(QWidget *parent)
     , d_ptr(std::make_unique<AnalysisChartPrivate>())
 {
     d_ptr->view = {0, kDefaultSpanNs};
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 AnalysisChart::~AnalysisChart() = default;
@@ -54,6 +86,7 @@ int AnalysisChart::addChannel(const QString &name, const QColor &color, double p
     ch.color = color;
     ch.penWidth = (std::isfinite(penWidth) && penWidth > 0.0) ? penWidth : 1.8;
     d_ptr->channels.push_back(ch);
+    updateGeometry(); // the readout band has a row per visible channel
     Q_EMIT channelsChanged();
     update();
     return ch.id;
@@ -71,7 +104,9 @@ bool AnalysisChart::removeChannel(int channelId)
         d_ptr->viewFromData = false;
     }
     clampViewToData();
+    updateGeometry();
     Q_EMIT channelsChanged();
+    Q_EMIT cursorsChanged();
     update();
     return true;
 }
@@ -80,7 +115,9 @@ void AnalysisChart::removeAllChannels()
 {
     d_ptr->channels.clear();
     d_ptr->viewFromData = false;
+    updateGeometry();
     Q_EMIT channelsChanged();
+    Q_EMIT cursorsChanged();
     update();
 }
 
@@ -96,6 +133,7 @@ void AnalysisChart::clear()
     }
     d_ptr->viewFromData = false;
     Q_EMIT channelsChanged();
+    Q_EMIT cursorsChanged();
     update();
 }
 
@@ -153,6 +191,7 @@ void AnalysisChart::setChannelVisible(int channelId, bool visible)
     if (!ch || ch->visible == visible) return;
     ch->visible = visible;
     clampViewToData(); // the minimum span depends on the visible channels
+    updateGeometry();  // the readout band has a row per visible channel
     Q_EMIT channelsChanged();
     update();
 }
@@ -216,7 +255,10 @@ bool AnalysisChart::setChannelData(int channelId, const std::chrono::nanoseconds
     ch->finiteMax = hi;
 
     if (!d_ptr->viewFromData && hasData()) {
-        resetView(); // the first data sets the view
+        resetView(); // the first data sets the view and places the cursors at 1/3 and 2/3 of it
+        const qint64 span = d_ptr->view.span();
+        d_ptr->cursorPos[0] = d_ptr->view.start + span / 3;
+        d_ptr->cursorPos[1] = d_ptr->view.start + 2 * (span / 3);
     } else {
         if (!hasData()) {
             d_ptr->viewFromData = false;
@@ -224,6 +266,7 @@ bool AnalysisChart::setChannelData(int channelId, const std::chrono::nanoseconds
         clampViewToData();
     }
     Q_EMIT channelsChanged();
+    Q_EMIT cursorsChanged();
     update();
     return true;
 }
@@ -465,7 +508,12 @@ QSize AnalysisChart::sizeHint() const
 
 QSize AnalysisChart::minimumSizeHint() const
 {
-    return QSize(240, 160);
+    // #44 rule: from the minimum size up the readout band is whole (its rows and its widest columns)
+    const double scale = internal::fontScale(font(), QApplication::font());
+    const double top = (d_ptr->legendVisible ? 30.0 : 12.0) * scale;
+    const double height = top + 60.0 + 26.0 * scale + readoutBandHeight();
+    const double width = std::max(240.0, readoutBandWidth() + 16.0);
+    return QSize(static_cast<int>(std::ceil(width)), std::max(160, static_cast<int>(std::ceil(height))));
 }
 
 // --- Layout and painting ---
@@ -475,7 +523,7 @@ QRectF AnalysisChart::plotArea() const
     // #51 rule (b), as StripChart: the room for the labels and the legend grows with the widget font
     const double scale = internal::fontScale(font(), QApplication::font());
     const double top = (d_ptr->legendVisible ? 30.0 : 12.0) * scale;
-    const double bottom = 26.0 * scale;
+    const double bottom = 26.0 * scale + readoutBandHeight();
     const double right = 12.0;
     const double height = std::max(10.0, this->height() - top - bottom);
     // Room for the widest value label at the current Y range (StripChart's 42 px at least)
@@ -497,6 +545,7 @@ void AnalysisChart::resizeEvent(QResizeEvent *event)
 void AnalysisChart::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
+        if (event->type() == QEvent::FontChange) updateGeometry(); // the readout band follows the font
         update();
     }
     QWidget::changeEvent(event);
@@ -614,6 +663,74 @@ void AnalysisChart::paintEvent(QPaintEvent * /*event*/)
         painter.restore();
     }
 
+    // Cursors: vertical lines with their letter at the top of the plot
+    {
+        const QFont cursorFont = font;
+        painter.setFont(cursorFont);
+        for (int c = 0; c < 2; ++c) {
+            if (!d_ptr->cursorVisible[c] || !hasView) continue;
+            const double x = mapX(d_ptr->cursorPos[c]);
+            if (x < plot.left() - 0.5 || x > plot.right() + 0.5) continue;
+            painter.setPen(QPen(d_ptr->cursorColor, 1.0));
+            painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()));
+            const QString letter = c == 0 ? QStringLiteral("A") : QStringLiteral("B");
+            const double w = fm.horizontalAdvance(letter) + 6.0;
+            const QRectF tag(std::min(x + 2.0, plot.right() - w), plot.top() + 2.0, w, fm.height());
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(d_ptr->cursorColor);
+            painter.drawRoundedRect(tag, 2.0, 2.0);
+            painter.setPen(d_ptr->backgroundColor);
+            painter.drawText(tag, Qt::AlignCenter, letter);
+            diag.cursorX[c] = x;
+        }
+    }
+
+    // Box zoom being dragged
+    if (d_ptr->drag == AnalysisChartPrivate::Drag::Box) {
+        const QRectF box = QRectF(d_ptr->pressPos, d_ptr->currentPos).normalized().intersected(plot);
+        painter.setPen(QPen(d_ptr->textColor, 1.0, Qt::DashLine));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(box);
+        diag.boxRect = box;
+    }
+
+    // Readout band below the time axis
+    if (readoutBandHeight() > 0.0) {
+        const QList<QStringList> rows = readoutRows();
+        const std::vector<double> widths = readoutColumnWidths(rows, fm);
+        const double rowH = fm.height() + 3.0;
+        const QRectF bandRect(8.0, plot.bottom() + 26.0 * scale, width() - 16.0, readoutBandHeight());
+        diag.bandRect = bandRect;
+        diag.bandFont = font;
+        painter.setFont(font);
+        for (int r = 0; r < rows.size(); ++r) {
+            AnalysisChartPrivate::BandRow bandRow;
+            bandRow.cells = rows[r];
+            double x = bandRect.left();
+            const double y = bandRect.top() + 3.0 + static_cast<double>(r) * rowH;
+            for (int c = 0; c < rows[r].size(); ++c) {
+                const QRectF cell(x, y, widths[static_cast<std::size_t>(c)], fm.height());
+                // Channel rows start with the channel's colour swatch
+                if (c == 0 && r > 0) {
+                    const auto *ch = readoutChannelAt(*d_ptr, r - 1);
+                    if (ch) {
+                        const double sw = std::round(fm.height() * 0.7);
+                        painter.setPen(Qt::NoPen);
+                        painter.setBrush(ch->color);
+                        painter.drawRoundedRect(QRectF(x, y + (fm.height() - sw) * 0.5, sw, sw), 2.0, 2.0);
+                        bandRow.swatch = ch->color;
+                    }
+                }
+                painter.setPen(d_ptr->textColor);
+                const QRectF textRect = (c == 0 && r > 0) ? cell.adjusted(std::round(fm.height() * 0.7) + 4.0, 0, 0, 0) : cell;
+                painter.drawText(textRect, (c == 0 ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter, rows[r][c]);
+                bandRow.cellRects.push_back(textRect);
+                x += widths[static_cast<std::size_t>(c)] + kReadoutColumnGap;
+            }
+            diag.band.push_back(std::move(bandRow));
+        }
+    }
+
     // Legend: a swatch and the name of each visible channel, above the plot
     if (d_ptr->legendVisible) {
         double x = plot.left() + 4.0;
@@ -635,6 +752,321 @@ void AnalysisChart::paintEvent(QPaintEvent * /*event*/)
     if (d_ptr->recordDiagnostics) {
         d_ptr->lastFrame = std::move(diag);
     }
+}
+
+// --- Cursors and readout band ---
+
+bool AnalysisChart::isCursorVisible(Cursor cursor) const
+{
+    return d_ptr->cursorVisible[cursor == Cursor::A ? 0 : 1];
+}
+
+void AnalysisChart::setCursorVisible(Cursor cursor, bool visible)
+{
+    bool &v = d_ptr->cursorVisible[cursor == Cursor::A ? 0 : 1];
+    if (v == visible) return;
+    v = visible;
+    updateGeometry(); // the readout band appears with the first visible cursor
+    Q_EMIT cursorsChanged();
+    update();
+}
+
+std::chrono::nanoseconds AnalysisChart::cursorPosition(Cursor cursor) const
+{
+    return std::chrono::nanoseconds(d_ptr->cursorPos[cursor == Cursor::A ? 0 : 1]);
+}
+
+void AnalysisChart::setCursorPosition(Cursor cursor, std::chrono::nanoseconds t)
+{
+    qint64 &p = d_ptr->cursorPos[cursor == Cursor::A ? 0 : 1];
+    const qint64 v = static_cast<qint64>(t.count());
+    if (p == v) return;
+    p = v;
+    Q_EMIT cursorsChanged();
+    update();
+}
+
+std::optional<AnalysisChart::Sample> AnalysisChart::cursorReadout(int channelId, Cursor cursor) const
+{
+    if (!isCursorVisible(cursor)) return std::nullopt;
+    return nearestSample(channelId, cursorPosition(cursor));
+}
+
+std::chrono::nanoseconds AnalysisChart::cursorDeltaTime() const
+{
+    return cursorPosition(Cursor::B) - cursorPosition(Cursor::A);
+}
+
+std::optional<double> AnalysisChart::cursorDeltaValue(int channelId) const
+{
+    const auto a = cursorReadout(channelId, Cursor::A);
+    const auto b = cursorReadout(channelId, Cursor::B);
+    if (!a || !b || !std::isfinite(a->value) || !std::isfinite(b->value)) return std::nullopt;
+    return b->value - a->value;
+}
+
+bool AnalysisChart::isReadoutVisible() const { return d_ptr->readoutVisible; }
+QColor AnalysisChart::cursorColor() const { return d_ptr->cursorColor; }
+
+void AnalysisChart::setReadoutVisible(bool visible)
+{
+    if (d_ptr->readoutVisible == visible) return;
+    d_ptr->readoutVisible = visible;
+    updateGeometry();
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void AnalysisChart::setCursorColor(const QColor &color)
+{
+    if (d_ptr->cursorColor == color) return;
+    d_ptr->cursorColor = color;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+qint64 AnalysisChart::readoutResolution() const
+{
+    // A tenth of the 1-2-5 step of a nominal 10-tick time axis over the view. It does not depend on
+    // the widget size, so the band texts (and minimumSizeHint()) stay the same when the widget is
+    // resized to its minimum size.
+    const auto ticks = internal::timeAxisTicks(d_ptr->view, dataStart().count(), kNominalAxisPx, kNominalAxisPx / 10.0, false, QDateTime());
+    const qint64 step = ticks.size() >= 2 ? static_cast<qint64>(ticks[1].position - ticks[0].position) : d_ptr->view.span();
+    return std::max<qint64>(1, step / 10);
+}
+
+QList<QStringList> AnalysisChart::readoutRows() const
+{
+    QList<QStringList> rows;
+    const bool a = d_ptr->cursorVisible[0];
+    const bool b = d_ptr->cursorVisible[1];
+    if (!d_ptr->readoutVisible || (!a && !b)) return rows;
+
+    const qint64 res = readoutResolution();
+    const bool absolute = d_ptr->timeLabelFormat == TimeLabelFormat::Absolute;
+    const qint64 origin = dataStart().count();
+    auto timeText = [&](int c) {
+        return internal::readoutTimeText(d_ptr->cursorPos[c], origin, absolute, d_ptr->timeOrigin, res);
+    };
+    // One more decimal than a nominal 10-tick value axis (independent of the widget size, see readoutResolution())
+    const int decimals = internal::valueAxisDecimals(d_ptr->yMinimum, d_ptr->yMaximum, kNominalAxisPx, kNominalAxisPx / 10.0) + 1;
+
+    rows.append({QString(), a ? QStringLiteral("A  ") + timeText(0) : QString(), b ? QStringLiteral("B  ") + timeText(1) : QString(),
+                 (a && b) ? QString(QChar(0x0394)) + QStringLiteral("t  ") + internal::durationText(cursorDeltaTime().count(), res) : QString()});
+    int listed = 0;
+    int more = 0;
+    for (const auto &ch : d_ptr->channels) {
+        if (!ch.visible) continue;
+        if (listed == internal::kReadoutChannelRows) {
+            ++more;
+            continue;
+        }
+        ++listed;
+        auto valueText = [&](Cursor c) {
+            const auto s = cursorReadout(ch.id, c);
+            return internal::readoutValueText(s ? &s->value : nullptr, decimals);
+        };
+        const auto dy = cursorDeltaValue(ch.id);
+        rows.append({ch.name, a ? valueText(Cursor::A) : QString(), b ? valueText(Cursor::B) : QString(),
+                     (a && b) ? QString(QChar(0x0394)) + QLatin1Char(' ') + internal::readoutValueText(dy ? &*dy : nullptr, decimals) : QString()});
+    }
+    if (more > 0) {
+        rows.append({QStringLiteral("+%1 more").arg(more), QString(), QString(), QString()});
+    }
+    return rows;
+}
+
+double AnalysisChart::readoutBandHeight() const
+{
+    const int rows = static_cast<int>(readoutRows().size());
+    if (rows == 0) return 0.0;
+    const double scale = internal::fontScale(font(), QApplication::font());
+    const QFontMetricsF fm(labelFont(*this, scale));
+    return rows * (fm.height() + 3.0) + 6.0;
+}
+
+double AnalysisChart::readoutBandWidth() const
+{
+    const QList<QStringList> rows = readoutRows();
+    if (rows.isEmpty()) return 0.0;
+    const double scale = internal::fontScale(font(), QApplication::font());
+    const QFontMetricsF fm(labelFont(*this, scale));
+    double w = 0.0;
+    for (double c : readoutColumnWidths(rows, fm)) w += c + kReadoutColumnGap;
+    return w - kReadoutColumnGap;
+}
+
+// --- Interaction ---
+
+namespace {
+
+constexpr double kCursorGrabPx = 4.0; // a left drag within this distance of a cursor moves it
+
+} // namespace
+
+void AnalysisChart::mousePressEvent(QMouseEvent *event)
+{
+    const QRectF plot = plotArea();
+    const QPointF pos = event->position();
+    if (!plot.contains(pos) || !hasData()) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+    auto &d = *d_ptr;
+    d.pressPos = pos;
+    d.currentPos = pos;
+    d.pressView = d.view;
+    d.pressYMinimum = d.yMinimum;
+    d.pressYMaximum = d.yMaximum;
+    d.drag = AnalysisChartPrivate::Drag::None;
+    if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier)) {
+        // The nearest visible cursor within kCursorGrabPx, otherwise pan
+        double best = kCursorGrabPx;
+        for (int c = 0; c < 2; ++c) {
+            if (!d.cursorVisible[c] || d.view.span() <= 0) continue;
+            const double x = plot.left() + static_cast<double>(d.cursorPos[c] - d.view.start) * plot.width() / static_cast<double>(d.view.span());
+            if (std::abs(x - pos.x()) <= best) {
+                best = std::abs(x - pos.x());
+                d.drag = c == 0 ? AnalysisChartPrivate::Drag::CursorA : AnalysisChartPrivate::Drag::CursorB;
+            }
+        }
+        if (d.drag == AnalysisChartPrivate::Drag::None) d.drag = AnalysisChartPrivate::Drag::Pan;
+    } else if (event->button() == Qt::RightButton || (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ShiftModifier))) {
+        d.drag = AnalysisChartPrivate::Drag::Box;
+    }
+    event->accept();
+}
+
+void AnalysisChart::mouseMoveEvent(QMouseEvent *event)
+{
+    auto &d = *d_ptr;
+    if (d.drag == AnalysisChartPrivate::Drag::None) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+    const QRectF plot = plotArea();
+    const QPointF pos = event->position();
+    d.currentPos = pos;
+    switch (d.drag) {
+    case AnalysisChartPrivate::Drag::Pan: {
+        const double dt = -(pos.x() - d.pressPos.x()) * static_cast<double>(d.pressView.span()) / plot.width();
+        const qint64 shift = static_cast<qint64>(std::llround(dt));
+        setXRange(std::chrono::nanoseconds(d.pressView.start + shift), std::chrono::nanoseconds(d.pressView.end + shift));
+        const double dv = (pos.y() - d.pressPos.y()) * (d.pressYMaximum - d.pressYMinimum) / plot.height();
+        setYRange(d.pressYMinimum + dv, d.pressYMaximum + dv);
+        break;
+    }
+    case AnalysisChartPrivate::Drag::CursorA:
+    case AnalysisChartPrivate::Drag::CursorB: {
+        const double t = static_cast<double>(d.view.start) + (pos.x() - plot.left()) * static_cast<double>(d.view.span()) / plot.width();
+        setCursorPosition(d.drag == AnalysisChartPrivate::Drag::CursorA ? Cursor::A : Cursor::B,
+                          std::chrono::nanoseconds(static_cast<qint64>(std::llround(t))));
+        break;
+    }
+    case AnalysisChartPrivate::Drag::Box:
+        update();
+        break;
+    case AnalysisChartPrivate::Drag::None:
+        break;
+    }
+    event->accept();
+}
+
+void AnalysisChart::mouseReleaseEvent(QMouseEvent *event)
+{
+    auto &d = *d_ptr;
+    if (d.drag == AnalysisChartPrivate::Drag::Box) {
+        const QRectF plot = plotArea();
+        const QRectF box = QRectF(d.pressPos, event->position()).normalized().intersected(plot);
+        // A box smaller than 4 logical px in either direction is ignored (a click, not a zoom)
+        if (box.width() >= 4.0 && box.height() >= 4.0 && d.view.span() > 0) {
+            auto tAt = [&](double x) {
+                return std::chrono::nanoseconds(static_cast<qint64>(std::llround(
+                    static_cast<double>(d.view.start) + (x - plot.left()) * static_cast<double>(d.view.span()) / plot.width())));
+            };
+            auto vAt = [&](double y) { return d.yMinimum + (plot.bottom() - y) * (d.yMaximum - d.yMinimum) / plot.height(); };
+            const double yLow = vAt(box.bottom());
+            const double yHigh = vAt(box.top());
+            setXRange(tAt(box.left()), tAt(box.right()));
+            setYRange(yLow, yHigh);
+        }
+    }
+    d.drag = AnalysisChartPrivate::Drag::None;
+    update();
+    event->accept();
+}
+
+void AnalysisChart::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        d_ptr->drag = AnalysisChartPrivate::Drag::None;
+        resetView();
+        event->accept();
+        return;
+    }
+    QWidget::mouseDoubleClickEvent(event);
+}
+
+void AnalysisChart::wheelEvent(QWheelEvent *event)
+{
+    const QRectF plot = plotArea();
+    const QPointF pos = event->position();
+    const int delta = event->angleDelta().y();
+    if (!plot.contains(pos) || delta == 0 || !hasData()) {
+        QWidget::wheelEvent(event);
+        return;
+    }
+    const double factor = internal::wheelZoomFactor(delta);
+    auto &d = *d_ptr;
+    if (event->modifiers() & Qt::ControlModifier) {
+        const double anchor = d.yMinimum + (plot.bottom() - pos.y()) * (d.yMaximum - d.yMinimum) / plot.height();
+        const internal::YRange y = internal::zoomYAround(d.yMinimum, d.yMaximum, anchor, factor);
+        setYRange(y.minimum, y.maximum);
+    } else {
+        const double anchor = static_cast<double>(d.view.start) + (pos.x() - plot.left()) * static_cast<double>(d.view.span()) / plot.width();
+        const internal::XRange x = internal::zoomXAround(d.view, anchor, factor);
+        setXRange(std::chrono::nanoseconds(x.start), std::chrono::nanoseconds(x.end));
+    }
+    event->accept();
+}
+
+void AnalysisChart::keyPressEvent(QKeyEvent *event)
+{
+    auto &d = *d_ptr;
+    const qint64 span = d.view.span();
+    const double ySpan = d.yMaximum - d.yMinimum;
+    switch (event->key()) {
+    case Qt::Key_Home:
+        resetView();
+        break;
+    case Qt::Key_Plus:
+    case Qt::Key_Equal: {
+        const internal::XRange x = internal::zoomXAround(d.view, static_cast<double>(d.view.start) + span * 0.5, 1.25);
+        setXRange(std::chrono::nanoseconds(x.start), std::chrono::nanoseconds(x.end));
+        break;
+    }
+    case Qt::Key_Minus: {
+        const internal::XRange x = internal::zoomXAround(d.view, static_cast<double>(d.view.start) + span * 0.5, 1.0 / 1.25);
+        setXRange(std::chrono::nanoseconds(x.start), std::chrono::nanoseconds(x.end));
+        break;
+    }
+    case Qt::Key_Left:
+    case Qt::Key_Right: {
+        const qint64 step = std::max<qint64>(1, span / 10) * (event->key() == Qt::Key_Left ? -1 : 1);
+        setXRange(std::chrono::nanoseconds(d.view.start + step), std::chrono::nanoseconds(d.view.end + step));
+        break;
+    }
+    case Qt::Key_Up:
+    case Qt::Key_Down: {
+        const double step = ySpan * 0.1 * (event->key() == Qt::Key_Up ? 1.0 : -1.0);
+        setYRange(d.yMinimum + step, d.yMaximum + step);
+        break;
+    }
+    default:
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    event->accept();
 }
 
 } // namespace QtIndustrialWidgets
