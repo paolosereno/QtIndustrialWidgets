@@ -316,6 +316,8 @@ class tst_LevelMeter : public QObject
 
 private Q_SLOTS:
     void fontChangeRefreshesCache();
+    void horizontalLabelsBelowTheTicks_data();
+    void horizontalLabelsBelowTheTicks();
     void defaultValues();
     void channelValuesAndClamping();
     void peakHoldAndReset();
@@ -928,6 +930,37 @@ void tst_LevelMeter::fontChangeRefreshesCache()
     QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
     const int stale = FontTest::differingPixelCount(after, expected);
     QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
+}
+
+void tst_LevelMeter::horizontalLabelsBelowTheTicks_data()
+{
+    QTest::addColumn<double>("pointSize");
+    QTest::addColumn<QString>("unit");
+    for (double pt : {16.0, 20.0, 24.0}) {
+        QTest::addRow("dB %.0fpt", pt) << pt << QStringLiteral("dB");
+        QTest::addRow("linear %.0fpt", pt) << pt << QString();
+    }
+}
+
+// #51 (fixed in #61): on a horizontal meter with a large font the scale labels never rise over the
+// ticks. The rows holding scale ink (zone colour, see labelMeter()) must form a tick band and, after
+// at least one empty row, a label band; if the text rises over the ticks the two merge into one.
+void tst_LevelMeter::horizontalLabelsBelowTheTicks()
+{
+    QFETCH(double, pointSize);
+    QFETCH(QString, unit);
+    const double minimum = unit.isEmpty() ? 0.0 : -60.0;
+    const double maximum = unit.isEmpty() ? 100000.0 : 6.0;
+    auto m = labelMeter(Qt::Horizontal, minimum, maximum, unit, pointSize, 1);
+    m->resize(m->sizeHint());
+    const std::vector<QPoint> ink = scaleInk(*m);
+    const QImage img = grabMeter(*m);
+    const qreal dpr = img.devicePixelRatio();
+    std::vector<bool> rows(static_cast<size_t>(img.height()), false);
+    for (const QPoint &p : ink) rows[static_cast<size_t>(p.y())] = true;
+    const auto bands = runs(rows);
+    QVERIFY2(bands.size() >= 2, qPrintable(QStringLiteral("%1 band of scale ink: label text over the ticks (%2x%3, DPR %4)")
+                                               .arg(bands.size()).arg(m->width()).arg(m->height()).arg(dpr)));
 }
 
 QTEST_MAIN(tst_LevelMeter)
