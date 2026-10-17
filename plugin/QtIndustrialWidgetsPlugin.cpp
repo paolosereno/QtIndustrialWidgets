@@ -10,6 +10,7 @@
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtIndustrialWidgets/StripChart.h>
+#include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
@@ -562,6 +563,94 @@ QIcon StripChartPlugin::icon() const
 }
 
 // ============================================================================
+// AnalysisChartPlugin
+// ============================================================================
+
+AnalysisChartPlugin::AnalysisChartPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void AnalysisChartPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *AnalysisChartPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::AnalysisChart(parent);
+}
+
+QString AnalysisChartPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString AnalysisChartPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/AnalysisChart.h");
+}
+
+QString AnalysisChartPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::AnalysisChart");
+}
+
+QString AnalysisChartPlugin::toolTip() const
+{
+    return QStringLiteral("Offline review chart for recorded multi-channel data");
+}
+
+QString AnalysisChartPlugin::whatsThis() const
+{
+    return QStringLiteral("A chart for reviewing recorded multi-channel timestamp + value data, with dropouts and gaps shown as in StripChart.");
+}
+
+QString AnalysisChartPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::AnalysisChart\" name=\"analysisChart\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>640</width>\n"
+        "   <height>360</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon AnalysisChartPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Screen with a trace and a dropout gap
+    p.setPen(QPen(QColor(60, 70, 85), 1.5));
+    p.setBrush(QColor(16, 20, 28));
+    p.drawRoundedRect(2, 4, 28, 24, 3, 3);
+    p.setPen(QPen(QColor(0, 229, 255), 1.8, Qt::SolidLine, Qt::RoundCap));
+    QPolygonF left;
+    left << QPointF(4, 20) << QPointF(8, 12) << QPointF(13, 18);
+    QPolygonF right;
+    right << QPointF(18, 10) << QPointF(23, 22) << QPointF(28, 14);
+    p.drawPolyline(left);
+    p.drawPolyline(right);
+    // Magnifier
+    p.setPen(QPen(QColor(220, 225, 235), 1.6));
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(QPointF(22, 11), 4.5, 4.5);
+    p.drawLine(QPointF(25.2, 14.2), QPointF(29, 18));
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // IndustrialSwitchPlugin
 // ============================================================================
 
@@ -1083,6 +1172,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new LedIndicatorPlugin(this));
     m_widgets.append(new IndustrialKnobPlugin(this));
     m_widgets.append(new StripChartPlugin(this));
+    m_widgets.append(new AnalysisChartPlugin(this));
     m_widgets.append(new IndustrialSwitchPlugin(this));
     m_widgets.append(new LevelMeterPlugin(this));
     m_widgets.append(new AnnunciatorPanelPlugin(this));

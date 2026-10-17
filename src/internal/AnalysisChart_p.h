@@ -1,0 +1,90 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#pragma once
+
+#include <QtIndustrialWidgets/AnalysisChart.h>
+
+#include "AnalysisChartView.h"
+
+#include <QtCore/QRectF>
+#include <QtCore/QString>
+#include <QtGui/QColor>
+
+#include <limits>
+#include <vector>
+
+namespace QtIndustrialWidgets {
+
+class AnalysisChartPrivate
+{
+public:
+    struct Channel {
+        int id{0};
+        QString name;
+        QColor color;
+        double penWidth{1.8};
+        bool visible{true};
+        std::vector<qint64> t;     // non-decreasing timestamps (ns)
+        std::vector<double> v;     // values, possibly non-finite
+        qint64 autoGap{0};         // 4 x EMA of the sampling interval (internal::gapThresholdFor)
+        double meanInterval{0.0};  // (t.back() - t.front()) / (n - 1); 0 below two samples
+        double finiteMin{std::numeric_limits<double>::infinity()};
+        double finiteMax{-std::numeric_limits<double>::infinity()};
+    };
+
+    // What the last paint drew, for the tests (internal::AnalysisChartTestAccess)
+    struct ChannelDiagnostics {
+        int id{0};
+        std::vector<std::vector<qint64>> segments; // timestamps of the samples of each drawn polyline
+    };
+    struct FrameDiagnostics {
+        QRectF plotRect;
+        internal::XRange view;
+        std::vector<ChannelDiagnostics> channels;
+        std::vector<internal::AxisTick> xTicks;
+        std::vector<internal::AxisTick> yTicks;
+    };
+
+    Channel *channel(int id)
+    {
+        for (Channel &c : channels) {
+            if (c.id == id) return &c;
+        }
+        return nullptr;
+    }
+    const Channel *channel(int id) const
+    {
+        for (const Channel &c : channels) {
+            if (c.id == id) return &c;
+        }
+        return nullptr;
+    }
+
+    std::vector<Channel> channels;
+    int nextId{0};
+    qint64 gapThreshold{0};
+
+    internal::XRange view;
+    double yMinimum{0.0};
+    double yMaximum{1.0};
+    bool viewFromData{false}; // the view has been set from data at least once
+
+    bool gridVisible{true};
+    bool legendVisible{true};
+    // Same defaults as StripChart
+    QColor gridColor{QColor(42, 54, 70)};
+    QColor backgroundColor{QColor(14, 18, 25)};
+    QColor bezelColor{QColor(38, 46, 60)};
+    QColor textColor{QColor(210, 220, 235)};
+    AnalysisChart::TimeLabelFormat timeLabelFormat{AnalysisChart::TimeLabelFormat::Relative};
+    QDateTime timeOrigin;
+
+    bool recordDiagnostics{false};
+    FrameDiagnostics lastFrame;
+};
+
+} // namespace QtIndustrialWidgets

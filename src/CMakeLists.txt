@@ -161,6 +161,29 @@ set_target_properties(LevelMeterLayout PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(AnalysisChartView OBJECT
+    internal/AnalysisChartView.cpp
+    internal/AnalysisChartView.h
+)
+
+target_include_directories(AnalysisChartView
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/internal
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(AnalysisChartView
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+)
+
+set_target_properties(AnalysisChartView PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(QtIndustrialWidgets SHARED
     RadialGauge.cpp
     LinearGauge.cpp
@@ -168,6 +191,7 @@ add_library(QtIndustrialWidgets SHARED
     LedIndicator.cpp
     IndustrialKnob.cpp
     StripChart.cpp
+    AnalysisChart.cpp
     IndustrialSwitch.cpp
     LevelMeter.cpp
     AnnunciatorPanel.cpp
@@ -181,6 +205,7 @@ add_library(QtIndustrialWidgets SHARED
     $<TARGET_OBJECTS:IndustrialSwitchLayout>
     $<TARGET_OBJECTS:LevelMeterLayout>
     $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:AnalysisChartView>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h
@@ -188,6 +213,7 @@ add_library(QtIndustrialWidgets SHARED
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LedIndicator.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/IndustrialKnob.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/StripChart.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/AnalysisChart.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/IndustrialSwitch.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LevelMeter.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/AnnunciatorPanel.h
