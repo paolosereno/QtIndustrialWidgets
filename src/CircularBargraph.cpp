@@ -4,7 +4,6 @@
 
 #include <QtIndustrialWidgets/CircularBargraph.h>
 
-#include "internal/FontScale.h"
 #include "internal/CircularBargraphSegments.h"
 
 #include <QtGui/QPainter>
@@ -13,7 +12,6 @@
 #include <QtGui/QResizeEvent>
 #include <QtCore/QTimer>
 #include <QtCore/QElapsedTimer>
-#include <QtWidgets/QApplication>
 
 #include <algorithm>
 #include <cmath>
@@ -634,8 +632,7 @@ void CircularBargraph::paintEvent(QPaintEvent *)
         painter.setBrush(d_ptr->m_dialColor.darker(130));
         painter.drawEllipse(center, podRadius, podRadius);
 
-        // #51 rule (b): geometry-derived size scaled by the widget font
-        const double fontSize = internal::scalePointSize(std::max(7.0, rInner * 0.36), internal::fontScale(font(), QApplication::font()));
+        const double fontSize = std::max(7.0, rInner * 0.36);
         QFont valFont = font();
         valFont.setBold(true);
         valFont.setPointSizeF(fontSize);
@@ -650,7 +647,7 @@ void CircularBargraph::paintEvent(QPaintEvent *)
             painter.drawText(valRect, Qt::AlignCenter, valStr);
 
             QFont unitFont = font();
-            unitFont.setPointSizeF(std::max(internal::scalePointSize(5.5, internal::fontScale(font(), QApplication::font())), fontSize * 0.52));
+            unitFont.setPointSizeF(std::max(5.5, fontSize * 0.52));
             painter.setFont(unitFont);
             painter.setPen(d_ptr->m_textColor.darker(125));
 

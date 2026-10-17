@@ -4,7 +4,6 @@
 
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
-#include "internal/FontScale.h"
 #include "internal/NumberFormat.h"
 
 #include <QtGui/QPainter>
@@ -16,7 +15,6 @@
 #include <QtGui/QKeyEvent>
 #include <QtGui/QFontMetricsF>
 #include <QtCore/QtMath>
-#include <QtWidgets/QApplication>
 #include <algorithm>
 #include <cmath>
 
@@ -496,9 +494,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     }
 
     // Draw Major Ticks and Aligned Numeric Labels
-    // #51 rule (b): geometry-derived size scaled by the widget font
-    int fontSize = internal::scalePixelSize(std::clamp(static_cast<int>(radius * 0.12), 7, 11),
-                                            internal::fontScale(this->font(), QApplication::font()));
+    int fontSize = std::clamp(static_cast<int>(radius * 0.12), 7, 11);
     QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
     font.setPixelSize(fontSize);
     font.setBold(true);
@@ -697,7 +693,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
         }
 
         QFont valFont = font();
-        valFont.setPixelSize(internal::scalePixelSize(11, internal::fontScale(font(), QApplication::font())));
+        valFont.setPixelSize(11);
         valFont.setBold(true);
         painter.setFont(valFont);
         painter.setPen(d_ptr->m_pointerColor);

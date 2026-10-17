@@ -21,7 +21,7 @@ class tst_Compass : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
-    void textFollowsWidgetFontSize();
+    void textSizeIgnoresWidgetFontSize();
     void initTestCase();
     void defaultValues();
     void headingNormalization();
@@ -326,10 +326,10 @@ void tst_Compass::nanAndInfinityResilience()
     QVERIFY(!pixNorth.isNull());
 }
 
-// #51 (size rule (b)): texts whose size comes from the widget geometry are scaled by the ratio
-// between the effective pixel sizes of the widget font and of the application font: with a widget
-// font twice as large, the tallest glyph drawn in textColor is at least 1.5 times as tall
-void tst_Compass::textFollowsWidgetFontSize()
+// #51: this widget follows rule (a): its texts take family and style from the widget font, their
+// size from the widget geometry, until its layout makes room for larger text. A widget font twice
+// as large leaves the tallest glyph drawn in textColor unchanged
+void tst_Compass::textSizeIgnoresWidgetFontSize()
 {
     auto make = [](const QFont *font) {
         auto g = std::make_unique<Compass>();
@@ -344,7 +344,7 @@ void tst_Compass::textFollowsWidgetFontSize()
     const int base = FontTest::textGlyphHeight(*standard);
     const int grown = FontTest::textGlyphHeight(*large);
     QVERIFY2(base > 0, "no text drawn in textColor");
-    QVERIFY2(grown >= 1.5 * base, qPrintable(QStringLiteral("glyphs %1 px high with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
+    QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
 }
 
 QTEST_MAIN(tst_Compass)

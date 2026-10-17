@@ -4,7 +4,6 @@
 
 #include <QtIndustrialWidgets/RadialGauge.h>
 
-#include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
@@ -15,7 +14,6 @@
 #include <QtGui/QResizeEvent>
 #include <QtGui/QFontMetricsF>
 #include <QtCore/QtMath>
-#include <QtWidgets/QApplication>
 #include <algorithm>
 #include <cmath>
 
@@ -488,11 +486,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     }
 
     // Major ticks and labels font setup
-    // #51 rule (b): geometry-derived sizes scaled by the widget font
-    const double fontScale = internal::fontScale(this->font(), QApplication::font());
-    const int labelFontPx = internal::scalePixelSize(geo.labelFontPx, fontScale);
     QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
-    font.setPixelSize(labelFontPx);
+    font.setPixelSize(geo.labelFontPx);
     font.setBold(true);
     painter.setFont(font);
 
@@ -544,8 +539,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     //    to hold it whole, even over a label (#43)
     if (d_ptr->m_digitalDisplayVisible) {
         const double pad = std::max(3.0, radius * 0.04);
-        const int preferredValuePx = internal::scalePixelSize(std::max(8, static_cast<int>(radius * 0.15)), fontScale);
-        const int minimumValuePx = std::max(internal::scalePixelSize(8, fontScale), labelFontPx);
+        const int preferredValuePx = std::max(8, static_cast<int>(radius * 0.15));
+        const int minimumValuePx = std::max(8, geo.labelFontPx);
         const QString minText = internal::formatFixed(d_ptr->m_minimum, d_ptr->m_precision);
         const QString maxText = internal::formatFixed(d_ptr->m_maximum, d_ptr->m_precision);
         QFont valFont = this->font();
@@ -561,7 +556,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         };
 
         QFont unitFont = font;
-        unitFont.setPixelSize(internal::scalePixelSize(std::max(7, static_cast<int>(radius * 0.07)), fontScale));
+        unitFont.setPixelSize(std::max(7, static_cast<int>(radius * 0.07)));
         unitFont.setBold(false);
 
         internal::PodLayoutInput in;
