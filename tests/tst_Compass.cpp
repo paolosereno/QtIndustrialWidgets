@@ -328,7 +328,7 @@ void tst_Compass::nanAndInfinityResilience()
 
 // #51 (size rule (b)): texts whose size comes from the widget geometry are scaled by the ratio
 // between the effective pixel sizes of the widget font and of the application font: with a widget
-// font twice as large, the glyphs drawn in textColor are at least 1.5 times as tall
+// font twice as large, the tallest glyph drawn in textColor is at least 1.5 times as tall
 void tst_Compass::textFollowsWidgetFontSize()
 {
     auto make = [](const QFont *font) {

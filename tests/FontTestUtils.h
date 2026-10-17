@@ -61,9 +61,10 @@ inline QFont doubledFont()
     return f;
 }
 
-// Median height (device px) of the 8-connected ink components of a set of pixels: about the height
-// of the glyphs, whatever their number and placement
-inline int medianGlyphHeight(const QImage &a, const QImage &b)
+// Height (device px) of the tallest 8-connected ink component of a set of pixels: the tallest glyph,
+// whatever the number and placement of the texts (the median would be dominated by small parts such
+// as decimal points and the pieces of "%"); components taller than a quarter of the image are ignored
+inline int tallestGlyphHeight(const QImage &a, const QImage &b)
 {
     const int w = a.width();
     const int h = a.height();
@@ -98,21 +99,23 @@ inline int medianGlyphHeight(const QImage &a, const QImage &b)
                 }
             }
         }
-        heights.push_back(bottom - top + 1);
+        // Components taller than a quarter of the image are not glyphs (Compass draws its dial track
+        // in textColor)
+        if (bottom - top + 1 < h / 4) {
+            heights.push_back(bottom - top + 1);
+        }
     }
-    if (heights.empty()) return 0;
-    std::nth_element(heights.begin(), heights.begin() + static_cast<long>(heights.size() / 2), heights.end());
-    return heights[heights.size() / 2];
+    return heights.empty() ? 0 : *std::max_element(heights.begin(), heights.end());
 }
 
-// Median glyph height of the text a widget paints in textColor (two renders, white and red)
+// Tallest glyph of the text a widget paints in textColor (two renders, white and red)
 template <class Widget>
 int textGlyphHeight(Widget &w)
 {
     w.setTextColor(Qt::white);
     const QImage a = render(w);
     w.setTextColor(Qt::red);
-    return medianGlyphHeight(a, render(w));
+    return tallestGlyphHeight(a, render(w));
 }
 
 } // namespace FontTest

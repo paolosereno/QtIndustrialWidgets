@@ -9,11 +9,13 @@
 #include "FontTestUtils.h"
 
 #include <memory>
+#include <QtGui/QFontInfo>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
+#include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 
 #include <algorithm>
@@ -28,6 +30,8 @@ class tst_LinearGauge : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void labelPixelSizeRule();
+    void fontScaleFromEffectiveSize();
     void sizeHintShowsEveryOtherLabel();
     void textFollowsWidgetFontSize();
     void fontChangeRefreshesCache();
@@ -489,10 +493,31 @@ void tst_LinearGauge::scaleLabelsReadable()
     const qreal dpr = img.devicePixelRatio();
     const bool horizontal = orientation == Qt::Horizontal;
 
-    // Label font and minimum gap as decided in #31 (font: LinearGauge::paintEvent())
-    QFont font = gauge.font();
-    font.setPixelSize(std::clamp(static_cast<int>(size.height() * (horizontal ? 0.12 : 0.04)), 8, 12));
-    font.setBold(true);
+    // Label font and minimum gap as decided in #31, #37 and #51, from the helpers the widget uses
+    const QStringList texts = [&] {
+        QStringList t;
+        for (int i = 0; i <= gauge.majorTicks(); ++i) t << scaleLabelText(maximum * i / gauge.majorTicks(), precision);
+        return t;
+    }();
+    auto fontAt = [&](int px) {
+        QFont f = gauge.font();
+        f.setPixelSize(px);
+        f.setBold(true);
+        return f;
+    };
+    const double scale = internal::fontScale(gauge.font(), QApplication::font());
+    const int fontPx = internal::chooseLabelPixelSize(
+        internal::scalePixelSize(internal::linearGaugeBaseLabelPixelSize(!horizontal, size.height()), scale),
+        internal::scalePixelSize(8, scale),
+        internal::linearGaugeScaleLength(!horizontal, size.width(), size.height(), gauge.isThermometerMode(), gauge.digitalDisplayVisible()),
+        [&](int px) {
+            const QFontMetricsF m(fontAt(px));
+            std::vector<double> e;
+            for (const QString &t : texts) e.push_back(horizontal ? m.boundingRect(t).width() : m.boundingRect(t).height());
+            return e;
+        },
+        [&](int px) { return internal::scaleLabelMinGap(QFontMetricsF(fontAt(px)).height()); });
+    const QFont font = fontAt(fontPx);
     const double minGap = internal::scaleLabelMinGap(QFontMetricsF(font).height());
     const int majorTicks = gauge.majorTicks();
 
@@ -558,8 +583,8 @@ void tst_LinearGauge::scaleLabelsReadable()
     qInfo("%d labels; reference inner gap %.1f px; last label %.1f px, reference %.1f px", int(labels.size()), innerGap,
           last.end - last.start, ink.last().minLength);
     // (d) no label pixel inside the digital display pod (LinearGauge::paintEvent() geometry)
-    const QRectF pod = horizontal ? QRectF(size.width() - 55.0 + 4.0, 6.0, 55.0 - 10.0, size.height() - 12.0)
-                                  : QRectF(6.0, 6.0, size.width() - 12.0, 24.0);
+    const internal::GaugeRect podRect = internal::linearGaugeDisplayRect(!horizontal, size.width(), size.height());
+    const QRectF pod(podRect.x, podRect.y, podRect.w, podRect.h);
     for (int y = qFloor(pod.top() * dpr); y < qCeil(pod.bottom() * dpr); ++y) {
         for (int x = qFloor(pod.left() * dpr); x < qCeil(pod.right() * dpr); ++x) {
             if (isLabelPixel(img.pixel(x, y))) {
@@ -628,7 +653,7 @@ void tst_LinearGauge::fontChangeRefreshesCache()
 
 // #51 (size rule (b)): texts whose size comes from the widget geometry are scaled by the ratio
 // between the effective pixel sizes of the widget font and of the application font: with a widget
-// font twice as large, the glyphs drawn in textColor are at least 1.5 times as tall
+// font twice as large, the tallest glyph drawn in textColor is at least 1.5 times as tall
 void tst_LinearGauge::textFollowsWidgetFontSize()
 {
     auto make = [](const QFont *font) {
@@ -681,6 +706,58 @@ void tst_LinearGauge::sizeHintShowsEveryOtherLabel()
     }
     const QVector<Run> labels = groupIntoLabels(runsAlong(img, Qt::Horizontal, -1.0, isLabelPixel), innerGap + 0.5);
     QVERIFY2(labels.size() == 6, qPrintable(QStringLiteral("%1 labels drawn at the size hint 280x100, 6 expected").arg(labels.size())));
+}
+
+// #37 point 1 / #51 rule R1b: the largest size between the minimum and the preferred one at which
+// at least every other label is drawn (step <= 2); the preferred size when none reaches it.
+// Synthetic labels: 11 labels, each 2 x px wide, minimum gap 4 px; checked over many scale lengths
+// against layoutScaleLabels(), with at least one case that shrinks and one that cannot reach step 2.
+void tst_LinearGauge::labelPixelSizeRule()
+{
+    auto extents = [](int px) { return std::vector<double>(11, px * 2.0); };
+    auto gap = [](int) { return 4.0; };
+    auto stepAt = [&](int px, double length) { return internal::layoutScaleLabels(extents(px), length, 4.0).step; };
+    bool shrank = false;
+    bool unreachable = false;
+    for (double length = 40.0; length <= 400.0; length += 5.0) {
+        const int px = internal::chooseLabelPixelSize(12, 8, length, extents, gap);
+        QVERIFY(px >= 8 && px <= 12);
+        if (stepAt(px, length) <= 2) {
+            // the largest such size: every larger one up to the preferred has step > 2
+            for (int larger = px + 1; larger <= 12; ++larger) QVERIFY2(stepAt(larger, length) > 2, qPrintable(QString::number(length)));
+            shrank = shrank || px < 12;
+        } else {
+            // unreachable: no size in [8, 12] has step <= 2, and the preferred size is kept
+            for (int p = 8; p <= 12; ++p) QVERIFY2(stepAt(p, length) > 2, qPrintable(QString::number(length)));
+            QCOMPARE(px, 12);
+            unreachable = true;
+        }
+    }
+    QVERIFY2(shrank, "no scale length made the rule shrink the font");
+    QVERIFY2(unreachable, "no scale length was too short for step 2");
+    // Missing callbacks: the preferred size
+    QCOMPARE(internal::chooseLabelPixelSize(12, 8, 200.0, {}, gap), 12);
+}
+
+// #51 rule (b): the scale is the ratio of the effective pixel sizes (QFontInfo), so fonts set with
+// setPixelSize() (pointSize() == -1) work; the application font gives exactly 1.0
+void tst_LinearGauge::fontScaleFromEffectiveSize()
+{
+    const QFont app = QApplication::font();
+    QCOMPARE(internal::fontScale(app, app), 1.0);
+    QFont pixel = app;
+    pixel.setPixelSize(2 * QFontInfo(app).pixelSize());
+    QCOMPARE(pixel.pointSize(), -1);
+    QCOMPARE(internal::fontScale(pixel, app), 2.0);
+    QFont point = app;
+    point.setPointSizeF(QFontInfo(app).pointSizeF() * 1.5);
+    QVERIFY(std::abs(internal::fontScale(point, app) - 1.5) < 0.1);
+    QCOMPARE(internal::scalePixelSize(9, 1.0), 9);
+    QCOMPARE(internal::scalePixelSize(9, 2.0), 18);
+    QCOMPARE(internal::scalePixelSize(9, 0.05), 1);
+    QCOMPARE(internal::scalePixelSize(9, std::numeric_limits<double>::quiet_NaN()), 9);
+    QCOMPARE(internal::scalePointSize(7.5, 1.0), 7.5);
+    QCOMPARE(internal::scalePointSize(7.5, 2.0), 15.0);
 }
 
 QTEST_MAIN(tst_LinearGauge)
