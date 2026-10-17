@@ -3076,6 +3076,8 @@ void tst_StripChart::fontChangeRefreshesCache()
     painted->setFont(other);
     QCoreApplication::processEvents();
     const QImage after = FontTest::render(*painted);
+    // One window at a time: the active one has the focus (IndustrialKnob draws a focus ring)
+    painted->hide();
     auto fresh = make(&other);
     fresh->show();
     QVERIFY(QTest::qWaitForWindowExposed(fresh.get()));
