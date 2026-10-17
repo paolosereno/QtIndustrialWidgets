@@ -4,6 +4,8 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/LevelMeter.h>
+
+#include "FontTestUtils.h"
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -313,6 +315,7 @@ class tst_LevelMeter : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void fontChangeRefreshesCache();
     void defaultValues();
     void channelValuesAndClamping();
     void peakHoldAndReset();
@@ -892,6 +895,37 @@ void tst_LevelMeter::unitKeepsMinimumGapFromScale()
                                        "required (%9x%10, DPR %11)")
                             .arg(unitBox.width()).arg(unitBox.height()).arg(unitBox.x()).arg(unitBox.y()).arg(closest)
                             .arg(where.x()).arg(where.y()).arg(required).arg(m->width()).arg(m->height()).arg(dpr)));
+}
+
+// #51: setFont() on a widget already painted refreshes its cached background: the next render is
+// identical to that of a widget created with the new font. Before #51 the cache was invalidated only
+// by the widget's own setters, resizeEvent() and (some widgets) PaletteChange, not by FontChange
+void tst_LevelMeter::fontChangeRefreshesCache()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<LevelMeter>();
+        if (font) g->setFont(*font);
+        g->setTitle(QStringLiteral("AUDIO"));
+        g->resize(170, 320);
+        return g;
+    };
+    // Shown widgets: grab() on a hidden one delivers a pending resize event, which refreshes the
+    // cache by itself and hides the defect
+    auto painted = make(nullptr);
+    painted->show();
+    QVERIFY(QTest::qWaitForWindowExposed(painted.get()));
+    const QFont other = FontTest::otherFont(painted->font());
+    const QImage before = FontTest::render(*painted);
+    painted->setFont(other);
+    QCoreApplication::processEvents();
+    const QImage after = FontTest::render(*painted);
+    auto fresh = make(&other);
+    fresh->show();
+    QVERIFY(QTest::qWaitForWindowExposed(fresh.get()));
+    const QImage expected = FontTest::render(*fresh);
+    QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
+    const int stale = FontTest::differingPixelCount(after, expected);
+    QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
 }
 
 QTEST_MAIN(tst_LevelMeter)
