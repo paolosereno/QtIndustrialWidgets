@@ -34,7 +34,8 @@ class StripChartTestAccess;
  * - Sub-millisecond rendering with Hi-DPI cached background reticle grid and bezel.
  * - Manual Y-range bounds or dynamic smooth auto-scaling.
  * - Multi-channel legend overlay with live telemetry readouts.
- * - Real-time axis (std::chrono::nanoseconds) and high-speed M4 min/max decimation at 60 FPS.
+ * - Real-time axis (std::chrono::nanoseconds) and M4 min/max decimation to one bucket per device-pixel column
+ *   (measured paint times: docs/benchmarks.md).
  *
  * Fonts: the texts use the widget font (setFont(), style sheets) at sizes derived from the widget
  * geometry and scaled by the ratio between the effective pixel sizes of the widget font and of the

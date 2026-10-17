@@ -206,7 +206,7 @@ include(FetchContent)
 FetchContent_Declare(
     QtIndustrialWidgets
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
-    GIT_TAG        v2.1.1
+    GIT_TAG        v2.2.0
 )
 
 # Optional: Disable examples and designer plugin when fetching as a dependency
@@ -248,7 +248,7 @@ Download official packages from [GitHub Releases](https://github.com/paolosereno
 
 ### Option D: Via C++ Package Managers (vcpkg / Conan)
 
-- **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets`
+- **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets` — **experimental, not yet verified**: the port in `ports/` has not been tested with `vcpkg install`, and its archive hash is set only after a release is tagged (see [#66](https://github.com/paolosereno/QtIndustrialWidgets/issues/66)).
 - **Conan 2.0**: `conan install . --build=missing`
 
 ---

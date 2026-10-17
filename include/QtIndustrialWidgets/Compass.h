@@ -31,7 +31,7 @@ class CompassPrivate;
  * - 360° graduation marks with cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) indices.
  * - High-visibility 12 o'clock lubber reference marker.
  * - Recessed central digital readout pod with 3-digit padded heading angle (e.g. `045°`).
- * - Hardware-accelerated Hi-DPI circular card pixmap caching for 60+ FPS rendering.
+ * - High-DPI cached circular card pixmap: a heading change redraws only the moving parts.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
