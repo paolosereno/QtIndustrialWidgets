@@ -43,6 +43,7 @@ class tst_StripChart : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void plotMarginsFollowWidgetFontSize();
     void fontChangeRefreshesCache();
     void labelsFollowWidgetFont();
     void defaultValues();
@@ -3085,6 +3086,24 @@ void tst_StripChart::fontChangeRefreshesCache()
     QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
     const int stale = FontTest::differingPixelCount(after, expected);
     QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
+}
+
+// #51 (size rule (b)): the axis label font is scaled by the ratio between the effective pixel sizes
+// of the widget font and of the application font, and so is the room kept for the labels: with a
+// widget font twice as large the left, top and bottom plot margins are twice as large
+void tst_StripChart::plotMarginsFollowWidgetFontSize()
+{
+    StripChart standard;
+    standard.resize(640, 300);
+    StripChart large;
+    large.setFont(FontTest::doubledFont());
+    large.resize(640, 300);
+    const QRectF a = StripChartTestAccess::plotArea(standard);
+    const QRectF b = StripChartTestAccess::plotArea(large);
+    QCOMPARE(b.left(), 2.0 * a.left());
+    QCOMPARE(b.top(), 2.0 * a.top());
+    QCOMPARE(b.right(), a.right()); // the right margin holds no labels
+    QCOMPARE(300.0 - b.bottom(), 2.0 * (300.0 - a.bottom()));
 }
 
 QTEST_MAIN(tst_StripChart)
