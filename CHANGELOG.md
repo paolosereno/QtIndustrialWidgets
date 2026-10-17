@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`AnalysisChart` widget, phase 1 part 1** (#25): offline review of recorded multi-channel data (`qiw::AnalysisChart`). Channels with stable ids; `setChannelData()` copies absolute `std::chrono::nanoseconds` timestamps and `double` values per channel (different or irregular rates allowed), rejects decreasing timestamps (the previous data is kept, `false` and a warning), and `0` samples clears the channel; `clear()` empties the data and `removeAllChannels()` removes the channels. One shared Y axis; programmatic view (`setXRange()` clamped between a few samples of the densest visible channel and the data extent, at most one view width outside the data; `setYRange()`; `resetView()` with StripChart's 10 % autoscale margin); `nearestSample()`. Traces follow StripChart's rules, so the same data looks the same in both: a non-finite value or a time gap above `gapThreshold()` (default: 4 × the EMA of the sampling interval) breaks the trace. Time axis Relative (elapsed since the data start) or Absolute (`timeOrigin()` + t), value axis, legend, Designer plugin entry and a gallery showcase. Zoom, pan, cursors and decimation follow in the next parts of #25.
+
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.2.0` tag archive instead of an all-zero placeholder (never set since 1.0.x), and `vcpkg.json` declares the host dependencies `vcpkg-cmake` and `vcpkg-cmake-config` that the portfile needs. Not verified with `vcpkg install`; the port remains experimental. An in-repo port can carry the hash of a tag only on `main` after the tag, not in the tagged commit.
 - **Standalone Doxygen configuration**: `docs/Doxyfile` no longer states version 1.0.0; the version comes from `CMakeLists.txt` through `QIW_VERSION` (README).

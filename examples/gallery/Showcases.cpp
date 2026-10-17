@@ -4,6 +4,7 @@
 
 #include "Showcases.h"
 
+#include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
@@ -369,6 +370,46 @@ QWidget *stripChartChannels(Theme theme)
     return c;
 }
 
+QWidget *analysisChartReview(Theme theme)
+{
+    using namespace std::chrono;
+    auto *c = new AnalysisChart;
+    if (isDark(theme)) {
+        c->setBackgroundColor(QColor(14, 18, 25));
+        c->setGridColor(QColor(42, 54, 70));
+        c->setBezelColor(QColor(38, 46, 60));
+        c->setTextColor(QColor(210, 220, 235));
+    } else {
+        c->setBackgroundColor(QColor(242, 246, 252));
+        c->setGridColor(QColor(208, 218, 230));
+        c->setBezelColor(QColor(215, 222, 230));
+        c->setTextColor(QColor(40, 48, 60));
+    }
+    const int pressure = c->addChannel(QStringLiteral("Pressure 200 Hz"), QColor(0, 229, 255), 1.8);
+    const int flow = c->addChannel(QStringLiteral("Flow 25 Hz"), QColor(255, 170, 0), 1.8);
+
+    // 10 s of recorded data at two rates: Pressure has a 0.4 s NaN dropout, Flow a 1 s recording gap
+    const double pi = std::acos(-1.0);
+    std::vector<nanoseconds> tp, tf;
+    std::vector<double> vp, vf;
+    for (int i = 0; i < 2000; ++i) {
+        const double t = i / 200.0;
+        tp.push_back(nanoseconds(static_cast<qint64>(i) * 5000000));
+        vp.push_back((t >= 4.0 && t < 4.4) ? std::numeric_limits<double>::quiet_NaN()
+                                            : std::sin(2.0 * pi * 0.4 * t) + 0.15 * std::sin(2.0 * pi * 7.0 * t));
+    }
+    for (int i = 0; i < 250; ++i) {
+        const double t = i / 25.0;
+        if (t >= 6.0 && t < 7.0) continue; // nothing recorded
+        tf.push_back(nanoseconds(static_cast<qint64>(i) * 40000000));
+        vf.push_back(0.6 * std::cos(2.0 * pi * 0.15 * t) - 0.2);
+    }
+    c->setChannelData(pressure, tp.data(), vp.data(), static_cast<qsizetype>(tp.size()));
+    c->setChannelData(flow, tf.data(), vf.data(), static_cast<qsizetype>(tf.size()));
+    c->resetView();
+    return c;
+}
+
 } // namespace
 
 QString Showcase::fileStem(Theme theme) const
@@ -401,6 +442,7 @@ QColor backgroundColor(Theme theme)
 const std::vector<Showcase> &showcases()
 {
     static const std::vector<Showcase> all = {
+        {QStringLiteral("AnalysisChart"), QStringLiteral("review"), QSize(640, 300), analysisChartReview},
         {QStringLiteral("AnnunciatorPanel"), QStringLiteral("alarms"), QSize(640, 360), annunciatorAlarms},
         {QStringLiteral("CircularBargraph"), QStringLiteral("valid"), QSize(260, 260),
          [](Theme t) { return circularBargraph(t, 65.0); }},
