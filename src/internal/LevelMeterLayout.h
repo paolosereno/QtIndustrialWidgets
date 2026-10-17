@@ -101,7 +101,9 @@ std::vector<double> levelMeterLabelExtents(Qt::Orientation orientation, double m
 /**
  * \brief Minimum size of a LevelMeter from its scale labels (#40).
  *
- * Vertical: room for the bars (6 px each, 4 px gaps) and the scale margin. Horizontal: room for the
+ * Vertical: width for the bars (6 px each, 4 px gaps) and the scale margin; height for bars long
+ * enough that every linear label and both dB ends are drawn, with the title, the unit band and the
+ * channel labels (#51). Horizontal: room for the
  * end-label insets (and the unit) and bars long enough that the two end labels (centred on their
  * ticks) keep minGap between them and, for a linear scale, that neighbouring labels do too, so that
  * every linear label and both dB ends are drawn (#57); height for the margins, the title, the bars and

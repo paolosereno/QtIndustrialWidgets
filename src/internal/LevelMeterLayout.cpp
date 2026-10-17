@@ -232,7 +232,21 @@ QSize levelMeterMinimumSize(Qt::Orientation orientation, int channels, bool scal
     const double bars = n * 6.0 + (n - 1) * 4.0;
     if (orientation == Qt::Vertical) {
         const double width = 2 * kChassisAndContentMargin + bars + (scaleVisible ? levelMeterVerticalScaleMargin(m) : 0.0);
-        return base.expandedTo(QSize(static_cast<int>(std::ceil(width)), base.height()));
+        double height = 0.0;
+        if (scaleVisible) {
+            // #51: bars long enough that every linear label (6 divisions) and both dB ends keep minGap
+            // (labels one line high, centred on their ticks), plus the title, the unit band and the
+            // channel labels; the end labels stick out half a line past the bars
+            const double step = m.lineHeight + m.minGap;
+            const double ends = m.endsFraction > 0.0 ? step / m.endsFraction : 0.0;
+            const double length = m.linear ? std::max(6.0 * step, ends) : ends;
+            const double unitBand = levelMeterVerticalUnitBand(m);
+            const double below = channelLabels ? 16.0 : 0.0;
+            const double half = m.lineHeight * 0.5;
+            height = 2 * kChassisAndContentMargin + (title ? 18.0 : 0.0) + unitBand + below + length
+                + (unitBand > 0.0 ? 0.0 : std::max(0.0, half - 8.0)) + std::max(0.0, half - (below > 0.0 ? 16.0 : 8.0));
+        }
+        return base.expandedTo(QSize(static_cast<int>(std::ceil(width)), static_cast<int>(std::ceil(height))));
     }
     // Height (#57): margins, title, bars at their 6 px minimum and the scale
     const double height = 2 * kChassisAndContentMargin + (title ? 18.0 : 0.0) + bars
