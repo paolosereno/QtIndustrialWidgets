@@ -28,7 +28,7 @@
  * - Global operations: Acknowledge (ACK), Silence (Mute horn), Reset, and Lamp Test (simultaneous bulb check).
  * - Audible horn output signal (`audibleHornChanged(bool)`).
  * - Interactive tile acknowledgement via direct mouse click.
- * - Hardware-accelerated Hi-DPI background caching for high rendering performance.
+ * - High-DPI cached background: a state change redraws only the tiles.
  *
  * \code
  * auto *panel = new AnnunciatorPanel(parent);

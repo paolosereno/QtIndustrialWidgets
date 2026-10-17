@@ -5,7 +5,8 @@
 # Standalone Doxyfile for QtIndustrialWidgets
 
 PROJECT_NAME           = "QtIndustrialWidgets"
-PROJECT_NUMBER         = "1.0.0"
+# The version comes from the project() call in CMakeLists.txt, passed in QIW_VERSION (see README)
+PROJECT_NUMBER         = "$(QIW_VERSION)"
 PROJECT_BRIEF          = "Modern, High-Performance Industrial Instruments & SCADA Widgets for Qt"
 OUTPUT_DIRECTORY       = "build/docs"
 
