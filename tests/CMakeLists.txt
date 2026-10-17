@@ -127,6 +127,46 @@ set_target_properties(tst_StripChart PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_StripChart)
+add_executable(tst_AnalysisChartView
+    tst_AnalysisChartView.cpp
+    $<TARGET_OBJECTS:AnalysisChartView>
+    $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:NumberFormat>
+)
+target_link_libraries(tst_AnalysisChartView
+    PRIVATE
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_AnalysisChartView
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_AnalysisChartView PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_AnalysisChartView)
+add_executable(tst_AnalysisChart
+    tst_AnalysisChart.cpp
+)
+target_link_libraries(tst_AnalysisChart
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Gui
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+)
+target_include_directories(tst_AnalysisChart
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_AnalysisChart PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_AnalysisChart)
 
 add_executable(tst_IndustrialSwitch
     tst_IndustrialSwitch.cpp

@@ -18,6 +18,7 @@
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtIndustrialWidgets/StripChart.h>
+#include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LevelMeter.h>
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
