@@ -5,6 +5,10 @@
 #include <QtTest/QtTest>
 #include <QtWidgets/QApplication>
 #include <QtIndustrialWidgets/LinearGauge.h>
+
+#include "FontTestUtils.h"
+
+#include <memory>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -24,6 +28,8 @@ class tst_LinearGauge : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void fontChangeRefreshesCache();
+    void labelsFollowWidgetFont();
     void initTestCase();
     void defaultValues();
     void rangeAndClamping();
@@ -563,6 +569,59 @@ void tst_LinearGauge::scaleLabelsReadable()
     if (expectedLabels >= 0) {
         QCOMPARE(labels.size(), expectedLabels);
     }
+}
+
+// #51: the scale labels (horizontal, digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),
+// not with the application font: a widget created with another font of the same size draws other
+// text pixels. Before #51 the cached text used painter.font() (the application font on a pixmap)
+void tst_LinearGauge::labelsFollowWidgetFont()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<LinearGauge>();
+        if (font) g->setFont(*font);
+        g->setOrientation(Qt::Horizontal);
+        g->setDigitalDisplayVisible(false);
+        g->resize(420, 110);
+        return g;
+    };
+    auto standard = make(nullptr);
+    const QFont other = FontTest::otherFont(standard->font());
+    auto changed = make(&other);
+    const int pixels = FontTest::differingPixelCount(FontTest::render(*standard), FontTest::render(*changed));
+    QVERIFY2(pixels > 100, qPrintable(QStringLiteral("only %1 pixels change with the widget font").arg(pixels)));
+}
+
+// #51: setFont() on a widget already painted refreshes its cached background: the next render is
+// identical to that of a widget created with the new font. Before #51 the cache was invalidated only
+// by the widget's own setters, resizeEvent() and (some widgets) PaletteChange, not by FontChange
+void tst_LinearGauge::fontChangeRefreshesCache()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<LinearGauge>();
+        if (font) g->setFont(*font);
+        g->setOrientation(Qt::Horizontal);
+        g->resize(420, 110);
+        return g;
+    };
+    // Shown widgets: grab() on a hidden one delivers a pending resize event, which refreshes the
+    // cache by itself and hides the defect
+    auto painted = make(nullptr);
+    painted->show();
+    QVERIFY(QTest::qWaitForWindowExposed(painted.get()));
+    const QFont other = FontTest::otherFont(painted->font());
+    const QImage before = FontTest::render(*painted);
+    painted->setFont(other);
+    QCoreApplication::processEvents();
+    const QImage after = FontTest::render(*painted);
+    // One window at a time: the active one has the focus (IndustrialKnob draws a focus ring)
+    painted->hide();
+    auto fresh = make(&other);
+    fresh->show();
+    QVERIFY(QTest::qWaitForWindowExposed(fresh.get()));
+    const QImage expected = FontTest::render(*fresh);
+    QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
+    const int stale = FontTest::differingPixelCount(after, expected);
+    QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
 }
 
 QTEST_MAIN(tst_LinearGauge)

@@ -215,6 +215,7 @@ Q_SIGNALS:
 protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private Q_SLOTS:
     void updatePeakDecay();

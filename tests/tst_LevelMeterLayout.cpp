@@ -59,6 +59,7 @@ private Q_SLOTS:
     void degenerateInput();
     void horizontalMinimumKeepsEveryLinearLabel();
     void horizontalMinimumKeepsBothDbEnds();
+    void verticalMinimumKeepsEveryLinearLabel();
     void verticalUnitBandOnlyWithUnit();
 };
 
@@ -238,6 +239,32 @@ void tst_LevelMeterLayout::horizontalMinimumKeepsBothDbEnds()
             QVERIFY2(!drawn.empty() && drawn.front() == 0 && drawn.back() == static_cast<int>(ticks.size()) - 1,
                      qPrintable(QStringLiteral("%1 pt, spacing %2 %: minimum width %3 (bars %4 px) does not hold both end labels")
                                     .arg(pt).arg(spacing).arg(min.width()).arg(length)));
+        }
+    }
+}
+
+// #51 (from #57): at the minimum height of a vertical meter every linear label is drawn, and both dB
+// ends; with and without a unit (the unit band takes height above the bars)
+void tst_LevelMeterLayout::verticalMinimumKeepsEveryLinearLabel()
+{
+    struct Range { double min; double max; QString unit; bool linear; };
+    const Range ranges[] = {{0.0, 100.0, QString(), true}, {0.0, 100000.0, QStringLiteral("RPM"), true},
+                            {-60.0, 6.0, QStringLiteral("dB"), false}};
+    for (const Range &r : ranges) {
+        for (double pt : {9.0, 11.0, 13.0, 16.0, 20.0}) {
+            QFont font;
+            font.setPointSizeF(pt);
+            const LevelMeterScaleMetrics m = levelMeterScaleMetrics(r.min, r.max, r.unit, font);
+            const QSize min = levelMeterMinimumSize(Qt::Vertical, 1, true, false, false, m, QSize(45, 100));
+            const double length = min.height() - 22.0 - levelMeterVerticalUnitBand(m);
+            const std::vector<double> ticks = levelMeterTicks(r.min, r.max, r.unit);
+            const std::vector<int> drawn = levelMeterSelectLabels(ticks, centresOf(ticks, r.min, r.max, length),
+                                                                  levelMeterLabelExtents(Qt::Vertical, r.min, r.max, r.unit, font), r.linear, m.minGap);
+            const bool ok = r.linear ? drawn.size() == ticks.size()
+                                     : (!drawn.empty() && drawn.front() == 0 && drawn.back() == static_cast<int>(ticks.size()) - 1);
+            QVERIFY2(ok, qPrintable(QStringLiteral("%1..%2 '%3' %4 pt: minimum height %5 (bars %6 px) draws %7 of %8 labels")
+                                        .arg(r.min).arg(r.max).arg(r.unit).arg(pt).arg(min.height()).arg(length)
+                                        .arg(drawn.size()).arg(ticks.size())));
         }
     }
 }

@@ -4,6 +4,8 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
+
+#include "FontTestUtils.h"
 #include "internal/IndustrialSwitchLayout.h"
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
@@ -208,6 +210,7 @@ class tst_IndustrialSwitch : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void fontChangeRefreshesCache();
     void defaultValues();
     void twoPositionToggle();
     void threePositionSwitch();
@@ -669,6 +672,39 @@ void tst_IndustrialSwitch::sizeHintKeepsGuardedThreePositionSwitchReadable()
     const QSize min = sw->minimumSizeHint();
     QVERIFY2(hint.width() >= min.width() && hint.height() >= min.height(),
              qPrintable(QStringLiteral("sizeHint %1x%2 below minimumSizeHint %3x%4").arg(hint.width()).arg(hint.height()).arg(min.width()).arg(min.height())));
+}
+
+// #51: setFont() on a widget already painted refreshes its cached background: the next render is
+// identical to that of a widget created with the new font. Before #51 the cache was invalidated only
+// by the widget's own setters, resizeEvent() and (some widgets) PaletteChange, not by FontChange
+void tst_IndustrialSwitch::fontChangeRefreshesCache()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<IndustrialSwitch>();
+        if (font) g->setFont(*font);
+        g->setLabel(QStringLiteral("PUMP"));
+        g->resize(180, 220);
+        return g;
+    };
+    // Shown widgets: grab() on a hidden one delivers a pending resize event, which refreshes the
+    // cache by itself and hides the defect
+    auto painted = make(nullptr);
+    painted->show();
+    QVERIFY(QTest::qWaitForWindowExposed(painted.get()));
+    const QFont other = FontTest::otherFont(painted->font());
+    const QImage before = FontTest::render(*painted);
+    painted->setFont(other);
+    QCoreApplication::processEvents();
+    const QImage after = FontTest::render(*painted);
+    // One window at a time: the active one has the focus (IndustrialKnob draws a focus ring)
+    painted->hide();
+    auto fresh = make(&other);
+    fresh->show();
+    QVERIFY(QTest::qWaitForWindowExposed(fresh.get()));
+    const QImage expected = FontTest::render(*fresh);
+    QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
+    const int stale = FontTest::differingPixelCount(after, expected);
+    QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
 }
 
 QTEST_MAIN(tst_IndustrialSwitch)

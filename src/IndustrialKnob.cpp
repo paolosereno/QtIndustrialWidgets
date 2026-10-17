@@ -301,7 +301,8 @@ void IndustrialKnob::resizeEvent(QResizeEvent *event)
 
 void IndustrialKnob::changeEvent(QEvent *event)
 {
-    if (event->type() == QEvent::PaletteChange) {
+    // #51: the cached text uses the widget font, so a font change invalidates it too
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
         invalidateCache();
         update();
     }
@@ -494,7 +495,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
     // Draw Major Ticks and Aligned Numeric Labels
     int fontSize = std::clamp(static_cast<int>(radius * 0.12), 7, 11);
-    QFont font = painter.font();
+    QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
     font.setPixelSize(fontSize);
     font.setBold(true);
     painter.setFont(font);

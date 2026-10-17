@@ -4,6 +4,8 @@
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/LevelMeter.h>
+
+#include "FontTestUtils.h"
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -313,6 +315,9 @@ class tst_LevelMeter : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void fontChangeRefreshesCache();
+    void horizontalLabelsBelowTheTicks_data();
+    void horizontalLabelsBelowTheTicks();
     void defaultValues();
     void channelValuesAndClamping();
     void peakHoldAndReset();
@@ -892,6 +897,70 @@ void tst_LevelMeter::unitKeepsMinimumGapFromScale()
                                        "required (%9x%10, DPR %11)")
                             .arg(unitBox.width()).arg(unitBox.height()).arg(unitBox.x()).arg(unitBox.y()).arg(closest)
                             .arg(where.x()).arg(where.y()).arg(required).arg(m->width()).arg(m->height()).arg(dpr)));
+}
+
+// #51: setFont() on a widget already painted refreshes its cached background: the next render is
+// identical to that of a widget created with the new font. Before #51 the cache was invalidated only
+// by the widget's own setters, resizeEvent() and (some widgets) PaletteChange, not by FontChange
+void tst_LevelMeter::fontChangeRefreshesCache()
+{
+    auto make = [](const QFont *font) {
+        auto g = std::make_unique<LevelMeter>();
+        if (font) g->setFont(*font);
+        g->setTitle(QStringLiteral("AUDIO"));
+        g->resize(170, 320);
+        return g;
+    };
+    // Shown widgets: grab() on a hidden one delivers a pending resize event, which refreshes the
+    // cache by itself and hides the defect
+    auto painted = make(nullptr);
+    painted->show();
+    QVERIFY(QTest::qWaitForWindowExposed(painted.get()));
+    const QFont other = FontTest::otherFont(painted->font());
+    const QImage before = FontTest::render(*painted);
+    painted->setFont(other);
+    QCoreApplication::processEvents();
+    const QImage after = FontTest::render(*painted);
+    // One window at a time: the active one has the focus (IndustrialKnob draws a focus ring)
+    painted->hide();
+    auto fresh = make(&other);
+    fresh->show();
+    QVERIFY(QTest::qWaitForWindowExposed(fresh.get()));
+    const QImage expected = FontTest::render(*fresh);
+    QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
+    const int stale = FontTest::differingPixelCount(after, expected);
+    QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
+}
+
+void tst_LevelMeter::horizontalLabelsBelowTheTicks_data()
+{
+    QTest::addColumn<double>("pointSize");
+    QTest::addColumn<QString>("unit");
+    for (double pt : {16.0, 20.0, 24.0}) {
+        QTest::addRow("dB %.0fpt", pt) << pt << QStringLiteral("dB");
+        QTest::addRow("linear %.0fpt", pt) << pt << QString();
+    }
+}
+
+// #51 (fixed in #61): on a horizontal meter with a large font the scale labels never rise over the
+// ticks. The rows holding scale ink (zone colour, see labelMeter()) must form a tick band and, after
+// at least one empty row, a label band; if the text rises over the ticks the two merge into one.
+void tst_LevelMeter::horizontalLabelsBelowTheTicks()
+{
+    QFETCH(double, pointSize);
+    QFETCH(QString, unit);
+    const double minimum = unit.isEmpty() ? 0.0 : -60.0;
+    const double maximum = unit.isEmpty() ? 100000.0 : 6.0;
+    auto m = labelMeter(Qt::Horizontal, minimum, maximum, unit, pointSize, 1);
+    m->resize(m->sizeHint());
+    const std::vector<QPoint> ink = scaleInk(*m);
+    const QImage img = grabMeter(*m);
+    const qreal dpr = img.devicePixelRatio();
+    std::vector<bool> rows(static_cast<size_t>(img.height()), false);
+    for (const QPoint &p : ink) rows[static_cast<size_t>(p.y())] = true;
+    const auto bands = runs(rows);
+    QVERIFY2(bands.size() >= 2, qPrintable(QStringLiteral("%1 band of scale ink: label text over the ticks (%2x%3, DPR %4)")
+                                               .arg(bands.size()).arg(m->width()).arg(m->height()).arg(dpr)));
 }
 
 QTEST_MAIN(tst_LevelMeter)

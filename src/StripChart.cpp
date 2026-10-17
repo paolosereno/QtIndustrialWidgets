@@ -964,7 +964,8 @@ void StripChart::resizeEvent(QResizeEvent *event)
 
 void StripChart::changeEvent(QEvent *event)
 {
-    if (event->type() == QEvent::PaletteChange) {
+    // #51: the cached text uses the widget font, so a font change invalidates it too
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
         invalidateCache();
         update();
     }
@@ -1015,7 +1016,7 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
         QPen solidGridPen(d_ptr->m_gridColor.lighter(130), 1.0, Qt::SolidLine);
 
         int fontSize = 9;
-        QFont font = painter.font();
+        QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
         font.setPixelSize(fontSize);
         painter.setFont(font);
 
