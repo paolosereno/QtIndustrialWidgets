@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # Qt Designer Integration Guide {#designer_plugin}
 
-QtIndustrialWidgets provides an integrated plugin module (`QtIndustrialWidgetsPlugin`) that seamlessly registers all 11 widgets inside **Qt Designer** and **Qt Creator**.
+QtIndustrialWidgets provides a plugin module (`QtIndustrialWidgetsPlugin`) that registers the 12 widgets inside **Qt Designer** and **Qt Creator**.
 
 ---
 
