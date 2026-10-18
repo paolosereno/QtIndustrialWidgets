@@ -23,3 +23,24 @@ set_target_properties(bench_StripChart PROPERTIES
     AUTORCC OFF
     OUTPUT_NAME bench_StripChart
 )
+
+add_executable(bench_AnalysisChart
+    bench_AnalysisChart.cpp
+)
+
+target_link_libraries(bench_AnalysisChart PRIVATE
+    QtIndustrialWidgets
+    Qt${QT_VERSION_MAJOR}::Widgets
+)
+
+target_include_directories(bench_AnalysisChart PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+set_target_properties(bench_AnalysisChart PROPERTIES
+    AUTOMOC ON
+    AUTOUIC OFF
+    AUTORCC OFF
+    OUTPUT_NAME bench_AnalysisChart
+)
