@@ -63,5 +63,6 @@ Once installed, a new category **"Industrial Widgets"** will appear in the Widge
 9. `QtIndustrialWidgets::AnnunciatorPanel`
 10. `QtIndustrialWidgets::Compass`
 11. `QtIndustrialWidgets::CircularBargraph`
+12. `QtIndustrialWidgets::AnalysisChart`
 
 All properties (ranges, thresholds, colors, orientations) can be customized directly within the **Property Editor**!

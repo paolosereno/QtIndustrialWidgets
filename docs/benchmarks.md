@@ -7,6 +7,9 @@ SPDX-License-Identifier: MIT
 
 > **Note:** Figures predate #11–#16 (rendering changes); regeneration tracked in [#18](https://github.com/paolosereno/QtIndustrialWidgets/issues/18).
 
+> `AnalysisChart` figures are in their own part at the end of this page:
+> [AnalysisChart Performance Benchmarks](#analysischart-performance-benchmarks).
+
 This page is the single source of performance figures for `QtIndustrialWidgets::StripChart`.
 The figures come from **two consecutive runs** of the same `bench_StripChart` build (benchmark source commit
 `75bb7d0`) on the machine described below. Tables show the values of run 1 and, in the last column, the range of
@@ -357,3 +360,123 @@ because each call costs milliseconds on 2.0.1.
 Earlier 2.0.1 baseline figures in this file and in the CHANGELOG, including an extrapolated `addSample` figure, were
 not reproducible and have been removed. For an earlier 2.0.0 figure that came from a lighter case, see the
 [note on issue #4](https://github.com/paolosereno/QtIndustrialWidgets/issues/4#issuecomment-6101475950).
+
+---
+
+# AnalysisChart Performance Benchmarks
+
+The single source of performance figures for `QtIndustrialWidgets::AnalysisChart` (#25). The figures come from
+**one run** of `bench_AnalysisChart` (benchmark source commit `4232d72`) on the machine of the StripChart part
+above, with `docs/analysis_chart.md`, README and CHANGELOG quoting this part.
+
+## Target
+
+#25: a redraw after a zoom or pan step takes **≤ 16.7 ms** for **4 channels × 10 M samples at a 1920 device px
+plot**. A case passes when the **p95** of its 30 measured redraws is ≤ 16.7 ms.
+
+**Result: not met.** 6 of the 7 cases FAIL; only panning at 1/100 of the record (100 k samples per channel in the
+view) passes. The cause is below.
+
+## Command
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_TESTS=ON -DBUILD_EXAMPLES=ON -DBUILD_DOCS=OFF \
+      -DBUILD_DESIGNER_PLUGIN=OFF -DBUILD_BENCHMARKS=ON
+cmake --build build --clean-first
+QT_QPA_PLATFORM=offscreen ./build/bin/bench_AnalysisChart > bench_analysis.md
+```
+
+`bench_analysis.md` contains the tables below verbatim; progress lines go to stderr.
+
+## Method
+
+- **Widget**: `AnalysisChart` at DPR 1, resized so that the plot is exactly 1920 device px wide (1974 × 1080 px),
+  `DecimationMode::Auto`, readout band hidden, rendered into a `QPixmap` with `QWidget::render()` (CPU raster,
+  offscreen, no composition or vsync).
+- **Data**: 4 channels × 10 M samples every 10 µs (100 s). The signals are those of `bench_StripChart`, sample for
+  sample (its reference interval is 10 µs): `SpikesAndNaN` for all zoom and pan cases, `SmoothSine` and
+  `BroadbandNoise` for one more full-view case each. Over 100 s the 62.8 ms sine of these signals fills every
+  pixel column of the full view with a full-height envelope.
+- **Cases**: 5 warm-up renders, then 30 measured redraws; min, median and p95 (nearest rank). A measured redraw of
+  a zoom or pan case is one input step delivered to the widget synchronously, then one render, timed together:
+  - *Zoom in / Zoom out*: a wheel notch (`QWheelEvent`, ×1.25) at the centre of the plot, 30 steps from the full
+    view in, then 30 steps back out;
+  - *Pan*: arrow keys (`Qt::Key_Right` 15 times, then `Qt::Key_Left` 15 times, 10 % of the view each) at a view of
+    1/10 and of 1/100 of the record.
+- **setChannelData()**: wall time of each of the 4 calls; memory as the growth of the resident set size of the
+  process across the 4 calls (the benchmark's own buffers freed), and the bytes of the pyramid.
+- The timings of this machine are bimodal between runs (see the StripChart part); the spread between min and
+  p95 within one case shows it.
+
+## Results
+
+<!-- bench_AnalysisChart results: begin -->
+
+#### Environment
+
+| Item | Value |
+|---|---|
+| CPU | 13th Gen Intel(R) Core(TM) i5-13600KF (20 logical CPUs, x86_64) |
+| OS | Ubuntu 24.04.1 LTS |
+| Kernel | linux 6.18.54.1-microsoft-standard-WSL2 |
+| Compiler | GCC 13.3.0 |
+| Build | NDEBUG defined, __OPTIMIZE__ defined |
+| Qt | 6.4.2 (compiled against 6.4.2) |
+| QPA platform | offscreen |
+| Render target | QPixmap via QWidget::render() (CPU raster) |
+| Device pixel ratio | 1 |
+| Widget size | 1974 × 1080 px |
+| Plot width W_dev | 1920 device px |
+| Data | 4 channels × 10000000 samples, every 10 µs |
+| Library version | 2.2.0 |
+| Benchmark source commit | 4232d72e2a318594236d3c862506302a0fe65996 |
+
+#### Redraw after a zoom or pan step (target ≤ 16.7 ms at p95)
+
+| Case | Samples per channel in view | Decimated channels | min (ms) | median (ms) | p95 (ms) | Target |
+|---|---|---|---|---|---|---|
+| Full view, redraw only (SpikesAndNaN) | 1e+07 | 4 / 4 | 33.46 | 42.07 | 65.22 | FAIL |
+| Zoom in, wheel x1.25 per step | 1e+07 → 1.238e+04 | 4 / 4 | 3.70 | 11.90 | 35.37 | FAIL |
+| Zoom out, wheel x1.25 per step | 1.238e+04 → 1e+07 | 4 / 4 | 3.99 | 8.99 | 38.40 | FAIL |
+| Pan, arrow keys 10 % per step, 1/10 of the record | 1e+06 | 4 / 4 | 12.90 | 19.10 | 20.21 | FAIL |
+| Pan, arrow keys 10 % per step, 1/100 of the record | 1e+05 | 4 / 4 | 7.06 | 10.06 | 10.81 | PASS |
+| Full view, redraw only (SmoothSine) | 1e+07 | 4 / 4 | 45.53 | 62.88 | 91.55 | FAIL |
+| Full view, redraw only (BroadbandNoise) | 1e+07 | 4 / 4 | 40.45 | 84.56 | 104.60 | FAIL |
+
+#### setChannelData()
+
+| Item | Value |
+|---|---|
+| Time per call (4 calls of 10000000 samples) | min 121.85 ms, median 149.02 ms |
+| Stored samples (8 B timestamp + 8 B value) | 610.4 MiB |
+| Pyramid | 81.1 MiB (2.13 B/sample, 13.3 % of the samples) |
+| Resident set growth across the 4 calls | 691.9 MiB |
+
+<!-- bench_AnalysisChart results: end -->
+
+## Cause of the miss (profile)
+
+Measured during development with temporary timers around the phases of `paintEvent()` (not committed), on the
+same machine and data, full view, `SpikesAndNaN`, per frame:
+
+| Phase | Time per frame |
+|---|---|
+| Buckets from the pyramid (4 channels × 1920 buckets) | 7.5–10.2 ms |
+| Segments from the buckets | 0.2–0.4 ms |
+| Drawing the decimated polylines | 17–30 ms |
+| Whole frame | 27–43 ms |
+
+- **Drawing dominates.** Each M4 column is drawn first → min → max → last, so its vertical extent is stroked
+  twice (up and back down); with an envelope in every column that is several million pixels written per frame
+  for 4 channels, of which about 680 k remain visible. A separate `QPainter` test with the same pen showed the
+  cost does not depend on the number of `drawPolyline()` calls (the same polylines in 4 or in 1536 calls: 7.3 ms
+  each), so it follows the ink. `StripChart` draws its decimated traces the same way; drawing fewer pixels
+  (e.g. one vertical span per column) would change the rendered pixels of both charts and is left to a decision
+  of the maintainer.
+- **Buckets.** 4 × 1920 buckets each read up to two partial blocks of raw samples and about 2 log2(blocks) pyramid
+  nodes; at 10 M samples these reads are mostly cache misses. A compact index of the first timestamp of every
+  block replaced the binary search over the whole timestamp array (searches 4.4 → 3.7 ms per frame in a
+  micro-benchmark).
+- The zoom cases fail at p95 because their first steps are close to the full view; panning at 1/10 of the record
+  (1 M samples per channel in view) fails with a p95 of 20.21 ms.

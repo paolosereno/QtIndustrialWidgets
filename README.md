@@ -65,6 +65,7 @@ A modern, modular, high-performance C++ / Qt open-source instrumentation library
 | `AnnunciatorPanel`<br>ISA-18.1 tiles: acknowledged, unacknowledged and advisory alarms | <img src="docs/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640"> |
 | `Compass`<br>Heading-up card, heading 047° with heading bug | <img src="docs/images/compass-heading-up.png" alt="Compass" width="300"> |
 | `CircularBargraph`<br>24 segments with peak hold | <img src="docs/images/circular-bargraph-valid.png" alt="CircularBargraph" width="260"> |
+| `AnalysisChart`<br>Recorded data at two rates, a NaN dropout and a recording gap | <img src="docs/images/analysis-chart-review.png" alt="AnalysisChart" width="640"> |
 
 The images are generated from the gallery with `--export-gallery` (dark theme, device pixel ratio 2, shown at half their pixel width); see [docs/gallery_images.md](docs/gallery_images.md) for how to regenerate them and for the other variants.
 
@@ -162,6 +163,14 @@ High-contrast circular arc indicator composed of discrete curved LED segments.
 - **Ballistic Peak Hold**: Built-in peak indicator segment with configurable hold duration and smooth ballistic decay falloff.
 - **Centered Digital Pod**: Integrated optional digital readout pod with decimal precision and measurement unit display.
 - **Value State**: `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`. Out-of-range inputs (including `±Inf`) are shown at the range bound with the end segment blinking (~2 Hz) and a `<` / `>` readout; a `NaN` input is shown as `Invalid` (all segments ghost, readout `---`). `rawValue()` keeps the unclamped input, and the state is recomputed when the range changes.
+
+### 12. `AnalysisChart` (`qiw::AnalysisChart`)
+Offline review of recorded multi-channel data, next to the live `StripChart`.
+- **Recorded Data**: Per-channel copies of absolute `std::chrono::nanoseconds` timestamps and `double` values, at different or irregular rates; decreasing timestamps are rejected with the previous data kept.
+- **Zoom & Pan**: Wheel zoom around the pointer (Ctrl for values), drag to pan, box zoom, keyboard navigation, double-click or Home to reset.
+- **Two Cursors**: Nearest-sample readouts (no interpolation), Δt and Δy, in a readout band of up to 6 channels that is part of the minimum size.
+- **Same Rules as StripChart**: Non-finite values and time gaps break the trace, and M4 decimation draws one bucket per device column with dropout columns left blank; a min/max pyramid built by `setChannelData()` (at most 2.125 bytes per sample on top of the 16 of the data) supplies the buckets.
+- **Measured Performance**: the #25 target (redraw after a zoom or pan step ≤ 16.7 ms for 4 channels × 10 M samples at 1920 px) is **not met**: the full view redraws in 42.07 ms (median) on the benchmark machine. Tables, method and cause: [Benchmark Report](docs/benchmarks.md#analysischart-performance-benchmarks). See the [AnalysisChart Guide](docs/analysis_chart.md).
 
 ---
 
