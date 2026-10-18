@@ -199,6 +199,9 @@ private Q_SLOTS:
     void decimatedTraceMatchesM4Decimator();
     void oneBucketPerDeviceColumn();
     void decimatedDropoutsAreBlankColumns();
+    void pyramidFollowsTheData();
+    void tracesStayInsideThePlotColumns_data();
+    void tracesStayInsideThePlotColumns();
 };
 
 // #25 D1: ids are stable, never reused, unaffected by removing other channels
@@ -1321,6 +1324,75 @@ void tst_AnalysisChart::decimatedDropoutsAreBlankColumns()
         }
         QVERIFY2(blank >= 1 && drawn > frame.widthDev / 2, qPrintable(QStringLiteral("blank %1, drawn %2").arg(blank).arg(drawn)));
     }
+}
+
+// #25: setChannelData() builds the pyramid of the new data (replaced or cleared data included)
+void tst_AnalysisChart::pyramidFollowsTheData()
+{
+    AnalysisChart chart;
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    QCOMPARE(internal::AnalysisChartTestAccess::pyramidBytes(chart, a), std::size_t(0));
+    const Series big = uniformSeries(0, 1000, 64 * 100);
+    QVERIFY(chart.setChannelData(a, big.t.data(), big.v.data(), static_cast<qsizetype>(big.t.size())));
+    const std::size_t bigBytes = internal::AnalysisChartTestAccess::pyramidBytes(chart, a);
+    QVERIFY(bigBytes > 0);
+    const Series small = uniformSeries(0, 1000, 64 * 3);
+    QVERIFY(chart.setChannelData(a, small.t.data(), small.v.data(), static_cast<qsizetype>(small.t.size())));
+    const std::size_t smallBytes = internal::AnalysisChartTestAccess::pyramidBytes(chart, a);
+    QVERIFY2(smallBytes > 0 && smallBytes < bigBytes, qPrintable(QStringLiteral("%1 -> %2").arg(bigBytes).arg(smallBytes)));
+    QVERIFY(chart.setChannelData(a, nullptr, nullptr, 0));
+    QCOMPARE(internal::AnalysisChartTestAccess::pyramidBytes(chart, a), std::size_t(0));
+    QVERIFY(chart.setChannelData(a, big.t.data(), big.v.data(), static_cast<qsizetype>(big.t.size())));
+    chart.clear();
+    QCOMPARE(internal::AnalysisChartTestAccess::pyramidBytes(chart, a), std::size_t(0));
+}
+
+void tst_AnalysisChart::tracesStayInsideThePlotColumns_data()
+{
+    QTest::addColumn<int>("mode");
+    QTest::addRow("raw") << static_cast<int>(AnalysisChart::DecimationMode::Off);
+    QTest::addRow("decimated") << static_cast<int>(AnalysisChart::DecimationMode::Always);
+}
+
+// #25: traces are clipped to the whole device columns of the plot, also with a sample beyond each
+// edge of the view (the raw trace enters and leaves through the edges)
+void tst_AnalysisChart::tracesStayInsideThePlotColumns()
+{
+    QFETCH(int, mode);
+    AnalysisChart chart;
+    chart.resize(640, 300);
+    chart.setGridVisible(false);
+    chart.setLegendVisible(false);
+    chart.setDecimationMode(static_cast<AnalysisChart::DecimationMode>(mode));
+    const QColor trace(0, 255, 0);
+    const int a = chart.addChannel(QStringLiteral("A"), trace, 4.0);
+    // A steep square wave: the trace crosses both edges of the view at full height
+    std::vector<nanoseconds> t;
+    std::vector<double> v;
+    for (int i = 0; i < 4000; ++i) {
+        t.push_back(nanoseconds(qint64(i) * 1000));
+        v.push_back((i / 7) % 2 == 0 ? 0.0 : 1.0);
+    }
+    QVERIFY(chart.setChannelData(a, t.data(), v.data(), 4000));
+    chart.setXRange(nanoseconds(1000500), nanoseconds(1300500)); // edges between samples
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    const QImage img = chart.grab().toImage();
+    const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    const double dpr = img.devicePixelRatio();
+    const int left = static_cast<int>(frame.leftDev);
+    const int right = left + frame.widthDev; // exclusive
+    int inside = 0;
+    for (int y = static_cast<int>(std::ceil(plot.top() * dpr)); y < static_cast<int>(plot.bottom() * dpr); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            const QColor c = img.pixelColor(x, y);
+            const bool green = c.green() > 120 && c.green() > c.red() + 60 && c.green() > c.blue() + 60;
+            if (!green) continue;
+            QVERIFY2(x >= left && x < right, qPrintable(QStringLiteral("trace pixel at %1,%2, plot columns %3..%4").arg(x).arg(y).arg(left).arg(right - 1)));
+            ++inside;
+        }
+    }
+    QVERIFY(inside > frame.widthDev); // the trace was drawn
 }
 
 QTEST_MAIN(tst_AnalysisChart)
