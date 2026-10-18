@@ -5,6 +5,9 @@
 #include <QtTest/QtTest>
 
 #include "internal/AnalysisChartView.h"
+#include "internal/AnalysisPyramid.h"
+
+#include <QtCore/QRandomGenerator>
 
 #include <cmath>
 #include <limits>
@@ -34,6 +37,11 @@ private Q_SLOTS:
     void wheelFactor();
     void readoutValues();
     void readoutTimes();
+    void pyramidMatchesM4Decimator_data();
+    void pyramidMatchesM4Decimator();
+    void pyramidEdgeCases();
+    void segmentsMatchM4Decimator();
+    void pyramidLowerBound();
 };
 
 // #25 D4: the automatic gap threshold is StripChart's: 4 x an EMA of the strictly positive steps,
@@ -292,6 +300,206 @@ void tst_AnalysisChartView::readoutTimes()
     QCOMPARE(durationText(1500000000LL, 100000000LL), QStringLiteral("1.5 s"));
     QCOMPARE(durationText(-250000000LL, 10000000LL), QStringLiteral("-250 ms"));
     QCOMPARE(durationText(0, 10000000LL), QStringLiteral("0 ms"));
+}
+
+namespace {
+
+// Random channel: irregular steps (some zero: equal timestamps), values with spikes, NaN and +-Inf
+struct RandomChannel {
+    std::vector<qint64> t;
+    std::vector<double> v;
+};
+
+RandomChannel randomChannel(quint32 seed, std::size_t n, double nonFiniteShare)
+{
+    QRandomGenerator rng(seed);
+    RandomChannel c;
+    qint64 t = 1000000000LL + static_cast<qint64>(rng.bounded(1000));
+    for (std::size_t i = 0; i < n; ++i) {
+        t += static_cast<qint64>(rng.bounded(4)) == 0 ? 0 : 1 + static_cast<qint64>(rng.bounded(200));
+        c.t.push_back(t);
+        const double r = rng.generateDouble();
+        double y = std::sin(static_cast<double>(i) / 50.0) + 0.1 * rng.generateDouble();
+        if (r < nonFiniteShare) {
+            y = (rng.bounded(3) == 0) ? std::numeric_limits<double>::infinity() : std::numeric_limits<double>::quiet_NaN();
+        } else if (r < nonFiniteShare + 0.002) {
+            y = rng.bounded(2) == 0 ? 50.0 : -50.0; // spike
+        } else if (rng.bounded(10) == 0) {
+            y = std::round(y * 4.0) / 4.0; // equal values: ties for min and max
+        }
+        c.v.push_back(y);
+    }
+    return c;
+}
+
+QString bucketDiff(const M4Bucket &a, const M4Bucket &b)
+{
+    auto same = [](double x, double y) { return x == y || (std::isnan(x) && std::isnan(y)); };
+    QStringList d;
+    if (a.tFirst != b.tFirst || !same(a.yFirst, b.yFirst)) d << QStringLiteral("first %1/%2 vs %3/%4").arg(a.tFirst).arg(a.yFirst).arg(b.tFirst).arg(b.yFirst);
+    if (a.tLast != b.tLast || !same(a.yLast, b.yLast)) d << QStringLiteral("last %1/%2 vs %3/%4").arg(a.tLast).arg(a.yLast).arg(b.tLast).arg(b.yLast);
+    if (a.tMin != b.tMin || !same(a.yMin, b.yMin)) d << QStringLiteral("min %1/%2 vs %3/%4").arg(a.tMin).arg(a.yMin).arg(b.tMin).arg(b.yMin);
+    if (a.tMax != b.tMax || !same(a.yMax, b.yMax)) d << QStringLiteral("max %1/%2 vs %3/%4").arg(a.tMax).arg(a.yMax).arg(b.tMax).arg(b.yMax);
+    if (a.count != b.count) d << QStringLiteral("count %1 vs %2").arg(a.count).arg(b.count);
+    if (a.hasFinite != b.hasFinite || a.hasNonFinite != b.hasNonFinite) d << QStringLiteral("flags");
+    return d.join(QStringLiteral(", "));
+}
+
+// The reference: M4Decimator on t - origin, timestamps shifted back
+std::vector<M4Bucket> referenceBuckets(const RandomChannel &c, qint64 origin, const BucketGrid &grid, qint64 kStart, int numBuckets)
+{
+    std::vector<qint64> rel(c.t.size());
+    for (std::size_t i = 0; i < c.t.size(); ++i) rel[i] = c.t[i] - origin;
+    std::vector<M4Bucket> out = M4Decimator::decimateToBuckets(rel.data(), c.v.data(), rel.size(), grid, kStart, numBuckets);
+    for (M4Bucket &b : out) {
+        if (!b.hasFinite) continue;
+        b.tFirst += origin;
+        b.tLast += origin;
+        b.tMin += origin;
+        b.tMax += origin;
+    }
+    return out;
+}
+
+} // namespace
+
+void tst_AnalysisChartView::pyramidMatchesM4Decimator_data()
+{
+    QTest::addColumn<quint32>("seed");
+    QTest::addColumn<int>("count");
+    QTest::addColumn<double>("nonFiniteShare");
+    QTest::addRow("100k, 0.1 %% non-finite") << 1u << 100000 << 0.001;
+    QTest::addRow("100k, no non-finite") << 2u << 100000 << 0.0;
+    QTest::addRow("50k, 2 %% non-finite") << 3u << 50000 << 0.02;
+    QTest::addRow("3001 (partial last block)") << 4u << 3001 << 0.005;
+    QTest::addRow("63 (no whole block)") << 5u << 63 << 0.05;
+    QTest::addRow("all non-finite") << 6u << 4096 << 1.0;
+}
+
+// #25: the pyramid gives exactly M4Decimator's buckets (first, last, earliest min and max, finite
+// count, dropout flag), whatever the zoom level and the position of the window
+void tst_AnalysisChartView::pyramidMatchesM4Decimator()
+{
+    QFETCH(quint32, seed);
+    QFETCH(int, count);
+    QFETCH(double, nonFiniteShare);
+    const RandomChannel c = randomChannel(seed, static_cast<std::size_t>(count), nonFiniteShare);
+    AnalysisPyramid pyramid;
+    pyramid.build(c.t.data(), c.v.data(), c.v.size());
+    const qint64 extent = c.t.back() - c.t.front();
+    QRandomGenerator rng(seed * 7919u);
+    int compared = 0;
+    for (int trial = 0; trial < 60; ++trial) {
+        // Spans from a few samples to more than the whole extent; windows anywhere around the data
+        const double zoom = std::pow(10.0, -4.0 + 4.3 * rng.generateDouble());
+        const qint64 span = std::max<qint64>(1, static_cast<qint64>(static_cast<double>(extent) * zoom));
+        const qint64 origin = c.t.front() - span / 4 + static_cast<qint64>(rng.generateDouble() * static_cast<double>(extent));
+        const int width = 1 + static_cast<int>(rng.bounded(2000));
+        const BucketGrid grid(width, span);
+        const auto expected = referenceBuckets(c, origin, grid, 0, width);
+        const auto actual = pyramid.buckets(c.t.data(), c.v.data(), c.t.size(), origin, grid, 0, width);
+        QCOMPARE(actual.size(), expected.size());
+        for (std::size_t k = 0; k < expected.size(); ++k) {
+            const QString diff = bucketDiff(actual[k], expected[k]);
+            QVERIFY2(diff.isEmpty(), qPrintable(QStringLiteral("trial %1, span %2, width %3, bucket %4: %5")
+                                                     .arg(trial).arg(span).arg(width).arg(k).arg(diff)));
+            compared += expected[k].count > 0 ? 1 : 0;
+        }
+    }
+    // The trials did hit data: buckets with finite samples, 10 per trial on average (fewer samples: one per sample)
+    if (nonFiniteShare < 1.0) QVERIFY2(compared >= std::min(600, count), qPrintable(QString::number(compared)));
+}
+
+void tst_AnalysisChartView::pyramidEdgeCases()
+{
+    AnalysisPyramid empty;
+    empty.build(nullptr, nullptr, 0);
+    QCOMPARE(empty.aggregate(nullptr, nullptr, 0, 0).count, std::size_t(0));
+    QVERIFY(empty.buckets(nullptr, nullptr, 0, 0, BucketGrid(10, 100), 0, 10).empty());
+
+    // Ties: the earliest minimum and maximum across block boundaries
+    std::vector<qint64> t(256);
+    std::vector<double> v(256, 1.0);
+    for (std::size_t i = 0; i < t.size(); ++i) t[i] = static_cast<qint64>(i);
+    v[10] = -2.0;
+    v[200] = -2.0;
+    v[70] = 3.0;
+    v[130] = 3.0;
+    AnalysisPyramid p;
+    p.build(t.data(), v.data(), v.size());
+    const M4Bucket all = p.aggregate(t.data(), v.data(), 0, 256);
+    QCOMPARE(all.tMin, qint64(10));
+    QCOMPARE(all.tMax, qint64(70));
+    QCOMPARE(all.count, std::size_t(256));
+    // Whole blocks only, starting after the first minimum
+    const M4Bucket tail = p.aggregate(t.data(), v.data(), 64, 256);
+    QCOMPARE(tail.tMin, qint64(200));
+    QCOMPARE(tail.tFirst, qint64(64));
+    QCOMPARE(tail.tLast, qint64(255));
+    // A NaN inside a whole block marks the bucket
+    v[150] = std::numeric_limits<double>::quiet_NaN();
+    p.build(t.data(), v.data(), v.size());
+    QVERIFY(p.aggregate(t.data(), v.data(), 128, 192).hasNonFinite);
+    QVERIFY(!p.aggregate(t.data(), v.data(), 0, 128).hasNonFinite);
+    QCOMPARE(p.aggregate(t.data(), v.data(), 128, 192).count, std::size_t(63));
+    // About 2 bytes per sample (two nodes of 64 B per block)
+    std::vector<double> big(64 * 1024, 0.5);
+    std::vector<qint64> bigT(big.size());
+    for (std::size_t i = 0; i < bigT.size(); ++i) bigT[i] = static_cast<qint64>(i);
+    p.build(bigT.data(), big.data(), big.size());
+    // About 2.125 bytes per sample: two nodes of 64 B and one 8 B timestamp per block of 64
+    QVERIFY2(p.memoryBytes() <= big.size() * 17 / 8 + 4096, qPrintable(QString::number(p.memoryBytes())));
+}
+
+// #25: the trace segments follow M4Decimator::decimateToSegments() (dropout buckets break the
+// trace, empty buckets do not, steps above the gap threshold do)
+void tst_AnalysisChartView::segmentsMatchM4Decimator()
+{
+    for (quint32 seed : {11u, 12u, 13u}) {
+        const RandomChannel c = randomChannel(seed, 20000, 0.002);
+        AnalysisPyramid pyramid;
+        pyramid.build(c.t.data(), c.v.data(), c.v.size());
+        const qint64 extent = c.t.back() - c.t.front();
+        for (qint64 gap : {qint64(0), qint64(150), qint64(400), extent}) {
+            for (int width : {37, 640, 1920, 5000}) {
+                const BucketGrid grid(width, extent);
+                const qint64 origin = c.t.front();
+                std::vector<qint64> rel(c.t.size());
+                for (std::size_t i = 0; i < c.t.size(); ++i) rel[i] = c.t[i] - origin;
+                auto expected = M4Decimator::decimateToSegments(rel.data(), c.v.data(), rel.size(), grid, 0, width, gap);
+                const auto actual = segmentsFromBuckets(pyramid.buckets(c.t.data(), c.v.data(), c.t.size(), origin, grid, 0, width), gap);
+                QCOMPARE(actual.size(), expected.size());
+                for (std::size_t s = 0; s < expected.size(); ++s) {
+                    QCOMPARE(actual[s].size(), expected[s].size());
+                    for (std::size_t i = 0; i < expected[s].size(); ++i) {
+                        QCOMPARE(actual[s][i].t, expected[s][i].t + origin);
+                        QCOMPARE(actual[s][i].value, expected[s][i].value);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The block index search equals std::lower_bound() from any start index, for any time
+void tst_AnalysisChartView::pyramidLowerBound()
+{
+    for (std::size_t n : {std::size_t(0), std::size_t(5), std::size_t(64), std::size_t(65), std::size_t(1000), std::size_t(6400)}) {
+        const RandomChannel c = randomChannel(static_cast<quint32>(n) + 100u, n, 0.0);
+        AnalysisPyramid pyramid;
+        pyramid.build(c.t.data(), c.v.data(), n);
+        QRandomGenerator rng(static_cast<quint32>(n));
+        const qint64 t0 = n ? c.t.front() - 10 : 0;
+        const qint64 t1 = n ? c.t.back() + 10 : 10;
+        for (int trial = 0; trial < 2000; ++trial) {
+            const std::size_t from = n ? static_cast<std::size_t>(rng.bounded(static_cast<quint32>(n + 1))) : 0;
+            // Times on samples (equal timestamps included) and between them
+            const qint64 time = (n && trial % 2) ? c.t[static_cast<std::size_t>(rng.bounded(static_cast<quint32>(n)))]
+                                                 : t0 + static_cast<qint64>(rng.generateDouble() * static_cast<double>(t1 - t0));
+            const auto expected = static_cast<std::size_t>(std::lower_bound(c.t.begin() + static_cast<std::ptrdiff_t>(from), c.t.end(), time) - c.t.begin());
+            QCOMPARE(pyramid.lowerBound(c.t.data(), n, from, time), expected);
+        }
+    }
 }
 
 QTEST_MAIN(tst_AnalysisChartView)

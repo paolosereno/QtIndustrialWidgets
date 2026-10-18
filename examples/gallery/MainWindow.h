@@ -23,6 +23,7 @@ class LevelMeter;
 class AnnunciatorPanel;
 class Compass;
 class CircularBargraph;
+class AnalysisChart;
 }
 class QSlider;
 class QLabel;
@@ -127,6 +128,9 @@ private:
     QLabel *m_deviationLabel{nullptr};
     QPushButton *m_autopilotButton{nullptr};
     bool m_isAutopilotActive{false};
+
+    // Recorded data review (AnalysisChart)
+    QtIndustrialWidgets::AnalysisChart *m_analysisChart{nullptr};
 
     // High-Rate DAQ Showcase (StripChart)
     QtIndustrialWidgets::StripChart *m_daqChart{nullptr};

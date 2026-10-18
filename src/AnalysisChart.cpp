@@ -38,6 +38,20 @@ QFont labelFont(const QWidget &w, double scale)
     return f;
 }
 
+// StripChart's drawSegmentEndPixels(): an aliased cosmetic line can leave out the first or last pixel
+// of a polyline (a segment starting with a vertical stretch shorter than a pixel, or a single
+// bucket), so the end pixels of each decimated segment are drawn explicitly; a point 0.25 device px
+// inside a column lights exactly that column.
+template <typename ToLogicalX>
+void drawSegmentEndPixels(QPainter &painter, const internal::BucketGrid &grid, qint64 origin, double leftDev,
+                          const std::vector<internal::M4Point> &segment, const QPolygonF &poly, ToLogicalX toLogicalX)
+{
+    const auto kFirst = static_cast<double>(grid.bucketOf(segment.front().t - origin));
+    const auto kLast = static_cast<double>(grid.bucketOf(segment.back().t - origin));
+    painter.drawPoint(QPointF(toLogicalX(leftDev + kFirst + 0.25), poly.first().y()));
+    painter.drawPoint(QPointF(toLogicalX(leftDev + kLast + 0.25), poly.last().y()));
+}
+
 // Visible channels as listed in the readout band (the first kReadoutChannelRows of them)
 const AnalysisChartPrivate::Channel *readoutChannelAt(const AnalysisChartPrivate &d, int row)
 {
@@ -130,6 +144,7 @@ void AnalysisChart::clear()
         ch.meanInterval = 0.0;
         ch.finiteMin = std::numeric_limits<double>::infinity();
         ch.finiteMax = -std::numeric_limits<double>::infinity();
+        ch.pyramid.clear();
     }
     d_ptr->viewFromData = false;
     Q_EMIT channelsChanged();
@@ -253,6 +268,7 @@ bool AnalysisChart::setChannelData(int channelId, const std::chrono::nanoseconds
     ch->meanInterval = n >= 2 ? static_cast<double>(ch->t.back() - ch->t.front()) / static_cast<double>(n - 1) : 0.0;
     ch->finiteMin = lo;
     ch->finiteMax = hi;
+    ch->pyramid.build(ch->t.data(), ch->v.data(), ch->v.size());
 
     if (!d_ptr->viewFromData && hasData()) {
         resetView(); // the first data sets the view and places the cursors at 1/3 and 2/3 of it
@@ -434,6 +450,7 @@ QColor AnalysisChart::gridColor() const { return d_ptr->gridColor; }
 QColor AnalysisChart::backgroundColor() const { return d_ptr->backgroundColor; }
 QColor AnalysisChart::bezelColor() const { return d_ptr->bezelColor; }
 QColor AnalysisChart::textColor() const { return d_ptr->textColor; }
+AnalysisChart::DecimationMode AnalysisChart::decimationMode() const { return d_ptr->decimationMode; }
 AnalysisChart::TimeLabelFormat AnalysisChart::timeLabelFormat() const { return d_ptr->timeLabelFormat; }
 QDateTime AnalysisChart::timeOrigin() const { return d_ptr->timeOrigin; }
 
@@ -485,6 +502,14 @@ void AnalysisChart::setTextColor(const QColor &color)
     update();
 }
 
+void AnalysisChart::setDecimationMode(DecimationMode mode)
+{
+    if (d_ptr->decimationMode == mode) return;
+    d_ptr->decimationMode = mode;
+    Q_EMIT appearanceChanged();
+    update();
+}
+
 void AnalysisChart::setTimeLabelFormat(TimeLabelFormat format)
 {
     if (d_ptr->timeLabelFormat == format) return;
@@ -532,8 +557,12 @@ QRectF AnalysisChart::plotArea() const
     for (const auto &tick : internal::valueAxisTicks(d_ptr->yMinimum, d_ptr->yMaximum, height, 28.0 * scale)) {
         widest = std::max(widest, fm.horizontalAdvance(tick.label));
     }
-    const double left = std::max(42.0 * scale, widest + 10.0);
-    return QRectF(left, top, std::max(10.0, width() - left - right), height);
+    // Left and right edges on device pixel boundaries (for a widget at a whole device position), so
+    // that the plot spans whole device columns, one decimation bucket each
+    const double dpr = devicePixelRatioF();
+    const double left = std::ceil(std::max(42.0 * scale, widest + 10.0) * dpr - 1e-9) / dpr;
+    const double plotWidth = std::floor(std::max(10.0, width() - left - right) * dpr + 1e-9) / dpr;
+    return QRectF(left, top, plotWidth, height);
 }
 
 void AnalysisChart::resizeEvent(QResizeEvent *event)
@@ -577,7 +606,23 @@ void AnalysisChart::paintEvent(QPaintEvent * /*event*/)
     painter.setBrush(d_ptr->backgroundColor);
     painter.drawRoundedRect(screen, 4.0, 4.0);
 
-    auto mapX = [&](qint64 t) { return plot.left() + static_cast<double>(t - view.start) * plot.width() / static_cast<double>(view.span()); };
+    // Device-space placement, as StripChart: the plot's left edge snapped to a device pixel boundary
+    // (from the painter's device transform, so also for a widget at a fractional device position) and
+    // widthDev whole device columns, one decimation bucket each. Traces, ticks and cursors share it.
+    const double dpr = devicePixelRatioF();
+    const QTransform deviceTransform = painter.deviceTransform();
+    const bool deviceAxisAligned = deviceTransform.type() <= QTransform::TxScale && std::abs(deviceTransform.m11() - dpr) < 1e-9;
+    const double devScale = deviceAxisAligned ? deviceTransform.m11() : dpr;
+    const double devOffsetX = deviceAxisAligned ? deviceTransform.dx() : 0.0;
+    auto toLogicalX = [devScale, devOffsetX](double xDev) { return (xDev - devOffsetX) / devScale; };
+    const int widthDev = std::max(1, static_cast<int>(std::lround(plot.width() * devScale)));
+    const double leftDev = std::round(plot.left() * devScale + devOffsetX);
+    diag.widthDev = widthDev;
+    diag.leftDev = leftDev;
+    diag.devScale = devScale;
+    auto mapX = [&](qint64 t) {
+        return toLogicalX(leftDev + static_cast<double>(t - view.start) * widthDev / static_cast<double>(view.span()));
+    };
     const double ySpan = d_ptr->yMaximum - d_ptr->yMinimum;
     auto mapY = [&](double v) { return plot.bottom() - (v - d_ptr->yMinimum) / ySpan * plot.height(); };
 
@@ -612,52 +657,85 @@ void AnalysisChart::paintEvent(QPaintEvent * /*event*/)
     diag.xTicks = xTicks;
     diag.yTicks = yTicks;
 
-    // Traces: raw samples; a non-finite value or a time gap above the threshold breaks the trace
-    // (StripChart's raw path)
+    // Traces, clipped to the whole device columns of the plot. A non-finite value or a time gap above
+    // the threshold breaks the trace, raw or decimated, with StripChart's rules and pens.
     if (hasView && ySpan > 0.0) {
         painter.save();
-        painter.setClipRect(plot);
+        painter.setClipRect(QRectF(toLogicalX(leftDev), plot.top(), widthDev / devScale, plot.height()));
+        const internal::BucketGrid grid(widthDev, view.span()); // bucket k = floor((t - xStart) * widthDev / span)
         for (const auto &ch : d_ptr->channels) {
             if (!ch.visible || ch.t.empty()) continue;
             AnalysisChartPrivate::ChannelDiagnostics chDiag;
             chDiag.id = ch.id;
-            // One sample on each side of the view so the trace enters and leaves it
+            // One sample on each side of the view so the raw trace enters and leaves it
             const auto first = std::lower_bound(ch.t.begin(), ch.t.end(), view.start);
             const auto last = std::upper_bound(ch.t.begin(), ch.t.end(), view.end);
+            const auto inView = static_cast<std::size_t>(last - first);
             std::size_t i0 = static_cast<std::size_t>(first - ch.t.begin());
             std::size_t i1 = static_cast<std::size_t>(last - ch.t.begin());
             if (i0 > 0) --i0;
             if (i1 < ch.t.size()) ++i1;
             const qint64 gap = d_ptr->gapThreshold > 0 ? d_ptr->gapThreshold : ch.autoGap;
+            const bool decimate = d_ptr->decimationMode == DecimationMode::Always
+                || (d_ptr->decimationMode == DecimationMode::Auto && inView > static_cast<std::size_t>(widthDev));
+            chDiag.decimated = decimate;
 
-            painter.setPen(QPen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            QPolygonF poly;
-            std::vector<qint64> polyT;
-            auto flush = [&]() {
-                if (!poly.isEmpty()) {
+            if (decimate) {
+                // One M4 bucket per device column; vertices at the centre of their column
+                QPen pen(ch.color, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+                pen.setCosmetic(true);
+                painter.setPen(pen);
+                painter.setRenderHint(QPainter::Antialiasing, false);
+                const auto buckets = ch.pyramid.buckets(ch.t.data(), ch.v.data(), ch.t.size(), view.start, grid, 0, widthDev);
+                for (const auto &seg : internal::segmentsFromBuckets(buckets, gap)) {
+                    QPolygonF poly;
+                    poly.reserve(static_cast<int>(seg.size()));
+                    for (const auto &pt : seg) {
+                        poly << QPointF(toLogicalX(leftDev + static_cast<double>(grid.bucketOf(pt.t - view.start)) + 0.5), mapY(pt.value));
+                    }
                     painter.drawPolyline(poly);
-                    if (d_ptr->recordDiagnostics) chDiag.segments.push_back(polyT);
-                    poly.clear();
-                    polyT.clear();
+                    drawSegmentEndPixels(painter, grid, view.start, leftDev, seg, poly, toLogicalX);
+                    if (d_ptr->recordDiagnostics) {
+                        std::vector<qint64> ts;
+                        for (const auto &pt : seg) ts.push_back(pt.t);
+                        chDiag.segments.push_back(std::move(ts));
+                        chDiag.polylines.push_back(poly);
+                    }
                 }
-            };
-            qint64 prevT = std::numeric_limits<qint64>::min();
-            for (std::size_t i = i0; i < i1; ++i) {
-                const double v = ch.v[i];
-                const qint64 t = ch.t[i];
-                if (!std::isfinite(v)) {
-                    flush();
-                    prevT = std::numeric_limits<qint64>::min();
-                    continue;
+            } else {
+                painter.setPen(QPen(ch.color, ch.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter.setRenderHint(QPainter::Antialiasing, true);
+                QPolygonF poly;
+                std::vector<qint64> polyT;
+                auto flush = [&]() {
+                    if (!poly.isEmpty()) {
+                        painter.drawPolyline(poly);
+                        if (d_ptr->recordDiagnostics) {
+                            chDiag.segments.push_back(polyT);
+                            chDiag.polylines.push_back(poly);
+                        }
+                        poly.clear();
+                        polyT.clear();
+                    }
+                };
+                qint64 prevT = std::numeric_limits<qint64>::min();
+                for (std::size_t i = i0; i < i1; ++i) {
+                    const double v = ch.v[i];
+                    const qint64 t = ch.t[i];
+                    if (!std::isfinite(v)) {
+                        flush();
+                        prevT = std::numeric_limits<qint64>::min();
+                        continue;
+                    }
+                    if (prevT != std::numeric_limits<qint64>::min() && gap > 0 && t - prevT > gap) {
+                        flush();
+                    }
+                    poly << QPointF(mapX(t), mapY(v));
+                    if (d_ptr->recordDiagnostics) polyT.push_back(t);
+                    prevT = t;
                 }
-                if (prevT != std::numeric_limits<qint64>::min() && gap > 0 && t - prevT > gap) {
-                    flush();
-                }
-                poly << QPointF(mapX(t), mapY(v));
-                if (d_ptr->recordDiagnostics) polyT.push_back(t);
-                prevT = t;
+                flush();
             }
-            flush();
             diag.channels.push_back(std::move(chDiag));
         }
         painter.restore();

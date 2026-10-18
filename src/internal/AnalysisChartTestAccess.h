@@ -9,6 +9,8 @@
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include "AnalysisChart_p.h"
 
+#include <cstddef>
+
 namespace QtIndustrialWidgets {
 namespace internal {
 
@@ -28,6 +30,13 @@ public:
     static QRectF plotArea(const AnalysisChart &chart)
     {
         return chart.plotArea();
+    }
+
+    // Bytes held by the min/max pyramid of a channel (0 for an unknown channel)
+    static std::size_t pyramidBytes(const AnalysisChart &chart, int channelId)
+    {
+        const auto *ch = chart.d_ptr->channel(channelId);
+        return ch ? ch->pyramid.memoryBytes() : 0;
     }
 };
 

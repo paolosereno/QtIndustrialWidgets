@@ -38,6 +38,12 @@ class AnalysisChartTestAccess;
  * two samples larger than gapThreshold() (0, the default, means 4 times an exponential moving
  * average of the sampling interval, computed in sample order as StripChart does).
  *
+ * Decimation: with more samples in the view than device columns of the plot, a channel is drawn
+ * M4-decimated with one bucket per device column, as in StripChart (DecimationMode::Auto, the
+ * default): each column shows the first, minimum, maximum and last finite sample of its bucket, and
+ * the column of a bucket that holds a non-finite sample stays blank. The buckets come from a min/max
+ * pyramid built by setChannelData(), so a redraw does not scan every sample.
+ *
  * Time axis labels: Relative shows the time elapsed since dataStart(); Absolute shows
  * timeOrigin() + t as wall-clock time (HH:mm:ss.zzz), or t itself when timeOrigin() is invalid.
  *
@@ -79,6 +85,7 @@ class QTINDUSTRIALWIDGETS_EXPORT AnalysisChart : public QWidget
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor cursorColor READ cursorColor WRITE setCursorColor NOTIFY appearanceChanged)
+    Q_PROPERTY(DecimationMode decimationMode READ decimationMode WRITE setDecimationMode NOTIFY appearanceChanged)
     Q_PROPERTY(TimeLabelFormat timeLabelFormat READ timeLabelFormat WRITE setTimeLabelFormat NOTIFY appearanceChanged)
     Q_PROPERTY(QDateTime timeOrigin READ timeOrigin WRITE setTimeOrigin NOTIFY appearanceChanged)
 
@@ -86,6 +93,14 @@ public:
     /** \brief The two measurement cursors. */
     enum class Cursor { A, B };
     Q_ENUM(Cursor)
+
+    /** \brief Decimation (same meaning as StripChart::DecimationMode). */
+    enum class DecimationMode {
+        Off,    ///< Always draw raw samples
+        Auto,   ///< M4 when the samples of a channel in the view exceed the plot width in device px (default)
+        Always  ///< Always M4
+    };
+    Q_ENUM(DecimationMode)
 
     /** \brief Time axis labels. */
     enum class TimeLabelFormat {
@@ -192,6 +207,7 @@ public:
     [[nodiscard]] QColor bezelColor() const;
     [[nodiscard]] QColor textColor() const;
     [[nodiscard]] QColor cursorColor() const;
+    [[nodiscard]] DecimationMode decimationMode() const;
     [[nodiscard]] TimeLabelFormat timeLabelFormat() const;
     [[nodiscard]] QDateTime timeOrigin() const;
 
@@ -212,6 +228,7 @@ public Q_SLOTS:
     void setBezelColor(const QColor &color);
     void setTextColor(const QColor &color);
     void setCursorColor(const QColor &color);
+    void setDecimationMode(DecimationMode mode);
     void setTimeLabelFormat(TimeLabelFormat format);
     void setTimeOrigin(const QDateTime &origin);
 
