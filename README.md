@@ -4,210 +4,46 @@ SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
 SPDX-License-Identifier: MIT
 -->
 
-# QtIndustrialWidgets ⚡
+# QtIndustrialWidgets
+
+A C++17 widget library for Qt Widgets with 12 instrumentation widgets — gauges, displays, indicators, switches, an
+alarm annunciator, a live strip chart and an offline analysis chart — for test benches, SCADA and telemetry
+applications.
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![Qt 6.2+](https://img.shields.io/badge/Qt-6.2%2B-brightgreen.svg)](https://www.qt.io/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](.github/workflows/ci.yml)
+[![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)]()
-[![CI/CD Pipeline](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml/badge.svg)](https://github.com/paolosereno/QtIndustrialWidgets/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-Doxygen-blue.svg)](https://paolosereno.github.io/QtIndustrialWidgets/)
 
-A modern, modular, high-performance C++ / Qt open-source instrumentation library designed specifically for **test benches**, **automotive software**, **SCADA**, **telemetry dashboards**, and **scientific laboratories**.
-
----
-
-## Enterprise & Supply Chain Security
-
-- **REUSE Compliant**: 100% compliant with the REUSE specification (ISO/IEC 5962:2021) for accurate, machine-readable licensing.
-- **Automated SBOM**: An updated Software Bill of Materials (SBOM in SPDX/CycloneDX format) is automatically built and attached as an asset to every official GitHub release.
-- **Zero Third-Party Dependencies**: Self-contained library requiring only official Qt modules, eliminating supply-chain attack vectors and external dependency drift.
-- **Continuous Quality Assurance**: Multi-platform automated CI/CD pipeline covering Linux, Windows, and macOS with 100% test pass rate.
-
----
-
 <p align="center">
-  <img src="Demo.gif" alt="QtIndustrialWidgets Showcase Gallery" width="95%">
+  <img src="docs/images/tab-dashboard.png" alt="Dashboard tab of the QtIndustrialWidgets gallery" width="95%">
 </p>
 
----
-
-## 🚀 Key Features
-
-- **Cached Static Rendering**:
-  Static elements (bezels, backgrounds, threshold arc bands, tick marks, numeric labels) are rendered into a cached `QPixmap` on resize or layout changes. During high-frequency updates (e.g. 50+ Hz), only dynamic elements (needles, liquid levels, digital values) are redrawn over the cached background, keeping per-update CPU work small. Measured `StripChart` timings are published in the [Benchmark Report](docs/benchmarks.md).
-- **Hi-DPI & 4K Ready**:
-  Accurate multi-monitor and Hi-DPI scaling using `devicePixelRatioF()`. No blurry dial faces or fuzzy text on Retina / 4K monitors.
-- **Pure Vector 7-Segment Display**:
-  Sharp, anti-aliased polygon rendering with customizable italic skew angle, decimal points, and authentic ghost unlit segment transparency.
-- **Native Light & Dark Mode / Theming**:
-  Paints seamlessly across system light and dark themes using `palette()` and configurable styling properties.
-- **Strict Architectural Separation**:
-  The core library `QtIndustrialWidgets` depends **only** on `Qt::Core`, `Qt::Gui`, and `Qt::Widgets`. The Qt Designer plugin is isolated in a separate module (`QtIndustrialWidgetsPlugin`), guaranteeing zero unwanted Designer dependencies in production applications.
-- **Standard C++17 & Qt 6**:
-  Designed for modern C++ standards and Qt 6.2+. Qt 5.15 is not supported at the moment, see [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
-
----
-
-## 📦 Widgets Included
+## Widgets
 
 | Widget | Showcase |
 |---|---|
-| `RadialGauge`<br>0–8000 RPM, needle in the warning zone | <img src="docs/images/radial-gauge-warning.png" alt="RadialGauge" width="300"> |
-| `LinearGauge`<br>Thermometer mode, 0–120 °C | <img src="docs/images/linear-gauge-thermometer.png" alt="LinearGauge" width="120"> |
-| `SevenSegmentDisplay`<br>Six digits, one decimal, skewed segments | <img src="docs/images/seven-segment-display-value.png" alt="SevenSegmentDisplay" width="300"> |
-| `LedIndicator`<br>Round lens, on, with label | <img src="docs/images/led-indicator-on.png" alt="LedIndicator" width="140"> |
-| `IndustrialKnob`<br>Continuous 0–8000 RPM with value pod | <img src="docs/images/industrial-knob-continuous.png" alt="IndustrialKnob" width="220"> |
-| `StripChart`<br>Three channels over 10 s with a NaN dropout | <img src="docs/images/strip-chart-channels.png" alt="StripChart" width="640"> |
-| `IndustrialSwitch`<br>Toggle lever under a safety guard | <img src="docs/images/industrial-switch-guarded-toggle.png" alt="IndustrialSwitch" width="180"> |
-| `LevelMeter`<br>Stereo dB meter with held peaks | <img src="docs/images/level-meter-stereo-db.png" alt="LevelMeter" width="170"> |
-| `AnnunciatorPanel`<br>ISA-18.1 tiles: acknowledged, unacknowledged and advisory alarms | <img src="docs/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640"> |
-| `Compass`<br>Heading-up card, heading 047° with heading bug | <img src="docs/images/compass-heading-up.png" alt="Compass" width="300"> |
-| `CircularBargraph`<br>24 segments with peak hold | <img src="docs/images/circular-bargraph-valid.png" alt="CircularBargraph" width="260"> |
-| `AnalysisChart`<br>Recorded data at two rates, a NaN dropout and a recording gap | <img src="docs/images/analysis-chart-review.png" alt="AnalysisChart" width="640"> |
+| [`RadialGauge`](docs/widgets.md#radialgauge)<br>0–8000 RPM, needle in the warning zone | <img src="docs/images/radial-gauge-warning.png" alt="RadialGauge" width="300"> |
+| [`LinearGauge`](docs/widgets.md#lineargauge)<br>Thermometer mode, 0–120 °C | <img src="docs/images/linear-gauge-thermometer.png" alt="LinearGauge" width="120"> |
+| [`SevenSegmentDisplay`](docs/widgets.md#sevensegmentdisplay)<br>Six digits, one decimal, skewed segments | <img src="docs/images/seven-segment-display-value.png" alt="SevenSegmentDisplay" width="300"> |
+| [`LedIndicator`](docs/widgets.md#ledindicator)<br>Round lens, on, with label | <img src="docs/images/led-indicator-on.png" alt="LedIndicator" width="140"> |
+| [`IndustrialKnob`](docs/widgets.md#industrialknob)<br>Continuous 0–8000 RPM with value pod | <img src="docs/images/industrial-knob-continuous.png" alt="IndustrialKnob" width="220"> |
+| [`StripChart`](docs/widgets.md#stripchart)<br>Three channels over 10 s with a NaN dropout | <img src="docs/images/strip-chart-channels.png" alt="StripChart" width="640"> |
+| [`IndustrialSwitch`](docs/widgets.md#industrialswitch)<br>Toggle lever under a safety guard | <img src="docs/images/industrial-switch-guarded-toggle.png" alt="IndustrialSwitch" width="180"> |
+| [`LevelMeter`](docs/widgets.md#levelmeter)<br>Stereo dB meter with held peaks | <img src="docs/images/level-meter-stereo-db.png" alt="LevelMeter" width="170"> |
+| [`AnnunciatorPanel`](docs/widgets.md#annunciatorpanel)<br>ISA-18.1 tiles: acknowledged, unacknowledged and advisory alarms | <img src="docs/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640"> |
+| [`Compass`](docs/widgets.md#compass)<br>Heading-up card, heading 047° with heading bug | <img src="docs/images/compass-heading-up.png" alt="Compass" width="300"> |
+| [`CircularBargraph`](docs/widgets.md#circularbargraph)<br>24 segments with peak hold | <img src="docs/images/circular-bargraph-valid.png" alt="CircularBargraph" width="260"> |
+| [`AnalysisChart`](docs/widgets.md#analysischart)<br>Recorded data at two rates, a NaN dropout and a recording gap | <img src="docs/images/analysis-chart-review.png" alt="AnalysisChart" width="640"> |
 
-The images are generated from the gallery with `--export-gallery` (dark theme, device pixel ratio 2, shown at half their pixel width); see [docs/gallery_images.md](docs/gallery_images.md) for how to regenerate them and for the other variants.
+The images are generated by the gallery with `--export-gallery` (dark theme, device pixel ratio 2, shown at half their
+pixel width); see [docs/gallery_images.md](docs/gallery_images.md). Each widget's features are described in
+[docs/widgets.md](docs/widgets.md).
 
-All widgets are encapsulated in the `QtIndustrialWidgets` namespace (with a convenient short alias `qiw` provided by default in headers):
-
-```cpp
-#include <QtIndustrialWidgets/RadialGauge.h>
-auto *gauge = new qiw::RadialGauge(parent);
-// or:
-using namespace QtIndustrialWidgets;
-auto *gauge = new RadialGauge(parent);
-```
-
-### 1. `RadialGauge` (`qiw::RadialGauge`)
-Circular tachometer, speedometer, and manometer widget.
-- **Configurable Sweep Angles**: Supports standard 270° dials, 240° automotive clusters, or 180° semicircular gauges (`startAngle`, `spanAngle`).
-- **Graduated Scale**: Major ticks, minor subdivisions, and auto-centered numeric values.
-- **Threshold Zones**: Colored arc bands (Normal green, Warning amber, Danger red) with custom thresholds.
-- **Vector Needle**: Multi-tone metallic needle with 3D bevel and chrome center pivot hub.
-- **Digital Readout**: Integrated recessed display box with configurable precision and measurement units (`km/h`, `bar`, `RPM`, `°C`).
-
-### 2. `LinearGauge` (`qiw::LinearGauge`)
-Versatile column gauge and thermometer.
-- **Dual Orientation**: `Qt::Vertical` and `Qt::Horizontal`.
-- **Thermometer & Panel Modes**: Spherical bottom/left bulb mode or rectangular panel bar mode.
-- **Dynamic Liquid Styling**: Automatic color shifting based on warning/error thresholds, or continuous linear gradient fill.
-- **Reflective Glass Tube**: High-gloss cylindrical reflections with smooth graduated ticks and labels.
-
-### 3. `SevenSegmentDisplay` (`qiw::SevenSegmentDisplay`)
-Scalable vector digital display for instrumentation readouts.
-- **Vector Polygons**: 100% vector-rendered segments (no pixelated bitmap fonts).
-- **Customizable Typography**: Configurable italic tilt angle (`skewAngle`), segment thickness (`segmentWidthRatio`), and leading zeros.
-- **Authentic LED/LCD Feel**: Configurable active and inactive segment colors with transparency for realistic ghost segments.
-- **Alphanumeric & Decimals**: Supports numbers, minus signs, decimal points, and status codes (`ERR`, `READY`, etc.).
-
-### 4. `LedIndicator` (`qiw::LedIndicator`)
-Industrial LED panel indicator with 3D lens refraction and blinking.
-- **Shapes & Bezels**: Circular or rectangular shapes with machined aluminum/metal bezel ring.
-- **Realistic 3D Optics**: Spherical convex lens gradient, specular dome highlights, and soft glow halo.
-- **States & Blinking**: Discrete On/Off states with configurable blinking frequency (in milliseconds or Hz) via efficient internal timer.
-- **Interactive**: Optional clickable mode with `clicked()` signal for interactive control boards.
-
-### 5. `IndustrialKnob` (`qiw::IndustrialKnob`)
-Precision rotary potentiometer and selector switch.
-- **Machined CNC Texture**: Lathe-turned aluminum / gunmetal finish with 32-tooth perimeter knurling for realistic tactile appearance.
-- **Dual Operating Modes**: Smooth continuous potentiometer for float adjustments or discrete stepped selector switch (e.g. multi-position mode selector).
-- **Graduated Scale & Track**: Circular scale with major/minor ticks, aligned numeric values, illuminated active arc track, and bottom digital readout pod.
-- **Ergonomic Controls**: Rotary drag, linear drag, mouse wheel fine adjustment, and full keyboard navigation (arrows, PageUp/PageDown, Home/End).
-
-### 6. `StripChart` (`qiw::StripChart`)
-Real-time scrolling telemetry strip chart and oscilloscope for high-rate DAQ.
-- **Measured Performance**: On an Intel Core i5-13600KF (Ubuntu 24.04 on WSL2, GCC 13.3, Qt 6.4.2, offscreen CPU raster, 1920 device px plot), the steady-state paint median is 2.96 ms for 1 channel × 1M noisy samples and 23.08 ms for 4 channels × 1M (medians over two runs: 2.96–3.99 ms and 11.42–23.08 ms; timings on that machine are bimodal); `addSample` with autoscale ON takes 0.0323 µs per call (median). Full tables, method and the 2.1.0 targets that are not yet met: [Benchmark Report](docs/benchmarks.md).
-- **M4 Min/Max Pixel Decimation**: Bounded by ≤ 4 · W_dev vertices per channel with zero scrolling shimmer. Peaks are never lost (except in pixel columns that contain a non-finite sample, which are left blank so sensor dropouts stay visible); intra-pixel waveform shape is not preserved.
-- **Thin Decimated Traces**: When decimation is active, traces render using a cosmetic 1-device-pixel pen without antialiasing to avoid `QStroker` outline polygon synthesis, which dominates the cost of stroking dense zig-zags with wide antialiased pens.
-- **Nanosecond Real-Time Axis**: True `std::chrono::nanoseconds` time representation with dynamic 1-2-5 tick grid, relative (`-10 s … 0 s`) or absolute wall-clock (`HH:mm:ss.zzz`) formats.
-- **Robust Telemetry Handling**: Automatic inter-sample gap detection (4x EMA threshold) and resilience to sensor dropouts (raw NaN/±∞ fault preservation without painter errors).
-- **Multi-Channel & Lazy Autoscale with Hysteresis**: Independent channels, O(W) visible window scanning with grow-on-spike and 30-frame shrink hysteresis, and live telemetry legend overlay. See [StripChart Guide](docs/strip_chart.md) and [Benchmark Report](docs/benchmarks.md).
-
-### 7. `IndustrialSwitch` (`qiw::IndustrialSwitch`)
-Heavy-duty industrial toggle lever and rocker switch with safety guard.
-- **Dual Switch Styles**: Machined metal bat toggle lever or industrial dual-slope rocker switch with illuminated status line.
-- **2 & 3 Positions**: Supports standard 2-position (`Off` / `On`) and 3-position (`Manual` / `Off` / `Auto`) operations.
-- **Avionics Flip-Up Safety Guard**: Optional iconic red flip-up safety lock cover with warning chevrons and translucent window, preventing accidental actuation.
-- **Dual Orientation**: Native support for `Qt::Vertical` and `Qt::Horizontal` mounting.
-- **Tactile Feedback & Animation**: Mechanical snap toggle animation with realistic bounce, LED status indicator, 4-corner mounting screws, keyboard navigation, and mouse drag.
-
-### 8. `LevelMeter` (`qiw::LevelMeter`)
-Multi-channel industrial VU and level meter with peak hold.
-- **Multi-Channel & Stereo**: Supports 1, 2 (stereo L/R) or arbitrary N channels with customizable labels.
-- **Peak Hold & Decay**: Floating peak indicator line/segment with configurable hold time (in ms) and smooth exponential/linear decay rate.
-- **Segmented & Continuous Modes**: Classic discrete rectangular LED block ladder with unlit ghost segment opacity, or smooth gradient fill.
-- **Tri-Color Zones**: Configurable Normal (green), Warning (amber) and Error / Overload (red) zones with `overloadOccurred(int)` signal.
-- **Dual Orientation & Scale**: Vertical and horizontal mounting with graduated dB or engineering units scale.
-
-### 9. `AnnunciatorPanel` (`qiw::AnnunciatorPanel`)
-Industrial alarm annunciator window matrix implementing ISA-18.1 sequences A and M.
-- **Configurable Matrix**: Flexible N x M grid of backlit acrylic indicator tiles with engraved multi-line legends.
-- **ISA-18.1 Sequences A and M**: Sequence A (Automatic Reset) and Sequence M (Manual Reset) logic handling Normal, Unacknowledged (rapid flash), Acknowledged (steady lit), and Ringback (slow flash) alarm states.
-- **Alarm Classification**: Tri-level priority grading: Critical (Red), Warning (Amber), and Advisory (Cyan).
-- **Control Station Operations**: Dedicated Acknowledge (ACK), Silence (horn mute), Reset, and Lamp Test functionality with `audibleHornChanged(bool)` horn signal.
-- **Interactive Operator Action**: Click directly on individual tiles to acknowledge alarms, with Hi-DPI frame caching for zero-overhead rendering.
-
-### 10. `Compass` (`qiw::Compass`)
-Marine gyrocompass and aeronautical directional heading indicator instrument.
-- **Dual Operating Modes**: `HeadingUp` (rotating compass card matching aircraft/marine heading) and `NorthUp` (fixed compass rose with 360° dual-tone magnetic needle).
-- **Course Deviation & Heading Bug**: Adjustable target heading bug with interactive mouse click/drag, displaying real-time angular course deviation (CDI).
-- **Navigation Scales**: Full 360° degree markings, cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) indices, and aviation 3-digit heading numbers.
-- **Lubber Reference & Digital Pod**: Fixed fluorescent lubber line at 12 o'clock and recessed central digital heading angle readout.
-
-### 11. `CircularBargraph` (`qiw::CircularBargraph`)
-High-contrast circular arc indicator composed of discrete curved LED segments.
-- **Operating Modes**: Progressive illuminated LED stack (`DisplayMode::Bar`) or single active cursor pointer (`DisplayMode::Dot`).
-- **Configurable Geometry**: Adjustable angular arc sweep (e.g. 180°, 270°, or 360°) and discrete curved LED segment resolution (e.g. 16, 24, 32, 48 segments).
-- **Threshold Zones by Position**: Each segment takes the color of the zone (Normal green, Warning amber, Critical red) containing its centre; unlit segments show a dimmed tint of their zone over the customizable "ghost" color. `warningThreshold <= errorThreshold` is kept by the setters.
-- **Ballistic Peak Hold**: Built-in peak indicator segment with configurable hold duration and smooth ballistic decay falloff.
-- **Centered Digital Pod**: Integrated optional digital readout pod with decimal precision and measurement unit display.
-- **Value State**: `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`. Out-of-range inputs (including `±Inf`) are shown at the range bound with the end segment blinking (~2 Hz) and a `<` / `>` readout; a `NaN` input is shown as `Invalid` (all segments ghost, readout `---`). `rawValue()` keeps the unclamped input, and the state is recomputed when the range changes.
-
-### 12. `AnalysisChart` (`qiw::AnalysisChart`)
-Offline review of recorded multi-channel data, next to the live `StripChart`.
-- **Recorded Data**: Per-channel copies of absolute `std::chrono::nanoseconds` timestamps and `double` values, at different or irregular rates; decreasing timestamps are rejected with the previous data kept.
-- **Zoom & Pan**: Wheel zoom around the pointer (Ctrl for values), drag to pan, box zoom, keyboard navigation, double-click or Home to reset.
-- **Two Cursors**: Nearest-sample readouts (no interpolation), Δt and Δy, in a readout band of up to 6 channels that is part of the minimum size.
-- **Same Rules as StripChart**: Non-finite values and time gaps break the trace, and M4 decimation draws one bucket per device column with dropout columns left blank; a min/max pyramid built by `setChannelData()` (at most 2.125 bytes per sample on top of the 16 of the data) supplies the buckets.
-- **Measured Performance**: the #25 target (redraw after a zoom or pan step ≤ 16.7 ms for 4 channels × 10 M samples at 1920 px) is **not met**: the full view redraws in 42.07 ms (median) on the benchmark machine. Tables, method and cause: [Benchmark Report](docs/benchmarks.md#analysischart-performance-benchmarks). See the [AnalysisChart Guide](docs/analysis_chart.md).
-
----
-
-## 🛠️ Build and Installation
-
-### Prerequisites
-- CMake 3.16 or newer
-- C++17 compiler (GCC 9+, Clang 10+, MSVC 2019+)
-- Qt 6.2+ (`Core`, `Gui`, `Widgets`, and optionally `Designer` / `UiPlugin`). Qt 5.15 is not supported at the moment, see [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
-- Doxygen & Graphviz (optional, for generating HTML API documentation and class diagrams)
-
-### Quick Build (Linux / macOS / Windows)
-
-```bash
-# Configure
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-
-# Build library, designer plugin, gallery and unit tests
-cmake --build build
-
-# Run unit tests (QtTest)
-ctest --test-dir build --output-on-failure
-
-# Generate API documentation (requires Doxygen)
-cmake --build build --target docs
-
-# Run the interactive gallery showcase
-./build/bin/QtIndustrialWidgetsGallery
-```
-
----
-
-## 💻 Integrating into Your CMake Project
-
-### Option A: Via `FetchContent` (Recommended)
-
-Include directly in your `CMakeLists.txt` without installing:
+## Quick start
 
 ```cmake
 include(FetchContent)
@@ -217,130 +53,12 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
     GIT_TAG        v2.3.0
 )
-
-# Optional: Disable examples and designer plugin when fetching as a dependency
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_DESIGNER_PLUGIN OFF CACHE BOOL "" FORCE)
-
 FetchContent_MakeAvailable(QtIndustrialWidgets)
 
-# Link to your application target
-target_link_libraries(my_industrial_app
-    PRIVATE
-        QtIndustrialWidgets::QtIndustrialWidgets
-)
+target_link_libraries(my_app PRIVATE QtIndustrialWidgets::QtIndustrialWidgets)
 ```
-
-### Option B: Via `find_package` (Installed Package)
-
-```bash
-# Install to system or prefix
-cmake --install build --prefix /opt/QtIndustrialWidgets
-```
-
-In your application's `CMakeLists.txt`:
-
-```cmake
-find_package(QtIndustrialWidgets REQUIRED)
-
-target_link_libraries(my_industrial_app
-    PRIVATE
-        QtIndustrialWidgets::QtIndustrialWidgets
-)
-```
-
-### Option C: Via Prebuilt Native Packages (.deb / .zip)
-
-Download official packages from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
-- **Debian / Ubuntu**: `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` (replace `<version>` with the release you downloaded, see [Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases))
-- **Windows / Linux**: Extract `.zip` / `.tar.gz` and point `CMAKE_PREFIX_PATH` to the extracted directory.
-
-### Option D: Via C++ Package Managers (vcpkg / Conan)
-
-- **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets` — **experimental, not yet verified**: the port in `ports/` has not been tested with `vcpkg install`, and its archive hash is set only after a release is tagged (see [#66](https://github.com/paolosereno/QtIndustrialWidgets/issues/66)).
-- **Conan 2.0**: `conan install . --build=missing`
-
----
-
-## 🎨 Qt Designer Integration
-
-When `BUILD_DESIGNER_PLUGIN` is enabled (default when `Qt::Designer` is detected), the plugin target `QtIndustrialWidgetsPlugin` is built.
-
-Install or copy the resulting plugin library into your Qt Designer / Qt Creator plugin directory:
-- Linux: `~/.local/share/QtProject/QtCreator/plugins` or `<Qt_Install>/plugins/designer/`
-- Windows: `<Qt_Install>/plugins/designer/`
-
-The widgets will automatically appear in the **Industrial Widgets** category in Qt Designer.
-
----
-
-## 📚 Generating Documentation (Doxygen)
-
-> 🌐 **Online Documentation (GitHub Pages)**: [https://paolosereno.github.io/QtIndustrialWidgets/](https://paolosereno.github.io/QtIndustrialWidgets/)
-
-QtIndustrialWidgets includes extensive Doxygen documentation and markdown integration guides covering all 11 widgets, architecture design, and integration tutorials.
-
-### Prerequisites
-
-To generate the documentation locally:
-- **Doxygen** (`1.9+` recommended)
-- **Graphviz** (optional, enables inheritance and dependency `.dot` diagrams)
-
-On Debian / Ubuntu:
-```bash
-sudo apt-get install -y doxygen graphviz
-```
-
-On macOS (Homebrew):
-```bash
-brew install doxygen graphviz
-```
-
-On Windows:
-Download and install [Doxygen](https://www.doxygen.nl/download.html) and [Graphviz](https://graphviz.org/download/).
-
-### Build Documentation with CMake
-
-When Doxygen is installed, CMake registers the `docs` target automatically (enabled by default via `BUILD_DOCS=ON`):
-
-```bash
-# Configure with documentation enabled
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_DOCS=ON
-
-# Generate HTML documentation
-cmake --build build --target docs
-```
-
-The generated HTML documentation is placed in:
-```text
-build/docs/html/index.html
-```
-
-### Viewing the Documentation
-
-Open the generated documentation in your default browser:
-```bash
-xdg-open build/docs/html/index.html    # Linux
-open build/docs/html/index.html        # macOS
-start build/docs/html/index.html       # Windows
-```
-
-Alternatively, you can generate documentation standalone from the project root; the version shown in the
-documentation is read from the `project()` call in `CMakeLists.txt`:
-```bash
-mkdir -p build/docs   # Doxygen creates only the last folder of OUTPUT_DIRECTORY
-QIW_VERSION=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\) *$/\1/p' CMakeLists.txt | head -n1) doxygen docs/Doxyfile
-```
-
-### Included Documentation Guides
-- **[Getting Started Guide](docs/getting_started.md)**: Setup via CMake `FetchContent`, `find_package`, and standalone integration.
-- **[Theming and Styling Guide](docs/theming.md)**: Customizing dial colors, indicator palettes, and dark/light mode integration.
-- **[Qt Designer Plugin Guide](docs/designer_plugin.md)**: Compiling and deploying the plugin for Qt Designer and Qt Creator.
-- **Full C++ API Reference**: Exhaustive Doxygen docstrings for all classes, properties, slots, and signals.
-
----
-
-## 📝 Usage Example
 
 ```cpp
 #include <QtIndustrialWidgets/RadialGauge.h>
@@ -349,7 +67,6 @@ QIW_VERSION=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\) *$/\1/p' CMakeLists.txt | he
 
 // Inside a QWidget-derived class. 'qiw' is the short alias of namespace QtIndustrialWidgets.
 
-// Create a high-performance RPM gauge
 auto *rpmGauge = new qiw::RadialGauge(this);
 rpmGauge->setRange(0.0, 8000.0);
 rpmGauge->setValue(3500.0);
@@ -357,28 +74,100 @@ rpmGauge->setUnit("RPM");
 rpmGauge->setWarningThreshold(6000.0);
 rpmGauge->setErrorThreshold(7200.0);
 
-// Create a coolant thermometer with bulb
 auto *coolant = new qiw::LinearGauge(this);
 coolant->setThermometerMode(true);
 coolant->setRange(0.0, 120.0);
 coolant->setValue(90.0);
 coolant->setUnit("°C");
 
-// Create a vector 7-segment digital speedometer
 auto *speedometer = new qiw::SevenSegmentDisplay(this);
 speedometer->setDigitCount(5);
 speedometer->setDecimalPlaces(1);
 speedometer->setValue(120.4);
-speedometer->setActiveSegmentColor(QColor(0, 229, 255)); // Neon Cyan
+speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 ```
 
----
+## How it is verified
 
-## 📄 License & REUSE Compliance
+- **Tests**: a QtTest suite; every test program runs at device pixel ratios 1, 1.25, 1.5 and 2
+  ([tests/CMakeLists.txt](tests/CMakeLists.txt)). Rendering is checked at pixel level (traces, gaps, labels, layout),
+  and new tests are shown to fail under a deliberate sabotage of the feature they cover before they are merged; the
+  results are reported in each pull request
+  ([CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md)).
+- **CI** ([ci.yml](.github/workflows/ci.yml)), on every pull request and push to `main`: build and the full test
+  suite on Linux (Ubuntu 24.04, GCC, Qt 6.4.2), Windows (MSVC, Qt 6.6.3) and macOS (Apple Clang, Homebrew Qt);
+  `reuse lint`; on Linux, the export of the gallery images and the Doxygen documentation.
+- **Benchmarks**: method, machine, command lines and raw tables in [docs/benchmarks.md](docs/benchmarks.md),
+  including the targets that are not met.
+- **Images**: the documentation images are generated by the gallery and are byte-identical for the same commit,
+  platform and options ([docs/gallery_images.md](docs/gallery_images.md)).
+- **Releases** ([release.yml](.github/workflows/release.yml)): a Debian package, a Linux `.tar.gz`, a Windows `.zip`
+  and an SPDX SBOM are attached to each GitHub release (see
+  [v2.3.0](https://github.com/paolosereno/QtIndustrialWidgets/releases/tag/v2.3.0)).
+- **Licensing**: REUSE compliant; `reuse lint` runs in CI.
+- **Dependencies**: none beyond Qt. The library links only Qt `Core`, `Gui` and `Widgets`; the Qt Designer plugin is
+  a separate module that also needs Qt `Designer`.
 
-This project is licensed under the [MIT License](LICENSE) (SPDX: `MIT`) and is 100% compliant with the [REUSE Specification v3.3](https://reuse.software/) and [SPDX](https://spdx.dev/) standards.
+## Integration
 
-- Full license text: [`LICENSES/MIT.txt`](LICENSES/MIT.txt)
-- Machine-readable copyright & license headers on all project files.
-- REUSE status: [![REUSE status](https://api.reuse.software/badge/github.com/paolosereno/QtIndustrialWidgets)](https://api.reuse.software/info/github.com/paolosereno/QtIndustrialWidgets)
+**Requirements**: CMake 3.16 or newer, a C++17 compiler and Qt 6.2 or newer (CI builds with Qt 6.4.2, 6.6.3 and
+Homebrew's current Qt). Qt 5.15 is not supported at the moment, see
+[#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
 
+- **FetchContent**: see Quick start above.
+- **Build and install**, then `find_package()`:
+  ```bash
+  cmake -B build -DCMAKE_BUILD_TYPE=Release
+  cmake --build build
+  ctest --test-dir build --output-on-failure
+  cmake --install build --prefix /opt/QtIndustrialWidgets
+  ```
+  ```cmake
+  find_package(QtIndustrialWidgets REQUIRED)
+  target_link_libraries(my_app PRIVATE QtIndustrialWidgets::QtIndustrialWidgets)
+  ```
+- **Prebuilt packages** from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
+  `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` on Debian / Ubuntu, or extract the `.tar.gz` / `.zip` and
+  add the extracted directory to `CMAKE_PREFIX_PATH`.
+- **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets` — **experimental, not
+  yet verified**: the port has not been tested with `vcpkg install`, and its archive hash is set only after a release
+  is tagged (see [#66](https://github.com/paolosereno/QtIndustrialWidgets/issues/66)).
+- **Conan 2**: `conan install . --build=missing` (the recipe is [conanfile.py](conanfile.py); it is not built in CI).
+
+The interactive gallery is built by default (`BUILD_EXAMPLES`): `./build/bin/QtIndustrialWidgetsGallery`.
+
+## Qt Designer
+
+With `BUILD_DESIGNER_PLUGIN` (on by default, switched off when Qt `Designer` is not found), the plugin
+`QtIndustrialWidgetsPlugin` registers the 12 widgets in the **Industrial Widgets** category of Qt Designer and Qt
+Creator. Installation: [docs/designer_plugin.md](docs/designer_plugin.md).
+
+## Documentation
+
+API reference and guides on GitHub Pages: <https://paolosereno.github.io/QtIndustrialWidgets/>
+
+- **[Widgets](docs/widgets.md)**: the features of each widget.
+- **[Getting Started](docs/getting_started.md)**: `FetchContent`, `find_package` and standalone integration.
+- **[Theming](docs/theming.md)**: each widget has its own colour properties; the gallery sets them for a light and a
+  dark theme.
+- **[Qt Designer plugin](docs/designer_plugin.md)**: building and installing the plugin.
+- **[StripChart](docs/strip_chart.md)** and **[AnalysisChart](docs/analysis_chart.md)**: guides of the two charts.
+- **[Benchmark Report](docs/benchmarks.md)** and **[Documentation images](docs/gallery_images.md)**.
+
+To build the documentation locally (needs Doxygen; Graphviz is optional): `cmake --build build --target docs`, output
+in `build/docs/html/index.html`. Without a CMake build, from the project root:
+```bash
+mkdir -p build/docs   # Doxygen creates only the last folder of OUTPUT_DIRECTORY
+QIW_VERSION=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\) *$/\1/p' CMakeLists.txt | head -n1) doxygen docs/Doxyfile
+```
+
+## Contributing
+
+How changes are made and what a pull request has to show (tests first for bugs, sabotage checks for new tests, the
+criteria for "done", Conventional Commits):
+[CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) (SPDX: `MIT`, full text in [LICENSES/MIT.txt](LICENSES/MIT.txt)). Every file carries SPDX copyright
+and license information, as the [REUSE specification](https://reuse.software/) requires; `reuse lint` checks it in CI.
