@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+# Not part of the source archives (git archive, GitHub release archives): Claude Code settings
+/.claude export-ignore

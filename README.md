@@ -328,6 +328,7 @@ start build/docs/html/index.html       # Windows
 Alternatively, you can generate documentation standalone from the project root; the version shown in the
 documentation is read from the `project()` call in `CMakeLists.txt`:
 ```bash
+mkdir -p build/docs   # Doxygen creates only the last folder of OUTPUT_DIRECTORY
 QIW_VERSION=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\) *$/\1/p' CMakeLists.txt | head -n1) doxygen docs/Doxyfile
 ```
 

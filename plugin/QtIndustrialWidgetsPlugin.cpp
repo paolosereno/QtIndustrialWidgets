@@ -517,7 +517,7 @@ QString StripChartPlugin::toolTip() const
 
 QString StripChartPlugin::whatsThis() const
 {
-    return QStringLiteral("A real-time scrolling multi-channel oscilloscope / strip chart with ring buffers, cached grid reticle, and 60+ FPS performance.");
+    return QStringLiteral("A real-time scrolling multi-channel oscilloscope / strip chart with ring buffers, a cached grid reticle and M4 min/max decimation (measured paint times: docs/benchmarks.md).");
 }
 
 QString StripChartPlugin::domXml() const
