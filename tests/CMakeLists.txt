@@ -149,6 +149,8 @@ set_target_properties(tst_AnalysisChartView PROPERTIES
 add_dpr_tests(tst_AnalysisChartView)
 add_executable(tst_AnalysisChart
     tst_AnalysisChart.cpp
+    $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_AnalysisChart
     PRIVATE

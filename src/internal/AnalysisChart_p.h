@@ -9,9 +9,11 @@
 #include <QtIndustrialWidgets/AnalysisChart.h>
 
 #include "AnalysisChartView.h"
+#include "AnalysisPyramid.h"
 
 #include <QtCore/QPointF>
 #include <QtGui/QFont>
+#include <QtGui/QPolygonF>
 #include <QtCore/QRectF>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
@@ -37,12 +39,15 @@ public:
         double meanInterval{0.0};  // (t.back() - t.front()) / (n - 1); 0 below two samples
         double finiteMin{std::numeric_limits<double>::infinity()};
         double finiteMax{-std::numeric_limits<double>::infinity()};
+        internal::AnalysisPyramid pyramid; // over v, rebuilt by setChannelData()
     };
 
     // What the last paint drew, for the tests (internal::AnalysisChartTestAccess)
     struct ChannelDiagnostics {
         int id{0};
-        std::vector<std::vector<qint64>> segments; // timestamps of the samples of each drawn polyline
+        std::vector<std::vector<qint64>> segments; // timestamps of the samples (or M4 vertices) of each drawn polyline
+        std::vector<QPolygonF> polylines;           // the drawn polylines, logical coordinates
+        bool decimated{false};
     };
     // One row of the readout band: its cells (columns: label, A, B, delta) and where each was drawn
     struct BandRow {
@@ -53,6 +58,9 @@ public:
     struct FrameDiagnostics {
         QRectF plotRect;
         internal::XRange view;
+        int widthDev{0};      // device columns of the plot, one bucket each
+        double leftDev{0.0};  // device x of the plot's left edge (snapped)
+        double devScale{1.0}; // device px per logical px
         std::vector<ChannelDiagnostics> channels;
         std::vector<internal::AxisTick> xTicks;
         std::vector<internal::AxisTick> yTicks;
@@ -95,6 +103,7 @@ public:
     QColor bezelColor{QColor(38, 46, 60)};
     QColor textColor{QColor(210, 220, 235)};
     AnalysisChart::TimeLabelFormat timeLabelFormat{AnalysisChart::TimeLabelFormat::Relative};
+    AnalysisChart::DecimationMode decimationMode{AnalysisChart::DecimationMode::Auto};
     QDateTime timeOrigin;
 
     // Cursors (index 0 = A, 1 = B) and the readout band

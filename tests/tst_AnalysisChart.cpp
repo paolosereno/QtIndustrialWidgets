@@ -8,6 +8,7 @@
 
 #include "StripChartTestAccess.h"
 #include "internal/AnalysisChartTestAccess.h"
+#include "internal/M4Decimator.h"
 
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
@@ -122,6 +123,33 @@ qint64 durationNs(const QString &text)
     return static_cast<qint64>(std::llround(v * f));
 }
 
+// Dense test record: 2 s at 100 us, a sine with a spike every 997 samples, NaN dropouts at a few
+// indices and a 30 ms hole (no samples) from 1.2 s
+Series denseSeries()
+{
+    Series s;
+    for (int i = 0; i < 20000; ++i) {
+        if (i >= 12000 && i < 12300) continue;
+        s.t.push_back(nanoseconds(qint64(5000000000LL) + qint64(i) * 100000));
+        double y = std::sin(i / 300.0);
+        if (i % 997 == 0) y = 3.0;
+        if (i == 4000 || i == 4001 || i == 9000 || i == 15555) y = kNaN;
+        s.v.push_back(y);
+    }
+    return s;
+}
+
+// M4Decimator's buckets of the chart's current view, as AnalysisChart lays them out: widthDev
+// buckets of floor((t - xStart) * widthDev / span), vertex times shifted back to absolute time
+std::vector<internal::M4Bucket> referenceBuckets(const AnalysisChart &chart, const Series &s, int widthDev)
+{
+    const qint64 origin = chart.xStart().count();
+    const qint64 span = (chart.xEnd() - chart.xStart()).count();
+    std::vector<qint64> rel;
+    for (const auto &t : s.t) rel.push_back(t.count() - origin);
+    return internal::M4Decimator::decimateToBuckets(rel.data(), s.v.data(), rel.size(), internal::BucketGrid(widthDev, span), 0, widthDev);
+}
+
 QString describe(const std::vector<int> &v)
 {
     QStringList parts;
@@ -166,6 +194,11 @@ private Q_SLOTS:
     void boxZoom();
     void wheelZoomKeepsTheAnchor();
     void doubleClickAndKeys();
+    void decimationFollowsMode();
+    void decimatedTraceMatchesM4Decimator_data();
+    void decimatedTraceMatchesM4Decimator();
+    void oneBucketPerDeviceColumn();
+    void decimatedDropoutsAreBlankColumns();
 };
 
 // #25 D1: ids are stable, never reused, unaffected by removing other channels
@@ -1097,6 +1130,197 @@ void tst_AnalysisChart::doubleClickAndKeys()
     key(chart, Qt::Key_Home);
     QCOMPARE(chart.xStart().count(), qint64(0));
     QCOMPARE(chart.yMaximum(), yMax);
+}
+
+// #25: DecimationMode as StripChart: Auto decimates when the samples in the view exceed the device
+// columns, Off never, Always always
+void tst_AnalysisChart::decimationFollowsMode()
+{
+    AnalysisChart chart;
+    chart.resize(640, 300);
+    QCOMPARE(chart.decimationMode(), AnalysisChart::DecimationMode::Auto);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = uniformSeries(0, 1000, 5000); // 0 .. 5 ms
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), 5000));
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    auto decimated = [&]() {
+        chart.grab();
+        const auto &f = internal::AnalysisChartTestAccess::lastFrame(chart);
+        return f.channels.size() == 1 && f.channels[0].decimated;
+    };
+    const int widthDev = static_cast<int>(std::lround(internal::AnalysisChartTestAccess::plotArea(chart).width() * chart.devicePixelRatioF()));
+    QVERIFY(5000 > widthDev);
+    QVERIFY(decimated());
+    // In the view exactly widthDev samples: raw; one more: decimated
+    chart.setXRange(nanoseconds(1000000), nanoseconds(1000000 + qint64(widthDev - 1) * 1000));
+    QVERIFY(!decimated());
+    chart.setXRange(nanoseconds(1000000), nanoseconds(1000000 + qint64(widthDev) * 1000));
+    QVERIFY(decimated());
+    QSignalSpy spy(&chart, &AnalysisChart::appearanceChanged);
+    chart.setDecimationMode(AnalysisChart::DecimationMode::Off);
+    chart.setDecimationMode(AnalysisChart::DecimationMode::Off);
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(!decimated());
+    chart.setDecimationMode(AnalysisChart::DecimationMode::Always);
+    chart.setXRange(nanoseconds(1000000), nanoseconds(1100000)); // 101 samples
+    QVERIFY(decimated());
+    QCOMPARE(chart.property("decimationMode").value<AnalysisChart::DecimationMode>(), AnalysisChart::DecimationMode::Always);
+}
+
+void tst_AnalysisChart::decimatedTraceMatchesM4Decimator_data()
+{
+    QTest::addColumn<qint64>("start");
+    QTest::addColumn<qint64>("end");
+    QTest::addColumn<qint64>("gapThreshold");
+    QTest::addRow("full view") << qint64(0) << qint64(0) << qint64(0);
+    QTest::addRow("hole and dropouts") << qint64(5300000000LL) << qint64(6400000000LL) << qint64(0);
+    QTest::addRow("odd window") << qint64(5123456789LL) << qint64(5987654321LL) << qint64(0);
+    QTest::addRow("user threshold") << qint64(5000000000LL) << qint64(7000000000LL) << qint64(250000);
+}
+
+// #25: the decimated trace is M4Decimator's: the same vertices (first, min, max, last of each bucket)
+// and the same breaks at dropouts and gaps, with buckets on the device columns of the view
+void tst_AnalysisChart::decimatedTraceMatchesM4Decimator()
+{
+    QFETCH(qint64, start);
+    QFETCH(qint64, end);
+    QFETCH(qint64, gapThreshold);
+    AnalysisChart chart;
+    chart.resize(700, 320);
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    // Replaced data: the pyramid must follow setChannelData()
+    const Series first = uniformSeries(5000000000LL, 1000, 30000);
+    QVERIFY(chart.setChannelData(a, first.t.data(), first.v.data(), 30000));
+    const Series s = denseSeries();
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), static_cast<qsizetype>(s.t.size())));
+    chart.setGapThreshold(nanoseconds(gapThreshold));
+    if (end > start) chart.setXRange(nanoseconds(start), nanoseconds(end));
+    else chart.resetView();
+    chart.setDecimationMode(AnalysisChart::DecimationMode::Always);
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    chart.grab();
+    const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+    QCOMPARE(frame.channels.size(), std::size_t(1));
+    QVERIFY(frame.channels[0].decimated);
+
+    const qint64 origin = chart.xStart().count();
+    const qint64 span = (chart.xEnd() - chart.xStart()).count();
+    std::vector<qint64> rel;
+    for (const auto &t : s.t) rel.push_back(t.count() - origin);
+    // The documented automatic threshold: 4 x the EMA of the positive steps (0.9 / 0.1), truncated
+    double ema = 0.0;
+    bool hasEma = false;
+    for (std::size_t i = 1; i < s.t.size(); ++i) {
+        const double dt = static_cast<double>((s.t[i] - s.t[i - 1]).count());
+        if (dt <= 0.0) continue;
+        ema = hasEma ? 0.9 * ema + 0.1 * dt : dt;
+        hasEma = true;
+    }
+    const qint64 gap = gapThreshold > 0 ? gapThreshold : static_cast<qint64>(4.0 * ema);
+    const auto expected = internal::M4Decimator::decimateToSegments(rel.data(), s.v.data(), rel.size(),
+                                                                    internal::BucketGrid(frame.widthDev, span), 0, frame.widthDev, gap);
+    const auto &segs = frame.channels[0].segments;
+    const auto &polys = frame.channels[0].polylines;
+    QVERIFY(expected.size() >= 2); // the dropouts break the trace
+    QCOMPARE(segs.size(), expected.size());
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        QCOMPARE(segs[i].size(), expected[i].size());
+        for (std::size_t j = 0; j < expected[i].size(); ++j) {
+            QCOMPARE(segs[i][j], expected[i][j].t + origin);
+            const double y = plot.bottom() - (expected[i][j].value - chart.yMinimum()) / (chart.yMaximum() - chart.yMinimum()) * plot.height();
+            QVERIFY2(std::abs(polys[i][static_cast<int>(j)].y() - y) < 1e-9, qPrintable(QStringLiteral("segment %1 vertex %2").arg(i).arg(j)));
+        }
+    }
+}
+
+// #25 (#12): one bucket per device column: the plot spans widthDev whole device columns and every
+// vertex lies at the centre of the column of its bucket, at most 4 per column
+void tst_AnalysisChart::oneBucketPerDeviceColumn()
+{
+    AnalysisChart chart;
+    chart.resize(733, 320); // an odd size
+    const int a = chart.addChannel(QStringLiteral("A"), Qt::green);
+    const Series s = denseSeries();
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), static_cast<qsizetype>(s.t.size())));
+    chart.setXRange(nanoseconds(5111111111LL), nanoseconds(6333333333LL));
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    chart.grab();
+    const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+    const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+    const double dpr = chart.devicePixelRatioF();
+    QCOMPARE(frame.devScale, dpr);
+    QCOMPARE(frame.widthDev, static_cast<int>(std::lround(plot.width() * dpr)));
+    QVERIFY2(std::abs(plot.width() * dpr - frame.widthDev) < 1e-9, qPrintable(QString::number(plot.width() * dpr))); // whole columns
+    QCOMPARE(frame.leftDev, plot.left() * dpr);                                                                          // on a column boundary
+    QVERIFY(frame.channels[0].decimated);
+    const qint64 origin = chart.xStart().count();
+    const qint64 span = (chart.xEnd() - chart.xStart()).count();
+    std::vector<int> perColumn(static_cast<std::size_t>(frame.widthDev), 0);
+    int vertices = 0;
+    for (std::size_t i = 0; i < frame.channels[0].segments.size(); ++i) {
+        const auto &ts = frame.channels[0].segments[i];
+        const QPolygonF &poly = frame.channels[0].polylines[i];
+        for (std::size_t j = 0; j < ts.size(); ++j) {
+            const qint64 k = internal::BucketGrid(frame.widthDev, span).bucketOf(ts[j] - origin);
+            QVERIFY(k >= 0 && k < frame.widthDev);
+            QVERIFY2(std::abs(poly[static_cast<int>(j)].x() * dpr - (frame.leftDev + static_cast<double>(k) + 0.5)) < 1e-9,
+                     qPrintable(QStringLiteral("vertex at %1 dev, bucket %2").arg(poly[static_cast<int>(j)].x() * dpr).arg(k)));
+            ++perColumn[static_cast<std::size_t>(k)];
+            ++vertices;
+        }
+    }
+    QVERIFY(vertices > frame.widthDev); // dense data: more than one vertex per column on average
+    for (int c : perColumn) QVERIFY(c <= 4);
+}
+
+// #25 (#11): in a decimated trace the device column of a bucket that holds a non-finite sample is
+// blank, and every column of a bucket with only finite samples is drawn, at any zoom level
+void tst_AnalysisChart::decimatedDropoutsAreBlankColumns()
+{
+    AnalysisChart chart;
+    chart.resize(700, 320);
+    chart.setGridVisible(false);
+    chart.setLegendVisible(false);
+    const QColor trace(0, 255, 0);
+    const int a = chart.addChannel(QStringLiteral("A"), trace);
+    const Series s = denseSeries();
+    QVERIFY(chart.setChannelData(a, s.t.data(), s.v.data(), static_cast<qsizetype>(s.t.size())));
+    chart.setGapThreshold(nanoseconds(std::numeric_limits<qint64>::max())); // only the dropouts break the trace
+    internal::AnalysisChartTestAccess::enableDiagnostics(chart);
+    chart.setDecimationMode(AnalysisChart::DecimationMode::Always);
+    // Full view and 200 ms views around each dropout (more samples than device columns at every DPR)
+    const std::vector<std::pair<qint64, qint64>> views{{0, 0}, {5300000000LL, 5500000000LL}, {5800000000LL, 6000000000LL}, {6450000000LL, 6650000000LL}};
+    for (const auto &view : views) {
+        if (view.second > view.first) chart.setXRange(nanoseconds(view.first), nanoseconds(view.second));
+        else chart.resetView();
+        const QImage img = chart.grab().toImage();
+        const auto &frame = internal::AnalysisChartTestAccess::lastFrame(chart);
+        QVERIFY(frame.channels[0].decimated);
+        const QRectF plot = internal::AnalysisChartTestAccess::plotArea(chart);
+        const double dpr = img.devicePixelRatio();
+        const auto buckets = referenceBuckets(chart, s, frame.widthDev);
+        int blank = 0;
+        int drawn = 0;
+        for (int k = 0; k < frame.widthDev; ++k) {
+            const auto &b = buckets[static_cast<std::size_t>(k)];
+            if (b.count == 0 && !b.hasNonFinite) continue; // empty bucket: a connecting line may cross it
+            const int x = static_cast<int>(frame.leftDev) + k;
+            int lit = 0;
+            for (int y = static_cast<int>(std::ceil(plot.top() * dpr)); y < static_cast<int>(plot.bottom() * dpr); ++y) {
+                lit += img.pixelColor(x, y) == trace ? 1 : 0;
+            }
+            const QString where = QStringLiteral("view %1..%2, column %3: %4 trace px").arg(view.first).arg(view.second).arg(k).arg(lit);
+            if (b.hasNonFinite) {
+                QVERIFY2(lit == 0, qPrintable(where));
+                ++blank;
+            } else {
+                QVERIFY2(lit > 0, qPrintable(where));
+                ++drawn;
+            }
+        }
+        QVERIFY2(blank >= 1 && drawn > frame.widthDev / 2, qPrintable(QStringLiteral("blank %1, drawn %2").arg(blank).arg(drawn)));
+    }
 }
 
 QTEST_MAIN(tst_AnalysisChart)
