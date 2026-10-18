@@ -15,6 +15,7 @@
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
+#include <QtIndustrialWidgets/AnalysisChart.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -1438,6 +1439,112 @@ void MainWindow::setupUi()
     daqLayout->addWidget(daqControlsBox);
     tabWidget->addTab(daqTab, QStringLiteral("High-Rate DAQ"));
 
+    // ------------------------------------------------------------------------
+    // TAB 7: Recorded data review (AnalysisChart)
+    // ------------------------------------------------------------------------
+    auto *analysisTab = new QWidget(tabWidget);
+    auto *analysisLayout = new QVBoxLayout(analysisTab);
+    analysisLayout->setContentsMargins(14, 14, 14, 14);
+    analysisLayout->setSpacing(12);
+
+    m_analysisChart = new AnalysisChart(analysisTab);
+    {
+        // About 1 M recorded samples over 60 s, generated analytically (no random numbers, no clock):
+        // two channels at different rates, spikes, NaN dropouts and a recording gap
+        using std::chrono::nanoseconds;
+        const double pi = std::acos(-1.0);
+        auto noise = [](quint64 i, quint64 seed) {
+            const quint64 x = (i + seed * 1000003ULL) * 6364136223846793005ULL + 1442695040888963407ULL;
+            return static_cast<double>(x >> 40) / static_cast<double>(1ULL << 24) - 0.5; // -0.5 .. 0.5
+        };
+        std::vector<nanoseconds> t;
+        std::vector<double> v;
+        const int vibration = m_analysisChart->addChannel(QStringLiteral("Vibration 10 kHz"), QColor(0, 229, 255), 1.4);
+        for (qint64 i = 0; i < 600000; ++i) { // 10 kHz, 60 s
+            const double ts = static_cast<double>(i) / 10000.0;
+            double y = 0.6 * std::sin(2.0 * pi * 0.25 * ts) + 0.25 * std::sin(2.0 * pi * 47.0 * ts) + 0.12 * noise(static_cast<quint64>(i), 1);
+            if (i % 73000 == 36500) y = 2.4;                               // impact spikes
+            if ((ts >= 21.0 && ts < 21.15) || (ts >= 44.2 && ts < 44.25)) // sensor dropouts
+                y = std::numeric_limits<double>::quiet_NaN();
+            t.push_back(nanoseconds(i * 100000));
+            v.push_back(y);
+        }
+        m_analysisChart->setChannelData(vibration, t.data(), v.data(), static_cast<qsizetype>(t.size()));
+        t.clear();
+        v.clear();
+        const int pressure = m_analysisChart->addChannel(QStringLiteral("Pressure 5 kHz"), QColor(255, 170, 0), 1.4);
+        for (qint64 i = 0; i < 300000; ++i) { // 5 kHz, 60 s, nothing recorded from 33 s to 35 s
+            const double ts = static_cast<double>(i) / 5000.0;
+            if (ts >= 33.0 && ts < 35.0) continue;
+            const double ramp = ts < 10.0 ? ts / 10.0 : (ts < 50.0 ? 1.0 : 1.0 - (ts - 50.0) / 10.0);
+            t.push_back(nanoseconds(i * 200000));
+            v.push_back(-1.6 + 1.1 * ramp + 0.05 * std::sin(2.0 * pi * 3.0 * ts) + 0.03 * noise(static_cast<quint64>(i), 2));
+        }
+        m_analysisChart->setChannelData(pressure, t.data(), v.data(), static_cast<qsizetype>(t.size()));
+        t.clear();
+        v.clear();
+        const int temperature = m_analysisChart->addChannel(QStringLiteral("Temperature 1 kHz"), QColor(0, 230, 118), 1.4);
+        for (qint64 i = 0; i < 60000; ++i) { // 1 kHz, 60 s
+            const double ts = static_cast<double>(i) / 1000.0;
+            t.push_back(nanoseconds(i * 1000000));
+            v.push_back(1.2 + 0.4 * (1.0 - std::exp(-ts / 20.0)) + 0.02 * noise(static_cast<quint64>(i), 3));
+        }
+        m_analysisChart->setChannelData(temperature, t.data(), v.data(), static_cast<qsizetype>(t.size()));
+        m_analysisChart->resetView();
+        m_analysisChart->setCursorVisible(AnalysisChart::Cursor::A, true);
+        m_analysisChart->setCursorVisible(AnalysisChart::Cursor::B, true);
+    }
+    analysisLayout->addWidget(m_analysisChart, 1);
+
+    auto *analysisControlsBox = new QGroupBox(QStringLiteral("Review Controls"), analysisTab);
+    auto *analysisControlsLayout = new QGridLayout(analysisControlsBox);
+    analysisControlsLayout->setContentsMargins(12, 16, 12, 12);
+    analysisControlsLayout->setHorizontalSpacing(16);
+    analysisControlsLayout->setVerticalSpacing(10);
+
+    auto *cursorACheck = new QCheckBox(QStringLiteral("Cursor A"), analysisControlsBox);
+    cursorACheck->setChecked(true);
+    connect(cursorACheck, &QCheckBox::toggled, this, [this](bool on) { m_analysisChart->setCursorVisible(AnalysisChart::Cursor::A, on); });
+    auto *cursorBCheck = new QCheckBox(QStringLiteral("Cursor B"), analysisControlsBox);
+    cursorBCheck->setChecked(true);
+    connect(cursorBCheck, &QCheckBox::toggled, this, [this](bool on) { m_analysisChart->setCursorVisible(AnalysisChart::Cursor::B, on); });
+    auto *resetViewButton = new QPushButton(QStringLiteral("Reset View"), analysisControlsBox);
+    connect(resetViewButton, &QPushButton::clicked, m_analysisChart, &AnalysisChart::resetView);
+    analysisControlsLayout->addWidget(cursorACheck, 0, 0);
+    analysisControlsLayout->addWidget(cursorBCheck, 0, 1);
+    analysisControlsLayout->addWidget(resetViewButton, 0, 2);
+
+    auto *analysisDecimLbl = new QLabel(QStringLiteral("Decimation Mode:"), analysisControlsBox);
+    auto *analysisDecimCombo = new QComboBox(analysisControlsBox);
+    analysisDecimCombo->addItem(QStringLiteral("Auto (M4 Min/Max)"), static_cast<int>(AnalysisChart::DecimationMode::Auto));
+    analysisDecimCombo->addItem(QStringLiteral("Off (Raw Samples)"), static_cast<int>(AnalysisChart::DecimationMode::Off));
+    analysisDecimCombo->addItem(QStringLiteral("Always (Force M4)"), static_cast<int>(AnalysisChart::DecimationMode::Always));
+    connect(analysisDecimCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_analysisChart->setDecimationMode(static_cast<AnalysisChart::DecimationMode>(analysisDecimCombo->itemData(idx).toInt()));
+    });
+    analysisControlsLayout->addWidget(analysisDecimLbl, 0, 3);
+    analysisControlsLayout->addWidget(analysisDecimCombo, 0, 4);
+
+    auto *analysisLabelLbl = new QLabel(QStringLiteral("Label Format:"), analysisControlsBox);
+    auto *analysisLabelCombo = new QComboBox(analysisControlsBox);
+    analysisLabelCombo->addItem(QStringLiteral("Relative (from data start)"), static_cast<int>(AnalysisChart::TimeLabelFormat::Relative));
+    analysisLabelCombo->addItem(QStringLiteral("Absolute (HH:mm:ss.zzz)"), static_cast<int>(AnalysisChart::TimeLabelFormat::Absolute));
+    m_analysisChart->setTimeOrigin(QDateTime(QDate(2026, 10, 18), QTime(9, 30, 0), Qt::UTC));
+    connect(analysisLabelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+        m_analysisChart->setTimeLabelFormat(static_cast<AnalysisChart::TimeLabelFormat>(analysisLabelCombo->itemData(idx).toInt()));
+    });
+    analysisControlsLayout->addWidget(analysisLabelLbl, 0, 5);
+    analysisControlsLayout->addWidget(analysisLabelCombo, 0, 6);
+
+    auto *analysisHelp = new QLabel(QStringLiteral("Wheel: zoom time · Ctrl+wheel: zoom values · Drag: pan · Right drag or Shift+drag: box zoom · "
+                                                   "Drag a cursor line to move it · Double-click or Home: reset · +/− and arrow keys"),
+                                    analysisControlsBox);
+    analysisHelp->setWordWrap(true);
+    analysisControlsLayout->addWidget(analysisHelp, 1, 0, 1, 7);
+
+    analysisLayout->addWidget(analysisControlsBox);
+    tabWidget->addTab(analysisTab, QStringLiteral("Analysis Chart"));
+
     rootLayout->addWidget(tabWidget);
 }
 
@@ -1843,6 +1950,13 @@ void MainWindow::applyTheme(bool dark)
             m_stripChart->setBezelColor(QColor(38, 46, 60));
         }
 
+        if (m_analysisChart) {
+            m_analysisChart->setBackgroundColor(QColor(14, 18, 25));
+            m_analysisChart->setGridColor(QColor(42, 54, 70));
+            m_analysisChart->setBezelColor(QColor(38, 46, 60));
+            m_analysisChart->setTextColor(QColor(210, 220, 235));
+        }
+
         if (m_annunciatorPanel) {
             m_annunciatorPanel->setFrameColor(QColor(30, 36, 46));
             m_annunciatorPanel->setGridColor(QColor(55, 65, 80));
@@ -1964,6 +2078,13 @@ void MainWindow::applyTheme(bool dark)
             m_stripChart->setBezelColor(QColor(215, 222, 230));
         }
 
+        if (m_analysisChart) {
+            m_analysisChart->setBackgroundColor(QColor(242, 246, 252));
+            m_analysisChart->setGridColor(QColor(208, 218, 230));
+            m_analysisChart->setBezelColor(QColor(215, 222, 230));
+            m_analysisChart->setTextColor(QColor(40, 48, 60));
+        }
+
         if (m_annunciatorPanel) {
             m_annunciatorPanel->setFrameColor(QColor(215, 222, 230));
             m_annunciatorPanel->setGridColor(QColor(180, 190, 205));
@@ -2065,7 +2186,7 @@ void MainWindow::prepareForExport()
 bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStringList *written, QString *error)
 {
     static const char *const names[] = {"dashboard", "manual-controls", "circular-bargraph",
-                                        "annunciator", "compass", "daq"};
+                                        "annunciator", "compass", "daq", "analysis-chart"};
     if (m_tabWidget->count() != static_cast<int>(sizeof(names) / sizeof(names[0]))) {
         *error = QStringLiteral("gallery has %1 tabs, the export knows %2").arg(m_tabWidget->count())
                      .arg(sizeof(names) / sizeof(names[0]));
