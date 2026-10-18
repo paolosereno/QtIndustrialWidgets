@@ -268,7 +268,7 @@ bool AnalysisChart::setChannelData(int channelId, const std::chrono::nanoseconds
     ch->meanInterval = n >= 2 ? static_cast<double>(ch->t.back() - ch->t.front()) / static_cast<double>(n - 1) : 0.0;
     ch->finiteMin = lo;
     ch->finiteMax = hi;
-    ch->pyramid.build(ch->v.data(), ch->v.size());
+    ch->pyramid.build(ch->t.data(), ch->v.data(), ch->v.size());
 
     if (!d_ptr->viewFromData && hasData()) {
         resetView(); // the first data sets the view and places the cursors at 1/3 and 2/3 of it

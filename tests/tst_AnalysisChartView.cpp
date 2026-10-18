@@ -41,6 +41,7 @@ private Q_SLOTS:
     void pyramidMatchesM4Decimator();
     void pyramidEdgeCases();
     void segmentsMatchM4Decimator();
+    void pyramidLowerBound();
 };
 
 // #25 D4: the automatic gap threshold is StripChart's: 4 x an EMA of the strictly positive steps,
@@ -384,7 +385,7 @@ void tst_AnalysisChartView::pyramidMatchesM4Decimator()
     QFETCH(double, nonFiniteShare);
     const RandomChannel c = randomChannel(seed, static_cast<std::size_t>(count), nonFiniteShare);
     AnalysisPyramid pyramid;
-    pyramid.build(c.v.data(), c.v.size());
+    pyramid.build(c.t.data(), c.v.data(), c.v.size());
     const qint64 extent = c.t.back() - c.t.front();
     QRandomGenerator rng(seed * 7919u);
     int compared = 0;
@@ -412,7 +413,7 @@ void tst_AnalysisChartView::pyramidMatchesM4Decimator()
 void tst_AnalysisChartView::pyramidEdgeCases()
 {
     AnalysisPyramid empty;
-    empty.build(nullptr, 0);
+    empty.build(nullptr, nullptr, 0);
     QCOMPARE(empty.aggregate(nullptr, nullptr, 0, 0).count, std::size_t(0));
     QVERIFY(empty.buckets(nullptr, nullptr, 0, 0, BucketGrid(10, 100), 0, 10).empty());
 
@@ -425,7 +426,7 @@ void tst_AnalysisChartView::pyramidEdgeCases()
     v[70] = 3.0;
     v[130] = 3.0;
     AnalysisPyramid p;
-    p.build(v.data(), v.size());
+    p.build(t.data(), v.data(), v.size());
     const M4Bucket all = p.aggregate(t.data(), v.data(), 0, 256);
     QCOMPARE(all.tMin, qint64(10));
     QCOMPARE(all.tMax, qint64(70));
@@ -437,14 +438,17 @@ void tst_AnalysisChartView::pyramidEdgeCases()
     QCOMPARE(tail.tLast, qint64(255));
     // A NaN inside a whole block marks the bucket
     v[150] = std::numeric_limits<double>::quiet_NaN();
-    p.build(v.data(), v.size());
+    p.build(t.data(), v.data(), v.size());
     QVERIFY(p.aggregate(t.data(), v.data(), 128, 192).hasNonFinite);
     QVERIFY(!p.aggregate(t.data(), v.data(), 0, 128).hasNonFinite);
     QCOMPARE(p.aggregate(t.data(), v.data(), 128, 192).count, std::size_t(63));
     // About 2 bytes per sample (two nodes of 64 B per block)
     std::vector<double> big(64 * 1024, 0.5);
-    p.build(big.data(), big.size());
-    QVERIFY2(p.memoryBytes() <= big.size() * 2 + 4096, qPrintable(QString::number(p.memoryBytes())));
+    std::vector<qint64> bigT(big.size());
+    for (std::size_t i = 0; i < bigT.size(); ++i) bigT[i] = static_cast<qint64>(i);
+    p.build(bigT.data(), big.data(), big.size());
+    // About 2.125 bytes per sample: two nodes of 64 B and one 8 B timestamp per block of 64
+    QVERIFY2(p.memoryBytes() <= big.size() * 17 / 8 + 4096, qPrintable(QString::number(p.memoryBytes())));
 }
 
 // #25: the trace segments follow M4Decimator::decimateToSegments() (dropout buckets break the
@@ -454,7 +458,7 @@ void tst_AnalysisChartView::segmentsMatchM4Decimator()
     for (quint32 seed : {11u, 12u, 13u}) {
         const RandomChannel c = randomChannel(seed, 20000, 0.002);
         AnalysisPyramid pyramid;
-        pyramid.build(c.v.data(), c.v.size());
+        pyramid.build(c.t.data(), c.v.data(), c.v.size());
         const qint64 extent = c.t.back() - c.t.front();
         for (qint64 gap : {qint64(0), qint64(150), qint64(400), extent}) {
             for (int width : {37, 640, 1920, 5000}) {
@@ -473,6 +477,27 @@ void tst_AnalysisChartView::segmentsMatchM4Decimator()
                     }
                 }
             }
+        }
+    }
+}
+
+// The block index search equals std::lower_bound() from any start index, for any time
+void tst_AnalysisChartView::pyramidLowerBound()
+{
+    for (std::size_t n : {std::size_t(0), std::size_t(5), std::size_t(64), std::size_t(65), std::size_t(1000), std::size_t(6400)}) {
+        const RandomChannel c = randomChannel(static_cast<quint32>(n) + 100u, n, 0.0);
+        AnalysisPyramid pyramid;
+        pyramid.build(c.t.data(), c.v.data(), n);
+        QRandomGenerator rng(static_cast<quint32>(n));
+        const qint64 t0 = n ? c.t.front() - 10 : 0;
+        const qint64 t1 = n ? c.t.back() + 10 : 10;
+        for (int trial = 0; trial < 2000; ++trial) {
+            const std::size_t from = n ? static_cast<std::size_t>(rng.bounded(static_cast<quint32>(n + 1))) : 0;
+            // Times on samples (equal timestamps included) and between them
+            const qint64 time = (n && trial % 2) ? c.t[static_cast<std::size_t>(rng.bounded(static_cast<quint32>(n)))]
+                                                 : t0 + static_cast<qint64>(rng.generateDouble() * static_cast<double>(t1 - t0));
+            const auto expected = static_cast<std::size_t>(std::lower_bound(c.t.begin() + static_cast<std::ptrdiff_t>(from), c.t.end(), time) - c.t.begin());
+            QCOMPARE(pyramid.lowerBound(c.t.data(), n, from, time), expected);
         }
     }
 }
