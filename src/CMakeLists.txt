@@ -164,6 +164,8 @@ set_target_properties(LevelMeterLayout PROPERTIES
 add_library(AnalysisChartView OBJECT
     internal/AnalysisChartView.cpp
     internal/AnalysisChartView.h
+    internal/AnalysisPyramid.cpp
+    internal/AnalysisPyramid.h
 )
 
 target_include_directories(AnalysisChartView
