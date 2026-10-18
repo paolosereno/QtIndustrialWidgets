@@ -91,8 +91,9 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 
 - **Tests**: a QtTest suite; every test program runs at device pixel ratios 1, 1.25, 1.5 and 2
   ([tests/CMakeLists.txt](tests/CMakeLists.txt)). Rendering is checked at pixel level (traces, gaps, labels, layout),
-  and new tests are shown to fail under a deliberate sabotage of the feature they cover before they are merged
-  ([CLAUDE.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CLAUDE.md), working rule 3; the results are reported in each pull request).
+  and new tests are shown to fail under a deliberate sabotage of the feature they cover before they are merged; the
+  results are reported in each pull request
+  ([CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md)).
 - **CI** ([ci.yml](.github/workflows/ci.yml)), on every pull request and push to `main`: build and the full test
   suite on Linux (Ubuntu 24.04, GCC, Qt 6.4.2), Windows (MSVC, Qt 6.6.3) and macOS (Apple Clang, Homebrew Qt);
   `reuse lint`; on Linux, the export of the gallery images and the Doxygen documentation.
@@ -159,6 +160,12 @@ in `build/docs/html/index.html`. Without a CMake build, from the project root:
 mkdir -p build/docs   # Doxygen creates only the last folder of OUTPUT_DIRECTORY
 QIW_VERSION=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\) *$/\1/p' CMakeLists.txt | head -n1) doxygen docs/Doxyfile
 ```
+
+## Contributing
+
+How changes are made and what a pull request has to show (tests first for bugs, sabotage checks for new tests, the
+criteria for "done", Conventional Commits):
+[CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md).
 
 ## License
 
