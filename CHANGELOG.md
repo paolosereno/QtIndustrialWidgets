@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.3.0` tag archive (the tagged commit still had the `v2.2.0` hash, since the hash can be computed only after the tag). The archive no longer contains `.claude/` (#69). Not verified with `vcpkg install`; the port remains experimental.
+
 ---
 
 ## [2.3.0] - 2026-10-18
