@@ -74,7 +74,6 @@ GENERATE_XML           = NO
 HAVE_DOT               = NO
 DOT_IMAGE_FORMAT       = svg
 INTERACTIVE_SVG        = YES
-DOT_TRANSPARENT        = YES
 CLASS_GRAPH            = YES
 COLLABORATION_GRAPH    = YES
 GROUP_GRAPHS           = YES
