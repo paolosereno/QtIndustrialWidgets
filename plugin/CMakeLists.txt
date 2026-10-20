@@ -9,7 +9,7 @@ add_library(QtIndustrialWidgetsPlugin MODULE
 target_link_libraries(QtIndustrialWidgetsPlugin
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Designer
+        Qt6::Designer
 )
 
 set_target_properties(QtIndustrialWidgetsPlugin PROPERTIES
@@ -22,7 +22,7 @@ set_target_properties(QtIndustrialWidgetsPlugin PROPERTIES
 if(DEFINED QT_INSTALL_PLUGINS)
     set(DESIGNER_PLUGIN_INSTALL_DIR "${QT_INSTALL_PLUGINS}/designer")
 else()
-    set(DESIGNER_PLUGIN_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qt${QT_VERSION_MAJOR}/plugins/designer")
+    set(DESIGNER_PLUGIN_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qt6/plugins/designer")
 endif()
 
 install(TARGETS QtIndustrialWidgetsPlugin

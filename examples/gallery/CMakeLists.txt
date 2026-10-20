@@ -16,7 +16,7 @@ add_executable(QtIndustrialWidgetsGallery
 target_link_libraries(QtIndustrialWidgetsGallery
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt6::Widgets
 )
 
 set_target_properties(QtIndustrialWidgetsGallery PROPERTIES

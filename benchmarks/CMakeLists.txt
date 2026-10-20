@@ -8,8 +8,8 @@ add_executable(bench_StripChart
 
 target_link_libraries(bench_StripChart PRIVATE
     QtIndustrialWidgets
-    Qt${QT_VERSION_MAJOR}::Widgets
-    Qt${QT_VERSION_MAJOR}::Test
+    Qt6::Widgets
+    Qt6::Test
 )
 
 target_include_directories(bench_StripChart PRIVATE
@@ -30,7 +30,7 @@ add_executable(bench_AnalysisChart
 
 target_link_libraries(bench_AnalysisChart PRIVATE
     QtIndustrialWidgets
-    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt6::Widgets
 )
 
 target_include_directories(bench_AnalysisChart PRIVATE

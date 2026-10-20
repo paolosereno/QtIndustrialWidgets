@@ -14,7 +14,7 @@ target_include_directories(NumberFormat
 
 target_link_libraries(NumberFormat
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
+        Qt6::Core
 )
 
 set_target_properties(NumberFormat PROPERTIES
@@ -37,8 +37,8 @@ target_include_directories(M4Decimator
 
 target_link_libraries(M4Decimator
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
+        Qt6::Core
+        Qt6::Gui
 )
 
 set_target_properties(M4Decimator PROPERTIES
@@ -59,8 +59,8 @@ target_include_directories(CircularBargraphSegments
 
 target_link_libraries(CircularBargraphSegments
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
+        Qt6::Core
+        Qt6::Gui
 )
 
 set_target_properties(CircularBargraphSegments PROPERTIES
@@ -95,8 +95,8 @@ target_include_directories(IndustrialSwitchLayout
 
 target_link_libraries(IndustrialSwitchLayout
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
+        Qt6::Core
+        Qt6::Gui
 )
 
 set_target_properties(IndustrialSwitchLayout PROPERTIES
@@ -131,8 +131,8 @@ target_include_directories(FontScale
 
 target_link_libraries(FontScale
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
+        Qt6::Core
+        Qt6::Gui
 )
 
 set_target_properties(FontScale PROPERTIES
@@ -152,8 +152,8 @@ target_include_directories(LevelMeterLayout
 
 target_link_libraries(LevelMeterLayout
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
+        Qt6::Core
+        Qt6::Gui
 )
 
 set_target_properties(LevelMeterLayout PROPERTIES
@@ -177,8 +177,8 @@ target_include_directories(AnalysisChartView
 
 target_link_libraries(AnalysisChartView
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
+        Qt6::Core
+        Qt6::Gui
 )
 
 set_target_properties(AnalysisChartView PROPERTIES
@@ -240,9 +240,9 @@ target_include_directories(QtIndustrialWidgets
 
 target_link_libraries(QtIndustrialWidgets
     PUBLIC
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
 )
 
 set_target_properties(QtIndustrialWidgets PROPERTIES
