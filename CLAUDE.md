@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 # QtIndustrialWidgets — instructions for Claude Code
 
 C++17 widget library for industrial instrumentation (gauges, strip chart, annunciator, …) built on Qt Widgets.
-Supported: **Qt 6.2+**, Linux / Windows / macOS (Qt 5.15 is not supported at the moment, see #53). The library is
+Supported: **Qt 6.2+**, Linux / Windows / macOS (Qt 5 is not supported; the minimum is Qt 6.2, see #53). The library is
 being turned into a commercial product: correctness, honest documentation and traceable changes matter more than
 speed of delivery.
 
@@ -47,7 +47,8 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 - **d-pointer pattern**: no data members in public headers; private state goes in `*_p.h` (e.g. `src/internal/StripChart_p.h`).
   Public headers must stay ABI-stable within a major version.
 - Shared library is built with hidden visibility; export only through `QTINDUSTRIALWIDGETS_EXPORT`.
-- Zero warnings with `-Wall -Wextra -Wpedantic` (GCC/Clang) and `/W4 /permissive-` (MSVC). No Qt-6-only APIs.
+- Zero warnings with `-Wall -Wextra -Wpedantic` (GCC/Clang) and `/W4 /permissive-` (MSVC).
+- Qt 6.2 is the minimum: do not use APIs introduced after Qt 6.2 (the Qt 6.2.4 CI job checks this).
 <!-- REUSE-IgnoreStart -->
 - Every new file has the SPDX header (`SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>`,
   `SPDX-License-Identifier: MIT`). Files that cannot hold comments (JSON, images) get a `<file>.license` sidecar.
