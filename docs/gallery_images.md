@@ -46,6 +46,12 @@ Only the dark theme at DPR 2 is committed. CI exports both themes and uploads th
   `circular-bargraph-overrange.png`.
 - **One image per gallery tab** at 1200×820: `tab-<name>[-light].png`, e.g. `tab-daq.png`.
 
+## On GitHub Pages
+
+The committed images are also the images of the [documentation site](https://paolosereno.github.io/QtIndustrialWidgets/):
+the CMake `docs` target copies `docs/images/` into the Doxygen output, and the landing page (`docs/site/`, target
+`site`) shows them. They are not copied anywhere else in the repository.
+
 ## Determinism
 
 The same commit, platform and options give byte-identical files. The export:

@@ -15,7 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Landing page on GitHub Pages** (#80): the site's root is a landing page (`docs/site/`) with the README's sentence, the gallery's dashboard image, the 12 widgets with their captions and links to their class documentation, the quick start and links to the repository and the releases. `tools/check_site.py` checks in CI that its links resolve and that its widgets, captions, images and `GIT_TAG` match the README.
+
+### Changed
+- **Documentation addresses on GitHub Pages** (#80): the Doxygen documentation moves from the site root to `/api/`. Every page of the previous layout keeps a redirect page at its old address (`noindex`), including the guide pages, whose names no longer contain the CI runner's path (`md_docs_2widgets.html` instead of `md__2home_2runner_2work_…_docs_2widgets.html`, via `STRIP_FROM_PATH`). A `#fragment` in an old address is not carried over by the redirect.
+- **Pages deployment** (#80): a failed deployment now fails the CI run (`continue-on-error` removed from `deploy-pages`).
+
 ### Fixed
+- **Images on GitHub Pages** (#80): the images of the README main page and of `docs/widgets.md` returned 404 because Doxygen did not copy `docs/images/`; the `docs` target now copies them next to the HTML pages.
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.3.0` tag archive (the tagged commit still had the `v2.2.0` hash, since the hash can be computed only after the tag). The archive no longer contains `.claude/` (#69). Not verified with `vcpkg install`; the port remains experimental.
 
 ---
