@@ -10,6 +10,8 @@ INPUT                  = "@PROJECT_SOURCE_DIR@/include/QtIndustrialWidgets" \
                          "@PROJECT_SOURCE_DIR@/README.md" \
                          "@PROJECT_SOURCE_DIR@/docs"
 USE_MDFILE_AS_MAINPAGE = "@PROJECT_SOURCE_DIR@/README.md"
+# Page file names relative to the source tree (md_docs_2widgets.html), not to the build machine's path
+STRIP_FROM_PATH        = "@PROJECT_SOURCE_DIR@"
 RECURSIVE              = YES
 FILE_PATTERNS          = *.h *.md
 EXCLUDE_PATTERNS       = */build/* */tests/* */examples/*
