@@ -10,7 +10,10 @@
     - every other HTML file at the root is a redirect stub whose target exists under api/;
     - every src (images, scripts) of every page under api/ resolves;
     - the widget grid of the landing page lists the widgets of the README table, with the same captions and images;
-    - the GIT_TAG of the landing page's quick start equals the README's.
+    - the GIT_TAG of the landing page's quick start equals the README's;
+    - the landing page's meta description is the README's opening sentence;
+    - a Google Search Console verification file at the root (google<token>.html) names itself;
+    - sitemap.xml lists the landing page and every page under api/, each existing, and no redirect stub.
   check_site.py --url BASE_URL    crawls a served copy (python3 -m http.server, or the published site) over HTTP:
     the landing page, every page and image it links to, every redirect stub and its target, every src of the
     Doxygen pages; every request must answer 200.
@@ -75,6 +78,16 @@ def readme_widgets():
     return [(n, c.strip(), i) for n, c, i in rows]
 
 
+def readme_sentence():
+    m = re.search(r"^# QtIndustrialWidgets\n\n(.*?)\n\n", open(README, encoding="utf-8").read(), re.S | re.M)
+    return " ".join(m.group(1).split()) if m else None
+
+
+def landing_description(text):
+    m = re.search(r'<meta name="description" content="([^"]*)"', text)
+    return " ".join(html.unescape(m.group(1)).split()) if m else None
+
+
 def readme_git_tag():
     m = re.search(r"GIT_TAG\s+(\S+)", open(README, encoding="utf-8").read())
     return m.group(1) if m else None
@@ -125,8 +138,14 @@ def check_files(site):
 
     # Root: every other HTML file is a redirect stub to an existing page under api/
     stubs = 0
+    verification = re.compile(r"^google[0-9a-f]+\.html$")
     for name in sorted(os.listdir(site)):
         if not name.endswith(".html") or name == "index.html":
+            continue
+        if verification.match(name):
+            content = open(os.path.join(site, name), encoding="utf-8").read().strip()
+            if content != "google-site-verification: " + name:
+                problems.append(f"{name}: not a Google Search Console verification file for its own name")
             continue
         page = parse(open(os.path.join(site, name), encoding="utf-8").read())
         if not page.refresh or not page.refresh.startswith("api/"):
@@ -163,8 +182,35 @@ def check_files(site):
         problems.append(f"index.html: GIT_TAG {landing_git_tag(landing_text)} differs from README.md's "
                         f"{readme_git_tag()}")
 
+    if landing_description(landing_text) != readme_sentence():
+        problems.append("index.html: the meta description differs from the README's opening sentence")
+
+    # Sitemap: the landing page and every page under api/, nothing else
+    sitemap_path = os.path.join(site, "sitemap.xml")
+    locs = []
+    if not os.path.isfile(sitemap_path):
+        problems.append("no sitemap.xml")
+    else:
+        locs = re.findall(r"<loc>([^<]+)</loc>", open(sitemap_path, encoding="utf-8").read())
+        prefix = "https://paolosereno.github.io/QtIndustrialWidgets/"
+        listed = set()
+        for loc in locs:
+            if not loc.startswith(prefix):
+                problems.append(f"sitemap.xml: {loc}: not under {prefix}")
+                continue
+            rel = loc[len(prefix):]
+            listed.add(rel)
+            if rel and not rel.startswith("api/"):
+                problems.append(f"sitemap.xml: {loc}: not the landing page or a page under api/")
+            elif not os.path.isfile(os.path.join(site, rel or "index.html")):
+                problems.append(f"sitemap.xml: {loc}: no such file")
+        expected_locs = {""} | {"api/" + n for n in pages}
+        for rel in sorted(expected_locs - listed):
+            problems.append(f"sitemap.xml: {prefix}{rel} missing")
+
     print(f"checked: landing page ({len(landing.hrefs)} links, {len(landing.srcs)} sources), {stubs} redirect "
-          f"stubs, {len(pages)} pages under api/ ({images} image references), {len(actual)} widgets")
+          f"stubs, {len(pages)} pages under api/ ({images} image references), {len(actual)} widgets, "
+          f"{len(locs)} sitemap URLs")
     return problems
 
 
