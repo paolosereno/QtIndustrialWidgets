@@ -7,6 +7,8 @@
 #   SITE_DIR/api/        the Doxygen HTML output (HTML_DIR), with the gallery images
 #   SITE_DIR/<page>.html a redirect stub for every Doxygen page, at the address it had before the site moved under
 #                        api/ (the documentation used to be published at the root)
+#   SITE_DIR/google*.html the Google Search Console verification file(s) from SITE_SOURCE_DIR, unchanged
+#   SITE_DIR/sitemap.xml the landing page and every page under api/ (not the redirect stubs)
 # Usage: cmake -DHTML_DIR=... -DSITE_SOURCE_DIR=... -DSITE_DIR=... -P assemble_site.cmake
 
 foreach(var HTML_DIR SITE_SOURCE_DIR SITE_DIR)
@@ -26,6 +28,8 @@ file(REMOVE_RECURSE "${SITE_DIR}")
 file(MAKE_DIRECTORY "${SITE_DIR}")
 file(COPY "${HTML_DIR}/" DESTINATION "${SITE_DIR}/api")
 file(COPY "${SITE_SOURCE_DIR}/index.html" "${SITE_SOURCE_DIR}/site.css" DESTINATION "${SITE_DIR}")
+file(GLOB verification_files "${SITE_SOURCE_DIR}/google*.html")
+file(COPY ${verification_files} DESTINATION "${SITE_DIR}")
 
 function(write_stub stub_name target)
     file(WRITE "${SITE_DIR}/${stub_name}"
@@ -58,4 +62,16 @@ foreach(page IN LISTS pages)
         math(EXPR stubs "${stubs} + 1")
     endif()
 endforeach()
-message(STATUS "Site assembled in ${SITE_DIR}: landing page, api/, ${stubs} redirect stubs")
+# Sitemap: the landing page and the Doxygen pages, at their api/ addresses
+set(sitemap "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+string(APPEND sitemap "  <url><loc>${SITE_URL}/</loc></url>\n")
+list(SORT pages)
+foreach(page IN LISTS pages)
+    string(APPEND sitemap "  <url><loc>${SITE_URL}/api/${page}</loc></url>\n")
+endforeach()
+string(APPEND sitemap "</urlset>\n")
+file(WRITE "${SITE_DIR}/sitemap.xml" "${sitemap}")
+list(LENGTH pages api_pages)
+math(EXPR sitemap_urls "${api_pages} + 1")
+
+message(STATUS "Site assembled in ${SITE_DIR}: landing page, api/, ${stubs} redirect stubs, sitemap with ${sitemap_urls} URLs")
