@@ -6,7 +6,9 @@
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPolygonF>
+#include <internal/DecimatedTrace.h>
 #include <internal/M4Decimator.h>
+#include <internal/StripChartGeometry.h>
 #include <cmath>
 #include <random>
 #include <set>
@@ -19,7 +21,7 @@ class tst_M4Decimator : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
-    void pixelEquivalence();
+    void drawnColumnExtent();
     void spikePreservation();
     void vertexBound();
     void bucketAggregatesAreIndependentOfWindowStart();
@@ -31,207 +33,239 @@ private Q_SLOTS:
     void mulDivSaturationEdges();
 };
 
-void tst_M4Decimator::pixelEquivalence()
+// #90: the decimated trace, drawn as StripChart draws it (internal::drawDecimatedSegment()), lights in every device
+// column exactly the vertical extent the raw samples call for. The expected extent of a column comes only from the raw
+// samples whose bucket is that column (PlotXMapping): their minimum and maximum, and the half connections to the
+// adjacent columns of the same trace, which end halfway between the column's last raw sample and the next column's
+// first one (and the other way round). A column holding a non-finite sample stays blank (#11).
+//
+// Tolerance: one pixel row at each end of the extent, from Qt's pixel model for aliased drawing: a one-pixel pen
+// renders the pixel to the right of and below the mathematical point, so a fractional y lands on row floor(y) or on
+// the row next to it depending on the direction of the line (Qt documentation, "Coordinate System", section
+// "Aliased Painting": https://doc.qt.io/qt-6/coordsys.html#aliased-painting).
+void tst_M4Decimator::drawnColumnExtent()
 {
-    enum class SignalType {
-        UniformNoise,
-        Sine3Periods,
-        SquareWave,
-        SparseSpikes,
-        Chirp
-    };
-
+    enum class SignalType { UniformNoise, Sine3Periods, SquareWave, SparseSpikes, Chirp, SineDropouts };
     struct SignalConfig {
         SignalType type;
         const char *name;
     };
-
     const SignalConfig signalConfigs[] = {
-        {SignalType::UniformNoise, "UniformNoise"},
-        {SignalType::Sine3Periods, "Sine3Periods"},
-        {SignalType::SquareWave, "SquareWave"},
-        {SignalType::SparseSpikes, "SparseSpikes"},
-        {SignalType::Chirp, "Chirp"}
+        {SignalType::UniformNoise, "UniformNoise"}, {SignalType::Sine3Periods, "Sine3Periods"},
+        {SignalType::SquareWave, "SquareWave"},     {SignalType::SparseSpikes, "SparseSpikes"},
+        {SignalType::Chirp, "Chirp"},               {SignalType::SineDropouts, "SineDropouts"},
     };
-
     const int widths[] = {799, 800, 1920};
-    const bool alignments[] = {true, false}; // true: aligned, false: non-aligned
+    const bool alignments[] = {true, false}; // aligned: the first sample starts a bucket
     const int height = 400;
     const double yMin = -110.0;
     const double yMax = 110.0;
-    const double ySpan = yMax - yMin;
     const int samplesPerBucket = 1000;
+    constexpr int kRowTolerance = 1; // Qt's aliased pixel model, see above
 
     for (const auto &sig : signalConfigs) {
         for (int width : widths) {
             for (bool aligned : alignments) {
                 const int sampleCount = width * samplesPerBucket;
                 const qint64 dt_px = samplesPerBucket;
-                std::vector<qint64> timestamps(sampleCount);
-                std::vector<double> values(sampleCount);
-
-                qint64 tOffset = aligned ? 0LL : (dt_px / 3);
-
+                const qint64 tOffset = aligned ? 0LL : (dt_px / 3);
+                std::vector<qint64> timestamps(static_cast<size_t>(sampleCount));
+                std::vector<double> values(static_cast<size_t>(sampleCount));
                 std::mt19937_64 rng(42 + static_cast<int>(sig.type) * 100 + width);
                 std::uniform_real_distribution<double> dist(-100.0, 100.0);
-
                 for (int i = 0; i < sampleCount; ++i) {
-                    timestamps[i] = tOffset + static_cast<qint64>(i);
-                    double frac = static_cast<double>(i) / static_cast<double>(sampleCount - 1);
-
+                    const auto u = static_cast<size_t>(i);
+                    timestamps[u] = tOffset + static_cast<qint64>(i);
+                    const double frac = static_cast<double>(i) / static_cast<double>(sampleCount - 1);
                     switch (sig.type) {
                     case SignalType::UniformNoise:
-                        values[i] = dist(rng);
+                        values[u] = dist(rng);
                         break;
                     case SignalType::Sine3Periods:
-                        values[i] = 100.0 * std::sin(2.0 * M_PI * 3.0 * frac);
+                    case SignalType::SineDropouts:
+                        values[u] = 100.0 * std::sin(2.0 * M_PI * 3.0 * frac);
                         break;
                     case SignalType::SquareWave: {
-                        double bucketIdx = static_cast<double>(timestamps[i] - tOffset) / static_cast<double>(dt_px);
-                        values[i] = (std::fmod(bucketIdx, 16.5) < 8.25) ? 80.0 : -80.0;
+                        const double bucketIdx = static_cast<double>(timestamps[u] - tOffset) / static_cast<double>(dt_px);
+                        values[u] = (std::fmod(bucketIdx, 16.5) < 8.25) ? 80.0 : -80.0;
                         break;
                     }
                     case SignalType::SparseSpikes:
-                        values[i] = 0.0;
+                        values[u] = 0.0;
                         break;
-                    case SignalType::Chirp: {
-                        double phase = 2.0 * M_PI * (1.0 + 499.0 * frac) * frac;
-                        values[i] = 100.0 * std::sin(phase);
+                    case SignalType::Chirp:
+                        values[u] = 100.0 * std::sin(2.0 * M_PI * (1.0 + 499.0 * frac) * frac);
                         break;
-                    }
                     }
                 }
-
                 if (sig.type == SignalType::SparseSpikes) {
-                    int spikeInterval = sampleCount / 10;
+                    const int spikeInterval = sampleCount / 10;
                     for (int k = 1; k <= 9; ++k) {
-                        int idx = k * spikeInterval + 42;
-                        values[idx] = (k % 2 == 0) ? 95.0 : -95.0;
+                        values[static_cast<size_t>(k * spikeInterval + 42)] = (k % 2 == 0) ? 95.0 : -95.0;
+                    }
+                }
+                if (sig.type == SignalType::SineDropouts) {
+                    // Dropouts shorter than a bucket (one bucket holds finite and non-finite samples) and longer
+                    // than several buckets, NaN and +-Inf
+                    const double nonFinite[] = {std::numeric_limits<double>::quiet_NaN(),
+                                                std::numeric_limits<double>::infinity(),
+                                                -std::numeric_limits<double>::infinity()};
+                    for (int d = 1; d <= 6; ++d) {
+                        const int start = d * sampleCount / 7 + 123;
+                        const int length = (d % 2 == 0) ? 40 : 3 * samplesPerBucket + 17;
+                        for (int i = start; i < start + length && i < sampleCount; ++i) {
+                            values[static_cast<size_t>(i)] = nonFinite[d % 3];
+                        }
                     }
                 }
 
-                qint64 kStart = M4Decimator::floorDiv(timestamps.front(), dt_px);
-                qint64 tStart = kStart * dt_px;
-                qint64 tSpan = static_cast<qint64>(width) * dt_px;
+                const BucketGrid grid(1, dt_px);
+                const qint64 kStart = grid.bucketOf(timestamps.front());
+                const PlotXMapping xmap = makePlotXMapping(grid, kStart, 0.0); // DPR 1 image: device = logical
+                auto mapY = [&](double v) { return height - ((v - yMin) / (yMax - yMin)) * (height - 20.0) - 10.0; };
+                auto identity = [](double x) { return x; };
+                // StripChart's trace pen for decimated traces (and for its cosmetic raw test mode)
+                QPen pen(Qt::white, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+                pen.setCosmetic(true);
 
-                auto mapPoint = [&](qint64 t, double v) -> QPointF {
-                    double xFrac = static_cast<double>(t - tStart) / static_cast<double>(tSpan);
-                    double x = xFrac * width;
-                    double y = height - ((v - yMin) / ySpan) * (height - 20.0) - 10.0;
-                    return QPointF(x, y);
-                };
-
-                // 1. Render Raw
+                // Raw samples, as StripChart draws them: continuous positions, broken at non-finite values
                 QImage rawImage(width, height, QImage::Format_ARGB32_Premultiplied);
                 rawImage.fill(Qt::black);
                 {
                     QPainter p(&rawImage);
                     p.setRenderHint(QPainter::Antialiasing, false);
-                    p.setPen(QPen(Qt::white, 1));
+                    p.setPen(pen);
                     QPolygonF poly;
-                    poly.reserve(sampleCount);
                     for (int i = 0; i < sampleCount; ++i) {
-                        if (timestamps[i] >= tStart && timestamps[i] < tStart + tSpan) {
-                            poly << mapPoint(timestamps[i], values[i]);
+                        const auto u = static_cast<size_t>(i);
+                        const qint64 k = grid.bucketOf(timestamps[u]) - kStart;
+                        if (k < 0 || k >= width) continue;
+                        if (!std::isfinite(values[u])) {
+                            p.drawPolyline(poly);
+                            poly.clear();
+                            continue;
                         }
+                        poly << QPointF(xmap.positionDev(timestamps[u]), mapY(values[u]));
                     }
                     p.drawPolyline(poly);
                 }
-
-                // 2. Render Decimated
+                // M4, drawn with StripChart's own function
                 QImage decImage(width, height, QImage::Format_ARGB32_Premultiplied);
                 decImage.fill(Qt::black);
                 {
-                    auto segments = M4Decimator::decimateToSegments(
-                        timestamps.data(), values.data(), sampleCount, dt_px, kStart, width, 0);
-
                     QPainter p(&decImage);
                     p.setRenderHint(QPainter::Antialiasing, false);
-                    p.setPen(QPen(Qt::white, 1));
-                    for (const auto &seg : segments) {
-                        QPolygonF poly;
-                        poly.reserve(static_cast<int>(seg.size()));
-                        for (const auto &pt : seg) {
-                            poly << mapPoint(pt.t, pt.value);
-                        }
-                        p.drawPolyline(poly);
+                    p.setPen(pen);
+                    QPolygonF poly;
+                    for (const auto &seg : M4Decimator::decimateToSegments(timestamps.data(), values.data(),
+                                                                          timestamps.size(), grid, kStart, width, 0)) {
+                        if (!seg.empty()) drawDecimatedSegment(p, xmap, seg, poly, mapY, identity);
                     }
                 }
 
-                // 3. Compare images
-                bool isExact = (rawImage == decImage);
-                std::vector<int> diffCols;
-                int maxDiffPerCol = 0;
-
-                if (!isExact) {
-                    for (int x = 0; x < width; ++x) {
-                        int colDiffs = 0;
-                        for (int y = 0; y < height; ++y) {
-                            if (rawImage.pixelColor(x, y) != decImage.pixelColor(x, y)) {
-                                colDiffs++;
-                            }
-                        }
-                        if (colDiffs > 0) {
-                            diffCols.push_back(x);
-                            maxDiffPerCol = std::max(maxDiffPerCol, colDiffs);
-                        }
+                // Expected extent of each column, from the raw samples only
+                struct Column {
+                    bool any = false, nonFinite = false;
+                    double first = 0.0, last = 0.0, lo = std::numeric_limits<double>::infinity(),
+                           hi = -std::numeric_limits<double>::infinity();
+                };
+                std::vector<Column> cols(static_cast<size_t>(width));
+                for (size_t u = 0; u < timestamps.size(); ++u) {
+                    const qint64 k = grid.bucketOf(timestamps[u]) - kStart;
+                    if (k < 0 || k >= width) continue;
+                    Column &c = cols[static_cast<size_t>(k)];
+                    if (!std::isfinite(values[u])) {
+                        c.nonFinite = true;
+                        continue;
                     }
+                    if (!c.any) c.first = values[u];
+                    c.any = true;
+                    c.last = values[u];
+                    c.lo = std::min(c.lo, values[u]);
+                    c.hi = std::max(c.hi, values[u]);
                 }
-
-                QString diffListStr;
-                if (diffCols.empty()) {
-                    diffListStr = QStringLiteral("none");
-                } else if (diffCols.size() <= 8) {
-                    QStringList sl;
-                    for (int c : diffCols) sl << QString::number(c);
-                    diffListStr = sl.join(QStringLiteral(", "));
-                } else {
-                    diffListStr = QStringLiteral("%1 cols (first: %2, last: %3)")
-                                      .arg(diffCols.size()).arg(diffCols.front()).arg(diffCols.back());
-                }
-
-                qInfo("pixelEquivalence [%s, W=%d, %s]: %s (diffCols: %zu, maxDiffPerCol: %d, cols: %s)",
-                      sig.name, width, aligned ? "aligned" : "non-aligned",
-                      isExact ? "EXACT" : "DIFFERING", diffCols.size(), maxDiffPerCol, qPrintable(diffListStr));
-
-                if (sig.type == SignalType::SparseSpikes) {
-                    int spikeInterval = sampleCount / 10;
-                    for (int k = 1; k <= 9; ++k) {
-                        int idx = k * spikeInterval + 42;
-                        QPointF pt = mapPoint(timestamps[idx], values[idx]);
-                        int px = static_cast<int>(pt.x());
-                        int py = qRound(pt.y());
-                        if (px >= 0 && px < width && py >= 0 && py < height) {
-                            QCOMPARE(decImage.pixelColor(px, py), Qt::white);
-                            QCOMPARE(rawImage.pixelColor(px, py), Qt::white);
+                auto connects = [&](int k) { // column k is part of the trace (raw finite samples, no dropout)
+                    return k >= 0 && k < width && cols[static_cast<size_t>(k)].any && !cols[static_cast<size_t>(k)].nonFinite;
+                };
+                auto litRows = [&](const QImage &img, int x, int &top, int &bottom) {
+                    top = bottom = -1;
+                    for (int y = 0; y < height; ++y) {
+                        if (img.pixel(x, y) & 0x00ffffffU) {
+                            if (top < 0) top = y;
+                            bottom = y;
                         }
                     }
-                    if (!isExact) {
-                        QEXPECT_FAIL("", "Raw dense polyline triggers Qt line rasterizer ghost column adjacent to vertical spike", Continue);
+                };
+                auto litNear = [&](const QImage &img, int x, int row) { // a lit pixel within the tolerance of row
+                    for (int y = std::max(0, row - kRowTolerance); y <= std::min(height - 1, row + kRowTolerance); ++y) {
+                        if (img.pixel(x, y) & 0x00ffffffU) return y;
                     }
-                    QVERIFY2(isExact, qPrintable(QString("Spikes must be strictly exact for %1 W=%2 %3")
-                                                     .arg(sig.name).arg(width).arg(aligned ? "aligned" : "non-aligned")));
-                } else if (!isExact) {
-                    size_t maxAllowedDiffCols = (width == 1920) ? 10UL : 4UL;
-                    if (sig.type != SignalType::UniformNoise) {
-                        if (maxDiffPerCol > 1) {
-                            QEXPECT_FAIL("", "Thin curve or square wave intra-bucket shape produces > 1 differing pixel per column in non-antialiased rasterizer", Continue);
-                        }
-                    }
-                    QVERIFY2(maxDiffPerCol <= 1,
-                             qPrintable(QString("maxDiffPerCol %1 > 1 for %2 W=%3 %4")
-                                            .arg(maxDiffPerCol).arg(sig.name).arg(width).arg(aligned ? "aligned" : "non-aligned")));
+                    return -1;
+                };
 
-                    if (sig.type == SignalType::UniformNoise && width == 799 && aligned && diffCols.size() == 5) {
-                        QEXPECT_FAIL("", "Rasterizer subpixel differences for odd W=799 exceed 0.5% by 1 column (5 > 4)", Continue);
-                    } else if (sig.type != SignalType::UniformNoise && diffCols.size() > maxAllowedDiffCols) {
-                        QEXPECT_FAIL("", "Curve sagitta or intra-bucket transitions exceed 0.5% column mismatch bound", Continue);
+                int checked = 0;
+                int blanks = 0;
+                int rawCompared = 0;    // min/max rows compared with the raw drawing in their own column
+                int rawInNeighbour = 0; // min/max rows the raw drawing shows in an adjacent column
+                for (int x = 0; x < width; ++x) {
+                    const Column &c = cols[static_cast<size_t>(x)];
+                    int top = -1;
+                    int bottom = -1;
+                    litRows(decImage, x, top, bottom);
+                    const QString where = QStringLiteral("%1 W=%2 %3 column %4").arg(QLatin1String(sig.name)).arg(width)
+                                              .arg(aligned ? QStringLiteral("aligned") : QStringLiteral("non-aligned")).arg(x);
+                    if (c.nonFinite) {
+                        // #11: the column of a bucket holding a non-finite sample stays blank
+                        QVERIFY2(top < 0, qPrintable(where + QStringLiteral(": dropout column lit at rows %1..%2").arg(top).arg(bottom)));
+                        ++blanks;
+                        continue;
                     }
-                    QVERIFY2(diffCols.size() <= maxAllowedDiffCols,
-                             qPrintable(QString("diffCols %1 > %2 for %3 W=%4 %5")
-                                            .arg(diffCols.size()).arg(maxAllowedDiffCols)
-                                            .arg(sig.name).arg(width).arg(aligned ? "aligned" : "non-aligned")));
+                    if (!c.any) continue;
+                    double yTop = mapY(c.hi);
+                    double yBottom = mapY(c.lo);
+                    if (connects(x - 1)) { // half connection from the previous column's last raw sample
+                        const double mid = 0.5 * (mapY(cols[static_cast<size_t>(x - 1)].last) + mapY(c.first));
+                        yTop = std::min(yTop, mid);
+                        yBottom = std::max(yBottom, mid);
+                    }
+                    if (connects(x + 1)) { // half connection to the next column's first raw sample
+                        const double mid = 0.5 * (mapY(c.last) + mapY(cols[static_cast<size_t>(x + 1)].first));
+                        yTop = std::min(yTop, mid);
+                        yBottom = std::max(yBottom, mid);
+                    }
+                    const int expTop = static_cast<int>(std::floor(yTop));
+                    const int expBottom = static_cast<int>(std::floor(yBottom));
+                    QVERIFY2(top >= 0 && std::abs(top - expTop) <= kRowTolerance && std::abs(bottom - expBottom) <= kRowTolerance,
+                             qPrintable(where + QStringLiteral(": drawn rows %1..%2, expected %3..%4 (+-%5)")
+                                                   .arg(top).arg(bottom).arg(expTop).arg(expBottom).arg(kRowTolerance)));
+
+                    // Independent check against the raw drawing: the rows where the raw trace shows the column's
+                    // maximum and minimum are lit by the decimated trace too. On a steep stretch the raw segment that
+                    // ends on such a sample can light that row in the adjacent column instead (the sample lies at the
+                    // column edge and the line's end pixel follows the direction of the line); the raw trace then shows
+                    // no row for that value in this column, and it must show it in an adjacent one.
+                    for (double value : {c.hi, c.lo}) {
+                        const int row = static_cast<int>(std::floor(mapY(value)));
+                        const int rawRow = litNear(rawImage, x, row);
+                        if (rawRow < 0) {
+                            QVERIFY2((x > 0 && litNear(rawImage, x - 1, row) >= 0) || (x + 1 < width && litNear(rawImage, x + 1, row) >= 0),
+                                     qPrintable(where + QStringLiteral(": raw trace does not show %1 near row %2").arg(value).arg(row)));
+                            ++rawInNeighbour;
+                            continue;
+                        }
+                        QVERIFY2(litNear(decImage, x, rawRow) >= 0,
+                                 qPrintable(where + QStringLiteral(": raw shows %1 at row %2, decimated trace does not")
+                                                       .arg(value).arg(rawRow)));
+                        ++rawCompared;
+                    }
+                    ++checked;
                 }
+                QVERIFY(checked > width / 2);
+                // Most min/max rows are compared in their own column (in the data above at least 90 %)
+                QVERIFY2(rawCompared >= 9 * (rawCompared + rawInNeighbour) / 10,
+                         qPrintable(QStringLiteral("%1 W=%2: %3 rows compared, %4 shown in an adjacent column")
+                                        .arg(QLatin1String(sig.name)).arg(width).arg(rawCompared).arg(rawInNeighbour)));
+                if (sig.type == SignalType::SineDropouts) QVERIFY2(blanks >= 6, qPrintable(QString::number(blanks)));
             }
         }
     }

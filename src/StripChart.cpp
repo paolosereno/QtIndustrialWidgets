@@ -9,6 +9,7 @@
 #include "internal/StripChart_p.h"
 #include "internal/M4Decimator.h"
 #include "internal/StripChartGeometry.h"
+#include "internal/DecimatedTrace.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -48,21 +49,6 @@ void collectBlankColumnsNearGlow(const internal::M4Decimator::IncrementalStream 
         const std::pair<double, double> x = columnX(k);
         out.append(QRectF(x.first, plotRect.top(), x.second - x.first, plotRect.height()));
     }
-}
-
-// An aliased cosmetic line can leave out the first or last pixel of a polyline (for instance when
-// a decimated segment starts with a vertical stretch shorter than a pixel, or consists of a single
-// bucket). The end pixels of each decimated segment are therefore drawn explicitly; a point at
-// 0.25 device px inside a column lights exactly that column.
-template <typename ToLogicalX>
-void drawSegmentEndPixels(QPainter &painter, const internal::PlotXMapping &xmap,
-                          const std::vector<internal::M4Point> &segment, const QPolygonF &poly,
-                          ToLogicalX toLogicalX)
-{
-    const qint64 kFirst = xmap.grid.bucketOf(segment.front().t);
-    const qint64 kLast = xmap.grid.bucketOf(segment.back().t);
-    painter.drawPoint(QPointF(toLogicalX(xmap.columnLeftDev(kFirst) + 0.25), poly.first().y()));
-    painter.drawPoint(QPointF(toLogicalX(xmap.columnLeftDev(kLast) + 0.25), poly.last().y()));
 }
 
 void drawGlowDot(QPainter &painter, const QPointF &centre, const QColor &colour,
@@ -1337,10 +1323,6 @@ void StripChart::paintEvent(QPaintEvent *)
             auto mapPoint = [&](qint64 t, double val) -> QPointF {
                 return QPointF(toLogicalX(xmap.positionDev(t)), mapY(val));
             };
-            // Decimated vertices: centre of their bucket's device column
-            auto mapVertex = [&](qint64 t, double val) -> QPointF {
-                return QPointF(toLogicalX(xmap.vertexDev(grid.bucketOf(t))), mapY(val));
-            };
 
             QPen tracePen;
             if (doDecimate || d_ptr->m_testRawPenCosmetic1px) {
@@ -1423,12 +1405,8 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
-                    d_ptr->m_reusablePoly.clear();
-                    for (const auto &pt : seg) {
-                        d_ptr->m_reusablePoly << mapVertex(pt.t, pt.value);
-                    }
-                    painter.drawPolyline(d_ptr->m_reusablePoly);
-                    drawSegmentEndPixels(painter, xmap, seg, d_ptr->m_reusablePoly, toLogicalX);
+                    // Vertices at the centre of their bucket's device column, polyline and end pixels (#90)
+                    internal::drawDecimatedSegment(painter, xmap, seg, d_ptr->m_reusablePoly, mapY, toLogicalX);
                     if (d_ptr->recordDiagnostics) {
                         chDiag.segments.push_back(d_ptr->m_reusablePoly);
                     }
@@ -1630,18 +1608,14 @@ void StripChart::paintEvent(QPaintEvent *)
                     }
                 }
 
+                auto mapY = [&](double val) {
+                    double yNorm = (val - d_ptr->m_yMinimum) / yRange;
+                    return plotRect.bottom() - yNorm * plotRect.height();
+                };
                 for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
-                    d_ptr->m_reusablePoly.clear();
-                    for (const auto &pt : seg) {
-                        // Decimated vertices: centre of their bucket's device column
-                        double x = toLogicalX(xmap.vertexDev(ib.grid.bucketOf(pt.t)));
-                        double yNorm = (pt.value - d_ptr->m_yMinimum) / yRange;
-                        double y = plotRect.bottom() - yNorm * plotRect.height();
-                        d_ptr->m_reusablePoly << QPointF(x, y);
-                    }
-                    painter.drawPolyline(d_ptr->m_reusablePoly);
-                    drawSegmentEndPixels(painter, xmap, seg, d_ptr->m_reusablePoly, toLogicalX);
+                    // Vertices at the centre of their bucket's device column, polyline and end pixels (#90)
+                    internal::drawDecimatedSegment(painter, xmap, seg, d_ptr->m_reusablePoly, mapY, toLogicalX);
                     if (d_ptr->recordDiagnostics) {
                         chDiag.segments.push_back(d_ptr->m_reusablePoly);
                     }

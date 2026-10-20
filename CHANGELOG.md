@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Tests
+- **`tst_M4Decimator::drawnColumnExtent`** (#90) replaces `pixelEquivalence` and its four `QEXPECT_FAIL`s. The decimated trace is drawn with StripChart's own drawing code (now in `src/internal/DecimatedTrace.h`, shared by the Time and SampleIndex paths; renders unchanged). In every device column it must light the vertical extent expected from the raw samples: their minimum and maximum, plus the half connections to the adjacent columns. The only tolerance is one row, from Qt's documented pixel model for aliased drawing. Columns with a non-finite sample must stay blank, and the rows where the raw drawing shows a column's minimum and maximum must be lit too.
 - **CI job with Qt 6.2 LTS** (#79): `Linux (Ubuntu 24.04, GCC, Qt 6.2.4)` builds the library, the tests, the gallery and the Designer plugin against Qt 6.2.4 (installed with `install-qt-action`) and runs the full `ctest` at the four device pixel ratios, so the oldest supported Qt is built and tested on every pull request.
 - **`tst_Compass::mouseInteractionBug`** (#79): the drag of the heading bug is sent as explicit mouse events with their buttons. With Qt 6.2, `QTest::mouseMove()` delivers no move event to an offscreen widget, so the test failed there at every device pixel ratio; the assertions are unchanged.
 ---
