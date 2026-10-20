@@ -111,8 +111,8 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 ## Integration
 
 **Requirements**: CMake 3.16 or newer, a C++17 compiler and Qt 6.2 or newer, required by CMake (CI builds with Qt 6.2.4,
-6.4.2, 6.6.3 and Homebrew's current Qt). Qt 5.15 is not supported at the moment, see
-[#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
+6.4.2, 6.6.3 and Homebrew's current Qt). Qt 5 is not supported; the minimum is Qt 6.2 (see
+[#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53)).
 
 - **FetchContent**: see Quick start above.
 - **Build and install**, then `find_package()`:
