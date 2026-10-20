@@ -2,7 +2,7 @@
 
 PROJECT_NAME           = "QtIndustrialWidgets"
 PROJECT_NUMBER         = "@PROJECT_VERSION@"
-PROJECT_BRIEF          = "Modern, High-Performance Industrial Instruments & SCADA Widgets for Qt"
+PROJECT_BRIEF          = "C++17 instrumentation widgets for Qt Widgets"
 OUTPUT_DIRECTORY       = "@CMAKE_CURRENT_BINARY_DIR@"
 
 # Input files

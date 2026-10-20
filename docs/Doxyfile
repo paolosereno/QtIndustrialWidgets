@@ -7,7 +7,7 @@
 PROJECT_NAME           = "QtIndustrialWidgets"
 # The version comes from the project() call in CMakeLists.txt, passed in QIW_VERSION (see README)
 PROJECT_NUMBER         = "$(QIW_VERSION)"
-PROJECT_BRIEF          = "Modern, High-Performance Industrial Instruments & SCADA Widgets for Qt"
+PROJECT_BRIEF          = "C++17 instrumentation widgets for Qt Widgets"
 OUTPUT_DIRECTORY       = "build/docs"
 
 # Input files
