@@ -78,9 +78,10 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 
 - Public claims (README, docs, CHANGELOG) must be **verifiable**. Forbidden without a measurement behind them:
   "zero-aliasing", "zero-allocation", "60 FPS", "full backward compatibility", "N× faster".
-- Performance numbers come from **one** benchmark run, published in `docs/benchmarks.md` with machine (CPU, OS,
-  compiler, Qt version), resolution and exact command line. README and CHANGELOG quote that table; they never
-  carry their own numbers. No speed-up factors against baselines that were not re-measured in the same run.
+- Performance numbers come from one benchmark session (interleaved runs merged with benchmarks/merge_runs.py; all
+  runs are published), published in `docs/benchmarks.md` with machine (CPU, OS, compiler, Qt version), resolution
+  and exact command line. README and CHANGELOG quote that table; they never carry their own numbers. No speed-up
+  factors against baselines that were not re-measured in the same session.
 - `bench_StripChart` must be run with the existing data unchanged before and after a performance change.
 - Version bumps follow SemVer and touch **all four** places: `CMakeLists.txt` (`project VERSION`),
   `include/QtIndustrialWidgets/qtindustrialwidgets_global.h`, `conanfile.py`, `ports/qtindustrialwidgets/vcpkg.json`.

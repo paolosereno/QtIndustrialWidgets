@@ -72,8 +72,8 @@ maintainer can approve an expected failure.
 - Statements in the README, the docs and the CHANGELOG must be verifiable in the code, the CI workflows, the release
   assets or [docs/benchmarks.md](docs/benchmarks.md). Words like "zero-allocation" or "60 FPS" need a measurement
   behind them.
-- Performance numbers come from one benchmark run published in `docs/benchmarks.md`, with machine, compiler, Qt
-  version, resolution and exact command line. If a performance target is missed, report the measured number and its
+- Performance numbers come from one benchmark session (interleaved runs merged with `benchmarks/merge_runs.py`; all
+  runs are published) in `docs/benchmarks.md`, with machine, compiler, Qt version, resolution and exact command line. If a performance target is missed, report the measured number and its
   cause; do not lower, reword or drop the target.
 - Non-finite input (NaN, ±Inf) must never reach `QPainter` coordinates or corrupt ranges.
 
