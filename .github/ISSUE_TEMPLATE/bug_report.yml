@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+name: Bug report
+description: Something does not work as documented.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Please check the [open issues](https://github.com/paolosereno/QtIndustrialWidgets/issues) first.
+        For questions, use [Discussions](https://github.com/paolosereno/QtIndustrialWidgets/discussions); for security
+        vulnerabilities, follow [SECURITY.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/SECURITY.md) instead.
+  - type: input
+    id: version
+    attributes:
+      label: QtIndustrialWidgets version
+      description: Release tag or commit, e.g. v2.3.0 or the output of `git rev-parse --short HEAD`.
+      placeholder: v2.3.0
+    validations:
+      required: true
+  - type: input
+    id: qt-version
+    attributes:
+      label: Qt version
+      description: The minimum supported version is Qt 6.2.
+      placeholder: 6.6.3
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and compiler
+      placeholder: Ubuntu 24.04, GCC 13.3
+    validations:
+      required: true
+  - type: dropdown
+    id: widget
+    attributes:
+      label: Widget
+      options:
+        - RadialGauge
+        - LinearGauge
+        - SevenSegmentDisplay
+        - LedIndicator
+        - IndustrialKnob
+        - StripChart
+        - IndustrialSwitch
+        - LevelMeter
+        - AnnunciatorPanel
+        - Compass
+        - CircularBargraph
+        - AnalysisChart
+        - Other / build
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a ... with ...
+        2. Call ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Observed behaviour
+      description: Include error messages, warnings or wrong values as text.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Optional. Drag images here; please mention the device pixel ratio if the problem is visual.
+    validations:
+      required: false
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal code
+      description: Optional. The smallest program or test that shows the problem.
+      render: cpp
+    validations:
+      required: false
