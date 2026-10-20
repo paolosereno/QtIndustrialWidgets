@@ -153,6 +153,8 @@ def merge_measure_table(section, others):
 
 
 def main(argv):
+    # The tables are UTF-8 (≤, –, ·), whatever the console encoding (cp1252 on Windows)
+    sys.stdout.reconfigure(encoding='utf-8')
     if len(argv) < 3:
         fail('usage: merge_runs.py run1.md run2.md [run3.md ...] (at least two runs)')
     parsed = [parse(path) for path in argv[1:]]

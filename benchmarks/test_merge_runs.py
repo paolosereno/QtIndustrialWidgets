@@ -62,6 +62,16 @@ class MergeRunsTest(unittest.TestCase):
                          'run 1: min 121.85 ms, median 149.02 ms; run 2: min 118.20 ms, median 140.11 ms')
         self.assertEqual(row(out, 'Pyramid')[1], '81.1 MiB (2.13 B/sample, 13.3 % of the samples)')
 
+    def test_output_is_utf8_whatever_the_console_encoding(self):
+        # A Windows console encodes stdout as cp1252, which has no '≤' and writes '–' as byte 0x96
+        env = dict(os.environ, PYTHONIOENCODING='cp1252')
+        result = subprocess.run([sys.executable, SCRIPT, os.path.join(DATA, 'analysis_run1.md'),
+                                 os.path.join(DATA, 'analysis_run2.md')], capture_output=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
+        out = result.stdout.decode('utf-8')
+        self.assertIn('≤', out)
+        self.assertIn('39.50–42.07', out)
+
     def test_runs_that_drew_different_pixels_are_rejected(self):
         code, _, err = merge('strip_run1.md', 'strip_bad_px.md')
         self.assertNotEqual(code, 0)
