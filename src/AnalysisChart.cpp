@@ -6,6 +6,7 @@
 
 #include "internal/AnalysisChart_p.h"
 #include "internal/AnalysisChartView.h"
+#include "internal/DecimatedTrace.h"
 #include "internal/FontScale.h"
 
 #include <QtCore/QEvent>
@@ -36,20 +37,6 @@ QFont labelFont(const QWidget &w, double scale)
     QFont f = w.font();
     f.setPixelSize(internal::scalePixelSize(9, scale));
     return f;
-}
-
-// StripChart's drawSegmentEndPixels(): an aliased cosmetic line can leave out the first or last pixel
-// of a polyline (a segment starting with a vertical stretch shorter than a pixel, or a single
-// bucket), so the end pixels of each decimated segment are drawn explicitly; a point 0.25 device px
-// inside a column lights exactly that column.
-template <typename ToLogicalX>
-void drawSegmentEndPixels(QPainter &painter, const internal::BucketGrid &grid, qint64 origin, double leftDev,
-                          const std::vector<internal::M4Point> &segment, const QPolygonF &poly, ToLogicalX toLogicalX)
-{
-    const auto kFirst = static_cast<double>(grid.bucketOf(segment.front().t - origin));
-    const auto kLast = static_cast<double>(grid.bucketOf(segment.back().t - origin));
-    painter.drawPoint(QPointF(toLogicalX(leftDev + kFirst + 0.25), poly.first().y()));
-    painter.drawPoint(QPointF(toLogicalX(leftDev + kLast + 0.25), poly.last().y()));
 }
 
 // Visible channels as listed in the readout band (the first kReadoutChannelRows of them)
@@ -687,14 +674,15 @@ void AnalysisChart::paintEvent(QPaintEvent * /*event*/)
                 painter.setPen(pen);
                 painter.setRenderHint(QPainter::Antialiasing, false);
                 const auto buckets = ch.pyramid.buckets(ch.t.data(), ch.v.data(), ch.t.size(), view.start, grid, 0, widthDev);
+                // StripChart's drawing (#91), with buckets counted from the view start: kStart 0, origin xStart
+                internal::PlotXMapping xmap;
+                xmap.grid = grid;
+                xmap.kStart = 0;
+                xmap.leftDev = leftDev;
+                QPolygonF poly;
                 for (const auto &seg : internal::segmentsFromBuckets(buckets, gap)) {
-                    QPolygonF poly;
-                    poly.reserve(static_cast<int>(seg.size()));
-                    for (const auto &pt : seg) {
-                        poly << QPointF(toLogicalX(leftDev + static_cast<double>(grid.bucketOf(pt.t - view.start)) + 0.5), mapY(pt.value));
-                    }
-                    painter.drawPolyline(poly);
-                    drawSegmentEndPixels(painter, grid, view.start, leftDev, seg, poly, toLogicalX);
+                    if (seg.empty()) continue;
+                    internal::drawDecimatedSegment(painter, xmap, seg, poly, mapY, toLogicalX, view.start);
                     if (d_ptr->recordDiagnostics) {
                         std::vector<qint64> ts;
                         for (const auto &pt : seg) ts.push_back(pt.t);
