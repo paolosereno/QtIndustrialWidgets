@@ -8,13 +8,27 @@
 #include "FontTestUtils.h"
 
 #include <memory>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QPixmap>
 #include <QtGui/QPainter>
+#include <QtWidgets/QApplication>
 
 #include <cmath>
 #include <limits>
 
 using namespace QtIndustrialWidgets;
+
+namespace {
+
+// Synthetic mouse event with explicit buttons, delivered synchronously. QTest::mouseMove() does not deliver a
+// MouseMove event to an offscreen widget with Qt 6.2 (#79), so drags are sent as explicit events.
+void sendMouse(QWidget &w, QEvent::Type type, QPointF pos, Qt::MouseButton button, Qt::MouseButtons buttons)
+{
+    QMouseEvent e(type, pos, w.mapToGlobal(pos), button, buttons, Qt::NoModifier);
+    QApplication::sendEvent(&w, &e);
+}
+
+} // namespace
 
 class tst_Compass : public QObject
 {
@@ -233,9 +247,9 @@ void tst_Compass::mouseInteractionBug()
 
     // Drag to 6 o'clock: (150, 250) -> angle = 180° (South)
     QPoint southPoint(150, 250);
-    QTest::mousePress(&compass, Qt::LeftButton, Qt::NoModifier, eastPoint);
-    QTest::mouseMove(&compass, southPoint);
-    QTest::mouseRelease(&compass, Qt::LeftButton, Qt::NoModifier, southPoint);
+    sendMouse(compass, QEvent::MouseButtonPress, eastPoint, Qt::LeftButton, Qt::LeftButton);
+    sendMouse(compass, QEvent::MouseMove, southPoint, Qt::NoButton, Qt::LeftButton);
+    sendMouse(compass, QEvent::MouseButtonRelease, southPoint, Qt::LeftButton, Qt::NoButton);
 
     QVERIFY(std::abs(compass.targetHeading() - 180.0) < 3.0);
 }

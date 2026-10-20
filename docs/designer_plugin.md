@@ -12,7 +12,7 @@ QtIndustrialWidgets provides a plugin module (`QtIndustrialWidgetsPlugin`) that 
 
 ## 🛠️ Building the Plugin
 
-When CMake detects Qt Designer (`Qt6Designer` or `Qt5Designer`), the target `QtIndustrialWidgetsPlugin` is automatically configured:
+When CMake detects Qt Designer (`Qt6Designer`), the target `QtIndustrialWidgetsPlugin` is automatically configured:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release

@@ -25,10 +25,10 @@ function(add_industrial_widget_test test_name)
     target_link_libraries(${test_name}
         PRIVATE
             QtIndustrialWidgets::QtIndustrialWidgets
-            Qt${QT_VERSION_MAJOR}::Core
-            Qt${QT_VERSION_MAJOR}::Gui
-            Qt${QT_VERSION_MAJOR}::Widgets
-            Qt${QT_VERSION_MAJOR}::Test
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+            Qt6::Test
     )
     target_include_directories(${test_name}
         PRIVATE
@@ -48,10 +48,10 @@ add_executable(tst_RadialGauge
 target_link_libraries(tst_RadialGauge
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_RadialGauge
     PRIVATE
@@ -70,10 +70,10 @@ add_executable(tst_LinearGauge
 target_link_libraries(tst_LinearGauge
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_LinearGauge
     PRIVATE
@@ -91,8 +91,8 @@ add_executable(tst_RadialGaugeLayout
 )
 target_link_libraries(tst_RadialGaugeLayout
     PRIVATE
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Test
 )
 target_include_directories(tst_RadialGaugeLayout
     PRIVATE
@@ -113,10 +113,10 @@ add_executable(tst_StripChart
 target_link_libraries(tst_StripChart
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_StripChart
     PRIVATE
@@ -135,9 +135,9 @@ add_executable(tst_AnalysisChartView
 )
 target_link_libraries(tst_AnalysisChartView
     PRIVATE
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
 )
 target_include_directories(tst_AnalysisChartView
     PRIVATE
@@ -155,10 +155,10 @@ add_executable(tst_AnalysisChart
 target_link_libraries(tst_AnalysisChart
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_AnalysisChart
     PRIVATE
@@ -177,10 +177,10 @@ add_executable(tst_IndustrialSwitch
 target_link_libraries(tst_IndustrialSwitch
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_IndustrialSwitch
     PRIVATE
@@ -200,10 +200,10 @@ add_executable(tst_LevelMeter
 target_link_libraries(tst_LevelMeter
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_LevelMeter
     PRIVATE
@@ -222,9 +222,9 @@ add_executable(tst_LevelMeterLayout
 )
 target_link_libraries(tst_LevelMeterLayout
     PRIVATE
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
 )
 target_include_directories(tst_LevelMeterLayout
     PRIVATE
@@ -244,10 +244,10 @@ add_executable(tst_CircularBargraph
 target_link_libraries(tst_CircularBargraph
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_CircularBargraph
     PRIVATE
@@ -267,10 +267,10 @@ add_executable(tst_M4Decimator
 target_link_libraries(tst_M4Decimator
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_M4Decimator
     PRIVATE
@@ -289,8 +289,8 @@ add_executable(tst_NumberFormat
 )
 target_link_libraries(tst_NumberFormat
     PRIVATE
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Test
 )
 target_include_directories(tst_NumberFormat
     PRIVATE
@@ -305,8 +305,8 @@ add_dpr_tests(tst_NumberFormat)
 add_executable(tst_FixedFormatUsage tst_FixedFormatUsage.cpp)
 target_link_libraries(tst_FixedFormatUsage
     PRIVATE
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Test
 )
 target_compile_definitions(tst_FixedFormatUsage
     PRIVATE
@@ -325,10 +325,10 @@ add_executable(tst_GalleryShowcases
 target_link_libraries(tst_GalleryShowcases
     PRIVATE
         QtIndustrialWidgets::QtIndustrialWidgets
-        Qt${QT_VERSION_MAJOR}::Core
-        Qt${QT_VERSION_MAJOR}::Gui
-        Qt${QT_VERSION_MAJOR}::Widgets
-        Qt${QT_VERSION_MAJOR}::Test
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
 )
 target_include_directories(tst_GalleryShowcases
     PRIVATE

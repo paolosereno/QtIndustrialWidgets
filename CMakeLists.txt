@@ -27,12 +27,10 @@ elseif(MSVC)
     add_compile_options(/W4 /permissive-)
 endif()
 
-# Qt Setup: supported Qt 6.2+. Qt 5.15 is not supported at the moment (see #53): it is not built
-# or tested, although find_package still accepts it
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
+# Qt Setup: Qt 6.2 or newer (6.2.4 is the oldest version built in CI, #79). Qt 5 is not supported (see #53).
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets)
 
-message(STATUS "QtIndustrialWidgets: Using Qt ${QT_VERSION_MAJOR} (version ${Qt${QT_VERSION_MAJOR}_VERSION})")
+message(STATUS "QtIndustrialWidgets: Using Qt ${Qt6_VERSION}")
 
 # Options
 option(BUILD_DESIGNER_PLUGIN "Build the Qt Designer plugin" ON)
@@ -42,13 +40,13 @@ option(BUILD_DOCS "Build API documentation using Doxygen" ON)
 
 # Check for Qt Designer module if plugin requested
 if(BUILD_DESIGNER_PLUGIN)
-    find_package(Qt${QT_VERSION_MAJOR}Designer QUIET)
-    if(NOT Qt${QT_VERSION_MAJOR}Designer_FOUND)
+    find_package(Qt6Designer QUIET)
+    if(NOT Qt6Designer_FOUND)
         # Try alternate component name
-        find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS Designer)
+        find_package(Qt6 OPTIONAL_COMPONENTS Designer)
     endif()
 
-    if(TARGET Qt${QT_VERSION_MAJOR}::Designer)
+    if(TARGET Qt6::Designer)
         message(STATUS "QtIndustrialWidgets: Qt Designer found, building designer plugin")
     else()
         message(STATUS "QtIndustrialWidgets: Qt Designer NOT found, disabling designer plugin")
@@ -75,7 +73,7 @@ endif()
 
 # Unit tests suite
 if(BUILD_TESTS)
-    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
     enable_testing()
     add_subdirectory(tests)
 endif()
@@ -83,7 +81,7 @@ endif()
 # Benchmarks suite (independent of ctest)
 option(BUILD_BENCHMARKS "Build benchmark targets" OFF)
 if(BUILD_BENCHMARKS)
-    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
     add_subdirectory(benchmarks)
 endif()
 

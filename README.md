@@ -95,7 +95,7 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
   results are reported in each pull request
   ([CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md)).
 - **CI** ([ci.yml](.github/workflows/ci.yml)), on every pull request and push to `main`: build and the full test
-  suite on Linux (Ubuntu 24.04, GCC, Qt 6.4.2), Windows (MSVC, Qt 6.6.3) and macOS (Apple Clang, Homebrew Qt);
+  suite on Linux (Ubuntu 24.04, GCC, Qt 6.4.2 and Qt 6.2.4), Windows (MSVC, Qt 6.6.3) and macOS (Apple Clang, Homebrew Qt);
   `reuse lint`; on Linux, the export of the gallery images and the Doxygen documentation.
 - **Benchmarks**: method, machine, command lines and raw tables in [docs/benchmarks.md](docs/benchmarks.md),
   including the targets that are not met.
@@ -110,8 +110,8 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 
 ## Integration
 
-**Requirements**: CMake 3.16 or newer, a C++17 compiler and Qt 6.2 or newer (CI builds with Qt 6.4.2, 6.6.3 and
-Homebrew's current Qt). Qt 5.15 is not supported at the moment, see
+**Requirements**: CMake 3.16 or newer, a C++17 compiler and Qt 6.2 or newer, required by CMake (CI builds with Qt 6.2.4,
+6.4.2, 6.6.3 and Homebrew's current Qt). Qt 5.15 is not supported at the moment, see
 [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53).
 
 - **FetchContent**: see Quick start above.

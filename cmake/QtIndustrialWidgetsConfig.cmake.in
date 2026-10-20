@@ -2,8 +2,8 @@
 
 include(CMakeFindDependencyMacro)
 
-find_dependency(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets)
-find_dependency(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
+# Qt 6.2 or newer, as the library itself requires (CMakeLists.txt)
+find_dependency(Qt6 6.2 COMPONENTS Core Gui Widgets)
 
 include("${CMAKE_CURRENT_LIST_DIR}/QtIndustrialWidgetsTargets.cmake")
 

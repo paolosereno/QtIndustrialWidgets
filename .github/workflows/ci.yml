@@ -116,6 +116,55 @@ jobs:
           retention-days: 14
 
   # ============================================================
+  # 1b. Linux with Qt 6.2 LTS, the oldest supported Qt (#79)
+  # ============================================================
+  build-linux-qt62:
+    name: Linux (Ubuntu 24.04, GCC, Qt 6.2.4)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            libgl1-mesa-dev \
+            libxkbcommon-dev
+
+      - name: Setup Qt 6.2.4
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.2.4'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          cache: true
+
+      - name: Configure CMake
+        run: |
+          set -o pipefail
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_TESTS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_DESIGNER_PLUGIN=ON | tee configure.log
+          # The job must build against Qt 6.2.4, not another Qt found on the runner
+          grep -q "QtIndustrialWidgets: Using Qt 6.2.4" configure.log
+
+      - name: Build all targets
+        run: cmake --build build
+
+      - name: Run unit tests (QtTest)
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          ctest --test-dir build --output-on-failure
+
+  # ============================================================
   # 2. Windows (MSVC 2022 & Qt 6)
   # ============================================================
   build-windows:
