@@ -100,14 +100,19 @@ jobs:
           path: ${{ runner.temp }}/gallery-images/
           retention-days: 14
 
-      - name: Build Doxygen documentation
-        run: cmake --build build --target docs
+      # The GitHub Pages site (#80): landing page at the root, Doxygen under api/ with the gallery images,
+      # redirect stubs at the old addresses
+      - name: Build Doxygen documentation and the Pages site
+        run: cmake --build build --target site
 
-      - name: Upload documentation artifact
+      - name: Check the Pages site
+        run: python3 tools/check_site.py build/site
+
+      - name: Upload Pages site artifact
         uses: actions/upload-artifact@v4
         with:
-          name: doxygen-documentation
-          path: build/docs/html/
+          name: site
+          path: build/site/
           retention-days: 14
 
   # ============================================================
@@ -186,16 +191,15 @@ jobs:
     needs: build-linux
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Download documentation artifact
+      - name: Download Pages site artifact
         uses: actions/download-artifact@v4
         with:
-          name: doxygen-documentation
+          name: site
           path: ./public
 
       - name: Setup GitHub Pages
