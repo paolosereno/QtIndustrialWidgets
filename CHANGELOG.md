@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Landing page on GitHub Pages** (#80): the site's root is a landing page (`docs/site/`) with the README's sentence, the gallery's dashboard image, the 12 widgets with their captions and links to their class documentation, the quick start and links to the repository and the releases. `tools/check_site.py` checks in CI that its links resolve and that its widgets, captions, images and `GIT_TAG` match the README.
 
 ### Changed
+- **Qt 6.2 is required by CMake** (#79): `CMakeLists.txt` asks for `find_package(Qt6 6.2 REQUIRED …)` instead of accepting any Qt 6 or Qt 5 (`find_package(QT NAMES Qt6 Qt5 …)` without a version), and the installed package configuration asks for the same (`find_dependency(Qt6 6.2 …)`). Configuring against an older Qt now stops with CMake's error (`Could not find a configuration file for package "Qt6" that is compatible with requested version "6.2"`, listing the version found); the Qt 5 path is removed (#53).
 - **Documentation addresses on GitHub Pages** (#80): the Doxygen documentation moves from the site root to `/api/`. Every page of the previous layout keeps a redirect page at its old address (`noindex`), including the guide pages, whose names no longer contain the CI runner's path (`md_docs_2widgets.html` instead of `md__2home_2runner_2work_…_docs_2widgets.html`, via `STRIP_FROM_PATH`). A `#fragment` in an old address is not carried over by the redirect.
 - **Pages deployment** (#80): a failed deployment now fails the CI run (`continue-on-error` removed from `deploy-pages`).
 
@@ -26,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Images on GitHub Pages** (#80): the images of the README main page and of `docs/widgets.md` returned 404 because Doxygen did not copy `docs/images/`; the `docs` target now copies them next to the HTML pages.
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.3.0` tag archive (the tagged commit still had the `v2.2.0` hash, since the hash can be computed only after the tag). The archive no longer contains `.claude/` (#69). Not verified with `vcpkg install`; the port remains experimental.
 
+
+### Tests
+- **CI job with Qt 6.2 LTS** (#79): `Linux (Ubuntu 24.04, GCC, Qt 6.2.4)` builds the library, the tests, the gallery and the Designer plugin against Qt 6.2.4 (installed with `install-qt-action`) and runs the full `ctest` at the four device pixel ratios, so the oldest supported Qt is built and tested on every pull request.
+- **`tst_Compass::mouseInteractionBug`** (#79): the drag of the heading bug is sent as explicit mouse events with their buttons. With Qt 6.2, `QTest::mouseMove()` delivers no move event to an offscreen widget, so the test failed there at every device pixel ratio; the assertions are unchanged.
 ---
 
 ## [2.3.0] - 2026-10-18
