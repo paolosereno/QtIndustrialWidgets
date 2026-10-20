@@ -343,3 +343,13 @@ set_target_properties(tst_GalleryShowcases PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_GalleryShowcases)
+
+# benchmarks/merge_runs.py merges the runs of one benchmark session; its tests use example runs
+# in benchmarks/testdata and only the Python standard library (skipped when Python is not found).
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME merge_runs
+        COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                -s ${PROJECT_SOURCE_DIR}/benchmarks -p test_merge_runs.py -v)
+    set_tests_properties(merge_runs PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+endif()
