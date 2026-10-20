@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+
+SPDX-License-Identifier: MIT
+-->
+<!-- Landing page of the GitHub Pages site. The sentence, the widget captions and the quick start are those of
+     README.md; tools/check_site.py checks that they stay the same. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QtIndustrialWidgets</title>
+  <meta name="description" content="A C++17 widget library for Qt Widgets with 12 instrumentation widgets — gauges, displays, indicators, switches, an alarm annunciator, a live strip chart and an offline analysis chart — for test benches, SCADA and telemetry applications.">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1>QtIndustrialWidgets</h1>
+      <p class="lead">A C++17 widget library for Qt Widgets with 12 instrumentation widgets — gauges, displays, indicators, switches, an alarm annunciator, a live strip chart and an offline analysis chart — for test benches, SCADA and telemetry applications.</p>
+      <nav class="links" aria-label="Main links">
+        <a href="api/index.html">Documentation</a>
+        <a href="api/md_docs_2widgets.html">Widgets guide</a>
+        <a href="api/md_docs_2getting__started.html">Getting started</a>
+        <a href="api/md_docs_2benchmarks.html">Benchmark report</a>
+        <a href="https://github.com/paolosereno/QtIndustrialWidgets">GitHub</a>
+        <a href="https://github.com/paolosereno/QtIndustrialWidgets/releases">Releases</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <img class="hero" src="api/images/tab-dashboard.png" alt="Dashboard tab of the QtIndustrialWidgets gallery" width="1200" height="820">
+
+    <section aria-labelledby="widgets">
+      <h2 id="widgets">Widgets</h2>
+      <ul class="grid">
+      <li class="widget" id="radialgauge">
+        <img src="api/images/radial-gauge-warning.png" alt="RadialGauge" width="300" height="300" loading="lazy">
+        <h3>RadialGauge</h3>
+        <p>0–8000 RPM, needle in the warning zone</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1RadialGauge.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="lineargauge">
+        <img src="api/images/linear-gauge-thermometer.png" alt="LinearGauge" width="120" height="320" loading="lazy">
+        <h3>LinearGauge</h3>
+        <p>Thermometer mode, 0–120 °C</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1LinearGauge.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="sevensegmentdisplay">
+        <img src="api/images/seven-segment-display-value.png" alt="SevenSegmentDisplay" width="300" height="110" loading="lazy">
+        <h3>SevenSegmentDisplay</h3>
+        <p>Six digits, one decimal, skewed segments</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1SevenSegmentDisplay.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="ledindicator">
+        <img src="api/images/led-indicator-on.png" alt="LedIndicator" width="140" height="56" loading="lazy">
+        <h3>LedIndicator</h3>
+        <p>Round lens, on, with label</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1LedIndicator.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="industrialknob">
+        <img src="api/images/industrial-knob-continuous.png" alt="IndustrialKnob" width="220" height="240" loading="lazy">
+        <h3>IndustrialKnob</h3>
+        <p>Continuous 0–8000 RPM with value pod</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1IndustrialKnob.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="stripchart">
+        <img src="api/images/strip-chart-channels.png" alt="StripChart" width="640" height="300" loading="lazy">
+        <h3>StripChart</h3>
+        <p>Three channels over 10 s with a NaN dropout</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1StripChart.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="industrialswitch">
+        <img src="api/images/industrial-switch-guarded-toggle.png" alt="IndustrialSwitch" width="180" height="220" loading="lazy">
+        <h3>IndustrialSwitch</h3>
+        <p>Toggle lever under a safety guard</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1IndustrialSwitch.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="levelmeter">
+        <img src="api/images/level-meter-stereo-db.png" alt="LevelMeter" width="170" height="320" loading="lazy">
+        <h3>LevelMeter</h3>
+        <p>Stereo dB meter with held peaks</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1LevelMeter.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="annunciatorpanel">
+        <img src="api/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640" height="360" loading="lazy">
+        <h3>AnnunciatorPanel</h3>
+        <p>ISA-18.1 tiles: acknowledged, unacknowledged and advisory alarms</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1AnnunciatorPanel.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="compass">
+        <img src="api/images/compass-heading-up.png" alt="Compass" width="300" height="300" loading="lazy">
+        <h3>Compass</h3>
+        <p>Heading-up card, heading 047° with heading bug</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1Compass.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="circularbargraph">
+        <img src="api/images/circular-bargraph-valid.png" alt="CircularBargraph" width="260" height="260" loading="lazy">
+        <h3>CircularBargraph</h3>
+        <p>24 segments with peak hold</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1CircularBargraph.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      <li class="widget" id="analysischart">
+        <img src="api/images/analysis-chart-review.png" alt="AnalysisChart" width="640" height="300" loading="lazy">
+        <h3>AnalysisChart</h3>
+        <p>Recorded data at two rates, a NaN dropout and a recording gap</p>
+        <p class="more"><a href="api/classQtIndustrialWidgets_1_1AnalysisChart.html">API</a> · <a href="api/md_docs_2widgets.html">Features</a></p>
+      </li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="quick-start">
+      <h2 id="quick-start">Quick start</h2>
+      <p>Add the library to a CMake project with <code>FetchContent</code>:</p>
+      <pre><code>include(FetchContent)
+
+FetchContent_Declare(
+    QtIndustrialWidgets
+    GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
+    GIT_TAG        v2.3.0
+)
+set(BUILD_EXAMPLES OFF CACHE BOOL &quot;&quot; FORCE)
+set(BUILD_DESIGNER_PLUGIN OFF CACHE BOOL &quot;&quot; FORCE)
+FetchContent_MakeAvailable(QtIndustrialWidgets)
+
+target_link_libraries(my_app PRIVATE QtIndustrialWidgets::QtIndustrialWidgets)</code></pre>
+      <p>Other ways to integrate it, and a first example: <a href="api/md_docs_2getting__started.html">Getting started</a>.</p>
+    </section>
+  </main>
+
+  <footer class="bottom">
+    <div class="wrap">
+      <p>
+        <a href="https://github.com/paolosereno/QtIndustrialWidgets">Source on GitHub</a> ·
+        <a href="https://github.com/paolosereno/QtIndustrialWidgets/releases">Releases</a> ·
+        <a href="https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md">Contributing</a> ·
+        <a href="https://github.com/paolosereno/QtIndustrialWidgets/blob/main/LICENSE">MIT License</a>
+      </p>
+      <p>The images are generated by the gallery with <code>--export-gallery</code>.</p>
+    </div>
+  </footer>
+</body>
+</html>
