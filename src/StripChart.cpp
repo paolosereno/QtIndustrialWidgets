@@ -1405,7 +1405,7 @@ void StripChart::paintEvent(QPaintEvent *)
 
                 for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
-                    // Vertices at the centre of their bucket's device column, polyline and end pixels (#90)
+                    // Vertices at the centre of their column, one vertical line per column, end pixels (#90, #73)
                     internal::drawDecimatedSegment(painter, xmap, seg, d_ptr->m_reusablePoly, mapY, toLogicalX);
                     if (d_ptr->recordDiagnostics) {
                         chDiag.segments.push_back(d_ptr->m_reusablePoly);
@@ -1614,7 +1614,7 @@ void StripChart::paintEvent(QPaintEvent *)
                 };
                 for (const auto &seg : d_ptr->m_reusableSegments) {
                     if (seg.empty()) continue;
-                    // Vertices at the centre of their bucket's device column, polyline and end pixels (#90)
+                    // Vertices at the centre of their column, one vertical line per column, end pixels (#90, #73)
                     internal::drawDecimatedSegment(painter, xmap, seg, d_ptr->m_reusablePoly, mapY, toLogicalX);
                     if (d_ptr->recordDiagnostics) {
                         chDiag.segments.push_back(d_ptr->m_reusablePoly);
