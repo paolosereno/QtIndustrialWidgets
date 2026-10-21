@@ -22,6 +22,7 @@ class tst_M4Decimator : public QObject
 
 private Q_SLOTS:
     void drawnColumnExtent();
+    void columnStrokeStaysWithinPolylineExtent();
     void spikePreservation();
     void vertexBound();
     void bucketAggregatesAreIndependentOfWindowStart();
@@ -266,6 +267,133 @@ void tst_M4Decimator::drawnColumnExtent()
                          qPrintable(QStringLiteral("%1 W=%2: %3 rows compared, %4 shown in an adjacent column")
                                         .arg(QLatin1String(sig.name)).arg(width).arg(rawCompared).arg(rawInNeighbour)));
                 if (sig.type == SignalType::SineDropouts) QVERIFY2(blanks >= 6, qPrintable(QString::number(blanks)));
+            }
+        }
+    }
+}
+
+// #73: drawDecimatedSegment() draws each column as one vertical stroke (min to max) plus the connections between
+// columns, instead of the polyline through the M4 vertices that was drawn before. Compared with that polyline, drawn
+// here as the reference (appendDecimatedVertices(), drawPolyline(), drawSegmentEndPixels()), every device column lights:
+// - the same columns (a column blank in the reference, e.g. a dropout column (#11), stays blank);
+// - no pixel outside the reference's vertical extent of that column, except at most one row above its top or one row
+//   below its bottom;
+// - no isolated pixel (every lit pixel has a lit 8-neighbour), so no pixel detached from the trace.
+// The one-row tolerance is the difference approved by the maintainer on #73. It comes from Qt's pixel model for
+// aliased drawing (the rule drawnColumnExtent() uses): a fractional y lands on row floor(y) or on the next row
+// depending on the direction of the line, and a separate line ends where a polyline turns (Qt documentation,
+// "Coordinate System", section "Aliased Painting": https://doc.qt.io/qt-6/coordsys.html#aliased-painting).
+// Data: two signals of bench_StripChart (where #73 found pixels detached from the trace) with 10k samples in its 10 s
+// window, at its plot size, DPR 1 and 2: the cases that catch the detached pixels of the #73 prototype drawn with a
+// square cap, at both DPRs (SmoothSine: steep joins; SpikesAndNaN: spikes and dropout columns). BroadbandNoise and
+// 100k / 1M samples, measured on #73, add time without catching more.
+void tst_M4Decimator::columnStrokeStaysWithinPolylineExtent()
+{
+    enum class SignalType { SmoothSine, SpikesAndNaN };
+    const struct {
+        SignalType type;
+        const char *name;
+    } signalConfigs[] = {{SignalType::SmoothSine, "SmoothSine"}, {SignalType::SpikesAndNaN, "SpikesAndNaN"}};
+    constexpr qint64 kSpanNs = 10000000000LL; // 10 s window
+    constexpr int kWidth = 1920;              // logical plot size of bench_StripChart
+    constexpr int kHeight = 1024;
+    constexpr int kRowTolerance = 1; // approved on #73, see above
+
+    for (const qreal dpr : {1.0, 2.0}) {
+        const int widthDev = static_cast<int>(kWidth * dpr);
+        const int heightDev = static_cast<int>(kHeight * dpr);
+        const BucketGrid grid(widthDev, kSpanNs);
+        const PlotXMapping xmap = makePlotXMapping(grid, 0, 0.0);
+        auto toLogicalX = [dpr](double xDev) { return xDev / dpr; };
+        for (const int samples : {10000}) {
+            for (const auto &sig : signalConfigs) {
+                // bench_StripChart::generateSignal(), channel 0
+                const qint64 dtNs = kSpanNs / samples;
+                std::vector<qint64> timestamps(static_cast<size_t>(samples));
+                std::vector<double> values(static_cast<size_t>(samples));
+                for (int i = 0; i < samples; ++i) {
+                    const qint64 tNs = static_cast<qint64>(i) * dtNs;
+                    const double phase = 0.001 * (static_cast<double>(tNs) / 10000.0);
+                    double v = std::sin(phase) * 50.0 + 50.0;
+                    if (sig.type == SignalType::SpikesAndNaN) {
+                        if (tNs % 100000000 < dtNs) v = 500.0;
+                        else if (tNs % 250000000 < 50000) v = std::numeric_limits<double>::quiet_NaN();
+                    }
+                    timestamps[static_cast<size_t>(i)] = tNs;
+                    values[static_cast<size_t>(i)] = v;
+                }
+                const double lo = 0.0;
+                const double hi = sig.type == SignalType::SpikesAndNaN ? 500.0 : 100.0;
+                auto mapY = [&](double v) { return kHeight - ((v - lo) / (hi - lo)) * (kHeight - 20.0) - 10.0; };
+                const auto segments = M4Decimator::decimateToSegments(timestamps.data(), values.data(), timestamps.size(),
+                                                                      grid, 0, widthDev, 0);
+                QPen pen(Qt::white, 0.0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin); // StripChart's decimated trace pen
+                pen.setCosmetic(true);
+                auto render = [&](bool reference) {
+                    QImage img(widthDev, heightDev, QImage::Format_RGB32);
+                    img.setDevicePixelRatio(dpr);
+                    img.fill(Qt::black);
+                    QPainter p(&img);
+                    p.setRenderHint(QPainter::Antialiasing, false);
+                    p.setPen(pen);
+                    QPolygonF poly;
+                    for (const auto &seg : segments) {
+                        if (seg.empty()) continue;
+                        if (reference) { // the drawing before #73
+                            poly.clear();
+                            appendDecimatedVertices(poly, xmap, seg, mapY, toLogicalX);
+                            p.drawPolyline(poly);
+                            drawSegmentEndPixels(p, xmap, seg, poly, toLogicalX);
+                        } else {
+                            drawDecimatedSegment(p, xmap, seg, poly, mapY, toLogicalX);
+                        }
+                    }
+                    return img;
+                };
+                const QImage ref = render(true);
+                const QImage img = render(false);
+                auto lit = [&](const QImage &im, int x, int y) {
+                    return x >= 0 && y >= 0 && x < widthDev && y < heightDev && (im.pixel(x, y) & 0x00ffffffU);
+                };
+                auto isolated = [&](const QImage &im, int x, int y) {
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx)
+                            if ((dx || dy) && lit(im, x + dx, y + dy)) return false;
+                    return true;
+                };
+                int litColumns = 0;
+                int extendedRows = 0;
+                for (int x = 0; x < widthDev; ++x) {
+                    int top = -1;
+                    int bottom = -1;
+                    for (int y = 0; y < heightDev; ++y) {
+                        if (lit(ref, x, y)) {
+                            if (top < 0) top = y;
+                            bottom = y;
+                        }
+                    }
+                    const QString where = QStringLiteral("%1 %2 samples DPR %3 column %4")
+                                              .arg(QLatin1String(sig.name)).arg(samples).arg(dpr).arg(x);
+                    for (int y = 0; y < heightDev; ++y) {
+                        if (!lit(img, x, y)) continue;
+                        QVERIFY2(top >= 0, qPrintable(where + QStringLiteral(": lit at row %1, blank in the reference").arg(y)));
+                        QVERIFY2(y >= top - kRowTolerance && y <= bottom + kRowTolerance,
+                                 qPrintable(where + QStringLiteral(": lit at row %1, reference extent %2..%3 (+-%4)")
+                                                       .arg(y).arg(top).arg(bottom).arg(kRowTolerance)));
+                        QVERIFY2(!isolated(img, x, y) || isolated(ref, x, y),
+                                 qPrintable(where + QStringLiteral(": isolated pixel at row %1").arg(y)));
+                        if (y < top || y > bottom) ++extendedRows;
+                    }
+                    if (top >= 0) {
+                        bool any = false;
+                        for (int y = top - kRowTolerance; y <= bottom + kRowTolerance && !any; ++y) any = lit(img, x, y);
+                        QVERIFY2(any, qPrintable(where + QStringLiteral(": blank, reference lit at rows %1..%2").arg(top).arg(bottom)));
+                        ++litColumns;
+                    }
+                }
+                QVERIFY(litColumns > widthDev * 9 / 10);
+                qInfo("%s %d samples DPR %g: %d lit columns, %d pixels one row beyond the reference extent", sig.name,
+                      samples, dpr, litColumns, extendedRows);
             }
         }
     }
