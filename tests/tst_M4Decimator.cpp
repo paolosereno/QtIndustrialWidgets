@@ -283,16 +283,17 @@ void tst_M4Decimator::drawnColumnExtent()
 // aliased drawing (the rule drawnColumnExtent() uses): a fractional y lands on row floor(y) or on the next row
 // depending on the direction of the line, and a separate line ends where a polyline turns (Qt documentation,
 // "Coordinate System", section "Aliased Painting": https://doc.qt.io/qt-6/coordsys.html#aliased-painting).
-// Data: the signals of bench_StripChart (where #73 found pixels detached from the trace) at its plot size, DPR 1 and 2.
+// Data: two signals of bench_StripChart (where #73 found pixels detached from the trace) with 10k samples in its 10 s
+// window, at its plot size, DPR 1 and 2: the cases that catch the detached pixels of the #73 prototype drawn with a
+// square cap, at both DPRs (SmoothSine: steep joins; SpikesAndNaN: spikes and dropout columns). BroadbandNoise and
+// 100k / 1M samples, measured on #73, add time without catching more.
 void tst_M4Decimator::columnStrokeStaysWithinPolylineExtent()
 {
-    enum class SignalType { SmoothSine, BroadbandNoise, SpikesAndNaN };
+    enum class SignalType { SmoothSine, SpikesAndNaN };
     const struct {
         SignalType type;
         const char *name;
-    } signalConfigs[] = {{SignalType::SmoothSine, "SmoothSine"},
-                         {SignalType::BroadbandNoise, "BroadbandNoise"},
-                         {SignalType::SpikesAndNaN, "SpikesAndNaN"}};
+    } signalConfigs[] = {{SignalType::SmoothSine, "SmoothSine"}, {SignalType::SpikesAndNaN, "SpikesAndNaN"}};
     constexpr qint64 kSpanNs = 10000000000LL; // 10 s window
     constexpr int kWidth = 1920;              // logical plot size of bench_StripChart
     constexpr int kHeight = 1024;
@@ -304,7 +305,7 @@ void tst_M4Decimator::columnStrokeStaysWithinPolylineExtent()
         const BucketGrid grid(widthDev, kSpanNs);
         const PlotXMapping xmap = makePlotXMapping(grid, 0, 0.0);
         auto toLogicalX = [dpr](double xDev) { return xDev / dpr; };
-        for (const int samples : {10000, 100000, 1000000}) {
+        for (const int samples : {10000}) {
             for (const auto &sig : signalConfigs) {
                 // bench_StripChart::generateSignal(), channel 0
                 const qint64 dtNs = kSpanNs / samples;
@@ -314,11 +315,7 @@ void tst_M4Decimator::columnStrokeStaysWithinPolylineExtent()
                     const qint64 tNs = static_cast<qint64>(i) * dtNs;
                     const double phase = 0.001 * (static_cast<double>(tNs) / 10000.0);
                     double v = std::sin(phase) * 50.0 + 50.0;
-                    if (sig.type == SignalType::BroadbandNoise) {
-                        const auto rng = static_cast<uint64_t>(i) * 6364136223846793005ULL + 1442695040888963407ULL;
-                        const double rand01 = static_cast<double>(rng >> 32) / 4294967296.0;
-                        v = std::sin(phase) * 30.0 + 50.0 + (rand01 - 0.5) * 10.0 + ((i % 2 == 0) ? 3.0 : -3.0);
-                    } else if (sig.type == SignalType::SpikesAndNaN) {
+                    if (sig.type == SignalType::SpikesAndNaN) {
                         if (tNs % 100000000 < dtNs) v = 500.0;
                         else if (tNs % 250000000 < 50000) v = std::numeric_limits<double>::quiet_NaN();
                     }
