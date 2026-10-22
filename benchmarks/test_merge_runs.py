@@ -50,6 +50,22 @@ class MergeRunsTest(unittest.TestCase):
         self.assertEqual(row(out, 'CPU')[1], 'Example CPU (20 logical CPUs, x86_64)')
         self.assertEqual(row(out, 'Benchmark source commit')[1], 'run 1: aaa111; run 2: aaa111; run 3: bbb222')
 
+    def test_growth_table_three_runs(self):
+        code, out, err = merge('strip_run1.md', 'strip_run2.md', 'strip_run3.md')
+        self.assertEqual(code, 0, err)
+        growth = [r for r in out.splitlines() if r.startswith('| 1 | BroadbandNoise | SampleIndex |')]
+        self.assertEqual(len(growth), 1)
+        cells = [c.strip() for c in growth[0].strip().strip('|').split('|')]
+        # Key columns and trace pixels once; every run then the range for each median / p95 column
+        self.assertEqual(cells[:5], ['1', 'BroadbandNoise', 'SampleIndex', '439032', '504541'])
+        self.assertEqual(cells[-2:], ['6.3 · 7.1 · 5.8', '5.8–7.1'])
+
+    def test_runs_with_different_growth_pixels_are_rejected(self):
+        code, _, err = merge('strip_run1.md', 'strip_bad_growth_px.md')
+        self.assertNotEqual(code, 0)
+        self.assertIn('Trace px 4M', err)
+        self.assertIn('did not measure the same work', err)
+
     def test_analysis_chart_two_runs(self):
         code, out, err = merge('analysis_run1.md', 'analysis_run2.md')
         self.assertEqual(code, 0, err)
