@@ -344,6 +344,43 @@ set_target_properties(tst_GalleryShowcases PROPERTIES
 )
 add_dpr_tests(tst_GalleryShowcases)
 
+# #8: heap allocations per frame must not grow with the number of visible gaps. Both executables replace the global
+# operator new with a counter (tests/AllocationCounter.h); each test first checks that the counter sees an allocation
+# it knows of.
+# - tst_M4DecimatorAllocations counts the allocations of M4Decimator, compiled into the executable: they are counted
+#   on every platform.
+# - tst_StripChartAllocations counts the allocations of a StripChart render, made inside the shared library and Qt.
+#   A replacement operator new in the executable sees them only on Linux (ELF symbol binding); with a Windows DLL or a
+#   macOS two-level-namespace dylib the library's calls do not reach it, so the test would measure nothing there. It is
+#   built and run on Linux only.
+add_executable(tst_M4DecimatorAllocations
+    tst_M4DecimatorAllocations.cpp
+    $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:NumberFormat>
+)
+target_link_libraries(tst_M4DecimatorAllocations PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+target_include_directories(tst_M4DecimatorAllocations PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src)
+set_target_properties(tst_M4DecimatorAllocations PROPERTIES AUTOMOC ON)
+add_test(NAME tst_M4DecimatorAllocations COMMAND tst_M4DecimatorAllocations)
+set_tests_properties(tst_M4DecimatorAllocations PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
+
+if(UNIX AND NOT APPLE)
+    add_executable(tst_StripChartAllocations
+        tst_StripChartAllocations.cpp
+    )
+    target_link_libraries(tst_StripChartAllocations
+        PRIVATE
+            QtIndustrialWidgets::QtIndustrialWidgets
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+            Qt6::Test
+    )
+    target_include_directories(tst_StripChartAllocations PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src)
+    set_target_properties(tst_StripChartAllocations PROPERTIES AUTOMOC ON)
+    add_test(NAME tst_StripChartAllocations COMMAND tst_StripChartAllocations)
+endif()
+
 # benchmarks/merge_runs.py merges the runs of one benchmark session; its tests use example runs
 # in benchmarks/testdata and only the Python standard library (skipped when Python is not found).
 find_package(Python3 COMPONENTS Interpreter)
