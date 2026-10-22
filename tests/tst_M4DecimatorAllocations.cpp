@@ -11,7 +11,6 @@
 #include <QtTest/QtTest>
 #include <internal/M4Decimator.h>
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -74,15 +73,16 @@ void tst_M4DecimatorAllocations::segmentBuffersAreReused()
     QFETCH(int, gaps);
     const M4Decimator::IncrementalStream stream = makeStream(gaps);
     std::vector<std::vector<M4Point>> segments;
-    stream.extractVisibleSegments(segments, 0, kBuckets, 0); // first frame: the buffers are allocated
-    const auto nonEmpty = std::count_if(segments.begin(), segments.end(), [](const auto &s) { return !s.empty(); });
-    QCOMPARE(nonEmpty, static_cast<std::ptrdiff_t>(gaps + 1));
+    // First frame: the buffers are allocated; the gaps break the trace into gaps + 1 segments
+    QCOMPARE(stream.extractVisibleSegments(segments, 0, kBuckets, 0), static_cast<std::size_t>(gaps + 1));
     long long allocations = 0;
+    std::size_t count = 0;
     {
         AllocationScope scope;
-        stream.extractVisibleSegments(segments, 0, kBuckets, 0);
+        count = stream.extractVisibleSegments(segments, 0, kBuckets, 0);
         allocations = scope.count();
     }
+    QCOMPARE(count, static_cast<std::size_t>(gaps + 1));
     QVERIFY2(allocations == 0, qPrintable(QStringLiteral("%1 gaps: %2 allocations in the second extraction")
                                               .arg(gaps).arg(allocations)));
 }
@@ -94,14 +94,16 @@ void tst_M4DecimatorAllocations::buffersSurviveAStreamWithFewerSegments()
     const M4Decimator::IncrementalStream many = makeStream(100);
     const M4Decimator::IncrementalStream few = makeStream(0);
     std::vector<std::vector<M4Point>> segments;
-    many.extractVisibleSegments(segments, 0, kBuckets, 0);
-    few.extractVisibleSegments(segments, 0, kBuckets, 0);
+    QCOMPARE(many.extractVisibleSegments(segments, 0, kBuckets, 0), std::size_t{101});
+    QCOMPARE(few.extractVisibleSegments(segments, 0, kBuckets, 0), std::size_t{1});
     long long allocations = 0;
+    std::size_t count = 0;
     {
         AllocationScope scope;
-        many.extractVisibleSegments(segments, 0, kBuckets, 0);
+        count = many.extractVisibleSegments(segments, 0, kBuckets, 0);
         allocations = scope.count();
     }
+    QCOMPARE(count, std::size_t{101});
     QVERIFY2(allocations == 0, qPrintable(QStringLiteral("%1 allocations after a stream with fewer segments")
                                               .arg(allocations)));
 }

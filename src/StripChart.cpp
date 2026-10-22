@@ -1385,14 +1385,18 @@ void StripChart::paintEvent(QPaintEvent *)
                     const_cast<ChannelInternal&>(ch).m4Stream.setBucket(kOldest, freshBucket);
                 }
 
-                ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, gapThresh);
+                // Segments [0, segmentCount); the buffers after them are kept for the next channel or frame (#8)
+                const std::size_t segmentCount =
+                    ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, gapThresh);
+                const std::vector<internal::M4Point> *lastSegment =
+                    segmentCount > 0 ? &d_ptr->m_reusableSegments[segmentCount - 1] : nullptr;
 
                 // The glow dot must never draw inside a column left blank for a dropout
                 {
                     const internal::M4Bucket *latest = ch.m4Stream.bucketAt(grid.bucketOf(ch.lastTimestamp));
                     suppressGlow = latest && latest->hasNonFinite;
-                    if (!suppressGlow && !d_ptr->m_reusableSegments.empty() && !d_ptr->m_reusableSegments.back().empty()) {
-                        const qint64 kLastDrawn = grid.bucketOf(d_ptr->m_reusableSegments.back().back().t);
+                    if (!suppressGlow && lastSegment && !lastSegment->empty()) {
+                        const qint64 kLastDrawn = grid.bucketOf(lastSegment->back().t);
                         collectBlankColumnsNearGlow(ch.m4Stream, kLastDrawn, kStartQuery, kStartQuery + numBucketsQuery,
                                                     dpr, plotRect,
                                                     [&](qint64 k) {
@@ -1403,7 +1407,8 @@ void StripChart::paintEvent(QPaintEvent *)
                     }
                 }
 
-                for (const auto &seg : d_ptr->m_reusableSegments) {
+                for (std::size_t si = 0; si < segmentCount; ++si) {
+                    const auto &seg = d_ptr->m_reusableSegments[si];
                     if (seg.empty()) continue;
                     // Vertices at the centre of their column, one vertical line per column, end pixels (#90, #73)
                     internal::drawDecimatedSegment(painter, xmap, seg, d_ptr->m_reusablePoly, mapY, toLogicalX);
@@ -1589,15 +1594,19 @@ void StripChart::paintEvent(QPaintEvent *)
                     const_cast<ChannelInternal&>(ch).m4Stream.setBucket(kOldest, freshBucket);
                 }
 
-                ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, 0);
+                // Segments [0, segmentCount); the buffers after them are kept for the next channel or frame (#8)
+                const std::size_t segmentCount =
+                    ch.m4Stream.extractVisibleSegments(d_ptr->m_reusableSegments, kStartQuery, numBucketsQuery, 0);
+                const std::vector<internal::M4Point> *lastSegment =
+                    segmentCount > 0 ? &d_ptr->m_reusableSegments[segmentCount - 1] : nullptr;
 
                 // The glow dot must never draw inside a column left blank for a dropout
                 {
                     const internal::M4Bucket *latest = ch.m4Stream.bucketAt(
                         ib.grid.bucketOf(static_cast<qint64>(ch.totalSamples) - 1));
                     suppressGlow = latest && latest->hasNonFinite;
-                    if (!suppressGlow && !d_ptr->m_reusableSegments.empty() && !d_ptr->m_reusableSegments.back().empty()) {
-                        const qint64 kLastDrawn = ib.grid.bucketOf(d_ptr->m_reusableSegments.back().back().t);
+                    if (!suppressGlow && lastSegment && !lastSegment->empty()) {
+                        const qint64 kLastDrawn = ib.grid.bucketOf(lastSegment->back().t);
                         collectBlankColumnsNearGlow(ch.m4Stream, kLastDrawn, kStartQuery, kStartQuery + numBucketsQuery,
                                                     dpr, plotRect,
                                                     [&](qint64 k) {
@@ -1612,7 +1621,8 @@ void StripChart::paintEvent(QPaintEvent *)
                     double yNorm = (val - d_ptr->m_yMinimum) / yRange;
                     return plotRect.bottom() - yNorm * plotRect.height();
                 };
-                for (const auto &seg : d_ptr->m_reusableSegments) {
+                for (std::size_t si = 0; si < segmentCount; ++si) {
+                    const auto &seg = d_ptr->m_reusableSegments[si];
                     if (seg.empty()) continue;
                     // Vertices at the centre of their column, one vertical line per column, end pixels (#90, #73)
                     internal::drawDecimatedSegment(painter, xmap, seg, d_ptr->m_reusablePoly, mapY, toLogicalX);

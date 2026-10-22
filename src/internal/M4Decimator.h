@@ -299,7 +299,15 @@ public:
         }
 
         [[nodiscard]] const M4Bucket *bucketAt(qint64 k) const;
-        void extractVisibleSegments(
+        /**
+         * \brief Fills \p segments with the vertices of the visible buckets, broken into segments at non-finite
+         *        buckets and at gaps longer than \p gapThreshold, and returns the number of segments.
+         *
+         * The buffers of \p segments are reused (#8): segments [0, count) hold this extraction, the ones after them
+         * are left empty with their capacity, for a later extraction with more segments (StripChart extracts every
+         * channel into the same buffers). An extraction that fits in the buffers of an earlier one allocates nothing.
+         */
+        [[nodiscard]] std::size_t extractVisibleSegments(
             std::vector<std::vector<M4Point>> &segments,
             qint64 kStart, int numBuckets, qint64 gapThreshold) const;
         [[nodiscard]] std::vector<std::vector<M4Point>> extractVisibleSegments(
