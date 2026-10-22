@@ -58,7 +58,8 @@ jobs:
             libgl1-mesa-dev \
             libxkbcommon-dev \
             doxygen \
-            graphviz
+            graphviz \
+            fonts-ubuntu
 
       - name: Configure CMake
         run: |
@@ -99,6 +100,26 @@ jobs:
           name: gallery-images
           path: ${{ runner.temp }}/gallery-images/
           retention-days: 14
+
+      # docs/images must be the export of this commit (#103): a PR that changes what the gallery draws must re-export
+      # it. The gallery's style sheet asks for the Ubuntu font (fonts-ubuntu above), as on the machine that exports
+      # the committed images.
+      - name: Check that docs/images is up to date
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/gallery-images"
+          stale=()
+          for f in docs/images/*.png; do
+            cmp -s "$f" "$out/$(basename "$f")" || stale+=("$(basename "$f")")
+          done
+          if [ "${#stale[@]}" -gt 0 ]; then
+            echo "::error::docs/images is out of date: ${#stale[@]} image(s) differ from the export of this commit"
+            printf '  %s\n' "${stale[@]}"
+            echo "Regenerate them with './build/bin/QtIndustrialWidgetsGallery --export-gallery docs/images'"
+            echo "(docs/gallery_images.md), or take them from the gallery-images artifact of this run."
+            exit 1
+          fi
+          echo "docs/images: all $(ls docs/images/*.png | wc -l) images equal the export"
 
       # The GitHub Pages site (#80): landing page at the root, Doxygen under api/ with the gallery images,
       # redirect stubs at the old addresses
