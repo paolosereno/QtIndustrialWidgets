@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.4.0] - 2026-10-22
+
 ### Added
 - **Landing page on GitHub Pages** (#80): the site's root is a landing page (`docs/site/`) with the README's sentence, the gallery's dashboard image, the 12 widgets with their captions and links to their class documentation, the quick start and links to the repository and the releases. `tools/check_site.py` checks in CI that its links resolve and that its widgets, captions, images and `GIT_TAG` match the README.
 
