@@ -21,6 +21,13 @@ SPDX-License-Identifier: MIT
 | 1 | 100k | BroadbandNoise | Time | 437060 | 2.50 | 2.66 | 3.10 |
 | 4 | 4M | SpikesAndNaN | Time | 1144058 | 5.80 | 6.12 | 7.10 |
 
+#### Paint at steady state, 1 ch x 100k and 1 ch x 4M interleaved (rendered alternately in the same loop; 5 warm-up + 30 measured pairs, ms; growth = per-pair ratio 4M / 100k - 1)
+
+| Channels | Signal | X axis | Trace px 100k | Trace px 4M | 100k median | 100k p95 | 4M median | 4M p95 | Growth, median of per-pair ratios (%) |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | BroadbandNoise | Time | 434775 | 499675 | 2.70 | 2.95 | 2.84 | 3.10 | 4.9 |
+| 1 | BroadbandNoise | SampleIndex | 439032 | 504541 | 2.81 | 3.20 | 3.01 | 3.33 | 7.1 |
+
 #### Insertion
 
 | Case | Work per trial | Trials | Min (ms) | Median (ms) | p95 (ms) | Median per call (µs) |

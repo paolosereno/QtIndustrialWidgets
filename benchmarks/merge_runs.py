@@ -28,7 +28,7 @@ BENCHMARKS = ('bench_StripChart', 'bench_AnalysisChart')
 # Identifying columns of a row, by name
 KEY_COLUMNS = ('Channels', 'Samples / ch', 'Signal', 'X axis', 'Case', 'Item')
 # Columns that must be equal in every run (deterministic for a given benchmark source)
-EXACT_COLUMNS = ('Trace px', 'New samples / ch / frame', 'Work per trial', 'Trials',
+EXACT_COLUMNS = ('Trace px', 'Trace px 100k', 'Trace px 4M', 'New samples / ch / frame', 'Work per trial', 'Trials',
                  'Samples per channel in view', 'Decimated channels')
 SEPARATOR = ' · '
 

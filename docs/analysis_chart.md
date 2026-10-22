@@ -120,11 +120,11 @@ figures, with the time of `setChannelData()`, are in the [Benchmark Report](benc
 
 Target of #25: a redraw after a zoom or pan step takes at most 16.7 ms for 4 channels × 10 M samples at a
 1920 device px plot. **It is not met** on the machine of the
-[Benchmark Report](benchmarks.md#analysischart-performance-benchmarks): 6 of its 7 cases FAIL. The full view of
-the four 10 M-sample channels redraws in 42.07 ms (median, p95 65.22 ms) with the `SpikesAndNaN` signal; panning
-at 1/100 of the record (100 k samples per channel in the view) passes with a p95 of 10.81 ms. The time goes mostly
-into drawing the decimated envelope, then into reading the buckets from the pyramid; the report has the full
-tables, the method and the profile.
+[Benchmark Report](benchmarks.md#analysischart-performance-benchmarks) (one session of 5 runs): 6 of its 7 cases
+FAIL. The full view of the four 10 M-sample channels redraws with a median of 26.67–46.43 ms over the 5 runs with
+the `SpikesAndNaN` signal; panning at 1/100 of the record (100 k samples per channel in the view) passes in all 5
+runs, with a p95 of at most 14.64 ms. The report has the full tables, the method and the earlier profiles (drawing
+the decimated envelope, then reading the buckets from the pyramid).
 
 ## 8. Not covered (later phases)
 

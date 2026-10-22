@@ -12,6 +12,9 @@
 //  - Streaming, SampleIndex and Time interleaved: both charts receive the same data and are
 //    rendered alternately in the same loop, so the ratio of their timings is not affected by the
 //    machine's state changing between runs.
+//  - Steady state, 100k and 4M interleaved (#6, #18): a 1 ch x 100k and a 1 ch x 4M chart are
+//    rendered alternately in the same loop; the growth from 100k to 4M is the median of the
+//    per-pair ratios, so the machine's state cancels out of it.
 //  - First paint after resize: 10 independent trials (cold path).
 //  - Insertion cases: real call counts, never extrapolated.
 //  - Signals are functions of time, so every sample count draws the same waveform in the window;
@@ -50,6 +53,7 @@
 #include <cstdlib>
 #include <limits>
 #include <numeric>
+#include <utility>
 
 using namespace QtIndustrialWidgets;
 
@@ -215,6 +219,17 @@ struct InterleavedRow {
     Stats timeMs;
 };
 
+// 1 ch x 100k and 1 ch x 4M rendered alternately (steady state); growth = per-pair ratio - 1
+struct GrowthRow {
+    QString signal;
+    QString axis;
+    qint64 smallPixels{0};
+    qint64 largePixels{0};
+    Stats smallMs;
+    Stats largeMs;
+    Stats growthPercent;
+};
+
 struct TimedRow {
     QString name;
     QString unitsPerTrial;
@@ -226,6 +241,7 @@ struct TimedRow {
 std::vector<PaintRow> g_steadyRows;
 std::vector<StreamRow> g_streamRows;
 std::vector<InterleavedRow> g_interleavedRows;
+std::vector<GrowthRow> g_growthRows;
 std::vector<TimedRow> g_resizeRows;
 std::vector<TimedRow> g_insertRows;
 QStringList g_environment;
@@ -387,6 +403,23 @@ void printMarkdown()
             out(QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 | %8 |")
                     .arg(r.channels).arg(r.samples, r.signal, r.axis).arg(r.tracePixels)
                     .arg(ms(r.renderMs.min), ms(r.renderMs.median), ms(r.renderMs.p95)));
+        }
+    }
+
+    if (!g_growthRows.empty()) {
+        out(QString());
+        out(QStringLiteral("#### Paint at steady state, 1 ch x 100k and 1 ch x 4M interleaved (rendered alternately in the "
+                           "same loop; %1 warm-up + %2 measured pairs, ms; growth = per-pair ratio 4M / 100k - 1)")
+                .arg(kWarmupRenders).arg(kMeasuredRenders));
+        out(QString());
+        out(QStringLiteral("| Channels | Signal | X axis | Trace px 100k | Trace px 4M | 100k median | 100k p95 | "
+                           "4M median | 4M p95 | Growth, median of per-pair ratios (%) |"));
+        out(QStringLiteral("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|"));
+        for (const GrowthRow &r : g_growthRows) {
+            out(QStringLiteral("| 1 | %1 | %2 | %3 | %4 | %5 | %6 | %7 | %8 | %9 |")
+                    .arg(r.signal, r.axis).arg(r.smallPixels).arg(r.largePixels)
+                    .arg(ms(r.smallMs.median), ms(r.smallMs.p95), ms(r.largeMs.median), ms(r.largeMs.p95))
+                    .arg(QString::number(r.growthPercent.median, 'f', 1)));
         }
     }
 
@@ -584,6 +617,8 @@ private Q_SLOTS:
     void initTestCase();
     void paintSteady_data();
     void paintSteady();
+    void paintSteadyGrowthInterleaved_data();
+    void paintSteadyGrowthInterleaved();
     void paintStreaming_data();
     void paintStreaming();
     void paintStreamingInterleaved_data();
@@ -727,6 +762,82 @@ void BenchStripChart::paintSteady()
     std::fprintf(stderr, "[PAINT_STEADY] %d ch | %4s | %-14s | %-11s | %8lld px | min %8.2f | median %8.2f | p95 %8.2f ms\n",
                  channels, sampleLabel(samples), signalTypeName(sig), axisLabel(mode),
                  static_cast<long long>(r.tracePixels), r.renderMs.min, r.renderMs.median, r.renderMs.p95);
+}
+
+void BenchStripChart::paintSteadyGrowthInterleaved_data()
+{
+    QTest::addColumn<int>("axisMode");
+    for (auto m : {StripChart::XAxisMode::Time, StripChart::XAxisMode::SampleIndex}) {
+        const QString tag = QStringLiteral("1ch_100k_4M_BroadbandNoise_%1").arg(QLatin1String(axisLabel(m)));
+        QTest::newRow(tag.toUtf8().constData()) << static_cast<int>(m);
+    }
+}
+
+// #6 (merged into #18): paint-time growth from 100k to 4M samples, 1 ch BroadbandNoise, steady state. The two charts
+// are rendered alternately in the same loop (the order alternates every pair), so both see the same machine state
+// and the per-pair ratio is not affected by this machine's bimodal timings.
+void BenchStripChart::paintSteadyGrowthInterleaved()
+{
+    QFETCH(int, axisMode);
+    const auto mode = static_cast<StripChart::XAxisMode>(axisMode);
+    constexpr int kSmall = 100000;
+    constexpr int kLarge = 4000000;
+
+    StripChart smallChart;
+    StripChart largeChart;
+    for (auto [chart, samples] : {std::pair<StripChart *, int>{&smallChart, kSmall}, {&largeChart, kLarge}}) {
+        configureChart(*chart, samples, mode);
+        const qint64 dtNs = sampleIntervalNs(samples);
+        const int id = chart->addChannel(QStringLiteral("Ch0"), kColors[0]);
+        const std::vector<double> data = generateSignal(SignalType::BroadbandNoise, samples, 0, dtNs);
+        chart->addUniformSamples(id, std::chrono::nanoseconds(0), std::chrono::nanoseconds(dtNs), data.data(), samples);
+        chart->resize(kWidgetWidth, kWidgetHeight);
+    }
+    QPixmap pix(smallChart.size());
+
+    auto timedRender = [&pix](StripChart &chart) {
+        QElapsedTimer timer;
+        timer.start();
+        chart.render(&pix);
+        return timer.nsecsElapsed() / 1e6;
+    };
+
+    std::vector<double> smallMs;
+    std::vector<double> largeMs;
+    std::vector<double> growth;
+    for (int f = 0; f < kWarmupRenders + kMeasuredRenders; ++f) {
+        double a = 0.0;
+        double b = 0.0;
+        if (f % 2 == 0) {
+            a = timedRender(smallChart);
+            b = timedRender(largeChart);
+        } else {
+            b = timedRender(largeChart);
+            a = timedRender(smallChart);
+        }
+        if (f >= kWarmupRenders) {
+            smallMs.push_back(a);
+            largeMs.push_back(b);
+            growth.push_back(100.0 * (b / a - 1.0));
+        }
+    }
+
+    GrowthRow r;
+    r.signal = QLatin1String(signalTypeName(SignalType::BroadbandNoise));
+    r.axis = QLatin1String(axisLabel(mode));
+    smallChart.render(&pix);
+    r.smallPixels = countTracePixels(pix, 1, mode);
+    largeChart.render(&pix);
+    r.largePixels = countTracePixels(pix, 1, mode);
+    r.smallMs = computeStats(smallMs);
+    r.largeMs = computeStats(largeMs);
+    r.growthPercent = computeStats(growth);
+    g_growthRows.push_back(r);
+
+    std::fprintf(stderr, "[PAINT_GROWTH_INTERLEAVED] 1 ch | 100k / 4M | BroadbandNoise | %-11s | %lld / %lld px | "
+                         "median %.2f / %.2f ms | growth (median of per-pair ratios) %+.1f %%\n",
+                 axisLabel(mode), static_cast<long long>(r.smallPixels), static_cast<long long>(r.largePixels),
+                 r.smallMs.median, r.largeMs.median, r.growthPercent.median);
 }
 
 void BenchStripChart::paintStreaming_data()
