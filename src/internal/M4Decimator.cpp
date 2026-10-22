@@ -294,13 +294,11 @@ const M4Bucket *M4Decimator::IncrementalStream::bucketAt(qint64 k) const
     return nullptr;
 }
 
-void M4Decimator::IncrementalStream::extractVisibleSegments(
+std::size_t M4Decimator::IncrementalStream::extractVisibleSegments(
     std::vector<std::vector<M4Point>> &segments,
     qint64 kStart, int numBuckets, qint64 gapThreshold) const
 {
-    segments.clear();
-    if (numBuckets <= 0) return;
-
+    // The buffers are kept (#8): used segments are cleared when they are reached, the rest at the end
     size_t segIdx = 0;
     auto getNextSegment = [&]() -> std::vector<M4Point>& {
         if (segIdx < segments.size()) {
@@ -358,14 +356,17 @@ void M4Decimator::IncrementalStream::extractVisibleSegments(
         }
     }
 
-    segments.resize(segIdx);
+    for (size_t s = segIdx; s < segments.size(); ++s) {
+        segments[s].clear();
+    }
+    return segIdx;
 }
 
 std::vector<std::vector<M4Point>> M4Decimator::IncrementalStream::extractVisibleSegments(
     qint64 kStart, int numBuckets, qint64 gapThreshold) const
 {
     std::vector<std::vector<M4Point>> segments;
-    extractVisibleSegments(segments, kStart, numBuckets, gapThreshold);
+    segments.resize(extractVisibleSegments(segments, kStart, numBuckets, gapThreshold));
     return segments;
 }
 
