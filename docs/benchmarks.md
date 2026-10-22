@@ -161,6 +161,8 @@ the two modes do not affect (the interleaved 100k / 4M case).
 
 ## Results
 
+### bench_StripChart, 5 runs
+
 <!-- bench_StripChart results: begin -->
 
 Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: strip_run1.md, run 2: strip_run2.md, run 3: strip_run3.md, run 4: strip_run4.md, run 5: strip_run5.md).
