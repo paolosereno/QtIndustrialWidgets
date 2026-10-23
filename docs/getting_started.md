@@ -49,6 +49,14 @@ target_link_libraries(my_app
 
 Pinning `GIT_TAG` to a release tag is recommended over `main`, which can change at any time and break reproducible builds.
 
+### Shared or static library
+
+The library is **shared** by default. It follows `BUILD_SHARED_LIBS` when that is set, on the command line
+(`-DBUILD_SHARED_LIBS=OFF` for a static library) or by the project that adds it with `FetchContent`. A static library
+is needed with a static Qt: a shared library built against a static Qt would carry its own copy of Qt. The
+`QtIndustrialWidgets::QtIndustrialWidgets` target gives its consumers the `QTINDUSTRIALWIDGETS_STATIC` definition in a
+static build, so nothing else is needed in the consuming project.
+
 ### Method 2: find_package (System or Local Install)
 
 If you compile and install the library:
