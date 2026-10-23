@@ -30,7 +30,7 @@ include(FetchContent)
 FetchContent_Declare(
     QtIndustrialWidgets
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
-    GIT_TAG        v2.4.0
+    GIT_TAG        v2.5.0
 )
 
 # Optional: Disable examples and designer plugin when fetching
