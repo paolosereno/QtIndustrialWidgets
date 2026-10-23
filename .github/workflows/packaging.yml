@@ -205,7 +205,8 @@ jobs:
           consumer="$RUNNER_TEMP/consumer"
           cp -r test_package "$consumer"
           builtin=$(git -C "$VCPKG_ROOT" rev-parse HEAD)
-          registry=$(git ls-remote "$REGISTRY" HEAD | cut -f1)
+          registry=$(git ls-remote "$REGISTRY" HEAD | awk '$2 == "HEAD" { print $1 }')
+          if ! [[ "$registry" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::no HEAD commit for $REGISTRY"; exit 1; fi
           python3 - "$consumer/vcpkg-configuration.json" "$builtin" "$REGISTRY" "$registry" <<'PY'
           import json, sys
           path, builtin, repository, registry = sys.argv[1:]
