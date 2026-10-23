@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+# Packaging checks (#66): the vcpkg port (ports/qtindustrialwidgets) and the Conan recipe (conanfile.py) install the
+# library, and the consumer in test_package/ finds it with find_package(QtIndustrialWidgets), links a LedIndicator,
+# renders it offscreen and checks the colour at the LED's centre. Linux only for now.
+#
+# Not run on every pull request: vcpkg builds Qt from source, so the job relies on its binary cache (actions/cache,
+# vcpkg "files" provider). Runs twice a week (so that the cache, evicted after 7 days without use, stays warm), on
+# demand, and on pull requests and pushes to main that touch the packaging files.
+
+name: Packaging
+
+on:
+  schedule:
+    - cron: "17 4 * * 1,4" # Monday and Thursday, 04:17 UTC
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "ports/**"
+      - "conanfile.py"
+      - "test_package/**"
+      - ".github/workflows/packaging.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "ports/**"
+      - "conanfile.py"
+      - "test_package/**"
+      - ".github/workflows/packaging.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  # ============================================================
+  # vcpkg: the port from ports/ as an overlay. The port builds the release tag of its version (REF "v${VERSION}"),
+  # so this job checks the port files and the released sources, not the sources of the pull request.
+  # ============================================================
+  vcpkg-linux:
+    name: vcpkg (Ubuntu 24.04, x64-linux-release)
+    runs-on: ubuntu-24.04
+    env:
+      VCPKG_REF: "2026.10.16" # vcpkg release tag; the binary cache key depends on it
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_BINARY_CACHE: ${{ github.workspace }}/vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
+      TRIPLET: x64-linux-release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # System packages that vcpkg's qtbase needs on Linux (its portfile lists them)
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool pkg-config \
+            '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libegl1-mesa-dev
+
+      - name: Set up vcpkg ${{ env.VCPKG_REF }}
+        run: |
+          git clone --depth 1 --branch "$VCPKG_REF" https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "$VCPKG_BINARY_CACHE"
+
+      # The whole binary cache is one cache entry. A change to the port gives a new key; the restore key brings back
+      # the previous entry, so Qt is not rebuilt.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-
+
+      - name: Configure the consumer (installs the port and Qt)
+        run: |
+          cmake -S test_package -B build-consumer -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET
+
+      - name: Build the consumer
+        run: cmake --build build-consumer
+
+      - name: Run the consumer
+        run: ./build-consumer/consumer
+
+      - name: Size of the vcpkg binary cache
+        if: always()
+        run: du -sh "$VCPKG_BINARY_CACHE"
+
+  # ============================================================
+  # Conan: the recipe in conanfile.py with Qt from ConanCenter (prebuilt binaries for this compiler), and its
+  # test_package. Built from the sources of the pull request.
+  # ============================================================
+  conan-linux:
+    name: Conan (Ubuntu 24.04, GCC, Qt from ConanCenter)
+    runs-on: ubuntu-24.04
+    env:
+      CONAN_VERSION: "2.33.0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Conan ${{ env.CONAN_VERSION }}
+        run: |
+          pipx install "conan==$CONAN_VERSION"
+          conan profile detect --force
+          conan profile show
+
+      - name: Restore the Conan package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-${{ hashFiles('conanfile.py', 'test_package/conanfile.py') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-
+
+      # Only this package may be built: Qt and its dependencies must come as prebuilt binaries (no Qt source build).
+      # Qt's xorg/system dependency installs the X11 development packages with apt.
+      - name: Create the package and run test_package
+        run: |
+          conan create . --build="missing:qtindustrialwidgets/*" -s build_type=Release \
+            -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+
+      - name: Size of the Conan package cache
+        if: always()
+        run: du -sh ~/.conan2/p
