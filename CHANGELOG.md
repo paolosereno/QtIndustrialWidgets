@@ -15,11 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **vcpkg registry** (#113): the port is published in [paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry), from version 2.5.0. The README and `docs/getting_started.md` (method 4) give installation from the registry (a `vcpkg-configuration.json` with a `git` registry) as the main vcpkg method; the overlay port stays as the alternative.
+
 ### Changed
 - **vcpkg port no longer marked experimental** (#66): the README and `docs/getting_started.md` say it is verified on Linux (`x64-linux-release`) by the packaging workflow, after the run with `port=released` on the `v2.5.0` port (release archive and SHA512). Windows and macOS are not verified yet.
 
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.5.0` tag archive (the tagged commit still had the `v2.4.0` hash, since the hash can be computed only after the tag).
+
+### Tests
+- **The vcpkg registry checked in CI** (#113): a `vcpkg registry` job in `packaging.yml` (Linux, `x64-linux-release`) installs `qtindustrialwidgets` from the registry's current `HEAD`, with Qt from vcpkg's builtin registry, and runs the consumer in `test_package/`. The consumer prints the package version and, given `QIW_EXPECTED_VERSION`, fails when it differs: the job passes the latest GitHub release, so it fails while the registry is behind it.
 
 ---
 

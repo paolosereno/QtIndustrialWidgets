@@ -92,9 +92,42 @@ Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists
 
 ### Method 4: vcpkg C++ Package Manager
 
-The port is in [`ports/qtindustrialwidgets`](https://github.com/paolosereno/QtIndustrialWidgets/tree/main/ports/qtindustrialwidgets) and is used as an overlay port. It is
-verified on Linux (x64-linux-release) by the packaging workflow; Windows and macOS are not verified yet. With a
-triplet (here `x64-linux-release`, a static Linux build):
+The port is published in the vcpkg registry
+[paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry). It is verified on Linux
+(x64-linux-release) by the packaging workflow; Windows and macOS are not verified yet.
+
+In manifest mode, add `"qtindustrialwidgets"` to the dependencies in your project's `vcpkg.json`, and next to it a
+`vcpkg-configuration.json` that takes `qtindustrialwidgets` from the registry and everything else, Qt included, from
+vcpkg's own registry:
+
+```json
+{
+  "default-registry": {
+    "kind": "builtin",
+    "baseline": "<a commit of your vcpkg clone: git -C $VCPKG_ROOT rev-parse HEAD>"
+  },
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/paolosereno/vcpkg-registry",
+      "baseline": "<latest commit of the registry: git ls-remote https://github.com/paolosereno/vcpkg-registry HEAD>",
+      "packages": [ "qtindustrialwidgets" ]
+    }
+  ]
+}
+```
+
+Then configure with vcpkg's toolchain and a triplet (here `x64-linux-release`, a static Linux build):
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+      -DVCPKG_TARGET_TRIPLET=x64-linux-release
+```
+
+**Alternative: the overlay port.** The same port is in
+[`ports/qtindustrialwidgets`](https://github.com/paolosereno/QtIndustrialWidgets/tree/main/ports/qtindustrialwidgets)
+of this repository; it downloads the release archive of its version. Without the registry configuration:
 
 ```bash
 # Manifest mode: "qtindustrialwidgets" in your project's vcpkg.json dependencies
