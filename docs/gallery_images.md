@@ -16,6 +16,15 @@ cmake --build build --target QtIndustrialWidgetsGallery
 ./build/bin/QtIndustrialWidgetsGallery --export-gallery docs/images
 ```
 
+Re-export after any change that alters what the gallery draws: **the CI fails when `docs/images` differs from the
+export of the commit** (see *Checked in CI* below).
+
+The committed images are exported on Linux (Ubuntu 24.04, Qt 6.4.2 from Ubuntu). The gallery's style sheet asks for
+the fonts `'Segoe UI', 'Ubuntu', 'Helvetica Neue', sans-serif`, so the tab images need the **Ubuntu font**
+(`sudo apt-get install fonts-ubuntu`); without it the tabs fall back to another font and differ. If your machine
+cannot reproduce the images, take them from the CI instead: the `gallery-images` artifact of the pull request's run
+holds the export of that commit (the dark images are the files without the `-light` suffix).
+
 The export runs headless: when `QT_QPA_PLATFORM` is not set it uses the `offscreen` platform by itself. It prints one
 line per written file and exits with:
 
@@ -37,7 +46,8 @@ QtIndustrialWidgetsGallery --export-gallery <output-dir> [--dpr 1|2] [--theme da
 | `--dpr 1\|2` | `2` | device pixel ratio of the images (sets `QT_SCALE_FACTOR` before the application starts) |
 | `--theme dark\|light\|both` | `dark` | `light` and `both` also write the light variants, with a `-light` suffix |
 
-Only the dark theme at DPR 2 is committed. CI exports both themes and uploads them as a workflow artifact.
+Only the dark theme at DPR 2 is committed. CI exports both themes and uploads them as a workflow artifact
+(`gallery-images`).
 
 ## What is exported
 
@@ -67,7 +77,15 @@ The same commit, platform and options give byte-identical files. The export:
 Check it by exporting twice and comparing the directories (`diff -r`).
 
 **Fonts differ between platforms**, so images from different platforms (or from machines with different fonts) are
-not expected to match. Regenerate the committed images on one machine; do not compare images across platforms.
+not expected to match. The committed images come from Linux with the Ubuntu font (see *Regenerate*); do not compare
+images from other platforms with them.
+
+## Checked in CI
+
+The Linux job (`Linux (Ubuntu 24.04, GCC, Qt 6)`, with `fonts-ubuntu` installed) exports the gallery and compares
+every image in `docs/images/` byte for byte with the export (#103). If any differs, the job fails, lists the images
+and prints the command that regenerates them. The `gallery-images` artifact is uploaded before the check, so it is
+available when the check fails.
 
 ## Add a showcase for a new widget
 
