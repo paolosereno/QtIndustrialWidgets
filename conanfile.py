@@ -6,6 +6,7 @@
 # finds the package, links a widget and checks that it draws (#66). Checked in CI by .github/workflows/packaging.yml.
 
 from conan import ConanFile
+from conan.errors import ConanInvalidConfiguration
 from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
 from conan.tools.files import copy
 import os
@@ -23,7 +24,8 @@ class QtIndustrialWidgetsConan(ConanFile):
     package_type = "library"
     settings = "os", "compiler", "build_type", "arch"
     options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": True, "fPIC": True}
+    # Static by default, like ConanCenter's qt: CMakeToolchain passes the choice as BUILD_SHARED_LIBS (#107)
+    default_options = {"shared": False, "fPIC": True}
     # The library sources; the tests, examples, benchmarks, plugin and docs are not built by this recipe
     exports_sources = "CMakeLists.txt", "cmake/*", "include/*", "src/*", "LICENSES/*"
 
@@ -37,6 +39,13 @@ class QtIndustrialWidgetsConan(ConanFile):
 
     def layout(self):
         cmake_layout(self, src_folder=".")
+
+    def validate(self):
+        # A shared library built against a static Qt carries its own copy of Qt: a widget created by the library would
+        # not see the application's QApplication ("QWidget: Must construct a QApplication before a QWidget")
+        if self.options.shared and not self.dependencies["qt"].options.shared:
+            raise ConanInvalidConfiguration(
+                f"{self.ref} shared=True needs a shared Qt (qt/*:shared=True); with a static Qt use shared=False")
 
     def requirements(self):
         # Qt 6.2 is the minimum (CMakeLists.txt: find_package(Qt6 6.2 ...)); the public headers include Qt headers
@@ -67,4 +76,7 @@ class QtIndustrialWidgetsConan(ConanFile):
         self.cpp_info.set_property("cmake_file_name", "QtIndustrialWidgets")
         self.cpp_info.set_property("cmake_target_name", "QtIndustrialWidgets::QtIndustrialWidgets")
         self.cpp_info.libs = ["QtIndustrialWidgets"]
+        if not self.options.shared:
+            # Empties QTINDUSTRIALWIDGETS_EXPORT for consumers, as the CMake target does (qtindustrialwidgets_global.h)
+            self.cpp_info.defines = ["QTINDUSTRIALWIDGETS_STATIC"]
         self.cpp_info.requires = ["qt::qtCore", "qt::qtGui", "qt::qtWidgets"]
