@@ -15,11 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.5.0] - 2026-10-23
+
 ### Added
 - **Static library build** (#107): the library follows `BUILD_SHARED_LIBS` and is still **shared when it is not set**. `-DBUILD_SHARED_LIBS=OFF`, or a project that sets it before adding the library with `FetchContent`, builds a static `libQtIndustrialWidgets.a`. In a static build the `QtIndustrialWidgets::QtIndustrialWidgets` target gives its consumers the public definition `QTINDUSTRIALWIDGETS_STATIC`, which empties `QTINDUSTRIALWIDGETS_EXPORT` (`qtindustrialwidgets_global.h`). A static library is needed with a static Qt (vcpkg's static triplets, ConanCenter's default `qt`): a shared library built against a static Qt carries its own copy of Qt. The Qt Designer plugin works with both builds.
 
 ### Changed
 - **Conan recipe** (#66): the package is **static by default** (`shared=False`, was `True`), like ConanCenter's `qt`, which is static by default. The recipe now declares its Qt dependency (`qt/[>=6.2 <7]`, from ConanCenter), exports the library sources so `conan create` works from the repository, and gives consumers the same package and target names as the installed CMake config (`find_package(QtIndustrialWidgets)`, `QtIndustrialWidgets::QtIndustrialWidgets`) and, when static, the definition `QTINDUSTRIALWIDGETS_STATIC`. `shared=True` with a static Qt is refused by `validate()`: such a library would carry its own copy of Qt.
+- **`docs/getting_started.md`, methods 4 and 5** (#66): vcpkg with a triplet (manifest and classic mode), Conan with `conan create` and `shared=False`, and a note on linking the platform plugin of a static Qt.
 
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.4.0` tag archive (the tagged commit still had the `v2.3.0` hash, since the hash can be computed only after the tag). Not verified with `vcpkg install`; the port remains experimental.
