@@ -213,7 +213,7 @@ jobs:
           configuration = {
               "default-registry": {"kind": "builtin", "baseline": builtin},
               "registries": [{"kind": "git", "repository": repository, "baseline": registry,
-                              "packages": ["another-port"]}],  # SABOTAGE (reverted next)
+                              "packages": ["qtindustrialwidgets"]}],
           }
           json.dump(configuration, open(path, "w"), indent=2)
           PY
