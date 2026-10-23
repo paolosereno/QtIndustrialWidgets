@@ -8,7 +8,7 @@
 #
 # Not run on every pull request: vcpkg builds Qt from source, so the job relies on its binary cache (actions/cache,
 # vcpkg "files" provider). Runs twice a week (so that the cache, evicted after 7 days without use, stays warm), on
-# demand, and on pull requests and pushes to main that touch the packaging files.
+# demand, on pull requests and pushes to main that touch the packaging files, and on release tags.
 
 name: Packaging
 
@@ -24,6 +24,7 @@ on:
       - "test_package/**"
       - ".github/workflows/packaging.yml"
   push:
+    tags: [ "v*" ]
     branches: [ main ]
     paths:
       - "ports/**"
@@ -43,8 +44,10 @@ env:
 
 jobs:
   # ============================================================
-  # vcpkg: the port from ports/ as an overlay. The port builds the release tag of its version (REF "v${VERSION}"),
-  # so this job checks the port files and the released sources, not the sources of the pull request.
+  # vcpkg: the port from ports/ as an overlay.
+  # - On a release tag, the port as it is: it downloads the archive of the tag and checks its SHA512.
+  # - Otherwise, a copy of the port that builds the checked-out sources instead of downloading the tag (the port in
+  #   the repository is not changed), so that the port's build and install steps are checked with the current code.
   # ============================================================
   vcpkg-linux:
     name: vcpkg (Ubuntu 24.04, x64-linux-release)
@@ -74,6 +77,33 @@ jobs:
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
           mkdir -p "$VCPKG_BINARY_CACHE"
 
+      - name: Choose the port
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "OVERLAY_PORTS=$GITHUB_WORKSPACE/ports" >> "$GITHUB_ENV"
+            echo "The port as it is: download of the archive of ${GITHUB_REF_NAME}, SHA512 checked"
+          else
+            overlay="$RUNNER_TEMP/overlay-ports"
+            mkdir -p "$overlay"
+            cp -r ports/qtindustrialwidgets "$overlay/"
+            # vcpkg identifies a package by its port files, not by the sources: the tree hash of the checkout is
+            # written into the copy, so a cached build of other sources is never reused (Qt still comes from the cache)
+            python3 - "$overlay/qtindustrialwidgets/portfile.cmake" "$GITHUB_WORKSPACE" "$(git rev-parse HEAD^{tree})" <<'PY'
+          import re, sys
+          path, source, tree = sys.argv[1:]
+          text = open(path).read()
+          text, n = re.subn(r"vcpkg_from_github\(.*?\n\)\n",
+                            f'# CI copy (packaging.yml): the checked-out sources, tree {tree}\nset(SOURCE_PATH "{source}")\n',
+                            text, count=1, flags=re.S)
+          if n != 1:
+              sys.exit("vcpkg_from_github() not found in the portfile")
+          open(path, "w").write(text)
+          PY
+            echo "OVERLAY_PORTS=$overlay" >> "$GITHUB_ENV"
+            echo "Copy of the port building the checked-out sources:"
+            head -n 12 "$overlay/qtindustrialwidgets/portfile.cmake"
+          fi
+
       # The whole binary cache is one cache entry. A change to the port gives a new key; the restore key brings back
       # the previous entry, so Qt is not rebuilt.
       - name: Restore the vcpkg binary cache
@@ -90,7 +120,7 @@ jobs:
         run: |
           cmake -S test_package -B build-consumer -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET
+            -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET -DVCPKG_OVERLAY_PORTS="$OVERLAY_PORTS"
 
       # Saved as soon as the packages are installed, also when a later step fails, so Qt is built only once
       - name: Save the vcpkg binary cache
