@@ -6,7 +6,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO paolosereno/QtIndustrialWidgets
     REF "v${VERSION}"
-    SHA512 00a38f4f6e9a9c3286bb7f2e53e2855df6142b97346457c2c73f05abe82f9bd186b422fc83883542ccb89a37ce1dbe45573fa3fc72cb604b7b1a62cf9679a8be
+    SHA512 f247c48e8e30c14e18d9ddbacd8e196296c7309cc2ee60da3bfde2afdec6e244f7df54609113f798174be598920fa58aa502be1877ac5ea1eb9a498ed1e78895
     HEAD_REF main
 )
 
