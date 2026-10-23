@@ -219,7 +219,6 @@ jobs:
           PY
           cat "$consumer/vcpkg-configuration.json"
           release=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
-          release=v2.6.0 # SABOTAGE (reverted next): a release newer than the registry
           echo "Latest release: $release; registry at $registry"
           echo "CONSUMER=$consumer" >> "$GITHUB_ENV"
           echo "EXPECTED_VERSION=${release#v}" >> "$GITHUB_ENV"
