@@ -16,4 +16,5 @@ Fixes #
 - [ ] The build has zero warnings
 - [ ] The full `ctest` passes at device pixel ratios 1, 1.25, 1.5 and 2 (`QT_QPA_PLATFORM=offscreen ctest --test-dir build`)
 - [ ] `reuse lint` passes
+- [ ] If the change alters what the gallery draws, `docs/images` is re-exported (`--export-gallery docs/images`, see `docs/gallery_images.md`; CI checks it)
 - [ ] User-visible changes are listed in `CHANGELOG.md`

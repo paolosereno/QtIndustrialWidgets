@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.4.0` tag archive (the tagged commit still had the `v2.3.0` hash, since the hash can be computed only after the tag). Not verified with `vcpkg install`; the port remains experimental.
 
+### Tests
+- **`docs/images` checked in CI** (#103): the Linux job installs the Ubuntu font that the gallery's style sheet asks for, exports the gallery and fails when an image in `docs/images` differs byte for byte from the export, listing the images and the command that regenerates them. #95 had changed four images without re-exporting them; they were found only at the v2.4.0 release.
+
 ---
 
 ## [2.4.0] - 2026-10-22
