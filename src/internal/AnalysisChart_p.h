@@ -121,6 +121,11 @@ public:
     double pressYMinimum{0.0};
     double pressYMaximum{1.0};
 
+    // Decimated drawing buffers, reused by every channel and frame (#97)
+    std::vector<internal::M4Bucket> reusableBuckets;
+    std::vector<std::vector<internal::M4Point>> reusableSegments;
+    QPolygonF reusablePoly;
+
     bool recordDiagnostics{false};
     FrameDiagnostics lastFrame;
 };

@@ -173,8 +173,18 @@ std::vector<M4Bucket> AnalysisPyramid::buckets(const qint64 *t, const double *v,
                                                const BucketGrid &grid, qint64 kStart, int numBuckets) const
 {
     std::vector<M4Bucket> out;
-    if (numBuckets <= 0 || t == nullptr || v == nullptr) return out;
-    out.resize(static_cast<std::size_t>(numBuckets));
+    buckets(t, v, count, origin, grid, kStart, numBuckets, out);
+    return out;
+}
+
+void AnalysisPyramid::buckets(const qint64 *t, const double *v, std::size_t count, qint64 origin, const BucketGrid &grid,
+                              qint64 kStart, int numBuckets, std::vector<M4Bucket> &out) const
+{
+    if (numBuckets <= 0 || t == nullptr || v == nullptr) {
+        out.clear();
+        return;
+    }
+    out.assign(static_cast<std::size_t>(numBuckets), M4Bucket()); // keeps the capacity of an earlier call
     // Sample index of the first timestamp of each bucket: t - origin >= grid.boundary(k)
     auto firstIndexAt = [&](qint64 k, std::size_t from) {
         const qint64 b = grid.boundary(k);
@@ -191,24 +201,26 @@ std::vector<M4Bucket> AnalysisPyramid::buckets(const qint64 *t, const double *v,
         out[static_cast<std::size_t>(k)] = aggregate(t, v, i0, i1);
         i0 = i1;
     }
-    return out;
 }
 
 std::vector<std::vector<M4Point>> segmentsFromBuckets(const std::vector<M4Bucket> &buckets, qint64 gapThreshold)
 {
-    // Same rules, in the same order, as M4Decimator::decimateToSegments()
     std::vector<std::vector<M4Point>> segments;
-    std::vector<M4Point> current;
+    segments.resize(segmentsFromBuckets(buckets, gapThreshold, segments));
+    return segments;
+}
+
+std::size_t segmentsFromBuckets(const std::vector<M4Bucket> &buckets, qint64 gapThreshold,
+                                std::vector<std::vector<M4Point>> &segments)
+{
+    // Same rules, in the same order, as M4Decimator::decimateToSegments(). The buffers are kept (#97): a segment is
+    // opened (its buffer cleared or added) at its first vertex, the buffers after the last segment are cleared at the end
+    std::size_t count = 0;
+    std::vector<M4Point> *current = nullptr;
     qint64 prevTimestamp = std::numeric_limits<qint64>::min();
-    auto close = [&]() {
-        if (!current.empty()) {
-            segments.push_back(std::move(current));
-            current.clear();
-        }
-    };
     for (const M4Bucket &b : buckets) {
         if (b.hasNonFinite) {
-            close();
+            current = nullptr;
             prevTimestamp = std::numeric_limits<qint64>::min();
             continue; // a bucket with a non-finite sample emits no vertex (M4Bucket::emitVertices())
         }
@@ -216,13 +228,23 @@ std::vector<std::vector<M4Point>> segmentsFromBuckets(const std::vector<M4Bucket
         const int n = b.emitVertices(verts);
         if (n == 0) continue;
         if (prevTimestamp != std::numeric_limits<qint64>::min() && gapThreshold > 0 && verts[0].t - prevTimestamp > gapThreshold) {
-            close();
+            current = nullptr;
         }
-        for (int i = 0; i < n; ++i) current.push_back(verts[i]);
+        if (!current) {
+            if (count < segments.size()) {
+                segments[count].clear();
+            } else {
+                segments.emplace_back();
+            }
+            current = &segments[count++];
+        }
+        for (int i = 0; i < n; ++i) current->push_back(verts[i]);
         prevTimestamp = verts[n - 1].t;
     }
-    close();
-    return segments;
+    for (std::size_t s = count; s < segments.size(); ++s) {
+        segments[s].clear();
+    }
+    return count;
 }
 
 } // namespace internal

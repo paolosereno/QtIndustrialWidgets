@@ -364,6 +364,19 @@ set_target_properties(tst_M4DecimatorAllocations PROPERTIES AUTOMOC ON)
 add_test(NAME tst_M4DecimatorAllocations COMMAND tst_M4DecimatorAllocations)
 set_tests_properties(tst_M4DecimatorAllocations PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
 
+# #97: AnalysisPyramid (in the AnalysisChartView objects) is compiled into the executable: counted on every platform
+add_executable(tst_AnalysisPyramidAllocations
+    tst_AnalysisPyramidAllocations.cpp
+    $<TARGET_OBJECTS:AnalysisChartView>
+    $<TARGET_OBJECTS:M4Decimator>
+    $<TARGET_OBJECTS:NumberFormat>
+)
+target_link_libraries(tst_AnalysisPyramidAllocations PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+target_include_directories(tst_AnalysisPyramidAllocations PRIVATE ${PROJECT_SOURCE_DIR}/src)
+set_target_properties(tst_AnalysisPyramidAllocations PROPERTIES AUTOMOC ON)
+add_test(NAME tst_AnalysisPyramidAllocations COMMAND tst_AnalysisPyramidAllocations)
+set_tests_properties(tst_AnalysisPyramidAllocations PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
+
 if(UNIX AND NOT APPLE)
     add_executable(tst_StripChartAllocations
         tst_StripChartAllocations.cpp

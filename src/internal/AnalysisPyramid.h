@@ -66,6 +66,9 @@ public:
 
     [[nodiscard]] std::vector<M4Bucket> buckets(const qint64 *t, const double *v, std::size_t count, qint64 origin,
                                                 const BucketGrid &grid, qint64 kStart, int numBuckets) const;
+    /** \brief As buckets(), into \p out, whose memory is reused: a call that fits in it allocates nothing (#97). */
+    void buckets(const qint64 *t, const double *v, std::size_t count, qint64 origin, const BucketGrid &grid,
+                 qint64 kStart, int numBuckets, std::vector<M4Bucket> &out) const;
 
 private:
     struct Node {
@@ -92,6 +95,17 @@ private:
  *        and a step between consecutive vertices above \p gapThreshold (> 0) breaks it.
  */
 std::vector<std::vector<M4Point>> segmentsFromBuckets(const std::vector<M4Bucket> &buckets, qint64 gapThreshold);
+
+/**
+ * \brief As segmentsFromBuckets() above, into \p segments, and returns the number of segments.
+ *
+ * The buffers of \p segments are reused (#97, as M4Decimator::IncrementalStream::extractVisibleSegments() for #8):
+ * segments [0, count) hold the result, the ones after them are left empty with their capacity, for a later call with
+ * more segments (AnalysisChart uses the same buffers for every channel). A call that fits in the buffers of an
+ * earlier one allocates nothing.
+ */
+[[nodiscard]] std::size_t segmentsFromBuckets(const std::vector<M4Bucket> &buckets, qint64 gapThreshold,
+                                              std::vector<std::vector<M4Point>> &segments);
 
 } // namespace internal
 } // namespace QtIndustrialWidgets
