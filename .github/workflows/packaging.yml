@@ -4,7 +4,8 @@
 
 # Packaging checks (#66): the vcpkg port (ports/qtindustrialwidgets) and the Conan recipe (conanfile.py) install the
 # library, and the consumer in test_package/ finds it with find_package(QtIndustrialWidgets), links a LedIndicator,
-# renders it offscreen and checks the colour at the LED's centre. Linux only for now.
+# renders it offscreen and checks the colour at the LED's centre. A third job installs the port from the vcpkg registry
+# (paolosereno/vcpkg-registry), as users do, and checks that the registry has the latest release. Linux only for now.
 #
 # Not run on every pull request: vcpkg builds Qt from source, so the job relies on its binary cache (actions/cache,
 # vcpkg "files" provider). Runs twice a week (so that the cache, evicted after 7 days without use, stays warm), on
@@ -153,6 +154,86 @@ jobs:
       - name: Size of the vcpkg binary cache
         if: always()
         run: du -sh "$VCPKG_BINARY_CACHE"
+
+  # ============================================================
+  # vcpkg registry: qtindustrialwidgets from https://github.com/paolosereno/vcpkg-registry (its current HEAD), Qt and
+  # everything else from vcpkg's builtin registry, as a user's vcpkg-configuration.json does. The consumer must find
+  # the version of the latest GitHub release: the job fails while the registry is behind the latest release (the
+  # registry is updated by hand after each release, see CLAUDE.md).
+  # ============================================================
+  vcpkg-registry-linux:
+    name: vcpkg registry (Ubuntu 24.04, x64-linux-release)
+    runs-on: ubuntu-24.04
+    env:
+      VCPKG_REF: "2026.10.16" # the same vcpkg as the vcpkg job, so Qt comes from its binary cache
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_BINARY_CACHE: ${{ github.workspace }}/vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
+      TRIPLET: x64-linux-release
+      REGISTRY: https://github.com/paolosereno/vcpkg-registry
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool pkg-config \
+            '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libegl1-mesa-dev
+
+      - name: Set up vcpkg ${{ env.VCPKG_REF }}
+        run: |
+          git clone --depth 1 --branch "$VCPKG_REF" https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "$VCPKG_BINARY_CACHE"
+
+      # The vcpkg job saves this cache; here it is only restored
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-
+
+      - name: The consumer with the registry, and the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          consumer="$RUNNER_TEMP/consumer"
+          cp -r test_package "$consumer"
+          builtin=$(git -C "$VCPKG_ROOT" rev-parse HEAD)
+          registry=$(git ls-remote "$REGISTRY" HEAD | cut -f1)
+          python3 - "$consumer/vcpkg-configuration.json" "$builtin" "$REGISTRY" "$registry" <<'PY'
+          import json, sys
+          path, builtin, repository, registry = sys.argv[1:]
+          configuration = {
+              "default-registry": {"kind": "builtin", "baseline": builtin},
+              "registries": [{"kind": "git", "repository": repository, "baseline": registry,
+                              "packages": ["qtindustrialwidgets"]}],
+          }
+          json.dump(configuration, open(path, "w"), indent=2)
+          PY
+          cat "$consumer/vcpkg-configuration.json"
+          release=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          echo "Latest release: $release; registry at $registry"
+          echo "CONSUMER=$consumer" >> "$GITHUB_ENV"
+          echo "EXPECTED_VERSION=${release#v}" >> "$GITHUB_ENV"
+
+      - name: Configure the consumer (installs the port from the registry, and Qt)
+        run: |
+          cmake -S "$CONSUMER" -B build-consumer -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET \
+            -DQIW_EXPECTED_VERSION="$EXPECTED_VERSION"
+
+      - name: Build the consumer
+        run: cmake --build build-consumer
+
+      - name: Run the consumer
+        run: ./build-consumer/consumer
 
   # ============================================================
   # Conan: the recipe in conanfile.py with Qt from ConanCenter (prebuilt binaries for this compiler), and its

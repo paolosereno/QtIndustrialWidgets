@@ -1,7 +1,7 @@
 {
   "name": "qtindustrialwidgets-consumer",
   "version": "0",
-  "description": "Consumer of the qtindustrialwidgets port, built by the vcpkg job of packaging.yml (#66), which passes the port as an overlay (VCPKG_OVERLAY_PORTS)",
+  "description": "Consumer of the qtindustrialwidgets port, built by the vcpkg jobs of packaging.yml (#66): with the port as an overlay (VCPKG_OVERLAY_PORTS), or from the vcpkg registry (a vcpkg-configuration.json written by the job)",
   "dependencies": [
     "qtindustrialwidgets",
     {
