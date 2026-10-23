@@ -186,7 +186,14 @@ set_target_properties(AnalysisChartView PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
-add_library(QtIndustrialWidgets SHARED
+# Shared or static as BUILD_SHARED_LIBS says, shared when it is not set (#107). Decided here rather than with a global
+# option(), which would also make shared the untyped libraries of a project that adds this one with FetchContent.
+if(NOT DEFINED BUILD_SHARED_LIBS OR BUILD_SHARED_LIBS)
+    set(QTINDUSTRIALWIDGETS_LIBRARY_TYPE SHARED)
+else()
+    set(QTINDUSTRIALWIDGETS_LIBRARY_TYPE STATIC)
+endif()
+add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     RadialGauge.cpp
     LinearGauge.cpp
     SevenSegmentDisplay.cpp
@@ -225,10 +232,13 @@ add_library(QtIndustrialWidgets SHARED
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)
 
-target_compile_definitions(QtIndustrialWidgets
-    PRIVATE
-        QTINDUSTRIALWIDGETS_LIBRARY
-)
+# QTINDUSTRIALWIDGETS_EXPORT (qtindustrialwidgets_global.h): exported symbols when building the shared library,
+# nothing for a static one; the static definition is public, so the exported target passes it to consumers
+if(QTINDUSTRIALWIDGETS_LIBRARY_TYPE STREQUAL "SHARED")
+    target_compile_definitions(QtIndustrialWidgets PRIVATE QTINDUSTRIALWIDGETS_LIBRARY)
+else()
+    target_compile_definitions(QtIndustrialWidgets PUBLIC QTINDUSTRIALWIDGETS_STATIC)
+endif()
 
 target_include_directories(QtIndustrialWidgets
     PUBLIC
