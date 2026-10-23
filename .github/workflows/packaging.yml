@@ -77,7 +77,8 @@ jobs:
       # The whole binary cache is one cache entry. A change to the port gives a new key; the restore key brings back
       # the previous entry, so Qt is not rebuilt.
       - name: Restore the vcpkg binary cache
-        uses: actions/cache@v4
+        id: restore-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
           key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}
@@ -85,10 +86,19 @@ jobs:
             vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-
 
       - name: Configure the consumer (installs the port and Qt)
+        id: install
         run: |
           cmake -S test_package -B build-consumer -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET
+
+      # Saved as soon as the packages are installed, also when a later step fails, so Qt is built only once
+      - name: Save the vcpkg binary cache
+        if: always() && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: ${{ steps.restore-cache.outputs.cache-primary-key }}
 
       - name: Build the consumer
         run: cmake --build build-consumer
@@ -121,15 +131,30 @@ jobs:
           conan profile show
 
       - name: Restore the Conan package cache
-        uses: actions/cache@v4
+        id: restore-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.conan2/p
           key: conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-${{ hashFiles('conanfile.py', 'test_package/conanfile.py') }}
           restore-keys: |
             conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-
 
-      # Only this package may be built: Qt and its dependencies must come as prebuilt binaries (no Qt source build).
+      # Qt and its dependencies only, as prebuilt binaries (no Qt source build); saved also when a later step fails.
       # Qt's xorg/system dependency installs the X11 development packages with apt.
+      - name: Install the dependencies
+        id: install
+        run: |
+          conan install . --build=never -s build_type=Release \
+            -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+
+      - name: Save the Conan package cache
+        if: always() && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.conan2/p
+          key: ${{ steps.restore-cache.outputs.cache-primary-key }}
+
+      # Only this package is built
       - name: Create the package and run test_package
         run: |
           conan create . --build="missing:qtindustrialwidgets/*" -s build_type=Release \

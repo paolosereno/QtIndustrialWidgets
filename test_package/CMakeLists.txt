@@ -13,5 +13,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QtIndustrialWidgets CONFIG REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
+# The check runs on Qt's offscreen platform plugin. A static Qt does not load plugins at run time, so the plugin is
+# linked into the executable: with Qt's own CMake packages (vcpkg) through qt_import_plugins(), otherwise from the
+# files given in QIW_CONSUMER_STATIC_PLUGIN (Conan: test_package/conanfile.py), before the Qt libraries it needs.
 add_executable(consumer main.cpp)
-target_link_libraries(consumer PRIVATE QtIndustrialWidgets::QtIndustrialWidgets Qt6::Widgets)
+target_link_libraries(consumer PRIVATE ${QIW_CONSUMER_STATIC_PLUGIN} QtIndustrialWidgets::QtIndustrialWidgets Qt6::Widgets)
+if(TARGET Qt6::QOffscreenIntegrationPlugin AND COMMAND qt_import_plugins)
+    qt_import_plugins(consumer INCLUDE Qt6::QOffscreenIntegrationPlugin)
+endif()
