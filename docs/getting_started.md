@@ -92,19 +92,49 @@ Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists
 
 ### Method 4: vcpkg C++ Package Manager
 
-Using vcpkg with manifest mode or ports:
+The port is in [`ports/qtindustrialwidgets`](https://github.com/paolosereno/QtIndustrialWidgets/tree/main/ports/qtindustrialwidgets) and is used as an overlay port. It is
+**experimental**: see the README. With a triplet (here `x64-linux-release`, a static Linux build):
 
 ```bash
-vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets
+# Manifest mode: "qtindustrialwidgets" in your project's vcpkg.json dependencies
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+      -DVCPKG_TARGET_TRIPLET=x64-linux-release \
+      -DVCPKG_OVERLAY_PORTS=/path/to/QtIndustrialWidgets/ports
+
+# Classic mode
+vcpkg install qtindustrialwidgets:x64-linux-release --overlay-ports=/path/to/QtIndustrialWidgets/ports
 ```
+
+Then `find_package(QtIndustrialWidgets CONFIG REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`.
+
+The library follows the triplet's linkage. With a static triplet both Qt and QtIndustrialWidgets are static libraries
+(see [Shared or static library](#shared-or-static-library) and the note on a static Qt below).
 
 ### Method 5: Conan 2.0 Package Manager
 
-Using Conan:
+The recipe is [`conanfile.py`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/conanfile.py), with Qt from ConanCenter. It builds a **static** library by default
+(`shared=False`), as ConanCenter's `qt` is static by default:
 
 ```bash
-conan install . --output-folder=build --build=missing
+# From a clone of this repository: build the package into the local Conan cache and run its test_package
+conan create . --build=missing -s build_type=Release -o "qtindustrialwidgets/*:shared=False"
 ```
+
+Then require `qtindustrialwidgets/2.5.0` in your project's conanfile, use `find_package(QtIndustrialWidgets CONFIG
+REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`. `shared=True` needs a shared Qt
+(`-o "qt/*:shared=True"`); with a static Qt the recipe refuses it, because a shared library built against a static Qt
+carries its own copy of Qt. On Linux, Qt's `xorg/system` dependency installs the X11 development packages with the
+system package manager (`-c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True`).
+
+### Note: a static Qt
+
+A static Qt does not load plugins at run time: the platform plugins the application uses are linked into the
+executable. With Qt's own CMake packages (vcpkg) this is done with `qt_import_plugins()` (Qt's documentation lists
+the plugins linked by default), for example `qt_import_plugins(app INCLUDE Qt6::QOffscreenIntegrationPlugin)`. ConanCenter's
+`qt` recipe has no CMake target for the plugins; [`test_package/conanfile.py`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/test_package/conanfile.py) shows how
+the consumer in this repository links the offscreen plugin from the `qt` package. Both setups are checked on Linux by
+the packaging workflow ([`packaging.yml`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/.github/workflows/packaging.yml)).
 
 ---
 
