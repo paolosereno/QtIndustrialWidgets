@@ -109,7 +109,7 @@ vcpkg install qtindustrialwidgets:x64-linux-release --overlay-ports=/path/to/QtI
 Then `find_package(QtIndustrialWidgets CONFIG REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`.
 
 The library follows the triplet's linkage. With a static triplet both Qt and QtIndustrialWidgets are static libraries
-(see [Shared or static library](#shared-or-static-library) and the note on a static Qt below).
+(see *Shared or static library* above and the note on a static Qt below).
 
 ### Method 5: Conan 2.0 Package Manager
 
