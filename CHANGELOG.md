@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.4.0` tag archive (the tagged commit still had the `v2.3.0` hash, since the hash can be computed only after the tag). Not verified with `vcpkg install`; the port remains experimental.
 
+### Performance
+- **AnalysisChart reuses its decimation buffers between frames** (#97). Every frame used to re-allocate, for every channel, its buckets, its segments and the polygon it draws, so the heap allocations per frame grew with the number of segments (non-finite samples and time gaps). The buffers are now kept between frames and channels, and the number of allocations per frame no longer depends on the number of segments. Rendered frames are unchanged, byte for byte.
+
 ### Tests
+- **AnalysisChart heap allocations per frame** (#97): `tst_AnalysisChartAllocations` (Linux only, as `tst_StripChartAllocations`) checks that the fewest allocations of a steady-state render are the same with 0, 10 and 100 non-finite samples or time gaps per channel. `tst_AnalysisPyramidAllocations` (all platforms) checks that a second `buckets()` and `segmentsFromBuckets()` into the same buffers allocate nothing.
 - **`docs/images` checked in CI** (#103): the Linux job installs the Ubuntu font that the gallery's style sheet asks for, exports the gallery and fails when an image in `docs/images` differs byte for byte from the export, listing the images and the command that regenerates them. #95 had changed four images without re-exporting them; they were found only at the v2.4.0 release.
 
 ---

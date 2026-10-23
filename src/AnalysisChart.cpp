@@ -673,14 +673,18 @@ void AnalysisChart::paintEvent(QPaintEvent * /*event*/)
                 pen.setCosmetic(true);
                 painter.setPen(pen);
                 painter.setRenderHint(QPainter::Antialiasing, false);
-                const auto buckets = ch.pyramid.buckets(ch.t.data(), ch.v.data(), ch.t.size(), view.start, grid, 0, widthDev);
+                // Buckets and segments in the buffers kept between frames (#97); segments [0, segmentCount) are valid
+                ch.pyramid.buckets(ch.t.data(), ch.v.data(), ch.t.size(), view.start, grid, 0, widthDev, d_ptr->reusableBuckets);
+                const std::size_t segmentCount =
+                    internal::segmentsFromBuckets(d_ptr->reusableBuckets, gap, d_ptr->reusableSegments);
                 // StripChart's drawing (#91), with buckets counted from the view start: kStart 0, origin xStart
                 internal::PlotXMapping xmap;
                 xmap.grid = grid;
                 xmap.kStart = 0;
                 xmap.leftDev = leftDev;
-                QPolygonF poly;
-                for (const auto &seg : internal::segmentsFromBuckets(buckets, gap)) {
+                QPolygonF &poly = d_ptr->reusablePoly;
+                for (std::size_t si = 0; si < segmentCount; ++si) {
+                    const auto &seg = d_ptr->reusableSegments[si];
                     if (seg.empty()) continue;
                     internal::drawDecimatedSegment(painter, xmap, seg, poly, mapY, toLogicalX, view.start);
                     if (d_ptr->recordDiagnostics) {
