@@ -215,7 +215,9 @@ jobs:
               "registries": [{"kind": "git", "repository": repository, "baseline": registry,
                               "packages": ["qtindustrialwidgets"]}],
           }
-          json.dump(configuration, open(path, "w"), indent=2)
+          with open(path, "w") as out:
+              json.dump(configuration, out, indent=2)
+              out.write("\n")
           PY
           cat "$consumer/vcpkg-configuration.json"
           release=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
