@@ -89,6 +89,30 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 - `CHANGELOG.md` follows Keep a Changelog: Added / Changed / Deprecated / Removed / Fixed / Performance / Tests.
 - Do not bump the version or tag a release unless the issue asks for it.
 
+## vcpkg port and registry
+
+The port lives in `ports/qtindustrialwidgets` and is published in the registry
+[paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry) (clone: `../vcpkg-registry`). After a
+release, in this order:
+
+1. Follow-up PR here with the SHA512 of `archive/v<version>.tar.gz` in `portfile.cmake`. Before asking for the merge,
+   run `gh workflow run packaging.yml --ref <branch> -f port=released` on its branch and put the run's link in the PR.
+2. After that merge, publish the port in the registry (manual, by design: no token with write access to another
+   repository). In `../vcpkg-registry`, from an up-to-date `origin/main`:
+   - branch `qtindustrialwidgets-<version>`;
+   - copy `ports/qtindustrialwidgets` from `origin/main` of this repository, byte for byte, and commit;
+   - `vcpkg x-add-version qtindustrialwidgets --x-builtin-ports-root=./ports --x-builtin-registry-versions-dir=./versions`
+     (vcpkg at the `VCPKG_REF` of `packaging.yml`, installed in the scratchpad and deleted afterwards), and commit;
+   - update the version in the registry's README table;
+   - push the branch, open a PR in the registry (`gh pr create --repo paolosereno/vcpkg-registry`), wait for its
+     `verify.yml` to be green. The maintainer merges.
+3. Then `gh workflow run packaging.yml` on `main` here: the `vcpkg registry` job must be green. It fails while the
+   registry is behind the latest GitHub release, so it stays red between the release and step 2.
+
+Registry rules: no push to `main`, no force-push, never rewrite its history (each version in `versions/` points to the
+git tree of its port); never change a published version: a fix to the port is the same version with `port-version`
++ 1, and a new `x-add-version`.
+
 ## Workflow with GitHub issues
 
 1. Read the task: `gh issue view <n>` (include comments: `gh issue view <n> --comments`).

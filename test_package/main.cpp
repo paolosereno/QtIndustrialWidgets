@@ -4,9 +4,11 @@
 
 // Consumer of an installed QtIndustrialWidgets package (#66). It renders a LedIndicator offscreen, lit and unlit, and
 // checks the pixel at the centre of the LED: lit, it has the hue of the LED colour and is brighter than unlit.
+// Built with QIW_EXPECTED_VERSION (CMakeLists.txt), it also checks the version of the headers it was compiled against.
 // Exit code 0 on success, 1 with a message otherwise.
 
 #include <QtIndustrialWidgets/LedIndicator.h>
+#include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
 
 #include <QtGui/QColor>
 #include <QtGui/QImage>
@@ -14,6 +16,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace {
 
@@ -41,6 +44,15 @@ int main(int argc, char **argv)
     // The check runs headless: without a display, use the offscreen platform
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
+
+    std::printf("QtIndustrialWidgets version %s\n", QTINDUSTRIALWIDGETS_VERSION_STR);
+#ifdef QIW_EXPECTED_VERSION
+    if (std::strcmp(QTINDUSTRIALWIDGETS_VERSION_STR, QIW_EXPECTED_VERSION) != 0) {
+        std::printf("FAIL: the package has version %s, expected %s\n", QTINDUSTRIALWIDGETS_VERSION_STR,
+                    QIW_EXPECTED_VERSION);
+        return 1;
+    }
+#endif
 
     const QColor colour(46, 204, 113); // green, hue 145
     const QColor lit = centrePixel(true, colour);

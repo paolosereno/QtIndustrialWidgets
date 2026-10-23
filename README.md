@@ -129,10 +129,12 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 - **Prebuilt packages** from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
   `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` on Debian / Ubuntu, or extract the `.tar.gz` / `.zip` and
   add the extracted directory to `CMAKE_PREFIX_PATH`.
-- **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets` (the port is in
-  [ports/qtindustrialwidgets](ports/qtindustrialwidgets)). The port is verified on Linux (x64-linux-release) by the
-  packaging workflow ([packaging.yml](.github/workflows/packaging.yml)); Windows and macOS are not verified yet (see
-  [#66](https://github.com/paolosereno/QtIndustrialWidgets/issues/66)).
+- **vcpkg**: from the registry [paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry), with
+  `"qtindustrialwidgets"` in your `vcpkg.json` and the registry in your `vcpkg-configuration.json` (see
+  [Getting started](docs/getting_started.md)); or, from a clone of this repository, as an overlay port:
+  `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets`. Both are verified on Linux
+  (x64-linux-release) by the packaging workflow ([packaging.yml](.github/workflows/packaging.yml)); Windows and macOS
+  are not verified yet (see [#66](https://github.com/paolosereno/QtIndustrialWidgets/issues/66)).
 - **Conan 2**: `conan install . --build=missing` (the recipe is [conanfile.py](conanfile.py)). The recipe is
   verified on Linux by the packaging workflow ([packaging.yml](.github/workflows/packaging.yml)): a static library
   with Qt from ConanCenter, checked by the consumer in [test_package/](test_package/).

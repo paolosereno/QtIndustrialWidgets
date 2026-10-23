@@ -51,6 +51,9 @@ CMakeLists.txt.user
 nextWork.md
 newWidget.md
 
+# Claude Code: personal settings (the shared ones are .claude/settings.json)
+.claude/settings.local.json
+
 # CPack packaging artifacts
 _CPack_Packages/
 CPackConfig.cmake

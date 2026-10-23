@@ -21,3 +21,9 @@ target_link_libraries(consumer PRIVATE ${QIW_CONSUMER_STATIC_PLUGIN} QtIndustria
 if(TARGET Qt6::QOffscreenIntegrationPlugin AND COMMAND qt_import_plugins)
     qt_import_plugins(consumer INCLUDE Qt6::QOffscreenIntegrationPlugin)
 endif()
+
+# The version the package must have (the vcpkg registry job of packaging.yml passes the latest release)
+set(QIW_EXPECTED_VERSION "" CACHE STRING "Version of QtIndustrialWidgets the consumer expects (empty: not checked)")
+if(QIW_EXPECTED_VERSION)
+    target_compile_definitions(consumer PRIVATE QIW_EXPECTED_VERSION="${QIW_EXPECTED_VERSION}")
+endif()
