@@ -203,6 +203,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           consumer="$RUNNER_TEMP/consumer"
+          # SABOTAGE (reverted next): a registry whose port has a wrong SHA512 (a local clone with one more version entry)
+          reg="$RUNNER_TEMP/registry"
+          git clone -q "$REGISTRY" "$reg"
+          sed -i 's/SHA512 f247/SHA512 0247/' "$reg/ports/qtindustrialwidgets/portfile.cmake"
+          git -C "$reg" -c user.name=ci -c user.email=ci@example.invalid commit -qam "sabotage: wrong SHA512"
+          (cd "$reg" && "$VCPKG_ROOT/vcpkg" x-add-version qtindustrialwidgets --overwrite-version \
+            --x-builtin-ports-root=ports --x-builtin-registry-versions-dir=versions)
+          git -C "$reg" -c user.name=ci -c user.email=ci@example.invalid commit -qam "sabotage: versions"
+          REGISTRY="$reg"
           cp -r test_package "$consumer"
           builtin=$(git -C "$VCPKG_ROOT" rev-parse HEAD)
           registry=$(git ls-remote "$REGISTRY" HEAD | awk '$2 == "HEAD" { print $1 }')
