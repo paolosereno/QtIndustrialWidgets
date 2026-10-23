@@ -28,7 +28,7 @@ namespace {
 
 constexpr int kSamples = 100000;
 constexpr qint64 kDtNs = 10000;        // 10 us between samples
-constexpr qint64 kJumpNs = 5000000;    // a time gap: 5 ms without samples
+constexpr qint64 kJumpNs = 5000000;    // a time gap: 5 ms of samples left out
 constexpr qint64 kGapThresholdNs = 1000000; // 1 ms: a jump of 5 ms breaks the trace, 10 us does not
 constexpr int kWarmupRenders = 5;
 constexpr int kMeasuredRenders = 30;
@@ -36,21 +36,26 @@ const QColor kColors[] = {QColor(0, 229, 255), QColor(255, 170, 0), QColor(0, 23
 
 enum class Break { NonFinite, TimeGap };
 
-// A sine of kSamples samples broken \p breaks times, evenly spaced: by a non-finite sample or by a time gap
+// A sine of samples every kDtNs over kSamples * kDtNs, broken \p breaks times, evenly spaced: by a non-finite sample, or
+// by a time gap (the samples of kJumpNs left out). The first and the last sample, and so the axis and its labels,
+// are the same whatever the breaks.
 void signal(Break kind, int breaks, int channel, std::vector<nanoseconds> &t, std::vector<double> &v)
 {
-    t.resize(kSamples);
-    v.resize(kSamples);
-    qint64 now = 0;
+    t.clear();
+    v.clear();
     int next = 1;
+    qint64 skipUntil = -1;
     for (int i = 0; i < kSamples; ++i) {
+        const qint64 now = static_cast<qint64>(i) * kDtNs;
         const bool here = next <= breaks && i == static_cast<int>(static_cast<qint64>(next) * kSamples / (breaks + 1));
-        if (here) ++next;
-        if (here && kind == Break::TimeGap) now += kJumpNs;
-        t[static_cast<size_t>(i)] = nanoseconds(now);
-        v[static_cast<size_t>(i)] = here && kind == Break::NonFinite ? std::numeric_limits<double>::quiet_NaN()
-                                                                    : 50.0 + 40.0 * std::sin(0.002 * i + channel);
-        now += kDtNs;
+        if (here) {
+            ++next;
+            if (kind == Break::TimeGap) skipUntil = now + kJumpNs;
+        }
+        if (now < skipUntil) continue;
+        t.push_back(nanoseconds(now));
+        v.push_back(here && kind == Break::NonFinite ? std::numeric_limits<double>::quiet_NaN()
+                                                     : 50.0 + 40.0 * std::sin(0.002 * i + channel));
     }
 }
 
@@ -72,7 +77,7 @@ long long fewestAllocationsPerRender(Break kind, int channels, int breaks)
         std::vector<nanoseconds> t;
         std::vector<double> v;
         signal(kind, breaks, c, t, v);
-        chart.setChannelData(id, t.data(), v.data(), kSamples);
+        chart.setChannelData(id, t.data(), v.data(), static_cast<qsizetype>(t.size()));
     }
     chart.resize(400, 300);
     chart.resetView();
@@ -123,7 +128,7 @@ void tst_AnalysisChartAllocations::counterSeesLibraryAllocations()
     std::vector<double> v;
     signal(Break::NonFinite, 0, 0, t, v);
     AllocationScope scope;
-    QVERIFY(chart.setChannelData(id, t.data(), v.data(), kSamples));
+    QVERIFY(chart.setChannelData(id, t.data(), v.data(), static_cast<qsizetype>(t.size())));
     QVERIFY2(scope.count() > 0, "the allocation counter does not see the allocations of the QtIndustrialWidgets library");
 }
 
