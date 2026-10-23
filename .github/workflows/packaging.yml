@@ -8,7 +8,11 @@
 #
 # Not run on every pull request: vcpkg builds Qt from source, so the job relies on its binary cache (actions/cache,
 # vcpkg "files" provider). Runs twice a week (so that the cache, evicted after 7 days without use, stays warm), on
-# demand, on pull requests and pushes to main that touch the packaging files, and on release tags.
+# demand, and on pull requests and pushes to main that touch the packaging files.
+#
+# Not run on release tags: the port's SHA512 of a release archive can be set only after the tag exists, so the port of
+# the tagged commit still has the previous release's hash. The released port is checked on demand with port=released
+# on the follow-up pull request that sets the hash (see the vcpkg job).
 
 name: Packaging
 
@@ -16,6 +20,12 @@ on:
   schedule:
     - cron: "17 4 * * 1,4" # Monday and Thursday, 04:17 UTC
   workflow_dispatch:
+    inputs:
+      port:
+        description: "vcpkg port: checkout (the checked-out sources) or released (release archive, SHA512)"
+        type: choice
+        options: [ checkout, released ]
+        default: checkout
   pull_request:
     branches: [ main ]
     paths:
@@ -24,7 +34,6 @@ on:
       - "test_package/**"
       - ".github/workflows/packaging.yml"
   push:
-    tags: [ "v*" ]
     branches: [ main ]
     paths:
       - "ports/**"
@@ -45,9 +54,11 @@ env:
 jobs:
   # ============================================================
   # vcpkg: the port from ports/ as an overlay.
-  # - On a release tag, the port as it is: it downloads the archive of the tag and checks its SHA512.
-  # - Otherwise, a copy of the port that builds the checked-out sources instead of downloading the tag (the port in
-  #   the repository is not changed), so that the port's build and install steps are checked with the current code.
+  # - With port=released (workflow_dispatch only), the port as it is: it downloads the archive of the release
+  #   (REF v${VERSION}) and checks its SHA512.
+  # - Otherwise (port=checkout, and every automatic run), a copy of the port that builds the checked-out sources
+  #   instead of downloading the release (the port in the repository is not changed), so that the port's build and
+  #   install steps are checked with the current code.
   # ============================================================
   vcpkg-linux:
     name: vcpkg (Ubuntu 24.04, x64-linux-release)
@@ -77,11 +88,14 @@ jobs:
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
           mkdir -p "$VCPKG_BINARY_CACHE"
 
-      - name: Choose the port
+      - name: Choose the port (${{ inputs.port || 'checkout' }})
+        env:
+          PORT_MODE: ${{ inputs.port || 'checkout' }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          if [ "$PORT_MODE" = "released" ]; then
             echo "OVERLAY_PORTS=$GITHUB_WORKSPACE/ports" >> "$GITHUB_ENV"
-            echo "The port as it is: download of the archive of ${GITHUB_REF_NAME}, SHA512 checked"
+            version=$(python3 -c 'import json; print(json.load(open("ports/qtindustrialwidgets/vcpkg.json"))["version"])')
+            echo "The port as it is: download of the archive of v$version, SHA512 checked"
           else
             overlay="$RUNNER_TEMP/overlay-ports"
             mkdir -p "$overlay"
