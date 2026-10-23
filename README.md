@@ -132,7 +132,9 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 - **vcpkg**: `vcpkg install --overlay-ports=./ports/qtindustrialwidgets qtindustrialwidgets` — **experimental, not
   yet verified**: the port has not been tested with `vcpkg install`, and its archive hash is set only after a release
   is tagged (see [#66](https://github.com/paolosereno/QtIndustrialWidgets/issues/66)).
-- **Conan 2**: `conan install . --build=missing` (the recipe is [conanfile.py](conanfile.py); it is not built in CI).
+- **Conan 2**: `conan install . --build=missing` (the recipe is [conanfile.py](conanfile.py)). The recipe is
+  verified on Linux by the packaging workflow ([packaging.yml](.github/workflows/packaging.yml)): a static library
+  with Qt from ConanCenter, checked by the consumer in [test_package/](test_package/).
 
 The interactive gallery is built by default (`BUILD_EXAMPLES`): `./build/bin/QtIndustrialWidgetsGallery`.
 

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+# Consumer of an installed QtIndustrialWidgets package (#66): built by the vcpkg job of packaging.yml and by the Conan
+# test_package (conanfile.py next to this file). It finds the package, links a widget and checks it draws.
+cmake_minimum_required(VERSION 3.16)
+project(QtIndustrialWidgetsConsumer LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(QtIndustrialWidgets CONFIG REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+
+# The check runs on Qt's offscreen platform plugin. A static Qt does not load plugins at run time, so the plugin is
+# linked into the executable: with Qt's own CMake packages (vcpkg) through qt_import_plugins(), otherwise from the
+# files given in QIW_CONSUMER_STATIC_PLUGIN (Conan: test_package/conanfile.py), before the Qt libraries it needs.
+add_executable(consumer main.cpp)
+target_link_libraries(consumer PRIVATE ${QIW_CONSUMER_STATIC_PLUGIN} QtIndustrialWidgets::QtIndustrialWidgets Qt6::Widgets)
+if(TARGET Qt6::QOffscreenIntegrationPlugin AND COMMAND qt_import_plugins)
+    qt_import_plugins(consumer INCLUDE Qt6::QOffscreenIntegrationPlugin)
+endif()
