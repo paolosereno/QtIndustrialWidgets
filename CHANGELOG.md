@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **vcpkg port no longer marked experimental** (#66): the README and `docs/getting_started.md` say it is verified on Linux (`x64-linux-release`) by the packaging workflow, after the run with `port=released` on the `v2.5.0` port (release archive and SHA512). Windows and macOS are not verified yet.
+
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.5.0` tag archive (the tagged commit still had the `v2.4.0` hash, since the hash can be computed only after the tag).
 

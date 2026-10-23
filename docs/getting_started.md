@@ -93,7 +93,8 @@ Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists
 ### Method 4: vcpkg C++ Package Manager
 
 The port is in [`ports/qtindustrialwidgets`](https://github.com/paolosereno/QtIndustrialWidgets/tree/main/ports/qtindustrialwidgets) and is used as an overlay port. It is
-**experimental**: see the README. With a triplet (here `x64-linux-release`, a static Linux build):
+verified on Linux (x64-linux-release) by the packaging workflow; Windows and macOS are not verified yet. With a
+triplet (here `x64-linux-release`, a static Linux build):
 
 ```bash
 # Manifest mode: "qtindustrialwidgets" in your project's vcpkg.json dependencies
