@@ -379,6 +379,22 @@ if(UNIX AND NOT APPLE)
     target_include_directories(tst_StripChartAllocations PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src)
     set_target_properties(tst_StripChartAllocations PROPERTIES AUTOMOC ON)
     add_test(NAME tst_StripChartAllocations COMMAND tst_StripChartAllocations)
+
+    # #97: the same for AnalysisChart (allocations inside the shared library: Linux only, see above)
+    add_executable(tst_AnalysisChartAllocations
+        tst_AnalysisChartAllocations.cpp
+    )
+    target_link_libraries(tst_AnalysisChartAllocations
+        PRIVATE
+            QtIndustrialWidgets::QtIndustrialWidgets
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+            Qt6::Test
+    )
+    target_include_directories(tst_AnalysisChartAllocations PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src)
+    set_target_properties(tst_AnalysisChartAllocations PROPERTIES AUTOMOC ON)
+    add_test(NAME tst_AnalysisChartAllocations COMMAND tst_AnalysisChartAllocations)
 endif()
 
 # benchmarks/merge_runs.py merges the runs of one benchmark session; its tests use example runs
