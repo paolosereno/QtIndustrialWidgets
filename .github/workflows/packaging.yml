@@ -27,6 +27,11 @@ on:
         type: choice
         options: [ checkout, released ]
         default: checkout
+      conan-cache:
+        description: "Conan package cache: restore, or skip (start from an empty cache, as after an eviction)"
+        type: choice
+        options: [ restore, skip ]
+        default: restore
   pull_request:
     branches: [ main ]
     paths:
@@ -260,6 +265,7 @@ jobs:
 
       - name: Restore the Conan package cache
         id: restore-cache
+        if: inputs.conan-cache != 'skip'
         uses: actions/cache/restore@v4
         with:
           path: ~/.conan2/p
@@ -276,7 +282,7 @@ jobs:
             -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
       - name: Save the Conan package cache
-        if: always() && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
+        if: always() && inputs.conan-cache != 'skip' && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.conan2/p
