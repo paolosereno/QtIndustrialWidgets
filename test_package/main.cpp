@@ -62,7 +62,7 @@ int main(int argc, char **argv)
     std::printf("LED centre: lit rgb(%d, %d, %d) hue %d, unlit rgb(%d, %d, %d); LED colour hue %d\n", lit.red(), lit.green(),
                 lit.blue(), lit.hsvHue(), unlit.red(), unlit.green(), unlit.blue(), colour.hsvHue());
 
-    if (lit.hsvSaturation() < 64 || hueDistance(lit.hsvHue(), QColor(231, 76, 60).hsvHue()) > 20 /* SABOTAGE (reverted next): red expected */) {
+    if (lit.hsvSaturation() < 64 || hueDistance(lit.hsvHue(), colour.hsvHue()) > 20) {
         std::printf("FAIL: the lit LED's centre does not have the hue of the LED colour\n");
         return 1;
     }
