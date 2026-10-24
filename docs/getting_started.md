@@ -175,6 +175,8 @@ the plugins linked by default), for example `qt_import_plugins(app INCLUDE Qt6::
 the consumer in this repository links the offscreen plugin from the `qt` package. Both setups are checked on Linux by
 the packaging workflow ([`packaging.yml`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/.github/workflows/packaging.yml)).
 
+Linking Qt statically has additional obligations under the LGPL (for example, allowing users to relink the application with a modified Qt); check [Qt's licensing terms](https://www.qt.io/licensing/) for how you distribute your application.
+
 ---
 
 ## 💡 Quick Code Example

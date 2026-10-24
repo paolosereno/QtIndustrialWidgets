@@ -138,7 +138,9 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
 - **Conan 2**: `conan install . --lockfile=conan.lock --build=missing` (the recipe is [conanfile.py](conanfile.py);
   [conan.lock](conan.lock) pins Qt and its dependencies to ConanCenter's prebuilt binaries). The recipe is verified on
   Linux by the packaging workflow ([packaging.yml](.github/workflows/packaging.yml)): a static library with Qt from
-  ConanCenter, checked by the consumer in [test_package/](test_package/).
+  ConanCenter, checked by the consumer in [test_package/](test_package/). Linking Qt statically has additional
+  obligations under the LGPL (for example, allowing users to relink the application with a modified Qt); check
+  [Qt's licensing terms](https://www.qt.io/licensing/) for how you distribute your application.
 
 The interactive gallery is built by default (`BUILD_EXAMPLES`): `./build/bin/QtIndustrialWidgetsGallery`.
 
