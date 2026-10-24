@@ -158,5 +158,5 @@ listed in `packaging.yml`). Run the Conan job with `-f conan-cache=skip` to chec
 - `src/internal/M4Decimator.*`: M4 min/max decimation (batch + `IncrementalStream`).
 - `src/internal/StripChartGeometry.*`: single source of truth for time window / bucket geometry
   (`computeTimeWindow`, `computeIndexBuckets`). Do not recompute windows elsewhere.
-- `tests/StripChartTestAccess.h`, `tests/StripChartTestUtils.h`: test hook (`FrameDiagnostics`) and pixel helpers.
+- `src/internal/StripChartTestAccess.h`, `tests/StripChartTestUtils.h`: test hook (`FrameDiagnostics`) and pixel helpers.
 - `benchmarks/bench_StripChart.cpp`, `docs/benchmarks.md`: performance measurements.

@@ -224,7 +224,7 @@ void tst_StripChart::rendersTraceAtExpectedPositions()
 
     // 2. Render to raster image and check hook
     QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
     QCOMPARE(frame.channels.size(), 1UL);
     const auto &chDiag = frame.channels[0];
@@ -297,7 +297,7 @@ void tst_StripChart::extremeResizeNoCrash()
     // 1. Tiny size (2x2): plotRect <= 10 px, must draw bezel safely without painter crash or divide-by-zero
     QImage imgSmall = renderToImage(*chart);
     QCOMPARE(imgSmall.size(), (QSizeF(2, 2) * chart->devicePixelRatioF()).toSize());
-    const auto &frameSmall = StripChartTestAccess::lastFrame(*chart);
+    const auto &frameSmall = internal::StripChartTestAccess::lastFrame(*chart);
     QVERIFY(frameSmall.plotRect.width() <= 10.0 || frameSmall.plotRect.height() <= 10.0);
     if (!frameSmall.channels.empty()) {
         QVERIFY(frameSmall.channels[0].segments.empty());
@@ -312,7 +312,7 @@ void tst_StripChart::extremeResizeNoCrash()
 
     QImage imgLarge = renderToImage(*chart);
     QCOMPARE(imgLarge.size(), (QSizeF(3840, 2160) * chart->devicePixelRatioF()).toSize());
-    const auto &frameLarge = StripChartTestAccess::lastFrame(*chart);
+    const auto &frameLarge = internal::StripChartTestAccess::lastFrame(*chart);
     QVERIFY(frameLarge.plotRect.width() > 3700.0);
     QVERIFY(frameLarge.plotRect.height() > 2000.0);
     QCOMPARE(frameLarge.channels.size(), 1UL);
@@ -374,7 +374,7 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
         }
 
         QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
         // WarningGuard sees no painter warning
         QVERIFY2(!guard.hasWarnings(), qPrintable(QString("Unexpected warnings: %1").arg(guard.warnings().join("; "))));
@@ -443,7 +443,7 @@ void tst_StripChart::nonFiniteValuesBreakTheTrace()
         }
 
         QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
         QVERIFY2(!guard.hasWarnings(), qPrintable(QString("Unexpected warnings: %1").arg(guard.warnings().join("; "))));
         QCOMPARE(frame.channels.size(), 1UL);
@@ -512,7 +512,7 @@ void tst_StripChart::stepInterpolationDrawsHorizontalThenVertical()
     QCOMPARE(chart->interpolation(), StripChart::Interpolation::Step);
 
     QImage imgStep = renderToImage(*chart);
-    const auto &frameStep = StripChartTestAccess::lastFrame(*chart);
+    const auto &frameStep = internal::StripChartTestAccess::lastFrame(*chart);
 
     QCOMPARE(frameStep.channels.size(), 1UL);
     const auto &polyStep = frameStep.channels[0].segments[0];
@@ -547,7 +547,7 @@ void tst_StripChart::stepInterpolationDrawsHorizontalThenVertical()
     QCOMPARE(chart->interpolation(), StripChart::Interpolation::Linear);
 
     QImage imgLinear = renderToImage(*chart);
-    const auto &frameLinear = StripChartTestAccess::lastFrame(*chart);
+    const auto &frameLinear = internal::StripChartTestAccess::lastFrame(*chart);
     const auto &polyLinear = frameLinear.channels[0].segments[0];
     QCOMPARE(polyLinear.size(), 4);
     // Segment 0 -> 1 is diagonal
@@ -688,7 +688,7 @@ void tst_StripChart::timeTickLabels()
         chart->addSample(ch, std::chrono::seconds(10), 42.0);
 
         renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
         QVERIFY(frame.xTicks.size() >= 2);
         for (const auto &tick : frame.xTicks) {
@@ -708,7 +708,7 @@ void tst_StripChart::timeTickLabels()
         chart->addSample(ch, std::chrono::seconds(10), 42.0);
 
         renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
         QVERIFY(frame.xTicks.size() >= 2);
         for (size_t i = 0; i < frame.xTicks.size(); ++i) {
@@ -818,7 +818,7 @@ void tst_StripChart::gapsSplitTheTrace()
     {
         auto chart = buildRawChart(std::chrono::nanoseconds(0));
         QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
         QCOMPARE(frame.channels.size(), 1UL);
         const auto &chDiag = frame.channels[0];
@@ -844,7 +844,7 @@ void tst_StripChart::gapsSplitTheTrace()
     {
         auto chart = buildRawChart(std::chrono::milliseconds(100));
         renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
         QCOMPARE(frame.channels[0].segments.size(), 1UL);
         QCOMPARE(frame.channels[0].segments[0].size(), 7);
     }
@@ -853,7 +853,7 @@ void tst_StripChart::gapsSplitTheTrace()
     {
         auto chart = buildRawChart(std::chrono::milliseconds(10));
         renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
         QCOMPARE(frame.channels[0].segments.size(), 2UL);
     }
 
@@ -879,7 +879,7 @@ void tst_StripChart::gapsSplitTheTrace()
         chart->addUniformSamples(ch, std::chrono::milliseconds(70), std::chrono::microseconds(10), vals.data(), 2000);
 
         QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
         QCOMPARE(frame.channels.size(), 1UL);
         const auto &chDiag = frame.channels[0];
@@ -913,7 +913,7 @@ void tst_StripChart::windowIsQuantisedAndScrollIsShiftInvariant()
         chart->addChannel(QStringLiteral("Ch0"), Qt::cyan);
 
         renderToImage(*chart);
-        const auto &f0 = StripChartTestAccess::lastFrame(*chart);
+        const auto &f0 = internal::StripChartTestAccess::lastFrame(*chart);
         qint64 dtPx = f0.dtPx;
         QVERIFY(dtPx > 0);
 
@@ -933,7 +933,7 @@ void tst_StripChart::windowIsQuantisedAndScrollIsShiftInvariant()
 
             testChart->addSample(testCh, std::chrono::nanoseconds(tLatest), 42.0);
             renderToImage(*testChart);
-            const auto &frame = StripChartTestAccess::lastFrame(*testChart);
+            const auto &frame = internal::StripChartTestAccess::lastFrame(*testChart);
 
             // tEnd is the boundary of the bucket after the window (non-uniform grid, #12)
             QCOMPARE(frame.tEnd, internal::BucketGrid(frame.gridNum, frame.gridDen).boundary(frame.kStart + frame.numBuckets));
@@ -1434,7 +1434,7 @@ void tst_StripChart::autoDecimationThreshold()
 
     StripChart dummy;
     dummy.resize(1054, 400);
-    int wDev = std::max(1, static_cast<int>(std::round(StripChartTestAccess::plotArea(dummy).width() * dummy.devicePixelRatioF())));
+    int wDev = std::max(1, static_cast<int>(std::round(internal::StripChartTestAccess::plotArea(dummy).width() * dummy.devicePixelRatioF())));
 
     int thickTimeOff = measureLineThickness(StripChart::XAxisMode::Time, wDev);
     int thickTimeOn = measureLineThickness(StripChart::XAxisMode::Time, wDev + 1);
@@ -1781,7 +1781,7 @@ void appendDropoutSamples(StripChart &chart, int ch, qint64 first, qint64 count,
 // Decimation bucket that holds the sample with absolute index `index` in the last frame.
 qint64 bucketOfSample(const StripChart &chart, qint64 index, qint64 sampleDtNs)
 {
-    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const auto &f = internal::StripChartTestAccess::lastFrame(chart);
     const internal::BucketGrid grid(f.gridNum, f.gridDen);
     return grid.bucketOf(chart.xAxisMode() == StripChart::XAxisMode::Time ? index * sampleDtNs : index);
 }
@@ -1789,7 +1789,7 @@ qint64 bucketOfSample(const StripChart &chart, qint64 index, qint64 sampleDtNs)
 // Logical x range [x0, x1) of decimation bucket k in the last frame: its device column (#12).
 std::pair<double, double> bucketXRange(const StripChart &chart, qint64 k, qint64 /*firstRetained*/ = 0)
 {
-    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const auto &f = internal::StripChartTestAccess::lastFrame(chart);
     const double left = frameXMapping(chart).columnLeftDev(k);
     return {left / f.dpr, (left + 1.0) / f.dpr};
 }
@@ -1841,7 +1841,7 @@ int verticesInRange(const ChannelFrameDiagnostics &d, double x0, double x1)
 
 bool columnHasColour(const QImage &img, const StripChart &chart, int xDev, const QColor &colour)
 {
-    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const auto &f = internal::StripChartTestAccess::lastFrame(chart);
     const double dpr = chart.devicePixelRatioF();
     const int top = static_cast<int>(std::floor(f.plotRect.top() * dpr));
     const int bottom = static_cast<int>(std::ceil(f.plotRect.bottom() * dpr));
@@ -1900,7 +1900,7 @@ void tst_StripChart::decimatedSingleDropout()
     appendDropoutSamples(*chart, ch, 0, sampleCount, sampleDtNs, sampleCount, {nanIndex});
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     const double dpr = chart->devicePixelRatioF();
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
     QCOMPARE(frame.channels.size(), 1UL);
@@ -1955,7 +1955,7 @@ void tst_StripChart::decimatedDropoutAtWindowEdges()
     appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, {nanIndex});
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     const double dpr = chart->devicePixelRatioF();
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
     const auto &chDiag = frame.channels[0];
@@ -2011,7 +2011,7 @@ void tst_StripChart::decimatedConsecutiveDropouts()
     appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, nans);
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
     const auto &chDiag = frame.channels[0];
     QCOMPARE(chDiag.path, RenderPath::Decimated);
@@ -2071,7 +2071,7 @@ void tst_StripChart::decimatedDropoutStreaming()
     appendDropoutSamples(*chart, ch, n0, 10, sampleDtNs, capacity, {nanIndex});
     {
         const QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
         const auto &chDiag = frame.channels[0];
         QCOMPARE(chDiag.path, RenderPath::Decimated);
         const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
@@ -2090,7 +2090,7 @@ void tst_StripChart::decimatedDropoutStreaming()
     appendDropoutSamples(*chart, ch, n0 + 10, 1500, sampleDtNs, capacity, {});
     {
         const QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
         const auto &chDiag = frame.channels[0];
         const qint64 k = bucketOfSample(*chart, nanIndex, sampleDtNs);
         QVERIFY(k < bucketOfSample(*chart, n0 + 1509, sampleDtNs)); // the NaN bucket is closed
@@ -2143,7 +2143,7 @@ void tst_StripChart::decimatedDropoutEviction()
     added += firstEviction;
     {
         const QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
         const auto &chDiag = frame.channels[0];
         QCOMPARE(chDiag.path, RenderPath::Decimated);
         const qint64 firstRetained = added - capacity;
@@ -2172,7 +2172,7 @@ void tst_StripChart::decimatedDropoutEviction()
     added += secondEviction;
     {
         const QImage img = renderToImage(*chart);
-        const auto &frame = StripChartTestAccess::lastFrame(*chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
         const auto &chDiag = frame.channels[0];
         const qint64 firstRetained = added - capacity;
         QVERIFY(firstRetained > nanIndex);
@@ -2208,7 +2208,7 @@ void tst_StripChart::autoscaleUsesFiniteValuesOfBlankedBucket()
         chart->addDataPoint(ch, v);
     }
     renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
     QCOMPARE(bucketOfSample(*chart, nanIndex, 0), bucketOfSample(*chart, nanIndex + 1, 0));
 
@@ -2252,7 +2252,7 @@ void tst_StripChart::glowDotNeverDrawnInBlankColumn()
     appendDropoutSamples(*chart, ch, 0, n, sampleDtNs, n, {nanIndex});
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
     const auto &chDiag = frame.channels[0];
     QCOMPARE(chDiag.path, RenderPath::Decimated);
@@ -2459,7 +2459,7 @@ void tst_StripChart::scrollIsShiftInvariantAtAnyDpr()
     const int ch = chart->addChannel(QStringLiteral("Noise"), chColor, 1.0);
 
     renderToImage(*chart);
-    const FrameDiagnostics f0 = StripChartTestAccess::lastFrame(*chart);
+    const FrameDiagnostics f0 = internal::StripChartTestAccess::lastFrame(*chart);
     const internal::BucketGrid grid(f0.gridNum, f0.gridDen);
     const double dpr = chart->devicePixelRatioF();
 
@@ -2481,7 +2481,7 @@ void tst_StripChart::scrollIsShiftInvariantAtAnyDpr()
 
     appendUntil(inBucket(k0, 0.2));
     const QImage imgA = renderToImage(*chart);
-    const FrameDiagnostics fA = StripChartTestAccess::lastFrame(*chart);
+    const FrameDiagnostics fA = internal::StripChartTestAccess::lastFrame(*chart);
     const int left = static_cast<int>(std::floor(fA.plotLeftDev + 1e-9));
     const int right = left + fA.widthDev;
     const int margin = static_cast<int>(std::ceil(4.0 * dpr)) + 1; // glow dot and latest sample
@@ -2490,7 +2490,7 @@ void tst_StripChart::scrollIsShiftInvariantAtAnyDpr()
 
     appendUntil(inBucket(k0, 0.6));
     const QImage imgB = renderToImage(*chart);
-    const FrameDiagnostics fB = StripChartTestAccess::lastFrame(*chart);
+    const FrameDiagnostics fB = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(fB.kStart, fA.kStart); // same window
     for (int x = left; x < right - margin; ++x) {
         for (int y = top; y <= bottom; ++y) {
@@ -2502,7 +2502,7 @@ void tst_StripChart::scrollIsShiftInvariantAtAnyDpr()
 
     appendUntil(inBucket(k0 + 1, 0.2));
     const QImage imgC = renderToImage(*chart);
-    const FrameDiagnostics fC = StripChartTestAccess::lastFrame(*chart);
+    const FrameDiagnostics fC = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(fC.kStart, fA.kStart + 1); // exactly one bucket
     for (int x = left + 2; x < right - margin; ++x) {
         for (int y = top; y <= bottom; ++y) {
@@ -2551,7 +2551,7 @@ void tst_StripChart::decimatedDropoutVisibleAtAnyPosition()
     appendDropoutSamples(*chart, ch, 0, sampleCount, sampleDtNs, sampleCount, {nanIndex});
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QVERIFY2(!guard.hasWarnings(), qPrintable(guard.warnings().join(QStringLiteral("; "))));
     const auto &chDiag = frame.channels[0];
     QCOMPARE(chDiag.path, RenderPath::Decimated);
@@ -2605,7 +2605,7 @@ void tst_StripChart::spikeLitInExactlyOneColumn()
     }
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
     const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
     const qint64 k = grid.bucketOf(mode == StripChart::XAxisMode::Time ? spikeIndex * sampleDtNs : spikeIndex);
@@ -2665,7 +2665,7 @@ void tst_StripChart::rawDecimatedContinuity()
     // Points (x, y) of the trace, keyed by y
     auto points = [](const StripChart &chart) {
         std::vector<QPointF> pts;
-        for (const auto &seg : StripChartTestAccess::lastFrame(chart).channels[0].segments) {
+        for (const auto &seg : internal::StripChartTestAccess::lastFrame(chart).channels[0].segments) {
             pts.insert(pts.end(), seg.begin(), seg.end());
         }
         return pts;
@@ -2702,8 +2702,8 @@ void tst_StripChart::rawDecimatedContinuity()
         const int n = widthDev + 50;
         auto rawChart = build(StripChart::DecimationMode::Off, n, n);
         auto decChart = build(StripChart::DecimationMode::Always, n, n);
-        QCOMPARE(StripChartTestAccess::lastFrame(*rawChart).channels[0].path, RenderPath::Raw);
-        QCOMPARE(StripChartTestAccess::lastFrame(*decChart).channels[0].path, RenderPath::Decimated);
+        QCOMPARE(internal::StripChartTestAccess::lastFrame(*rawChart).channels[0].path, RenderPath::Raw);
+        QCOMPARE(internal::StripChartTestAccess::lastFrame(*decChart).channels[0].path, RenderPath::Decimated);
         compare(*rawChart, *decChart);
     }
     // 2. Auto just below and just above W_dev visible samples (SampleIndex: the window does not move)
@@ -2711,8 +2711,8 @@ void tst_StripChart::rawDecimatedContinuity()
         const int capacity = 4 * widthDev;
         auto below = build(StripChart::DecimationMode::Auto, widthDev, capacity);
         auto above = build(StripChart::DecimationMode::Auto, widthDev + 1, capacity);
-        QCOMPARE(StripChartTestAccess::lastFrame(*below).channels[0].path, RenderPath::Raw);
-        QCOMPARE(StripChartTestAccess::lastFrame(*above).channels[0].path, RenderPath::Decimated);
+        QCOMPARE(internal::StripChartTestAccess::lastFrame(*below).channels[0].path, RenderPath::Raw);
+        QCOMPARE(internal::StripChartTestAccess::lastFrame(*above).channels[0].path, RenderPath::Decimated);
         compare(*below, *above);
     }
 }
@@ -2762,7 +2762,7 @@ void tst_StripChart::segmentEndColumnsAreDrawn()
     }
 
     const QImage img = renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
     QCOMPARE(internal::BucketGrid(frame.gridNum, frame.gridDen), grid);
     QCOMPARE(frame.kStart, qint64(0));
@@ -2790,7 +2790,7 @@ void tst_StripChart::sampleIndexCapacityBelowWidth()
         chart->addDataPoint(ch, 10.0 + 80.0 * (i % capacity) / capacity + 0.01 * (i / capacity));
     }
     renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     const double dpr = chart->devicePixelRatioF();
     QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
     const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
@@ -2840,7 +2840,7 @@ void tst_StripChart::timeSpanShorterThanWidth()
         chart->addSample(ch, std::chrono::nanoseconds(tFirst + i), 10.0 + 80.0 * i / n);
     }
     renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(frame.channels[0].path, RenderPath::Decimated);
     const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
     QCOMPARE(grid, internal::BucketGrid(widthDev, widthDev)); // 1 ns buckets
@@ -2920,24 +2920,24 @@ void tst_StripChart::streamingDoesNotRebuildDecimationStream()
     append(capacity); // full buffer
 
     renderToImage(*chart);
-    QCOMPARE(StripChartTestAccess::lastFrame(*chart).channels[0].path, RenderPath::Decimated);
-    const quint64 afterFirstPaint = StripChartTestAccess::streamRebuildCount(*chart, ch);
+    QCOMPARE(internal::StripChartTestAccess::lastFrame(*chart).channels[0].path, RenderPath::Decimated);
+    const quint64 afterFirstPaint = internal::StripChartTestAccess::streamRebuildCount(*chart, ch);
     QCOMPARE(afterFirstPaint, quint64(1)); // the first decimated paint builds the stream
 
     std::set<qint64> windowStarts;
     for (int frame = 0; frame < 60; ++frame) {
         append(chunk);
         renderToImage(*chart);
-        windowStarts.insert(StripChartTestAccess::lastFrame(*chart).kStart);
-        QVERIFY2(StripChartTestAccess::streamRebuildCount(*chart, ch) == afterFirstPaint,
+        windowStarts.insert(internal::StripChartTestAccess::lastFrame(*chart).kStart);
+        QVERIFY2(internal::StripChartTestAccess::streamRebuildCount(*chart, ch) == afterFirstPaint,
                  qPrintable(QString("decimation stream rebuilt while streaming (frame %1, %2 rebuilds)")
-                                .arg(frame).arg(StripChartTestAccess::streamRebuildCount(*chart, ch))));
+                                .arg(frame).arg(internal::StripChartTestAccess::streamRebuildCount(*chart, ch))));
     }
     QVERIFY(windowStarts.size() > 10); // the window really scrolled
 
     // The incremental stream still matches the data: the last frame's buckets equal a batch
     // decimation of the retained samples
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     const internal::BucketGrid grid(frame.gridNum, frame.gridDen);
     std::vector<qint64> keys;
     std::vector<double> vals;
@@ -2970,7 +2970,7 @@ void tst_StripChart::yAxisLabelsHaveNoNegativeZero()
     auto chart = makeChart(800, 400, -0.1, 0.1);
     chart->setHorizontalDivisions(divisions);
     renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
     QCOMPARE(static_cast<int>(frame.yTicks.size()), divisions + 1);
     const YTickDiagnostic *closest = nullptr;
@@ -3007,7 +3007,7 @@ void tst_StripChart::legendHasNoNegativeZero()
     chart->addDataPoint(ch, 0.5);
     chart->addDataPoint(ch, value);
     renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
     QCOMPARE(static_cast<int>(frame.legendLabels.size()), 1);
     QCOMPARE(frame.legendLabels.front(), expected);
 }
@@ -3025,7 +3025,7 @@ void tst_StripChart::absoluteSecondsLabelsHaveNoNegativeZero()
         chart->addSample(ch, std::chrono::milliseconds(ms), 0.5);
     }
     renderToImage(*chart);
-    const auto &frame = StripChartTestAccess::lastFrame(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
     QVERIFY(frame.xTicks.size() >= 2);
     bool belowZero = false;
@@ -3098,8 +3098,8 @@ void tst_StripChart::plotMarginsFollowWidgetFontSize()
     StripChart large;
     large.setFont(FontTest::doubledFont());
     large.resize(640, 300);
-    const QRectF a = StripChartTestAccess::plotArea(standard);
-    const QRectF b = StripChartTestAccess::plotArea(large);
+    const QRectF a = internal::StripChartTestAccess::plotArea(standard);
+    const QRectF b = internal::StripChartTestAccess::plotArea(large);
     QCOMPARE(b.left(), 2.0 * a.left());
     QCOMPARE(b.top(), 2.0 * a.top());
     QCOMPARE(b.right(), a.right()); // the right margin holds no labels

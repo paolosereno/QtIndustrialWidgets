@@ -7,7 +7,7 @@
 #pragma once
 
 #include <QtIndustrialWidgets/StripChart.h>
-#include "StripChartTestAccess.h"
+#include "internal/StripChartTestAccess.h"
 #include "internal/StripChartGeometry.h"
 
 #include <QtGui/QImage>
@@ -26,7 +26,7 @@ inline std::unique_ptr<StripChart> makeChart(int w = 800, int h = 600, double yM
     auto chart = std::make_unique<StripChart>();
     chart->resize(w, h);
     chart->setYRange(yMin, yMax);
-    StripChartTestAccess::enableDiagnostics(*chart, true);
+    internal::StripChartTestAccess::enableDiagnostics(*chart, true);
     return chart;
 }
 
@@ -93,7 +93,7 @@ inline std::vector<int> traceYAtColumn(const QImage &img, const QColor &colour, 
 
 inline double mapY(const StripChart &chart, double value)
 {
-    QRectF plotRect = StripChartTestAccess::plotArea(chart);
+    QRectF plotRect = internal::StripChartTestAccess::plotArea(chart);
     double yRange = chart.yMaximum() - chart.yMinimum();
     if (std::abs(yRange) < 1e-9) yRange = 1.0;
     double yNorm = (value - chart.yMinimum()) / yRange;
@@ -104,7 +104,7 @@ inline double mapY(const StripChart &chart, double value)
 // renderToImage() (device origin at the widget origin).
 inline internal::PlotXMapping frameXMapping(const StripChart &chart)
 {
-    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const auto &f = internal::StripChartTestAccess::lastFrame(chart);
     return internal::makePlotXMapping(internal::BucketGrid(f.gridNum, f.gridDen), f.kStart, f.plotLeftDev);
 }
 
@@ -112,14 +112,14 @@ inline internal::PlotXMapping frameXMapping(const StripChart &chart)
 // index while the buffer has not wrapped) in the last rendered frame.
 inline double mapIndex(const StripChart &chart, size_t i)
 {
-    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const auto &f = internal::StripChartTestAccess::lastFrame(chart);
     return frameXMapping(chart).positionDev(static_cast<qint64>(i)) / f.dpr;
 }
 
 // Logical x of a raw sample at time t in the last rendered frame.
 inline double mapT(const StripChart &chart, qint64 t)
 {
-    const auto &f = StripChartTestAccess::lastFrame(chart);
+    const auto &f = internal::StripChartTestAccess::lastFrame(chart);
     return frameXMapping(chart).positionDev(t) / f.dpr;
 }
 
