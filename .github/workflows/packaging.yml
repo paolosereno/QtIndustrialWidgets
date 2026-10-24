@@ -159,16 +159,21 @@ jobs:
             head -n 12 "$overlay/qtindustrialwidgets/portfile.cmake"
           fi
 
-      # The whole binary cache is one cache entry. A change to the port gives a new key; the restore key brings back
-      # the previous entry, so Qt is not rebuilt.
+      # The whole binary cache is one cache entry. It is restored from the latest entry saved with the same port, or else
+      # from the latest of any port, so Qt is not rebuilt when the port changes. A run saves a new entry, under a key of
+      # its own, only when it changed the binaries (see "Keep only the binaries in use").
       - name: Restore the vcpkg binary cache
         id: restore-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
-          key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}
+          key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}-
             vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-
+
+      - name: List the restored binaries
+        run: python -c "import pathlib, sys; print('\n'.join(sorted(p.relative_to(sys.argv[1]).as_posix() for p in pathlib.Path(sys.argv[1]).rglob('*.zip'))))" "$VCPKG_BINARY_CACHE" > "$RUNNER_TEMP/binaries-restored.txt"
 
       - name: Configure the consumer (installs the port and Qt)
         id: install
@@ -178,9 +183,45 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET -DVCPKG_OVERLAY_PORTS="$OVERLAY_PORTS"
 
+      # The entry keeps only the binaries this run installed, so it does not grow with every change of the port. It is
+      # saved when they differ from the restored ones, whatever the reason (port, compiler, tools): vcpkg's ABI hashes
+      # cover more than the cache key does. qtindustrialwidgets is left out: its copy of the port carries the tree hash
+      # of the checkout, so it is rebuilt in every run, and keeping it would save a new entry in every run.
+      - name: Keep only the binaries in use
+        id: prune
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          python - build-consumer/vcpkg_installed/vcpkg/status "$VCPKG_BINARY_CACHE" "$RUNNER_TEMP/binaries-restored.txt" <<'PY'
+          import os, pathlib, sys
+          status, cache, restored = sys.argv[1:]
+          keep = set()
+          for paragraph in pathlib.Path(status).read_text().split("\n\n"):
+              fields = dict(line.split(": ", 1) for line in paragraph.splitlines() if ": " in line)
+              if "Abi" in fields and fields.get("Package") != "qtindustrialwidgets" and fields.get("Status", "").endswith(" installed"):
+                  keep.add(fields["Abi"])
+          if not keep:
+              sys.exit(f"no installed package with an ABI hash in {status}")
+          kept, removed, removed_bytes = [], 0, 0
+          for archive in sorted(pathlib.Path(cache).rglob("*.zip")):
+              if archive.stem in keep:
+                  kept.append(archive.relative_to(cache).as_posix())
+              else:
+                  removed += 1
+                  removed_bytes += archive.stat().st_size
+                  archive.unlink()
+          before = pathlib.Path(restored).read_text().split()
+          changed = kept != before
+          print(f"restored {len(before)} binaries; kept {len(kept)} in use, removed {removed} ({removed_bytes / 2**20:.0f} MiB)")
+          if len(kept) != len(keep):
+              sys.exit(f"{len(keep) - len(kept)} installed packages have no binary in the cache: the entry is not saved")
+          print("the binaries changed: the entry is saved" if changed else "the binaries did not change: nothing to save")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"changed={str(changed).lower()}\n")
+          PY
+
       # Saved as soon as the packages are installed, also when a later step fails, so Qt is built only once
       - name: Save the vcpkg binary cache
-        if: always() && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
+        if: always() && steps.prune.outputs.changed == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
@@ -279,8 +320,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
-          key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}
+          key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}-
             vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-
 
       - name: The consumer with the registry, and the latest release
