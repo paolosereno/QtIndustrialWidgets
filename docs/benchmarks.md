@@ -24,12 +24,12 @@ include window-system composition or vsync.
 ## Targets
 
 Evaluated on this session, every run. A target is marked **PASS** only if it is met in all 5 runs. The targets are
-unchanged.
+unchanged; the target of #5 was withdrawn by the maintainer after this session, and its rows keep the measurements.
 
 | Target | Measured value, runs 1–5 | Result |
 |---|---|---|
-| #5: 4 ch × 1M `BroadbandNoise` ≤ **8 ms** per frame (steady-state median), Time | 10.36 · 10.26 · 20.84 · 17.53 · 19.64 ms | **FAIL** (all 5 runs) |
-| #5: same, SampleIndex | 11.70 · 10.38 · 21.00 · 23.65 · 16.29 ms | **FAIL** (all 5 runs) |
+| #5: 4 ch × 1M `BroadbandNoise` ≤ **8 ms** per frame (steady-state median), Time | 10.36 · 10.26 · 20.84 · 17.53 · 19.64 ms | **FAIL** (all 5 runs); target withdrawn by the maintainer (2026-10-24, #5): the measured frame time (about 10 ms in the fast mode, 17–21 ms in the slow mode of this machine) judged sufficient |
+| #5: same, SampleIndex | 11.70 · 10.38 · 21.00 · 23.65 · 16.29 ms | **FAIL** (all 5 runs); target withdrawn with the Time row (2026-10-24, #5) |
 | #6: paint-time growth ≤ **25 %** from 100k to 4M samples (1 ch `BroadbandNoise`, steady state, median of the per-pair ratios of the interleaved case), Time | +6.9 · +6.2 · +6.0 · +5.7 · −3.2 % | **PASS** (all 5 runs) |
 | #6: same, SampleIndex | +5.8 · +6.6 · +4.6 · +4.5 · +5.8 % | **PASS** (all 5 runs) |
 | `addSample` with autoscale ON ≤ **1 µs** per call (1M samples in the buffer) | 0.0111 · 0.0446 · 0.0324 · 0.0322 · 0.0320 µs | **PASS** (all 5 runs) |
