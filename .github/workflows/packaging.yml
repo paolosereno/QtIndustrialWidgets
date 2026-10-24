@@ -159,14 +159,6 @@ jobs:
             head -n 12 "$overlay/qtindustrialwidgets/portfile.cmake"
           fi
 
-      - name: TEST ONLY (reverted before merge) - an ABI change outside the cache key, on Linux
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p "$RUNNER_TEMP/triplets"
-          { cat "$VCPKG_ROOT/triplets/community/$TRIPLET.cmake"; echo "# packaging.yml test: an ABI change outside the cache key"; } \
-            > "$RUNNER_TEMP/triplets/$TRIPLET.cmake"
-          echo "VCPKG_OVERLAY_TRIPLETS=$RUNNER_TEMP/triplets" >> "$GITHUB_ENV"
-
       # The whole binary cache is one cache entry. It is restored from the latest entry saved with the same port, or else
       # from the latest of any port, so Qt is not rebuilt when the port changes. A run saves a new entry, under a key of
       # its own, only when it changed the binaries (see "Keep only the binaries in use").
