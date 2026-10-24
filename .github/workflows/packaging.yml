@@ -204,6 +204,12 @@ jobs:
         if: always()
         run: du -sh "$VCPKG_BINARY_CACHE"
 
+      # What the package ABI hashes are made of (compiler, tools, triplet): when the cache is restored but packages are
+      # rebuilt, comparing this between runs shows which input changed. zlib is installed for every triplet.
+      - name: ABI inputs of a package
+        if: always() && steps.install.outcome == 'success'
+        run: cat "build-consumer/vcpkg_installed/$TRIPLET/share/zlib/vcpkg_abi_info.txt" || true
+
   # ============================================================
   # vcpkg registry: qtindustrialwidgets from https://github.com/paolosereno/vcpkg-registry (its current HEAD), Qt and
   # everything else from vcpkg's builtin registry, as a user's vcpkg-configuration.json does, on the same platforms
