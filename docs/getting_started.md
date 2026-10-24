@@ -6,23 +6,23 @@ SPDX-License-Identifier: MIT
 
 # Getting Started with QtIndustrialWidgets {#getting_started}
 
-Welcome to the **QtIndustrialWidgets** documentation! This guide will help you integrate the library into your C++ and Qt applications.
+This guide shows how to add QtIndustrialWidgets to a CMake project, and a first example.
 
 ---
 
-## 📦 Requirements
+## Requirements
 
-- **C++17** compatible compiler (GCC 9+, Clang 10+, MSVC 2019+)
-- **CMake 3.16** or newer
+- A **C++17** compiler. CI builds with GCC on Ubuntu 24.04, MSVC 2022 on Windows and Apple Clang on macOS.
+- **CMake 3.16** or newer.
 - **Qt 6.2+** with `Core`, `Gui`, and `Widgets` modules. Qt 5 is not supported; the minimum is Qt 6.2 (see [#53](https://github.com/paolosereno/QtIndustrialWidgets/issues/53)).
 
 ---
 
-## 🛠️ Integration Methods
+## Integration methods
 
-### Method 1: FetchContent (Recommended)
+### Method 1: FetchContent
 
-The easiest way to use QtIndustrialWidgets is directly via CMake's `FetchContent`. Add the following to your `CMakeLists.txt`:
+Add the following to your `CMakeLists.txt`:
 
 ```cmake
 include(FetchContent)
@@ -33,7 +33,7 @@ FetchContent_Declare(
     GIT_TAG        v2.5.0
 )
 
-# Optional: Disable examples and designer plugin when fetching
+# Optional: do not build the examples, the Designer plugin and the tests
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_DESIGNER_PLUGIN OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -67,7 +67,7 @@ cmake --build build
 cmake --install build --prefix /opt/QtIndustrialWidgets
 ```
 
-In your application's `CMakeLists.txt`:
+In your application's `CMakeLists.txt` (configure it with `-DCMAKE_PREFIX_PATH=/opt/QtIndustrialWidgets`):
 
 ```cmake
 find_package(QtIndustrialWidgets REQUIRED)
@@ -80,7 +80,7 @@ target_link_libraries(my_app
 
 ### Method 3: Debian / Ubuntu Native Package (.deb)
 
-Download the official `.deb` package from the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases) page and install:
+Download the `.deb` package from the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases) page and install:
 
 ```bash
 sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb
@@ -88,7 +88,7 @@ sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb
 
 Replace `<version>` with the version of the package you downloaded from [Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases).
 
-Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists.txt`.
+Then use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists.txt`.
 
 ### Method 4: vcpkg C++ Package Manager
 
@@ -184,9 +184,9 @@ Linking Qt statically has additional obligations under the LGPL (for example, al
 
 ---
 
-## 💡 Quick Code Example
+## A first example
 
-Here is a minimal example using `qiw::RadialGauge` and `qiw::LedIndicator`:
+A window with a `qiw::RadialGauge` and a `qiw::LedIndicator`:
 
 ```cpp
 #include <QApplication>
