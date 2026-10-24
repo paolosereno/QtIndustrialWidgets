@@ -25,6 +25,9 @@ else()
     set(DESIGNER_PLUGIN_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qt6/plugins/designer")
 endif()
 
+# Read by the test of the installed plugin (tests/CMakeLists.txt, #127)
+set_property(GLOBAL PROPERTY QTINDUSTRIALWIDGETS_DESIGNER_PLUGIN_INSTALL_DIR "${DESIGNER_PLUGIN_INSTALL_DIR}")
+
 install(TARGETS QtIndustrialWidgetsPlugin
     LIBRARY DESTINATION "${DESIGNER_PLUGIN_INSTALL_DIR}"
 )
