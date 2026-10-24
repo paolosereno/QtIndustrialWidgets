@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>
 #
 # SPDX-License-Identifier: MIT
 
@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(QtIndustrialWidgets
     VERSION 2.5.0
-    DESCRIPTION "Modern, high-performance industrial instruments and SCADA widgets for Qt"
+    DESCRIPTION "A C++17 widget library for Qt Widgets with 12 instrumentation widgets for test benches, SCADA and telemetry applications"
     HOMEPAGE_URL "https://github.com/paolosereno/QtIndustrialWidgets"
     LANGUAGES CXX
 )
@@ -134,9 +134,9 @@ install(FILES
 # ========================================================================
 set(CPACK_PACKAGE_NAME "QtIndustrialWidgets")
 set(CPACK_PACKAGE_VENDOR "Paolo Sereno")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Modern, high-performance industrial instruments and SCADA widgets for Qt")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A C++17 widget library for Qt Widgets with 12 instrumentation widgets for test benches, SCADA and telemetry applications")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/paolosereno/QtIndustrialWidgets")
-set(CPACK_PACKAGE_CONTACT "Paolo Sereno <paolomsereno@gmail.com>")
+set(CPACK_PACKAGE_CONTACT "Paolo Sereno <pablitos1024@gmail.com>")
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
@@ -147,7 +147,7 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES/MIT.txt")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 
 # Debian (.deb) specific generator settings
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Paolo Sereno <paolomsereno@gmail.com>")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Paolo Sereno <pablitos1024@gmail.com>")
 set(CPACK_DEBIAN_PACKAGE_SECTION "libs")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/paolosereno/QtIndustrialWidgets")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)

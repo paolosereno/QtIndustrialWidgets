@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>
 
 SPDX-License-Identifier: MIT
 -->
@@ -50,7 +50,7 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 - Zero warnings with `-Wall -Wextra -Wpedantic` (GCC/Clang) and `/W4 /permissive-` (MSVC).
 - Qt 6.2 is the minimum: do not use APIs introduced after Qt 6.2 (the Qt 6.2.4 CI job checks this).
 <!-- REUSE-IgnoreStart -->
-- Every new file has the SPDX header (`SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>`,
+- Every new file has the SPDX header (`SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>`,
   `SPDX-License-Identifier: MIT`). Files that cannot hold comments (JSON, images) get a `<file>.license` sidecar.
 <!-- REUSE-IgnoreEnd -->
 - Non-finite input (NaN, ±Inf) must never reach `QPainter` coordinates and must never corrupt ranges.
@@ -86,6 +86,8 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 - Version bumps follow SemVer and touch **all four** places: `CMakeLists.txt` (`project VERSION`),
   `include/QtIndustrialWidgets/qtindustrialwidgets_global.h`, `conanfile.py`, `ports/qtindustrialwidgets/vcpkg.json`.
   Grep for the old version string afterwards (README `GIT_TAG`, package names in docs).
+  In `ports/qtindustrialwidgets/vcpkg.json` a new version resets the port version to 0: remove `"port-version"`
+  (0 is the default), since `port-version` counts only the changes of the port within one version.
 - `CHANGELOG.md` follows Keep a Changelog: Added / Changed / Deprecated / Removed / Fixed / Performance / Tests.
 - Do not bump the version or tag a release unless the issue asks for it.
 
