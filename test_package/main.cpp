@@ -41,6 +41,8 @@ int hueDistance(int a, int b)
 
 int main(int argc, char **argv)
 {
+    // Unbuffered, so that the output before a crash or a hang is not lost in a pipe's buffer
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     // The check runs headless: without a display, use the offscreen platform
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
