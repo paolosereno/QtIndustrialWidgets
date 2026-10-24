@@ -152,8 +152,13 @@ The recipe is [`conanfile.py`](https://github.com/paolosereno/QtIndustrialWidget
 
 ```bash
 # From a clone of this repository: build the package into the local Conan cache and run its test_package
-conan create . --build=missing -s build_type=Release -o "qtindustrialwidgets/*:shared=False"
+conan create . --lockfile=conan.lock --build=missing -s build_type=Release -o "qtindustrialwidgets/*:shared=False"
 ```
+
+[`conan.lock`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/conan.lock) pins Qt and its dependencies
+to the versions that ConanCenter has prebuilt binaries for (Linux gcc 13, Windows MSVC 2022, macOS apple-clang 17, in
+Release). Without it, the version ranges can pick a newer dependency than the one the prebuilt Qt was built against,
+and `--build=missing` then builds Qt from source.
 
 Then require `qtindustrialwidgets/2.5.0` in your project's conanfile, use `find_package(QtIndustrialWidgets CONFIG
 REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`. `shared=True` needs a shared Qt

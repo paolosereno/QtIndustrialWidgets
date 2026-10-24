@@ -113,6 +113,15 @@ Registry rules: no push to `main`, no force-push, never rewrite its history (eac
 git tree of its port); never change a published version: a fix to the port is the same version with `port-version`
 + 1, and a new `x-add-version`.
 
+## Conan lockfile
+
+`conan.lock` pins the dependencies of `conanfile.py` to versions and revisions that ConanCenter has prebuilt binaries for
+(#116); the Conan job of `packaging.yml` uses it. To regenerate it (Conan at the `CONAN_VERSION` of `packaging.yml`, in
+a scratchpad venv deleted afterwards), run `conan lock create . -pr:a <profile> -r conancenter --lockfile=conan.lock
+--lockfile-out=conan.lock` for the Linux (gcc 13), Windows (msvc 194) and macOS (apple-clang 17) profiles, then check
+with `conan graph info . -pr:a <profile> --lockfile=conan.lock` that no binary is `Missing` (except those the job builds,
+listed in `packaging.yml`). Run the Conan job with `-f conan-cache=skip` to check it from an empty cache.
+
 ## Workflow with GitHub issues
 
 1. Read the task: `gh issue view <n>` (include comments: `gh issue view <n> --comments`).
