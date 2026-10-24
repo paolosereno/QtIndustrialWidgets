@@ -263,7 +263,7 @@ private:
 
     std::unique_ptr<AnalysisChartPrivate> d_ptr;
     Q_DECLARE_PRIVATE(AnalysisChart)
-    friend class internal::AnalysisChartTestAccess;
+    friend class internal::AnalysisChartTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

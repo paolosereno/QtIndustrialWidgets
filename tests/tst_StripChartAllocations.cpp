@@ -6,7 +6,7 @@
 // (non-finite samples breaking the decimated trace). Built on Linux only, see tests/CMakeLists.txt.
 
 #include "AllocationCounter.h"
-#include "StripChartTestAccess.h"
+#include "internal/StripChartTestAccess.h"
 
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtGui/QImage>
@@ -79,19 +79,19 @@ long long fewestAllocationsPerRender(StripChart::XAxisMode mode, int channels, i
 {
     StripChart chart;
     fill(chart, mode, channels, gaps, gapNearGlow);
-    StripChartTestAccess::enableDiagnostics(chart, true);
+    internal::StripChartTestAccess::enableDiagnostics(chart, true);
     QPixmap pix(chart.size());
     chart.render(&pix);
     // The gaps are visible: every channel is drawn as one decimated segment more than it has gaps
     const size_t expected = static_cast<size_t>(gaps + (gapNearGlow ? 2 : 1));
     for (int c = 0; c < channels; ++c) {
-        const size_t drawn = StripChartTestAccess::lastFrame(chart).channels.at(static_cast<size_t>(c)).segments.size();
+        const size_t drawn = internal::StripChartTestAccess::lastFrame(chart).channels.at(static_cast<size_t>(c)).segments.size();
         if (drawn != expected) {
             qWarning("channel %d: %zu segments drawn, %zu expected", c, drawn, expected);
             return -1;
         }
     }
-    StripChartTestAccess::enableDiagnostics(chart, false);
+    internal::StripChartTestAccess::enableDiagnostics(chart, false);
     for (int i = 0; i < kWarmupRenders; ++i) chart.render(&pix);
     long long least = -1;
     long long most = -1;
@@ -212,12 +212,12 @@ void tst_StripChartAllocations::allNaNChannelAfterSegmentedChannel()
             const std::vector<double> v(kSamples, std::numeric_limits<double>::quiet_NaN());
             chart.addUniformSamples(id, std::chrono::nanoseconds(0), std::chrono::nanoseconds(kDtNs), v.data(), kSamples);
         }
-        StripChartTestAccess::enableDiagnostics(chart, true);
+        internal::StripChartTestAccess::enableDiagnostics(chart, true);
         QImage img(chart.size(), QImage::Format_RGB32);
         img.fill(Qt::black);
         chart.render(&img);
         chart.render(&img); // a second frame: the segment buffers of the first one exist
-        const auto &frame = StripChartTestAccess::lastFrame(chart);
+        const auto &frame = internal::StripChartTestAccess::lastFrame(chart);
         if (withNaNChannel) {
             [&] { QVERIFY(frame.channels.at(1).segments.empty()); }();
         }

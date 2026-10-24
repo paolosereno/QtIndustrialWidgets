@@ -6,7 +6,7 @@
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/StripChart.h>
 
-#include "StripChartTestAccess.h"
+#include "internal/StripChartTestAccess.h"
 #include "internal/AnalysisChartTestAccess.h"
 #include "internal/M4Decimator.h"
 
@@ -61,7 +61,7 @@ std::vector<int> analysisSegments(const AnalysisChart &chart, int channelId)
 std::vector<int> stripSegments(const StripChart &chart, int channelId)
 {
     std::vector<int> out;
-    const auto &frame = StripChartTestAccess::lastFrame(chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(chart);
     if (channelId < static_cast<int>(frame.channels.size())) {
         for (const auto &seg : frame.channels[static_cast<size_t>(channelId)].segments) out.push_back(static_cast<int>(seg.size()));
     }
@@ -572,7 +572,7 @@ void tst_AnalysisChart::gapsMatchStripChart()
     strip.setGapThreshold(nanoseconds(userThreshold));
     const int sId = strip.addChannel(QStringLiteral("S"), Qt::red);
     strip.addSamples(sId, tn.data(), v.data(), static_cast<qsizetype>(t.size()));
-    StripChartTestAccess::enableDiagnostics(strip);
+    internal::StripChartTestAccess::enableDiagnostics(strip);
     strip.grab();
 
     AnalysisChart chart;
