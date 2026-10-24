@@ -120,6 +120,9 @@ jobs:
           git clone --depth 1 --branch "$VCPKG_REF" https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
           if [ "$RUNNER_OS" = "Windows" ]; then
             cmd //c "$(cygpath -w "$VCPKG_ROOT/bootstrap-vcpkg.bat")" -disableMetrics
+            # vcpkg's own PowerShell, not the runner image's: its version is an ABI input of every package, and
+            # the image's changes with each image update, which made the binary cache miss
+            echo "VCPKG_FORCE_DOWNLOADED_BINARIES=1" >> "$GITHUB_ENV"
           else
             "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
           fi
@@ -263,6 +266,9 @@ jobs:
           git clone --depth 1 --branch "$VCPKG_REF" https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
           if [ "$RUNNER_OS" = "Windows" ]; then
             cmd //c "$(cygpath -w "$VCPKG_ROOT/bootstrap-vcpkg.bat")" -disableMetrics
+            # vcpkg's own PowerShell, not the runner image's: its version is an ABI input of every package, and
+            # the image's changes with each image update, which made the binary cache miss
+            echo "VCPKG_FORCE_DOWNLOADED_BINARIES=1" >> "$GITHUB_ENV"
           else
             "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
           fi
