@@ -4,53 +4,44 @@ SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
 SPDX-License-Identifier: MIT
 -->
 
-# Qt Designer Integration Guide {#designer_plugin}
+# Qt Designer plugin {#designer_plugin}
 
-QtIndustrialWidgets provides a plugin module (`QtIndustrialWidgetsPlugin`) that registers the 12 widgets inside **Qt Designer** and **Qt Creator**.
+The plugin module `QtIndustrialWidgetsPlugin` registers the 12 widgets in **Qt Widgets Designer** and in the Designer
+integrated in **Qt Creator**.
 
----
+## Build
 
-## 🛠️ Building the Plugin
-
-When CMake detects Qt Designer (`Qt6Designer`), the target `QtIndustrialWidgetsPlugin` is automatically configured:
+The option `BUILD_DESIGNER_PLUGIN` is on by default. CMake builds the plugin when it finds Qt `Designer`; otherwise it
+prints `Qt Designer NOT found, disabling designer plugin` and switches the option off.
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target QtIndustrialWidgetsPlugin
 ```
 
-This generates `libQtIndustrialWidgetsPlugin.so` (Linux), `.dylib` (macOS), or `.dll` (Windows).
+The plugin is a CMake module library written to `build/lib/`: `QtIndustrialWidgetsPlugin.so` on Linux and macOS
+(CMake's module suffix on macOS is `.so`), `QtIndustrialWidgetsPlugin.dll` on Windows.
 
----
+## Install
 
-## 📂 Installation Directories
+`cmake --install build` copies the plugin to `<prefix>/lib/qt6/plugins/designer/` (`lib` is `CMAKE_INSTALL_LIBDIR`;
+setting `QT_INSTALL_PLUGINS` at configure time changes the destination to `${QT_INSTALL_PLUGINS}/designer`).
 
-Copy the built plugin binary into your Qt Designer or Qt Creator plugin directory:
+To use the plugin from the build tree, copy it into the `designer/` folder of a Qt plugin directory, for example the
+one of the Qt that built it (`qtpaths6 --plugin-dir`, on Ubuntu `/usr/lib/x86_64-linux-gnu/qt6/plugins`):
 
-### Linux
 ```bash
-# Qt Creator plugins directory
-cp build/plugin/libQtIndustrialWidgetsPlugin.so ~/.local/share/QtProject/QtCreator/plugins/
-
-# Or system Qt Designer directory
-cp build/plugin/libQtIndustrialWidgetsPlugin.so /usr/lib/x86_64-linux-gnu/qt6/plugins/designer/
+cp build/lib/QtIndustrialWidgetsPlugin.so "$(qtpaths6 --plugin-dir)/designer/"
 ```
 
-### Windows
-```text
-C:\Qt\6.x.x\msvc2022_64\plugins\designer\QtIndustrialWidgetsPlugin.dll
-```
+The Designer integrated in Qt Creator loads plugins from `<QtCreator>/lib/Qt/plugins/designer` on Linux,
+`<QtCreator>\bin\plugins\designer` on Windows and `Qt Creator.app/Contents/PlugIns/designer` on macOS, and only
+plugins built with the same Qt version and compiler as Qt Creator itself; otherwise use the standalone Designer (see
+[Adding Qt Designer Plugins](https://doc.qt.io/qtcreator/adding-plugins.html) in the Qt Creator manual).
 
-### macOS
-```text
-~/Library/Application Support/QtProject/Qt Creator/plugins/libQtIndustrialWidgetsPlugin.dylib
-```
+## Widgets in Designer
 
----
-
-## 🎨 Available Widgets in Designer
-
-Once installed, a new category **"Industrial Widgets"** will appear in the Widget Box:
+The plugin adds the category **Industrial Widgets** to the Widget Box, with these classes:
 
 1. `QtIndustrialWidgets::RadialGauge`
 2. `QtIndustrialWidgets::LinearGauge`
@@ -58,11 +49,11 @@ Once installed, a new category **"Industrial Widgets"** will appear in the Widge
 4. `QtIndustrialWidgets::LedIndicator`
 5. `QtIndustrialWidgets::IndustrialKnob`
 6. `QtIndustrialWidgets::StripChart`
-7. `QtIndustrialWidgets::IndustrialSwitch`
-8. `QtIndustrialWidgets::LevelMeter`
-9. `QtIndustrialWidgets::AnnunciatorPanel`
-10. `QtIndustrialWidgets::Compass`
-11. `QtIndustrialWidgets::CircularBargraph`
-12. `QtIndustrialWidgets::AnalysisChart`
+7. `QtIndustrialWidgets::AnalysisChart`
+8. `QtIndustrialWidgets::IndustrialSwitch`
+9. `QtIndustrialWidgets::LevelMeter`
+10. `QtIndustrialWidgets::AnnunciatorPanel`
+11. `QtIndustrialWidgets::Compass`
+12. `QtIndustrialWidgets::CircularBargraph`
 
-All properties (ranges, thresholds, colors, orientations) can be customized directly within the **Property Editor**!
+The Property Editor shows each widget's `Q_PROPERTY`s (ranges, thresholds, colours, orientation, …).

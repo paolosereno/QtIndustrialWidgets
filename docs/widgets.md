@@ -94,7 +94,7 @@ Live, scrolling multi-channel chart for acquisition data (`qiw::StripChart`). Gu
 - **Autoscale**: optional; the range grows at once to include new values and shrinks only after 30 consecutive
   recomputations in which the data spans less than half of it.
 - **Channels**: independent channels with name, colour, pen width and visibility, and a legend (`legendVisible`).
-- **Performance**: measured paint and insertion times, with the targets that are not yet met, are in the
+- **Performance**: measured paint and insertion times, with the targets and their results, are in the
   [Benchmark Report](benchmarks.md).
 
 ## IndustrialSwitch

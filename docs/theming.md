@@ -6,65 +6,88 @@ SPDX-License-Identifier: MIT
 
 # Theming and Styling Guide {#theming}
 
-QtIndustrialWidgets is designed with modern SCADA and dashboard theming in mind. All widgets render crisply across both **Light** and **Dark** themes.
+Each widget has its own colour properties (`Q_PROPERTY`), set in C++ or in Qt Designer's Property Editor. The
+widgets do not take their colours from the application palette; the one exception is `LedIndicator`, whose label uses
+the palette's `WindowText` colour while its `textColor` is not set. The gallery sets the properties for a light and a
+dark theme.
+
+Class names below use `qiw`, the short alias of namespace `QtIndustrialWidgets`. Default values are given where this
+page quotes them.
 
 ---
 
-## 🎨 Built-in Color Properties
+## Colour properties
 
-Each widget exposes fine-grained styling properties that can be set in C++, via QML/Qt Designer, or adjusted dynamically:
+### Radial gauge (`qiw::RadialGauge`)
+- `dialColor`: dial face background.
+- `bezelColor`: outer rim.
+- `needleColor`: needle.
+- `scaleColor`: graduation ticks.
+- `textColor`: numeric labels.
+- `normalColor`, `warningColor`, `errorColor`: the threshold arc bands (shown while `thresholdBandsVisible` is true).
 
-Class names below use `qiw`, the short alias of namespace `QtIndustrialWidgets`.
+### Linear gauge (`qiw::LinearGauge`)
+- `troughColor`: background of the trough that holds the liquid column.
+- `bezelColor`: outer rim.
+- `liquidColor`: liquid column.
+- `scaleColor`: graduation ticks.
+- `textColor`: numeric labels.
+- `normalColor`, `warningColor`, `errorColor`: with `dynamicLiquidColor` set, the liquid column takes `errorColor`
+  from the error threshold up, `warningColor` from the warning threshold up and `normalColor` below it, instead of
+  `liquidColor`.
 
-### Gauges (`qiw::RadialGauge`, `qiw::LinearGauge`)
-- `dialColor`: Background color of the gauge face.
-- `bezelColor`: Outer rim / bezel gradient.
-- `needleColor`: Needle / pointer color.
-- `textColor`: Tick marks and numeric text.
-- `warningColor` & `errorColor`: Color of threshold zones and liquid columns.
+### Seven-segment display (`qiw::SevenSegmentDisplay`)
+- `activeSegmentColor`: lit segments.
+- `inactiveSegmentColor`: unlit segments (default: the default lit colour with alpha 28).
+- `backgroundColor`: display panel background.
+- `bezelColor`: outer frame.
 
-### Displays (`qiw::SevenSegmentDisplay`)
-- `activeSegmentColor`: Lit segment illumination color.
-- `inactiveSegmentColor`: Unlit segment ghost transparency color.
-- `backgroundColor`: LCD / LED background matrix color.
-- `bezelColor`: Bezel border color.
+### Switch (`qiw::IndustrialSwitch`)
+- `plateColor`: mounting plate.
+- `leverColor`: lever handle or rocker body.
+- `ledColor`: pilot LED.
+- `textColor`: labels.
+- `guardColor`: safety guard cover (default `#dc3545`).
 
-### Switches (`qiw::IndustrialSwitch`)
-- `plateColor`: Base panel plate metal color.
-- `leverColor`: Bat lever or rocker body color.
-- `ledColor`: Integrated status indicator color.
-- `guardColor`: Safety flip-cover color (crimson red or hazard yellow).
+### Level meter (`qiw::LevelMeter`)
+- `normalColor`: normal zone (default `#2ecc71`).
+- `warningColor`: warning zone (default `#fed330`).
+- `errorColor`: error zone (default `#eb3b5a`).
+- `peakColor`: peak hold indicator.
+- `backgroundColor`: channel trough background.
+- `textColor`: scale ticks and labels.
 
-### Level Meters (`qiw::LevelMeter`)
-- `normalColor`: Normal level color (default Green: `#2ecc71`).
-- `warningColor`: Caution level color (default Amber: `#fed330`).
-- `errorColor`: Overload / peak level color (default Red: `#eb3b5a`).
-- `backgroundColor`: Recessed track / chassis color.
+### Annunciator (`qiw::AnnunciatorPanel`)
+- `frameColor`: outer frame.
+- `gridColor`: dividers between the tiles.
+- `criticalColor`: lit `Critical` tiles (default `#eb3b5a`).
+- `warningColor`: lit `Warning` tiles (default `#fed330`).
+- `advisoryColor`: lit `Advisory` tiles (default `#00e5ff`).
+- `textColor`: tile legends (default `#f0f4fa`).
 
-### Annunciators (`qiw::AnnunciatorPanel`)
-- `frameColor`: Heavy chassis outer bezel frame color.
-- `gridColor`: Internal window matrix divider bar color.
-- `criticalColor`: High-priority / emergency alarm illumination color (Crimson Red: `#eb3b5a`).
-- `warningColor`: Medium-priority warning illumination color (Amber Gold: `#fed330`).
-- `advisoryColor`: Low-priority advisory illumination color (Cyan: `#00e5ff`).
-- `textColor`: Tile engraved legend lettering color (`#f0f4fa`).
+### Compass (`qiw::Compass`)
+- `dialColor`: compass card (`HeadingUp` mode) or fixed rose (`NorthUp` mode).
+- `bezelColor`: outer rim.
+- `textColor`: degree numbers, graduation ticks and the letters NE, SE, SW, NW.
+- `cardinalColor`: the letters E, S, W and the cardinal points of the rose.
+- `needleColor`: north end of the needle and the letter N (default `#eb3b5a`).
+- `needleTailColor`: south end of the needle (default `#a0afc3`).
+- `bugColor`: heading bug (default `#fe8228`).
+- `lubberColor`: lubber line at 12 o'clock (default `#fed330`).
 
-### Compasses (`qiw::Compass`)
-- `dialColor`: Background color of the rotating card or fixed compass face.
-- `bezelColor`: Machined metallic outer rim and inner groove.
-- `textColor`: Degree numbers and graduation ticks.
-- `cardinalColor`: Cardinal directions highlight color (N/E/S/W).
-- `needleColor`: North pointer arrow color (Vivid Red: `#eb3b5a`).
-- `needleTailColor`: South pointer arrow color (Slate: `#a0afc3`).
-- `bugColor`: Target heading bug chevron color (Fluorescent Orange: `#fe8228`).
-- `lubberColor`: 12 o'clock reference lubber line color (Safety Amber: `#fed330`).
+### Other widgets
+`LedIndicator` (`onColor`, `offColor`, `bezelColor`, `textColor`), `IndustrialKnob` (`knobColor`, `pointerColor`,
+`scaleColor`, `trackColor`, `textColor`), `CircularBargraph` (`normalColor`, `warningColor`, `errorColor`,
+`peakColor`, `ghostColor`, `dialColor`, `textColor`), `StripChart` (`gridColor`, `backgroundColor`, `bezelColor`) and
+`AnalysisChart` (`gridColor`, `backgroundColor`, `bezelColor`, `textColor`, `cursorColor`) have colour properties as
+well; their API pages describe them.
 
 ---
 
-## 🌙 Dark vs Light Theme Example
+## Example: a light and a dark theme
 
 ```cpp
-void applyTheme(bool dark)
+void applyTheme(qiw::RadialGauge *gauge, bool dark)
 {
     QColor bg = dark ? QColor(20, 24, 32) : QColor(245, 247, 250);
     QColor text = dark ? QColor(240, 242, 245) : QColor(30, 35, 45);

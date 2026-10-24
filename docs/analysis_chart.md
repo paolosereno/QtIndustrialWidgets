@@ -8,8 +8,8 @@ SPDX-License-Identifier: MIT
 
 `QtIndustrialWidgets::AnalysisChart` shows recorded multi-channel data for offline review: zoom, pan, two
 measurement cursors and a readout band. It complements `StripChart`, which stays the live, streaming display.
-Both charts draw the same data with the same rules (dropouts, gaps, decimation), so the same record never looks
-different in the two.
+Both charts apply the same rules to dropouts, gaps and decimation (section 5); the decimation buckets of
+`AnalysisChart` follow the view, those of `StripChart` follow its scrolling window.
 
 ```cpp
 #include <QtIndustrialWidgets/AnalysisChart.h>
