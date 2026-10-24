@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: QtIndustrialWidgets
+abstract: >-
+  A C++17 widget library for Qt Widgets with 12 instrumentation widgets — gauges, displays, indicators, switches, an
+  alarm annunciator, a live strip chart and an offline analysis chart — for test benches, SCADA and telemetry
+  applications.
+authors:
+  - given-names: Paolo
+    family-names: Sereno
+    email: pablitos1024@gmail.com
+    orcid: "https://orcid.org/0009-0003-2537-5191"
+version: 2.5.0
+date-released: "2026-10-23"
+license: MIT
+repository-code: "https://github.com/paolosereno/QtIndustrialWidgets"
+url: "https://paolosereno.github.io/QtIndustrialWidgets/"
+keywords:
+  - Qt
+  - Qt Widgets
+  - C++17
+  - instrumentation
+  - gauges
+  - strip chart
+  - SCADA

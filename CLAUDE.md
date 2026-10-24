@@ -83,8 +83,9 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
   and exact command line. README and CHANGELOG quote that table; they never carry their own numbers. No speed-up
   factors against baselines that were not re-measured in the same session.
 - `bench_StripChart` must be run with the existing data unchanged before and after a performance change.
-- Version bumps follow SemVer and touch **all four** places: `CMakeLists.txt` (`project VERSION`),
-  `include/QtIndustrialWidgets/qtindustrialwidgets_global.h`, `conanfile.py`, `ports/qtindustrialwidgets/vcpkg.json`.
+- Version bumps follow SemVer and touch **all five** places: `CMakeLists.txt` (`project VERSION`),
+  `include/QtIndustrialWidgets/qtindustrialwidgets_global.h`, `conanfile.py`, `ports/qtindustrialwidgets/vcpkg.json`,
+  `CITATION.cff` (`version` and `date-released`, the release date; the `citation_version` test checks the version).
   Grep for the old version string afterwards (README `GIT_TAG`, package names in docs).
   In `ports/qtindustrialwidgets/vcpkg.json` a new version resets the port version to 0: remove `"port-version"`
   (0 is the default), since `port-version` counts only the changes of the port within one version.

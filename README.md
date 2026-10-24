@@ -173,7 +173,9 @@ QIW_VERSION=$(sed -n 's/^ *VERSION \([0-9][0-9.]*\) *$/\1/p' CMakeLists.txt | he
 
 How changes are made and what a pull request has to show (tests first for bugs, sabotage checks for new tests, the
 criteria for "done", Conventional Commits):
-[CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md). Taking part in the project means
+following the [Code of Conduct](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CODE_OF_CONDUCT.md)
+(Contributor Covenant 2.1).
 
 ## License
 

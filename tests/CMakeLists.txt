@@ -410,6 +410,12 @@ if(UNIX AND NOT APPLE)
     add_test(NAME tst_AnalysisChartAllocations COMMAND tst_AnalysisChartAllocations)
 endif()
 
+# CITATION.cff must carry the project() version, so that a release does not leave it behind (#130).
+add_test(NAME citation_version
+    COMMAND ${CMAKE_COMMAND} -DCITATION_FILE=${PROJECT_SOURCE_DIR}/CITATION.cff
+            -DEXPECTED_VERSION=${PROJECT_VERSION}
+            -P ${PROJECT_SOURCE_DIR}/cmake/CheckCitationVersion.cmake)
+
 # benchmarks/merge_runs.py merges the runs of one benchmark session; its tests use example runs
 # in benchmarks/testdata and only the Python standard library (skipped when Python is not found).
 find_package(Python3 COMPONENTS Interpreter)
