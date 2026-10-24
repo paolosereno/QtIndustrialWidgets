@@ -10,3 +10,6 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/paolosereno/QtIndustrialWidgets/blob/main/SECURITY.md
     about: Do not open a public issue; report it privately as described in SECURITY.md.
+  - name: Code of Conduct
+    url: https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CODE_OF_CONDUCT.md
+    about: The rules for taking part in the project, and where to report unacceptable behaviour.

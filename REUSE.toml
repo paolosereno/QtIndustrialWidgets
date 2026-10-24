@@ -6,3 +6,10 @@ path = "docs/images/**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Paolo Sereno <pablitos1024@gmail.com>"
 SPDX-License-Identifier = "MIT"
+
+# The Contributor Covenant 2.1, unchanged except for the contact address (it cannot carry a header without changing the
+# official text); its text is licensed under CC-BY-4.0
+[[annotations]]
+path = "CODE_OF_CONDUCT.md"
+SPDX-FileCopyrightText = "Contributor Covenant contributors, Organization for Ethical Source <https://www.contributor-covenant.org>"
+SPDX-License-Identifier = "CC-BY-4.0"

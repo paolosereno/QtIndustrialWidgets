@@ -10,6 +10,9 @@ To report a bug or propose a feature, use the [issue forms](https://github.com/p
 for questions, use [GitHub Discussions](https://github.com/paolosereno/QtIndustrialWidgets/discussions); for security
 vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
+Everyone taking part in the project follows the [Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1);
+report unacceptable behaviour to pablitos1024@gmail.com.
+
 Thank you for contributing. QtIndustrialWidgets is used for instrumentation, so correctness, honest documentation
 and traceable changes come before speed of delivery. This page describes how changes are made and what a pull request
 has to show.
