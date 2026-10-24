@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>
 
 SPDX-License-Identifier: MIT
 -->
@@ -50,7 +50,7 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 - Zero warnings with `-Wall -Wextra -Wpedantic` (GCC/Clang) and `/W4 /permissive-` (MSVC).
 - Qt 6.2 is the minimum: do not use APIs introduced after Qt 6.2 (the Qt 6.2.4 CI job checks this).
 <!-- REUSE-IgnoreStart -->
-- Every new file has the SPDX header (`SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>`,
+- Every new file has the SPDX header (`SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>`,
   `SPDX-License-Identifier: MIT`). Files that cannot hold comments (JSON, images) get a `<file>.license` sidecar.
 <!-- REUSE-IgnoreEnd -->
 - Non-finite input (NaN, ±Inf) must never reach `QPainter` coordinates and must never corrupt ranges.

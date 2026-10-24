@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2026 Paolo Sereno <paolomsereno@gmail.com>
+SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>
 
 SPDX-License-Identifier: MIT
 -->
@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **vcpkg registry** (#113): the port is published in [paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry), from version 2.5.0. The README and `docs/getting_started.md` (method 4) give installation from the registry (a `vcpkg-configuration.json` with a `git` registry) as the main vcpkg method; the overlay port stays as the alternative.
 
 ### Changed
+- **Contact e-mail address** (#128): `pablitos1024@gmail.com` replaces the previous address in every file: SPDX headers and `.license` sidecars, `REUSE.toml`, the SBOM creator of `release.yml`, the CPack contact and Debian maintainer, the Conan `author`, `CONTRIBUTING.md`, `SECURITY.md` and the documentation. The vcpkg port changes with it (its SPDX comment and `vcpkg.json.license`), so it becomes `2.5.0` with `port-version` 1; the library is unchanged.
 - **Paint target of #5 withdrawn** (4 ch × 1M `BroadbandNoise` ≤ 8 ms per frame, steady-state median): the maintainer withdrew it on 2026-10-24, not met. The measured frame time (about 10 ms in the fast mode, 17–21 ms in the slow mode of the benchmark machine, `docs/benchmarks.md`) is judged sufficient. In `docs/benchmarks.md` the two #5 rows of the *Targets* table keep their measurements and their **FAIL**, with the withdrawal noted.
 - **vcpkg port no longer marked experimental** (#66): the README and `docs/getting_started.md` say it is verified on Linux (`x64-linux-release`) by the packaging workflow, after the run with `port=released` on the `v2.5.0` port (release archive and SHA512). Windows and macOS are not verified yet.
 - **vcpkg and Conan verified on Windows and macOS** (#66): the README and `docs/getting_started.md` (methods 4 and 5, note on a static Qt) say the vcpkg port (overlay and registry) is verified on Linux (`x64-linux-release`), Windows (`x64-windows-static-md-release`, `x64-windows-release`) and macOS (`arm64-osx-release`), and the Conan recipe on the same three systems with Qt from ConanCenter. Method 4 describes a dynamic triplet (DLLs next to the executable, Qt plugins loaded at run time); method 5 says that ConanCenter's Windows Qt binaries need `-s compiler.cppstd=17`.
