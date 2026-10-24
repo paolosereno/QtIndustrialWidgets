@@ -27,6 +27,14 @@ The plugin is a CMake module library written to `build/lib/`: `QtIndustrialWidge
 `cmake --install build` copies the plugin to `<prefix>/lib/qt6/plugins/designer/` (`lib` is `CMAKE_INSTALL_LIBDIR`;
 setting `QT_INSTALL_PLUGINS` at configure time changes the destination to `${QT_INSTALL_PLUGINS}/designer`).
 
+The plugin links the library, `libQtIndustrialWidgets`. On Linux and macOS the installed plugin finds it through its
+run path: first the library directory relative to the plugin (`$ORIGIN/…`, `@loader_path/…`), so the installed
+prefix can be moved, then the absolute library directory (`CMAKE_INSTALL_FULL_LIBDIR`), for a plugin directory
+outside the prefix. No `LD_LIBRARY_PATH` is needed.
+
+On Windows there is no run path: `QtIndustrialWidgets.dll` must be in a directory listed in `PATH` or next to
+`designer.exe`, otherwise Designer does not load the plugin.
+
 To use the plugin from the build tree, copy it into the `designer/` folder of a Qt plugin directory, for example the
 one of the Qt that built it (`qtpaths6 --plugin-dir`, on Ubuntu `/usr/lib/x86_64-linux-gnu/qt6/plugins`):
 

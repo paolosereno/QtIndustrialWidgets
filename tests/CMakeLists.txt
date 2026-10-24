@@ -416,6 +416,22 @@ add_test(NAME citation_version
             -DEXPECTED_VERSION=${PROJECT_VERSION}
             -P ${PROJECT_SOURCE_DIR}/cmake/CheckCitationVersion.cmake)
 
+# The installed Qt Designer plugin must load from any prefix without a library search path (#127).
+# Windows has no run path (the DLL must be on PATH or next to designer.exe), and a plugin directory
+# outside the prefix (QT_INSTALL_PLUGINS) would be written outside the temporary prefix.
+get_property(designer_plugin_install_dir GLOBAL PROPERTY QTINDUSTRIALWIDGETS_DESIGNER_PLUGIN_INSTALL_DIR)
+if(BUILD_DESIGNER_PLUGIN AND NOT WIN32 AND NOT IS_ABSOLUTE "${designer_plugin_install_dir}")
+    add_executable(designer_plugin_loader designer_plugin_loader.cpp)
+    target_link_libraries(designer_plugin_loader PRIVATE Qt6::Widgets Qt6::Designer)
+    add_test(NAME installed_designer_plugin
+        COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${PROJECT_BINARY_DIR}
+                -DPREFIX=${CMAKE_CURRENT_BINARY_DIR}/installed_designer_plugin
+                -DPLUGIN=${designer_plugin_install_dir}/$<TARGET_FILE_NAME:QtIndustrialWidgetsPlugin>
+                -DLOADER=$<TARGET_FILE:designer_plugin_loader>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/CheckInstalledDesignerPlugin.cmake)
+    set_tests_properties(installed_designer_plugin PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
 # benchmarks/merge_runs.py merges the runs of one benchmark session; its tests use example runs
 # in benchmarks/testdata and only the Python standard library (skipped when Python is not found).
 find_package(Python3 COMPONENTS Interpreter)
