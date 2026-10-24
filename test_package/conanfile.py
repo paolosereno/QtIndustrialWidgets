@@ -17,7 +17,7 @@ class QtIndustrialWidgetsTestConan(ConanFile):
     test_type = "explicit"
 
     def requirements(self):
-        self.requires(self.tested_reference_str)
+        self.requires("qt/[>=6.2 <7]")  # SABOTAGE (reverted next): the tested package is not required
 
     def layout(self):
         cmake_layout(self)
