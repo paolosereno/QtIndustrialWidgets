@@ -10,7 +10,7 @@
       "features": [
         "gui",
         "widgets",
-        { "name": "freetype", "platform": "linux" },
+        "freetype",
         { "name": "fontconfig", "platform": "linux" }
       ]
     }

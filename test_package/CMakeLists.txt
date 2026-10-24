@@ -20,6 +20,13 @@ add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE ${QIW_CONSUMER_STATIC_PLUGIN} QtIndustrialWidgets::QtIndustrialWidgets Qt6::Widgets)
 if(TARGET Qt6::QOffscreenIntegrationPlugin AND COMMAND qt_import_plugins)
     qt_import_plugins(consumer INCLUDE Qt6::QOffscreenIntegrationPlugin)
+else()
+    # Without the plugin, a static Qt stops at run time ("no Qt platform plugin could be initialized"; on Windows in a
+    # message box that never closes): stop here instead. Qt builds the offscreen plugin only with its freetype feature.
+    get_target_property(qiw_qt_core_type Qt6::Core TYPE)
+    if(qiw_qt_core_type STREQUAL "STATIC_LIBRARY" AND NOT QIW_CONSUMER_STATIC_PLUGIN)
+        message(FATAL_ERROR "Static Qt without the offscreen platform plugin (Qt6::QOffscreenIntegrationPlugin)")
+    endif()
 endif()
 
 # The version the package must have (the vcpkg registry job of packaging.yml passes the latest release)

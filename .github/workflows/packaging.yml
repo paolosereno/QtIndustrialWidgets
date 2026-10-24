@@ -187,6 +187,7 @@ jobs:
         run: cmake --build build-consumer --config Release
 
       - name: Run the consumer
+        timeout-minutes: 5
         env:
           # A dynamic Qt loads its platform plugin at run time, from the installed tree
           QT_PLUGIN_PATH: ${{ matrix.dynamic && format('{0}/build-consumer/vcpkg_installed/{1}/Qt6/plugins', github.workspace, matrix.triplet) || '' }}
@@ -310,6 +311,7 @@ jobs:
         run: cmake --build build-consumer --config Release
 
       - name: Run the consumer
+        timeout-minutes: 5
         env:
           QT_PLUGIN_PATH: ${{ matrix.dynamic && format('{0}/build-consumer/vcpkg_installed/{1}/Qt6/plugins', github.workspace, matrix.triplet) || '' }}
         run: |
