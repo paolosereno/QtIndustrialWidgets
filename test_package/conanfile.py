@@ -5,6 +5,7 @@
 # Conan test_package (#66): builds the consumer next to this file against the created package and runs it.
 
 from conan import ConanFile
+from conan.errors import ConanException
 from conan.tools.build import can_run
 from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
 import os
@@ -28,10 +29,16 @@ class QtIndustrialWidgetsTestConan(ConanFile):
         # the offscreen platform plugin: give the consumer the plugin library and the object that registers it
         qt = self.dependencies["qt"]
         if not qt.options.shared:
+            msvc = self.settings.compiler == "msvc"
             platforms = os.path.join(qt.package_folder, "plugins", "platforms")
             init = os.path.join(platforms, f"objects-{self.settings.build_type}", "QOffscreenIntegrationPlugin_init",
-                                "QOffscreenIntegrationPlugin_init.cpp.o")
-            tc.variables["QIW_CONSUMER_STATIC_PLUGIN"] = ";".join([init, os.path.join(platforms, "libqoffscreen.a")])
+                                "QOffscreenIntegrationPlugin_init.cpp" + (".obj" if msvc else ".o"))
+            library = os.path.join(platforms, "qoffscreen.lib" if msvc else "libqoffscreen.a")
+            for path in (init, library):
+                if not os.path.isfile(path):
+                    raise ConanException(f"the static offscreen plugin is not where expected: {path}")
+            # Forward slashes: the paths end up in a CMake file, where backslashes would be escapes
+            tc.variables["QIW_CONSUMER_STATIC_PLUGIN"] = ";".join(p.replace("\\", "/") for p in (init, library))
         tc.generate()
 
     def build(self):

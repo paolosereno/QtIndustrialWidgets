@@ -5,7 +5,8 @@
 # Packaging checks (#66): the vcpkg port (ports/qtindustrialwidgets) and the Conan recipe (conanfile.py) install the
 # library, and the consumer in test_package/ finds it with find_package(QtIndustrialWidgets), links a LedIndicator,
 # renders it offscreen and checks the colour at the LED's centre. A third job installs the port from the vcpkg registry
-# (paolosereno/vcpkg-registry), as users do, and checks that the registry has the latest release. Linux only for now.
+# (paolosereno/vcpkg-registry), as users do, and checks that the registry has the latest release. Each job runs on
+# Linux, Windows and macOS.
 #
 # Not run on every pull request: vcpkg builds Qt from source, so the job relies on its binary cache (actions/cache,
 # vcpkg "files" provider). Runs twice a week (so that the cache, evicted after 7 days without use, stays warm), on
@@ -61,56 +62,85 @@ env:
 
 jobs:
   # ============================================================
-  # vcpkg: the port from ports/ as an overlay.
+  # vcpkg: the port from ports/ as an overlay, on Linux, Windows (static and dynamic) and macOS.
   # - With port=released (workflow_dispatch only), the port as it is: it downloads the archive of the release
   #   (REF v${VERSION}) and checks its SHA512.
   # - Otherwise (port=checkout, and every automatic run), a copy of the port that builds the checked-out sources
   #   instead of downloading the release (the port in the repository is not changed), so that the port's build and
   #   install steps are checked with the current code.
+  # Static triplets (Linux, Windows static-md, macOS) link the offscreen plugin into the consumer; the dynamic Windows
+  # triplet (vcpkg's default linkage on Windows) checks the consumer of QtIndustrialWidgets.dll, with Qt's plugins
+  # loaded at run time.
   # ============================================================
-  vcpkg-linux:
-    name: vcpkg (Ubuntu 24.04, x64-linux-release)
-    runs-on: ubuntu-24.04
+  vcpkg:
+    name: vcpkg (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Ubuntu 24.04, x64-linux-release", os: ubuntu-24.04, triplet: x64-linux-release }
+          - { name: "Windows Server 2022, x64-windows-static-md-release", os: windows-2022, triplet: x64-windows-static-md-release }
+          - { name: "Windows Server 2022, x64-windows-release", os: windows-2022, triplet: x64-windows-release, dynamic: true }
+          - { name: "macOS 15, arm64-osx-release", os: macos-15, triplet: arm64-osx-release }
+    defaults:
+      run:
+        shell: bash
     env:
       VCPKG_REF: "2026.10.16" # vcpkg release tag; the binary cache key depends on it
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      # A short root on Windows: Qt's build trees under it go beyond 260 characters otherwise
+      VCPKG_ROOT: ${{ startsWith(matrix.os, 'windows') && 'C:/vq' || format('{0}/vcpkg', github.workspace) }}
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/vcpkg-binary-cache
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
-      TRIPLET: x64-linux-release
+      TRIPLET: ${{ matrix.triplet }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # System packages that vcpkg's qtbase needs on Linux (its portfile lists them)
-      - name: Install system dependencies
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # System packages that vcpkg's qtbase needs (its portfile lists them for Linux)
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool pkg-config \
             '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev \
             libxkbcommon-x11-dev libegl1-mesa-dev
 
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja autoconf autoconf-archive automake libtool pkg-config
+
       - name: Set up vcpkg ${{ env.VCPKG_REF }}
         run: |
           git clone --depth 1 --branch "$VCPKG_REF" https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmd //c "$(cygpath -w "$VCPKG_ROOT/bootstrap-vcpkg.bat")" -disableMetrics
+          else
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          fi
           mkdir -p "$VCPKG_BINARY_CACHE"
 
       - name: Choose the port (${{ inputs.port || 'checkout' }})
         env:
           PORT_MODE: ${{ inputs.port || 'checkout' }}
         run: |
+          posix() { if command -v cygpath > /dev/null; then cygpath -m "$1"; else echo "$1"; fi; }
           if [ "$PORT_MODE" = "released" ]; then
-            echo "OVERLAY_PORTS=$GITHUB_WORKSPACE/ports" >> "$GITHUB_ENV"
-            version=$(python3 -c 'import json; print(json.load(open("ports/qtindustrialwidgets/vcpkg.json"))["version"])')
+            echo "OVERLAY_PORTS=$(posix "$GITHUB_WORKSPACE/ports")" >> "$GITHUB_ENV"
+            version=$(python -c 'import json; print(json.load(open("ports/qtindustrialwidgets/vcpkg.json"))["version"])')
             echo "The port as it is: download of the archive of v$version, SHA512 checked"
           else
-            overlay="$RUNNER_TEMP/overlay-ports"
+            overlay="$(posix "$RUNNER_TEMP/overlay-ports")"
             mkdir -p "$overlay"
             cp -r ports/qtindustrialwidgets "$overlay/"
             # vcpkg identifies a package by its port files, not by the sources: the tree hash of the checkout is
             # written into the copy, so a cached build of other sources is never reused (Qt still comes from the cache)
-            python3 - "$overlay/qtindustrialwidgets/portfile.cmake" "$GITHUB_WORKSPACE" "$(git rev-parse HEAD^{tree})" <<'PY'
+            python - "$overlay/qtindustrialwidgets/portfile.cmake" "$(posix "$GITHUB_WORKSPACE")" "$(git rev-parse HEAD^{tree})" <<'PY'
           import re, sys
           path, source, tree = sys.argv[1:]
           text = open(path).read()
@@ -140,7 +170,8 @@ jobs:
       - name: Configure the consumer (installs the port and Qt)
         id: install
         run: |
-          cmake -S test_package -B build-consumer -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          if [ "$RUNNER_OS" = "Windows" ]; then generator=(-G "Visual Studio 17 2022" -A x64); else generator=(-G Ninja -DCMAKE_BUILD_TYPE=Release); fi
+          cmake -S test_package -B build-consumer "${generator[@]}" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET -DVCPKG_OVERLAY_PORTS="$OVERLAY_PORTS"
 
@@ -153,10 +184,20 @@ jobs:
           key: ${{ steps.restore-cache.outputs.cache-primary-key }}
 
       - name: Build the consumer
-        run: cmake --build build-consumer
+        run: cmake --build build-consumer --config Release
 
       - name: Run the consumer
-        run: ./build-consumer/consumer
+        env:
+          # A dynamic Qt loads its platform plugin at run time, from the installed tree
+          QT_PLUGIN_PATH: ${{ matrix.dynamic && format('{0}/build-consumer/vcpkg_installed/{1}/Qt6/plugins', github.workspace, matrix.triplet) || '' }}
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            exe=build-consumer/Release/consumer.exe
+            echo "Next to the consumer:"; ls build-consumer/Release
+          else
+            exe=build-consumer/consumer
+          fi
+          "$exe"
 
       - name: Size of the vcpkg binary cache
         if: always()
@@ -164,36 +205,60 @@ jobs:
 
   # ============================================================
   # vcpkg registry: qtindustrialwidgets from https://github.com/paolosereno/vcpkg-registry (its current HEAD), Qt and
-  # everything else from vcpkg's builtin registry, as a user's vcpkg-configuration.json does. The consumer must find
-  # the version of the latest GitHub release: the job fails while the registry is behind the latest release (the
-  # registry is updated by hand after each release, see CLAUDE.md).
+  # everything else from vcpkg's builtin registry, as a user's vcpkg-configuration.json does, on the same platforms
+  # and triplets as the vcpkg job. The consumer must find the version of the latest GitHub release: the job fails while
+  # the registry is behind the latest release (the registry is updated by hand after each release, see CLAUDE.md).
   # ============================================================
-  vcpkg-registry-linux:
-    name: vcpkg registry (Ubuntu 24.04, x64-linux-release)
-    runs-on: ubuntu-24.04
+  vcpkg-registry:
+    name: vcpkg registry (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Ubuntu 24.04, x64-linux-release", os: ubuntu-24.04, triplet: x64-linux-release }
+          - { name: "Windows Server 2022, x64-windows-static-md-release", os: windows-2022, triplet: x64-windows-static-md-release }
+          - { name: "Windows Server 2022, x64-windows-release", os: windows-2022, triplet: x64-windows-release, dynamic: true }
+          - { name: "macOS 15, arm64-osx-release", os: macos-15, triplet: arm64-osx-release }
+    defaults:
+      run:
+        shell: bash
     env:
       VCPKG_REF: "2026.10.16" # the same vcpkg as the vcpkg job, so Qt comes from its binary cache
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_ROOT: ${{ startsWith(matrix.os, 'windows') && 'C:/vq' || format('{0}/vcpkg', github.workspace) }}
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/vcpkg-binary-cache
       VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite"
-      TRIPLET: x64-linux-release
+      TRIPLET: ${{ matrix.triplet }}
       REGISTRY: https://github.com/paolosereno/vcpkg-registry
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool pkg-config \
             '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev \
             libxkbcommon-x11-dev libegl1-mesa-dev
 
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja autoconf autoconf-archive automake libtool pkg-config
+
       - name: Set up vcpkg ${{ env.VCPKG_REF }}
         run: |
           git clone --depth 1 --branch "$VCPKG_REF" https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmd //c "$(cygpath -w "$VCPKG_ROOT/bootstrap-vcpkg.bat")" -disableMetrics
+          else
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          fi
           mkdir -p "$VCPKG_BINARY_CACHE"
 
       # The vcpkg job saves this cache; here it is only restored
@@ -209,12 +274,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          consumer="$RUNNER_TEMP/consumer"
+          posix() { if command -v cygpath > /dev/null; then cygpath -m "$1"; else echo "$1"; fi; }
+          consumer="$(posix "$RUNNER_TEMP/consumer")"
           cp -r test_package "$consumer"
           builtin=$(git -C "$VCPKG_ROOT" rev-parse HEAD)
           registry=$(git ls-remote "$REGISTRY" HEAD | awk '$2 == "HEAD" { print $1 }')
           if ! [[ "$registry" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::no HEAD commit for $REGISTRY"; exit 1; fi
-          python3 - "$consumer/vcpkg-configuration.json" "$builtin" "$REGISTRY" "$registry" <<'PY'
+          python - "$consumer/vcpkg-configuration.json" "$builtin" "$REGISTRY" "$registry" <<'PY'
           import json, sys
           path, builtin, repository, registry = sys.argv[1:]
           configuration = {
@@ -234,24 +300,56 @@ jobs:
 
       - name: Configure the consumer (installs the port from the registry, and Qt)
         run: |
-          cmake -S "$CONSUMER" -B build-consumer -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          if [ "$RUNNER_OS" = "Windows" ]; then generator=(-G "Visual Studio 17 2022" -A x64); else generator=(-G Ninja -DCMAKE_BUILD_TYPE=Release); fi
+          cmake -S "$CONSUMER" -B build-consumer "${generator[@]}" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET \
             -DQIW_EXPECTED_VERSION="$EXPECTED_VERSION"
 
       - name: Build the consumer
-        run: cmake --build build-consumer
+        run: cmake --build build-consumer --config Release
 
       - name: Run the consumer
-        run: ./build-consumer/consumer
+        env:
+          QT_PLUGIN_PATH: ${{ matrix.dynamic && format('{0}/build-consumer/vcpkg_installed/{1}/Qt6/plugins', github.workspace, matrix.triplet) || '' }}
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            exe=build-consumer/Release/consumer.exe
+            echo "Next to the consumer:"; ls build-consumer/Release
+          else
+            exe=build-consumer/consumer
+          fi
+          "$exe"
 
   # ============================================================
-  # Conan: the recipe in conanfile.py with Qt from ConanCenter (prebuilt binaries for this compiler), and its
-  # test_package. Built from the sources of the pull request.
+  # Conan: the recipe in conanfile.py with Qt from ConanCenter (prebuilt binaries for these compilers, pinned by
+  # conan.lock), and its test_package, on Linux, Windows and macOS. Built from the sources of the pull request.
   # ============================================================
-  conan-linux:
-    name: Conan (Ubuntu 24.04, GCC, Qt from ConanCenter)
-    runs-on: ubuntu-24.04
+  conan:
+    name: Conan (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Qt's xorg/system dependency installs the X11 development packages with apt
+          - name: "Ubuntu 24.04, GCC, Qt from ConanCenter"
+            os: ubuntu-24.04
+            build: "--build=never"
+            options: "-c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True"
+          # conan profile detect gives C++14 for MSVC; ConanCenter's Qt is built with C++17
+          - name: "Windows Server 2022, MSVC 2022, Qt from ConanCenter"
+            os: windows-2022
+            build: "--build=never"
+            options: "-s compiler.cppstd=17"
+          # ConanCenter has libffi 3.4.8 (a dependency of glib) only for apple-clang 13: built here
+          - name: "macOS 15, AppleClang, Qt from ConanCenter"
+            os: macos-15
+            build: "--build=missing:libffi/*"
+            options: ""
+    defaults:
+      run:
+        shell: bash
     env:
       CONAN_VERSION: "2.33.0"
 
@@ -263,7 +361,7 @@ jobs:
         run: |
           pipx install "conan==$CONAN_VERSION"
           conan profile detect --force
-          conan profile show
+          conan profile show ${{ matrix.options }}
 
       - name: Restore the Conan package cache
         id: restore-cache
@@ -277,12 +375,9 @@ jobs:
       # Qt and its dependencies only, as prebuilt binaries (no Qt source build); saved also when a later step fails.
       # conan.lock pins the versions and revisions that ConanCenter has binaries for (#116): the version ranges alone
       # can pick a newer dependency (freetype 2.15) that the prebuilt Qt and harfbuzz were not built against.
-      # Qt's xorg/system dependency installs the X11 development packages with apt.
       - name: Install the dependencies
         id: install
-        run: |
-          conan install . --lockfile=conan.lock --build=never -s build_type=Release \
-            -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+        run: conan install . --lockfile=conan.lock ${{ matrix.build }} -s build_type=Release ${{ matrix.options }}
 
       - name: Save the Conan package cache
         if: always() && inputs.conan-cache != 'skip' && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
@@ -295,7 +390,7 @@ jobs:
       - name: Create the package and run test_package
         run: |
           conan create . --lockfile=conan.lock --build="missing:qtindustrialwidgets/*" -s build_type=Release \
-            -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+            ${{ matrix.options }}
 
       - name: Size of the Conan package cache
         if: always()
