@@ -86,6 +86,8 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 - Version bumps follow SemVer and touch **all four** places: `CMakeLists.txt` (`project VERSION`),
   `include/QtIndustrialWidgets/qtindustrialwidgets_global.h`, `conanfile.py`, `ports/qtindustrialwidgets/vcpkg.json`.
   Grep for the old version string afterwards (README `GIT_TAG`, package names in docs).
+  In `ports/qtindustrialwidgets/vcpkg.json` a new version resets the port version to 0: remove `"port-version"`
+  (0 is the default), since `port-version` counts only the changes of the port within one version.
 - `CHANGELOG.md` follows Keep a Changelog: Added / Changed / Deprecated / Removed / Fixed / Performance / Tests.
 - Do not bump the version or tag a release unless the issue asks for it.
 
