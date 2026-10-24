@@ -93,8 +93,9 @@ Then simply use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists
 ### Method 4: vcpkg C++ Package Manager
 
 The port is published in the vcpkg registry
-[paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry). It is verified on Linux
-(x64-linux-release) by the packaging workflow; Windows and macOS are not verified yet.
+[paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry). It is verified by the packaging workflow
+on Linux (`x64-linux-release`), Windows (`x64-windows-static-md-release` and the dynamic `x64-windows-release`) and
+macOS (`arm64-osx-release`).
 
 In manifest mode, add `"qtindustrialwidgets"` to the dependencies in your project's `vcpkg.json`, and next to it a
 `vcpkg-configuration.json` that takes `qtindustrialwidgets` from the registry and everything else, Qt included, from
@@ -143,7 +144,10 @@ vcpkg install qtindustrialwidgets:x64-linux-release --overlay-ports=/path/to/QtI
 Then `find_package(QtIndustrialWidgets CONFIG REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`.
 
 The library follows the triplet's linkage. With a static triplet both Qt and QtIndustrialWidgets are static libraries
-(see *Shared or static library* above and the note on a static Qt below).
+(see *Shared or static library* above and the note on a static Qt below). With a dynamic triplet (vcpkg's default on Windows is
+`x64-windows`) both are DLLs, copied next to the executable at build time; Qt loads its plugins at run time, from the
+`Qt6/plugins` directory of the installed tree unless they are deployed with the application (the packaging workflow
+sets `QT_PLUGIN_PATH` to it).
 
 ### Method 5: Conan 2.0 Package Manager
 
@@ -158,7 +162,8 @@ conan create . --lockfile=conan.lock --build=missing -s build_type=Release -o "q
 [`conan.lock`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/conan.lock) pins Qt and its dependencies
 to the versions that ConanCenter has prebuilt binaries for (Linux gcc 13, Windows MSVC 2022, macOS apple-clang 17, in
 Release). Without it, the version ranges can pick a newer dependency than the one the prebuilt Qt was built against,
-and `--build=missing` then builds Qt from source.
+and `--build=missing` then builds Qt from source. The Windows binaries are built with C++17: if your profile has
+another `compiler.cppstd` (`conan profile detect` gives 14 for MSVC 2022), pass `-s compiler.cppstd=17`.
 
 Then require `qtindustrialwidgets/2.5.0` in your project's conanfile, use `find_package(QtIndustrialWidgets CONFIG
 REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`. `shared=True` needs a shared Qt
@@ -172,8 +177,8 @@ A static Qt does not load plugins at run time: the platform plugins the applicat
 executable. With Qt's own CMake packages (vcpkg) this is done with `qt_import_plugins()` (Qt's documentation lists
 the plugins linked by default), for example `qt_import_plugins(app INCLUDE Qt6::QOffscreenIntegrationPlugin)`. ConanCenter's
 `qt` recipe has no CMake target for the plugins; [`test_package/conanfile.py`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/test_package/conanfile.py) shows how
-the consumer in this repository links the offscreen plugin from the `qt` package. Both setups are checked on Linux by
-the packaging workflow ([`packaging.yml`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/.github/workflows/packaging.yml)).
+the consumer in this repository links the offscreen plugin from the `qt` package. Both setups are checked on Linux, Windows and
+macOS by the packaging workflow ([`packaging.yml`](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/.github/workflows/packaging.yml)).
 
 Linking Qt statically has additional obligations under the LGPL (for example, allowing users to relink the application with a modified Qt); check [Qt's licensing terms](https://www.qt.io/licensing/) for how you distribute your application.
 
