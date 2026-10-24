@@ -23,8 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **vcpkg port** (#66): `portfile.cmake` carries the SHA512 of the `v2.5.0` tag archive (the tagged commit still had the `v2.4.0` hash, since the hash can be computed only after the tag).
+- **Conan: the dependencies are pinned by `conan.lock`** (#116). With an empty cache the version ranges resolved `freetype` to 2.15.0, for which ConanCenter has no prebuilt `qt/6.11.1`, `harfbuzz/12.3.0` and `fontconfig/2.15.0`: `conan create --build=missing` built Qt from source, and the CI job (`--build=never`) passed only with a warm cache. `conan.lock` pins `freetype/2.14.3` and the rest for Linux, Windows and macOS; `docs/getting_started.md` (method 5) passes it.
 
 ### Tests
+- **Conan job from an empty cache** (#116): `packaging.yml` takes `conan-cache=skip` on `workflow_dispatch`; the cache key depends on `conan.lock`, without a restore key, so a new lockfile is checked from an empty cache.
 - **The vcpkg registry checked in CI** (#113): a `vcpkg registry` job in `packaging.yml` (Linux, `x64-linux-release`) installs `qtindustrialwidgets` from the registry's current `HEAD`, with Qt from vcpkg's builtin registry, and runs the consumer in `test_package/`. The consumer prints the package version and, given `QIW_EXPECTED_VERSION`, fails when it differs: the job passes the latest GitHub release, so it fails while the registry is behind it.
 
 ---

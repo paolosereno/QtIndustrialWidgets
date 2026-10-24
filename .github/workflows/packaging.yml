@@ -27,11 +27,17 @@ on:
         type: choice
         options: [ checkout, released ]
         default: checkout
+      conan-cache:
+        description: "Conan package cache: restore, or skip (start from an empty cache, as after an eviction)"
+        type: choice
+        options: [ restore, skip ]
+        default: restore
   pull_request:
     branches: [ main ]
     paths:
       - "ports/**"
       - "conanfile.py"
+      - "conan.lock"
       - "test_package/**"
       - ".github/workflows/packaging.yml"
   push:
@@ -39,6 +45,7 @@ on:
     paths:
       - "ports/**"
       - "conanfile.py"
+      - "conan.lock"
       - "test_package/**"
       - ".github/workflows/packaging.yml"
 
@@ -260,23 +267,25 @@ jobs:
 
       - name: Restore the Conan package cache
         id: restore-cache
+        if: inputs.conan-cache != 'skip'
         uses: actions/cache/restore@v4
         with:
           path: ~/.conan2/p
-          key: conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-${{ hashFiles('conanfile.py', 'test_package/conanfile.py') }}
-          restore-keys: |
-            conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-
+          # The lockfile fixes every package in the cache: a new lockfile starts from an empty cache (no restore key)
+          key: conan-${{ runner.os }}-${{ env.CONAN_VERSION }}-${{ hashFiles('conan.lock', 'conanfile.py', 'test_package/conanfile.py') }}
 
       # Qt and its dependencies only, as prebuilt binaries (no Qt source build); saved also when a later step fails.
+      # conan.lock pins the versions and revisions that ConanCenter has binaries for (#116): the version ranges alone
+      # can pick a newer dependency (freetype 2.15) that the prebuilt Qt and harfbuzz were not built against.
       # Qt's xorg/system dependency installs the X11 development packages with apt.
       - name: Install the dependencies
         id: install
         run: |
-          conan install . --build=never -s build_type=Release \
+          conan install . --lockfile=conan.lock --build=never -s build_type=Release \
             -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
       - name: Save the Conan package cache
-        if: always() && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
+        if: always() && inputs.conan-cache != 'skip' && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.conan2/p
@@ -285,7 +294,7 @@ jobs:
       # Only this package is built
       - name: Create the package and run test_package
         run: |
-          conan create . --build="missing:qtindustrialwidgets/*" -s build_type=Release \
+          conan create . --lockfile=conan.lock --build="missing:qtindustrialwidgets/*" -s build_type=Release \
             -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
       - name: Size of the Conan package cache
