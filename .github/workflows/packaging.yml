@@ -159,6 +159,14 @@ jobs:
             head -n 12 "$overlay/qtindustrialwidgets/portfile.cmake"
           fi
 
+      - name: TEST ONLY (reverted before merge) - an ABI change outside the cache key, on Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p "$RUNNER_TEMP/triplets"
+          { cat "$VCPKG_ROOT/triplets/community/$TRIPLET.cmake"; echo "# packaging.yml test: an ABI change outside the cache key"; } \
+            > "$RUNNER_TEMP/triplets/$TRIPLET.cmake"
+          echo "VCPKG_OVERLAY_TRIPLETS=$RUNNER_TEMP/triplets" >> "$GITHUB_ENV"
+
       # The whole binary cache is one cache entry. A change to the port gives a new key; the restore key brings back
       # the previous entry, so Qt is not rebuilt.
       - name: Restore the vcpkg binary cache
