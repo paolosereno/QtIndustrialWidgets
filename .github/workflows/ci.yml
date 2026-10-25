@@ -90,12 +90,13 @@ jobs:
           # every printed file exists
           while read -r f; do test -s "$f" || { echo "missing: $f"; exit 1; }; done < "$RUNNER_TEMP/export.log"
           # the dark images are exactly the committed docs/images, each with its light variant
-          diff <(ls "$out" | grep -v -- '-light\.png$' | sort) <(ls docs/images | sort)
+          diff <(find "$out" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name '*-light.png' -printf '%f\n' | sort) \
+               <(find docs/images -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%f\n' | sort)
           for f in docs/images/*.png; do
             n=$(basename "$f" .png)
             test -s "$out/$n-light.png" || { echo "missing light variant: $n-light.png"; exit 1; }
           done
-          echo "$(ls "$out" | wc -l) images exported"
+          echo "$(find "$out" -mindepth 1 -maxdepth 1 ! -name '.*' | wc -l) images exported"
 
       - name: Upload gallery images artifact
         uses: actions/upload-artifact@v4
@@ -122,7 +123,8 @@ jobs:
             echo "(docs/gallery_images.md), or take them from the gallery-images artifact of this run."
             exit 1
           fi
-          echo "docs/images: all $(ls docs/images/*.png | wc -l) images equal the export"
+          committed=(docs/images/*.png)
+          echo "docs/images: all ${#committed[@]} images equal the export"
 
       # The GitHub Pages site (#80): landing page at the root, Doxygen under api/ with the gallery images,
       # redirect stubs at the old addresses
