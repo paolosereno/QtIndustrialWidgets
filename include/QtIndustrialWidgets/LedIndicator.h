@@ -14,11 +14,10 @@
 
 /**
  * \class LedIndicator
- * \brief Realistic industrial status LED pilot lamp widget.
+ * \brief Status LED / pilot lamp.
  *
- * LedIndicator renders an industrial pilot light or status LED with specular highlight reflections,
- * radial glow aura halos, blinking timer support, circular or rectangular shapes, optional metallic bezels,
- * and optional integrated text labels.
+ * LedIndicator draws a pilot light or status LED with a lens highlight, an optional glow halo when lit,
+ * blinking, circular or rectangular shapes, an optional metallic bezel, and an optional text label.
  *
  * \code
  * auto *led = new LedIndicator(QColor(46, 204, 113), parent);

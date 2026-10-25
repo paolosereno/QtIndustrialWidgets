@@ -15,17 +15,17 @@
 
 /**
  * \class LevelMeter
- * \brief High-performance multi-channel audio VU meter and telemetry level ladder widget.
+ * \brief Multi-channel level meter (VU / dBFS, tank levels, channel amplitudes).
  *
  * LevelMeter displays signal levels, sound volume units (VU/dBFS), tank fill levels,
  * or industrial channel amplitudes across single or multiple concurrent channels (e.g. Stereo Left/Right).
  *
  * Features include:
- * - Segmented LED ladder mode (with realistic dark unlit segment gaps) or Continuous gradient bar mode.
+ * - Segmented mode (LED segments with dark gaps between them) or Continuous mode (gradient bar).
  * - Multi-channel rendering with independent channel values and labels.
  * - Dynamic 3-stage colored threshold bands (Normal / Warning / Error overload).
- * - Realistic Peak Hold indicator bar with configurable hold dwell time and smooth gravity ballistic decay.
- * - High-DPI cached background scale ticks, channel division gutters, and labels.
+ * - Peak hold indicator bar: held for peakHoldTimeMs(), then falling linearly at peakDecayRate() units per second.
+ * - Scale ticks, channel division gutters and labels cached in a pixmap at the device pixel ratio.
  *
  * Every scale tick is drawn, but only the labels that keep max(4 px, half the scale font height) from
  * each other: drawn labels never overlap. The first and last labels (the ends of the scale) are always
@@ -81,18 +81,18 @@ public:
     /** \brief Visual bar presentation format. */
     enum class DisplayMode {
         Segmented,  ///< Discrete LED segments ladder
-        Continuous  ///< Smooth solid gradient fill bar
+        Continuous  ///< Solid gradient fill bar
     };
     Q_ENUM(DisplayMode)
 
     /**
-     * \brief Constructs a LevelMeter widget with default 1-channel vertical segmented styling.
+     * \brief Constructs a vertical, segmented LevelMeter with 2 channels (labels "L" and "R").
      * \param parent Optional parent widget.
      */
     explicit LevelMeter(QWidget *parent = nullptr);
     ~LevelMeter() override;
 
-    /** \brief Returns the number of concurrent channels rendered (default: 1). */
+    /** \brief Returns the number of concurrent channels rendered (default: 2). */
     [[nodiscard]] int channelCount() const;
     /** \brief Returns the minimum scale value. */
     [[nodiscard]] double minimum() const;
@@ -179,7 +179,7 @@ public Q_SLOTS:
     void setPeakHoldEnabled(bool enabled);
     /** \brief Sets peak hold dwell duration in milliseconds. */
     void setPeakHoldTimeMs(int ms);
-    /** \brief Sets peak gravity decay speed. */
+    /** \brief Sets the peak decay rate in units per second. */
     void setPeakDecayRate(double rate);
     /** \brief Toggles visibility of the scale marks. */
     void setScaleVisible(bool visible);

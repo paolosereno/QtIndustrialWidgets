@@ -18,7 +18,7 @@ class CircularBargraphPrivate;
 
 /**
  * \class CircularBargraph
- * \brief High-contrast circular arc indicator composed of discrete curved LED segments.
+ * \brief Circular arc indicator composed of discrete curved LED segments.
  *
  * CircularBargraph displays sensor readings, process variables, or audio levels across an
  * adjustable angular arc composed of discrete, curved LED segments (e.g. 16, 24, 32, or 48 segments).
@@ -28,7 +28,8 @@ class CircularBargraphPrivate;
  * - Colour zones by position: each segment takes the colour of the zone (Normal, Warning,
  *   Critical) containing its centre; unlit segments show a dimmed tint of their zone, and the
  *   Dot cursor takes the colour of its own zone.
- * - Peak-hold indicator segment with configurable hold duration and ballistic decay falloff.
+ * - Peak-hold indicator segment: held for peakHoldTimeMs(), then falling linearly at peakDecayRate() units per
+ *   second.
  * - Optional centered digital readout pod with unit label.
  * - Value state (valueState()): out-of-range inputs (including ±Inf) are shown at the range
  *   bound with a blinking end segment and a '<' / '>' readout; a NaN input is shown as

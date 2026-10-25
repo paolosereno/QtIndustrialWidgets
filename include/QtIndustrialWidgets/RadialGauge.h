@@ -14,11 +14,11 @@
 
 /**
  * \class RadialGauge
- * \brief High-performance circular dial instrument for industrial SCADA and telemetry displays.
+ * \brief Circular dial gauge with a needle, threshold bands and a digital readout.
  *
- * RadialGauge renders a high-precision circular dial gauge featuring an anti-aliased needle pointer,
- * customizable angular spans (e.g. 270° industrial sweep, 180° semi-circular, etc.), major and minor graduation ticks,
- * color-coded warning/error threshold arc bands, and an integrated recessed digital readout pod.
+ * RadialGauge draws a circular dial with an antialiased needle, a configurable angular span (270° by
+ * default, 180° for a half circle, etc.), major and minor graduation ticks, warning and error arc bands,
+ * and a digital readout pod.
  *
  * The digital readout pod sits below the pivot and is sized from the scale labels: it is narrowed so that it
  * does not cover any scale label, and the value font shrinks to fit the widest value of the range (minimum or
@@ -33,7 +33,7 @@
  * labels are always drawn. On a span of 360° or more the maximum lies on the minimum: there the label of the
  * minimum is drawn and that of the maximum is not.
  *
- * The dial scale, graduation ticks, numbers, and threshold bands are rendered into a high-DPI cached QPixmap
+ * The dial scale, graduation ticks, numbers, and threshold bands are rendered into a QPixmap at the device pixel ratio
  * that is rebuilt only when geometry or visual properties change; a value change redraws only the needle and the readout.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
@@ -81,7 +81,7 @@ class QTINDUSTRIALWIDGETS_EXPORT RadialGauge : public QWidget
 
 public:
     /**
-     * \brief Constructs a RadialGauge widget with default industrial styling.
+     * \brief Constructs a RadialGauge widget with the default appearance.
      * \param parent Optional parent widget.
      */
     explicit RadialGauge(QWidget *parent = nullptr);
@@ -111,7 +111,7 @@ public:
     [[nodiscard]] double errorThreshold() const;
     /** \brief Returns true if colored arc threshold bands are displayed. */
     [[nodiscard]] bool thresholdBandsVisible() const;
-    /** \brief Returns true if the digital LCD readout pod is displayed. */
+    /** \brief Returns true if the digital readout pod is displayed. */
     [[nodiscard]] bool digitalDisplayVisible() const;
 
     /** \brief Returns the needle pointer color. */

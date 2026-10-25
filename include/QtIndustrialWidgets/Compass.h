@@ -17,21 +17,21 @@ class CompassPrivate;
 
 /**
  * \class Compass
- * \brief Marine gyrocompass and aeronautical heading indicator instrument.
+ * \brief Heading indicator: a rotating compass card or a fixed card with a rotating needle.
  *
- * Compass provides an authentic 360° directional navigation instrument for maritime vessels,
- * avionics systems, autonomous vehicles (UAV/ROV), and industrial positioning test benches.
+ * Compass shows a 360° heading, as on marine and aeronautical heading indicators.
  *
  * Features include:
  * - Dual operating modes:
  *   - \b HeadingUp: Rotating compass card where current vessel/aircraft heading is at 12 o'clock (lubber line).
- *   - \b NorthUp: Fixed compass rose with 360° rotating dual-tone magnetic needle (Red North / Silver South).
+ *   - \b NorthUp: Fixed compass rose with a rotating two-colour needle (by default red north half, grey south
+ *     half: needleColor(), needleTailColor()).
  * - Target Heading Bug: Adjustable course/autopilot heading index with interactive mouse drag.
- * - Course Deviation Indicator (CDI): Instantaneous computation of angular deviation from target course.
+ * - courseDeviation(): signed angular deviation of the heading from the target heading (computed, not drawn).
  * - 360° graduation marks with cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) indices.
- * - High-visibility 12 o'clock lubber reference marker.
- * - Recessed central digital readout pod with 3-digit padded heading angle (e.g. `045°`).
- * - High-DPI cached circular card pixmap: a heading change redraws only the moving parts.
+ * - 12 o'clock lubber reference marker.
+ * - Central digital readout pod with 3-digit padded heading angle (e.g. `045°`).
+ * - Circular card cached in a pixmap at the device pixel ratio: a heading change redraws only the moving parts.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
@@ -76,7 +76,7 @@ public:
     Q_ENUM(DisplayMode)
 
     /**
-     * \brief Constructs a Compass widget with default industrial styling.
+     * \brief Constructs a Compass widget with the default appearance.
      * \param parent Optional parent widget.
      */
     explicit Compass(QWidget *parent = nullptr);

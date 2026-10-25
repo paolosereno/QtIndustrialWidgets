@@ -15,20 +15,20 @@
 
 /**
  * \class AnnunciatorPanel
- * \brief Industrial alarm annunciator window matrix implementing ISA-18.1 sequences A and M.
+ * \brief Alarm annunciator grid following the ISA-18.1 sequences A and M.
  *
- * AnnunciatorPanel emulates hardwired and SCADA alarm annunciator light panels used in
- * process control rooms, power generation stations, maritime vessels, and industrial plants.
+ * AnnunciatorPanel draws an alarm annunciator light panel, as used in control rooms.
  *
  * Features include:
- * - Configurable N x M grid of backlit acrylic indicator tiles with engraved legends.
- * - Implementation of ISA-18.1 alarm sequences (Sequence A: Automatic Reset, Sequence M: Manual Reset).
- * - Multi-stage tile states: Normal (dark), Unacknowledged (rapid flash), Acknowledged (solid on), and Ringback (slow flash).
- * - Alarm severity classification: Critical (Red), Warning (Amber), Advisory (Cyan/White).
- * - Global operations: Acknowledge (ACK), Silence (Mute horn), Reset, and Lamp Test (simultaneous bulb check).
+ * - Configurable rows x columns grid of tiles, each with a text legend and a severity.
+ * - Alarm sequences SequenceA_AutomaticReset and SequenceM_ManualReset.
+ * - Tile states: Normal (unlit), Unacknowledged (fast flash, 2 Hz), Acknowledged (steady), and Ringback
+ *   (slow flash, 0.8 Hz).
+ * - Severities and their default colors: Critical (red), Warning (amber), Advisory (cyan).
+ * - Global operations: Acknowledge (ACK), Silence (horn off), Reset, and Lamp Test (all tiles lit).
  * - Audible horn output signal (`audibleHornChanged(bool)`).
- * - Interactive tile acknowledgement via direct mouse click.
- * - High-DPI cached background: a state change redraws only the tiles.
+ * - Tile acknowledgement by mouse click.
+ * - Background cached in a pixmap at the device pixel ratio: a state change redraws only the tiles.
  *
  * \code
  * auto *panel = new AnnunciatorPanel(parent);
@@ -71,7 +71,7 @@ public:
     enum class Severity {
         Critical, ///< Red indicator (Emergency trip / fault)
         Warning,  ///< Amber indicator (Caution / threshold exceeded)
-        Advisory  ///< Cyan/Blue indicator (Status / auxiliary advisory)
+        Advisory  ///< Cyan indicator (Status / auxiliary advisory)
     };
     Q_ENUM(Severity)
 
@@ -79,7 +79,7 @@ public:
     enum class AlarmState {
         Normal,         ///< Inactive, unlit or faint glow
         Unacknowledged, ///< Active alarm, fast flashing with horn sound
-        Acknowledged,   ///< Active alarm acknowledged, steady steady illumination
+        Acknowledged,   ///< Active alarm acknowledged, steady illumination
         Ringback        ///< Cleared condition waiting for manual reset, slow flashing
     };
     Q_ENUM(AlarmState)
@@ -147,7 +147,7 @@ public:
     [[nodiscard]] QColor criticalColor() const;
     /** \brief Returns the warning amber alarm illumination color. */
     [[nodiscard]] QColor warningColor() const;
-    /** \brief Returns the advisory cyan/blue alarm illumination color. */
+    /** \brief Returns the advisory cyan alarm illumination color. */
     [[nodiscard]] QColor advisoryColor() const;
     /** \brief Returns the tile engraved lettering font color. */
     [[nodiscard]] QColor textColor() const;
@@ -205,7 +205,7 @@ public Q_SLOTS:
     void setCriticalColor(const QColor &color);
     /** \brief Sets the warning amber alarm illumination color. */
     void setWarningColor(const QColor &color);
-    /** \brief Sets the advisory cyan/blue alarm illumination color. */
+    /** \brief Sets the advisory cyan alarm illumination color. */
     void setAdvisoryColor(const QColor &color);
     /** \brief Sets the tile engraved lettering font color. */
     void setTextColor(const QColor &color);

@@ -33,8 +33,7 @@ class AnalysisChartTestAccess;
  * timestamps, non-decreasing, with values as double. Channels may have different or irregular
  * sample rates. All channels share one Y axis.
  *
- * Dropouts and gaps follow exactly the rules of StripChart, so the same data never looks
- * different in the two charts: a non-finite value breaks the trace, and so does a time gap between
+ * Dropouts and gaps follow the rules of StripChart: a non-finite value breaks the trace, and so does a time gap between
  * two samples larger than gapThreshold() (0, the default, means 4 times an exponential moving
  * average of the sampling interval, computed in sample order as StripChart does).
  *
@@ -42,7 +41,8 @@ class AnalysisChartTestAccess;
  * M4-decimated with one bucket per device column, as in StripChart (DecimationMode::Auto, the
  * default): each column shows the first, minimum, maximum and last finite sample of its bucket, and
  * the column of a bucket that holds a non-finite sample stays blank. The buckets come from a min/max
- * pyramid built by setChannelData(), so a redraw does not scan every sample.
+ * pyramid built by setChannelData(), so a redraw does not scan every sample. The buckets follow the view, while
+ * those of StripChart follow its scrolling window, so the two charts can decimate the same data differently.
  *
  * Time axis labels: Relative shows the time elapsed since dataStart(); Absolute shows
  * timeOrigin() + t as wall-clock time (HH:mm:ss.zzz), or t itself when timeOrigin() is invalid.
