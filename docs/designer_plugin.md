@@ -35,6 +35,26 @@ outside the prefix. No `LD_LIBRARY_PATH` is needed.
 On Windows there is no run path: `QtIndustrialWidgets.dll` must be in a directory listed in `PATH` or next to
 `designer.exe`, otherwise Designer does not load the plugin.
 
+### Prebuilt Linux packages
+
+The `.deb` and the `.tar.gz` of the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases)
+are built on Ubuntu 24.04 with Ubuntu's Qt, with the prefix `/usr` and the multiarch library directory
+`lib/x86_64-linux-gnu` (both packages are for Debian and Ubuntu):
+
+- **`.deb`**: the plugin is installed to `/usr/lib/x86_64-linux-gnu/qt6/plugins/designer/`, Qt's own plugin directory
+  on Ubuntu (`qtpaths6 --plugin-dir`), so Qt Designer loads it with no further setting. The library is in
+  `/usr/lib/x86_64-linux-gnu/`. The `packaging.yml` workflow installs the `.deb` with apt and checks that Qt Designer
+  loads the plugin.
+- **`.tar.gz`**: the plugin is in `<extracted dir>/lib/x86_64-linux-gnu/qt6/plugins/designer/`, a directory Qt does not
+  scan. Qt Designer finds it only with `QT_PLUGIN_PATH` set to the parent of `designer/`:
+
+  ```bash
+  QT_PLUGIN_PATH=<extracted dir>/lib/x86_64-linux-gnu/qt6/plugins designer
+  ```
+
+The `.deb` of v2.5.0 and earlier installed the plugin to `/usr/lib/qt6/plugins/designer/`, where Qt Designer does not
+look: with those packages, start Designer with `QT_PLUGIN_PATH=/usr/lib/qt6/plugins`.
+
 To use the plugin from the build tree, copy it into the `designer/` folder of a Qt plugin directory, for example the
 one of the Qt that built it (`qtpaths6 --plugin-dir`, on Ubuntu `/usr/lib/x86_64-linux-gnu/qt6/plugins`):
 
