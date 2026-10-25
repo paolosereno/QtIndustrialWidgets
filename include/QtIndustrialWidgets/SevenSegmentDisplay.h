@@ -11,6 +11,10 @@
 #include <memory>
 #include <QtGui/QColor>
 
+namespace QtIndustrialWidgets {
+
+class SevenSegmentDisplayPrivate;
+
 /**
  * \class SevenSegmentDisplay
  * \brief Seven-segment numeric display.
@@ -32,10 +36,6 @@
  * display->setActiveSegmentColor(QColor(0, 229, 255)); // the default cyan
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class SevenSegmentDisplayPrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT SevenSegmentDisplay : public QWidget
 {
     Q_OBJECT

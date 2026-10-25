@@ -12,6 +12,10 @@
 #include <QtGui/QColor>
 #include <QtCore/QTimer>
 
+namespace QtIndustrialWidgets {
+
+class LedIndicatorPrivate;
+
 /**
  * \class LedIndicator
  * \brief Status LED / pilot lamp.
@@ -26,10 +30,6 @@
  * led->setBlinkRateMs(400);
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class LedIndicatorPrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT LedIndicator : public QWidget
 {
     Q_OBJECT

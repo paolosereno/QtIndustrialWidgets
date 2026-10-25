@@ -12,6 +12,10 @@
 #include <QtGui/QColor>
 #include <QtGui/QPixmap>
 
+namespace QtIndustrialWidgets {
+
+class LinearGaugePrivate;
+
 /**
  * \class LinearGauge
  * \brief Linear bar and thermometer gauge.
@@ -38,10 +42,6 @@
  * gauge->setUnit("°C");
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class LinearGaugePrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT LinearGauge : public QWidget
 {
     Q_OBJECT

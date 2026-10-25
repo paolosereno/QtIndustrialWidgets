@@ -13,6 +13,10 @@
 #include <QtCore/QStringList>
 #include <memory>
 
+namespace QtIndustrialWidgets {
+
+class LevelMeterPrivate;
+
 /**
  * \class LevelMeter
  * \brief Multi-channel level meter (VU / dBFS, tank levels, channel amplitudes).
@@ -48,10 +52,6 @@
  * meter->setValues({-12.4, -9.8});
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class LevelMeterPrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT LevelMeter : public QWidget
 {
     Q_OBJECT

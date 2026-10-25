@@ -12,6 +12,10 @@
 #include <QtGui/QColor>
 #include <QtGui/QPixmap>
 
+namespace QtIndustrialWidgets {
+
+class RadialGaugePrivate;
+
 /**
  * \class RadialGauge
  * \brief Circular dial gauge with a needle, threshold bands and a digital readout.
@@ -49,10 +53,6 @@
  * gauge->setErrorThreshold(85.0);
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class RadialGaugePrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT RadialGauge : public QWidget
 {
     Q_OBJECT

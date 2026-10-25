@@ -13,6 +13,10 @@
 #include <QtCore/QString>
 #include <memory>
 
+namespace QtIndustrialWidgets {
+
+class AnnunciatorPanelPrivate;
+
 /**
  * \class AnnunciatorPanel
  * \brief Alarm annunciator grid following the ISA-18.1 sequences A and M.
@@ -43,10 +47,6 @@
  * panel->setAlarmActive(0, true);
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class AnnunciatorPanelPrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT AnnunciatorPanel : public QWidget
 {
     Q_OBJECT
