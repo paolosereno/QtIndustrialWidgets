@@ -8,15 +8,17 @@
   check_site.py SITE_DIR          checks the files (run in CI after "cmake --build build --target site"):
     - every local href and src of the landing page resolves to a file of the site, with its #anchor;
     - every other HTML file at the root is a redirect stub whose target exists under api/;
+    - the old pages of the classes in MOVED_CLASSES (api/class<Name>.html and class<Name>.html, published until #144)
+      are redirect stubs to api/classQtIndustrialWidgets_1_1<Name>.html, and no other page under api/ is a stub;
     - every src (images, scripts) of every page under api/ resolves;
     - the widget grid of the landing page lists the widgets of the README table, with the same captions and images;
     - the GIT_TAG of the landing page's quick start equals the README's;
     - the landing page's meta description is the README's opening sentence;
     - a Google Search Console verification file at the root (google<token>.html) names itself;
-    - sitemap.xml lists the landing page and every page under api/, each existing, and no redirect stub.
+    - sitemap.xml lists the landing page and every page under api/ that is not a redirect stub, each existing.
   check_site.py --url BASE_URL    crawls a served copy (python3 -m http.server, or the published site) over HTTP:
-    the landing page, every page and image it links to, every redirect stub and its target, every src of the
-    Doxygen pages; every request must answer 200.
+    the landing page, every page and image it links to, every redirect stub and its target (including those of
+    MOVED_CLASSES), every src of the Doxygen pages; every request must answer 200.
 
 Exit code 0 when everything holds, 1 otherwise; each problem is printed on its own line.
 """
@@ -32,6 +34,20 @@ from html.parser import HTMLParser
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 README = os.path.join(REPO_ROOT, "README.md")
+# Classes whose page Doxygen made outside the namespace until #144 (class<Name>.html): those addresses were published,
+# under api/ and at the root, and must stay redirect stubs to the namespaced page. Kept apart from the list in
+# docs/site/assemble_site.cmake on purpose: this one is what was published, that one is what the generator writes.
+MOVED_CLASSES = ("AnnunciatorPanel", "IndustrialSwitch", "LedIndicator", "LevelMeter", "LinearGauge", "RadialGauge",
+                 "SevenSegmentDisplay")
+
+
+def moved_class_stubs():
+    """(old address relative to the site, target relative to the site) of every moved class page."""
+    out = []
+    for name in MOVED_CLASSES:
+        target = f"api/classQtIndustrialWidgets_1_1{name}.html"
+        out += [(f"api/class{name}.html", target), (f"class{name}.html", target)]
+    return out
 
 
 class PageParser(HTMLParser):
@@ -156,18 +172,40 @@ def check_files(site):
     if stubs == 0:
         problems.append("no redirect stubs at the root")
 
-    # Doxygen pages: every source (images, scripts, style sheets)
+    # Doxygen pages: every source (images, scripts, style sheets); the only stubs under api/ are the moved classes'
     api = os.path.join(site, "api")
     pages = [n for n in os.listdir(api) if n.endswith(".html")] if os.path.isdir(api) else []
     if "index.html" not in pages:
         problems.append("no api/index.html")
+    moved = dict(moved_class_stubs())
+    api_stubs = set()
     images = 0
     for name in sorted(pages):
         page = parse(open(os.path.join(api, name), encoding="utf-8", errors="replace").read())
+        if page.refresh:
+            api_stubs.add(name)
+            if "api/" + name not in moved:
+                problems.append(f"api/{name}: a redirect stub, but not the old page of a class in MOVED_CLASSES")
+            continue
         for src in page.srcs:
             if is_local(src):
                 resolve(api, src, "api/" + name, check_anchor=False)
                 images += src.endswith(".png")
+
+    # The old pages of the moved classes: stubs at both published addresses, leading to the namespaced page
+    for old, target in moved_class_stubs():
+        path = os.path.join(site, old)
+        if not os.path.isfile(path):
+            problems.append(f"{old}: missing (redirect stub to {target} expected)")
+            continue
+        page = parse(open(path, encoding="utf-8").read())
+        resolved = os.path.relpath(os.path.normpath(os.path.join(os.path.dirname(path), page.refresh or "")), site)
+        if not page.refresh or resolved.replace(os.sep, "/") != target:
+            problems.append(f"{old}: not a redirect stub to {target} (refresh: {page.refresh})")
+        elif not os.path.isfile(os.path.join(site, target)):
+            problems.append(f"{old}: {target}: no such file")
+        elif target.rsplit("/", 1)[1] in api_stubs:
+            problems.append(f"{old}: {target} is itself a redirect stub")
 
     # Same widgets, captions, images and GIT_TAG as the README
     expected = readme_widgets()
@@ -204,13 +242,15 @@ def check_files(site):
                 problems.append(f"sitemap.xml: {loc}: not the landing page or a page under api/")
             elif not os.path.isfile(os.path.join(site, rel or "index.html")):
                 problems.append(f"sitemap.xml: {loc}: no such file")
-        expected_locs = {""} | {"api/" + n for n in pages}
+        for rel in sorted(listed & {"api/" + n for n in api_stubs}):
+            problems.append(f"sitemap.xml: {prefix}{rel}: a redirect stub")
+        expected_locs = {""} | {"api/" + n for n in pages if n not in api_stubs}
         for rel in sorted(expected_locs - listed):
             problems.append(f"sitemap.xml: {prefix}{rel} missing")
 
     print(f"checked: landing page ({len(landing.hrefs)} links, {len(landing.srcs)} sources), {stubs} redirect "
-          f"stubs, {len(pages)} pages under api/ ({images} image references), {len(actual)} widgets, "
-          f"{len(locs)} sitemap URLs")
+          f"stubs at the root and {len(api_stubs)} under api/, {len(pages) - len(api_stubs)} pages under api/ "
+          f"({images} image references), {len(actual)} widgets, {len(locs)} sitemap URLs")
     return problems
 
 
@@ -266,17 +306,21 @@ def check_url(base):
     stub_names = {u.rsplit("/", 1)[1] for u in linked if "/api/" in u and u.endswith(".html")}
     stub_names |= {"md__2home_2runner_2work_2QtIndustrialWidgets_2QtIndustrialWidgets_2docs_2" + n[len("md_docs_2"):]
                    for n in stub_names if n.startswith("md_docs_2")}
-    for name in sorted(stub_names - {"index.html"}):
-        url = urllib.parse.urljoin(base, name)
+    stub_names -= {"index.html"}
+    expected_targets = {urllib.parse.urljoin(base, old): urllib.parse.urljoin(base, target)
+                        for old, target in moved_class_stubs()}
+    for url in sorted({urllib.parse.urljoin(base, n) for n in stub_names} | set(expected_targets)):
         status, body = get(url)
         page = parse(body) if status == 200 else None
         if status != 200 or not page.refresh:
             problems.append(f"{url}: {status}, not a redirect stub")
             continue
         target = urllib.parse.urljoin(url, page.refresh)
+        if url in expected_targets and target != expected_targets[url]:
+            problems.append(f"{url} -> {target}, expected {expected_targets[url]}")
         if get(target)[0] != 200:
             problems.append(f"{url} -> {target}: {get(target)[0]}")
-    print(f"crawled {len(fetched)} URLs under {base} ({len(stub_names - {'index.html'})} redirect stubs)")
+    print(f"crawled {len(fetched)} URLs under {base} ({len(stub_names) + len(expected_targets)} redirect stubs)")
     return problems
 
 
