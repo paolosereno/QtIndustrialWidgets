@@ -38,6 +38,8 @@ jobs:
   # Qt Designer must load the plugin from where the package puts it, with no QT_PLUGIN_PATH; the plugin's run path
   # must not name /usr/local; test_package must build and run against the installed package.
   # ============================================================
+  # The job's name is a required status check of main (a rule in the repository settings): do not rename it without
+  # updating that rule, or pull requests wait for a check that never reports.
   deb:
     name: Linux packages (Ubuntu 24.04, .deb and .tar.gz)
     runs-on: ubuntu-24.04
