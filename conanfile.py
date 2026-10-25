@@ -14,7 +14,7 @@ import os
 
 class QtIndustrialWidgetsConan(ConanFile):
     name = "qtindustrialwidgets"
-    version = "2.5.0"
+    version = "2.5.1"
     license = "MIT"
     author = "Paolo Sereno <pablitos1024@gmail.com>"
     url = "https://github.com/paolosereno/QtIndustrialWidgets"
