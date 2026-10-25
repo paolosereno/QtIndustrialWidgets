@@ -13,14 +13,16 @@
 
 /**
  * \class IndustrialSwitch
- * \brief Heavy-duty industrial toggle switch and rocker control with safety guard.
+ * \brief Toggle lever or rocker switch with an optional safety guard.
  *
- * IndustrialSwitch emulates rugged panel switches including:
+ * IndustrialSwitch draws panel switches:
  * - Bat-handle toggle lever or curved rocker switch styles.
- * - 2-position (ON/OFF) or 3-position (ON/OFF/ON or AUTO/OFF/MANUAL).
- * - Optional spring-loaded missile safety guard cover that must be flipped open to throw the switch.
- * - Smooth physics-inspired spring throw animations using QVariantAnimation.
- * - Integrated miniature status LED lamp, metallic faceplate screws, and engraved labels.
+ * - 2 positions (labels OFF / ON by default) or 3 positions (OFF / AUTO / ON by default); the labels are set
+ *   with setLabelOff(), setLabelCenter() and setLabelOn().
+ * - Optional safety guard cover: while it is closed, a mouse click, Space or Return opens it instead of moving
+ *   the switch; a click on the open guard closes it.
+ * - Animated movement with QVariantAnimation (130 ms, QEasingCurve::OutBack; the guard 180 ms, OutCubic).
+ * - Optional status LED, faceplate screws, and labels.
  *
  * \code
  * auto *sw = new IndustrialSwitch(parent);
@@ -144,7 +146,7 @@ public Q_SLOTS:
     void setHasSafetyGuard(bool guard);
     /** \brief Opens or closes the flip-up safety guard. */
     void setGuardOpen(bool open);
-    /** \brief Enables or disables smooth throw animation. */
+    /** \brief Enables or disables the animation of the lever or rocker movement. */
     void setAnimated(bool animated);
     /** \brief Toggles the integrated status pilot LED. */
     void setHasLed(bool hasLed);

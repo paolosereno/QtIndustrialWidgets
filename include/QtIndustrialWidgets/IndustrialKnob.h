@@ -17,12 +17,13 @@ class IndustrialKnobPrivate;
 
 /**
  * \class IndustrialKnob
- * \brief Precision industrial rotary control potentiometer and selector knob.
+ * \brief Rotary knob for a continuous value or discrete steps.
  *
- * IndustrialKnob provides an interactive rotary control with brushed metal texture, notched grips,
+ * IndustrialKnob provides an interactive rotary control with a metallic face, a knurled grip ring,
  * continuous or discrete indexed stepping, mouse dragging, mouse wheel, and keyboard arrow controls.
  *
- * The background ticks and scale are cached in a high-DPI pixmap, so a rotation redraws only the moving parts.
+ * The background ticks and scale are cached in a pixmap at the device pixel ratio, so a rotation redraws only the
+ * moving parts.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
@@ -63,7 +64,7 @@ class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
 public:
     /** \brief Operating mode for the knob adjustment behavior. */
     enum class KnobMode {
-        Continuous, ///< Smooth continuous analog potentiometer
+        Continuous, ///< Continuous value, as a potentiometer
         Discrete    ///< Stepped indexed selector switch
     };
     Q_ENUM(KnobMode)

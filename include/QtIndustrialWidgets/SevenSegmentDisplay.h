@@ -13,21 +13,23 @@
 
 /**
  * \class SevenSegmentDisplay
- * \brief Realistic electronic 7-segment LED/LCD numeric display widget.
+ * \brief Seven-segment numeric display.
  *
- * SevenSegmentDisplay emulates multi-digit electronic digital panel meters, counters, and digital clocks.
+ * SevenSegmentDisplay draws multi-digit seven-segment readouts, as on panel meters, counters, and digital clocks.
  * Features include:
- * - Geometric vector segment rendering with customizable italic skew angle and segment stroke width.
- * - Realistic "ghost" unlit segment glow effect via inactiveSegmentColor.
- * - Decimal point placement, leading zero blanking or padding, and arbitrary ASCII character approximations.
- * - Drop-in QLCDNumber replacement with extended modern industrial styling properties.
+ * - Segments painted as polygons, with an adjustable skew angle and segment width.
+ * - Unlit segments drawn in inactiveSegmentColor (by default the lit color at low opacity).
+ * - Decimal point placement, leading zero blanking or padding. setText() shows digits, '-', '_', '=', space and
+ *   the letter patterns A, b, C, c, d, E, F, H, L, o, P, r, U; any other character is drawn blank.
+ * - display(double), display(int) and display(const QString &) slots with the signatures of QLCDNumber's; the
+ *   class derives from QWidget, not from QLCDNumber, and the rest of its API differs.
  *
  * \code
  * auto *display = new SevenSegmentDisplay(parent);
  * display->setDigitCount(6);
  * display->setDecimalPlaces(2);
  * display->display(123.45);
- * display->setActiveSegmentColor(QColor(0, 229, 255)); // Neon Cyan
+ * display->setActiveSegmentColor(QColor(0, 229, 255)); // the default cyan
  * \endcode
  */
 namespace QtIndustrialWidgets {
@@ -54,7 +56,7 @@ class QTINDUSTRIALWIDGETS_EXPORT SevenSegmentDisplay : public QWidget
 
 public:
     /**
-     * \brief Constructs a SevenSegmentDisplay widget with 5 digits and cyan LED styling.
+     * \brief Constructs a SevenSegmentDisplay widget with 5 digits and cyan segments.
      * \param parent Optional parent widget.
      */
     explicit SevenSegmentDisplay(QWidget *parent = nullptr);
@@ -96,11 +98,11 @@ public Q_SLOTS:
     void setValue(double value);
     /** \brief Sets arbitrary text or numeric characters to display. */
     void setText(const QString &text);
-    /** \brief Convenience slot to display a double (compatible with QLCDNumber). */
+    /** \brief Convenience slot to display a double (same signature as QLCDNumber::display(double)). */
     void display(double value);
-    /** \brief Convenience slot to display an integer (compatible with QLCDNumber). */
+    /** \brief Convenience slot to display an integer (same signature as QLCDNumber::display(int)). */
     void display(int value);
-    /** \brief Convenience slot to display a string (compatible with QLCDNumber). */
+    /** \brief Convenience slot to display a string (same signature as QLCDNumber::display(const QString &)). */
     void display(const QString &text);
 
     /** \brief Sets the total digit capacity. */
@@ -120,7 +122,7 @@ public Q_SLOTS:
     void setActiveSegmentColor(const QColor &color);
     /** \brief Sets the unlit ghost segment shadow color. */
     void setInactiveSegmentColor(const QColor &color);
-    /** \brief Sets the LCD background glass color. */
+    /** \brief Sets the display panel background color. */
     void setBackgroundColor(const QColor &color);
     /** \brief Sets the outer chassis bezel frame color. */
     void setBezelColor(const QColor &color);

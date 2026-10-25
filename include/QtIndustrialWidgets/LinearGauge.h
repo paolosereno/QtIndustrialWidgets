@@ -14,13 +14,14 @@
 
 /**
  * \class LinearGauge
- * \brief High-performance linear bar and thermometer instrument for industrial SCADA and telemetry dashboards.
+ * \brief Linear bar and thermometer gauge.
  *
  * LinearGauge supports both vertical and horizontal orientations, bulb thermometer or flat panel bar designs,
  * major and minor graduation scales, dynamic threshold liquid color shifts (Normal -> Warning -> Error),
  * optional gradient liquid fills, and an integrated digital readout pod.
  *
- * Scale geometry, graduation ticks, and recessed trough background are cached in a Hi-DPI QPixmap for high-frequency updates.
+ * Scale geometry, graduation ticks, and the trough background are cached in a QPixmap at the device pixel ratio,
+ * rebuilt only when the size or a visual property changes; a value change does not rebuild it.
  *
  * Fonts: the texts use the widget font (setFont(), style sheets) at sizes derived from the widget
  * geometry and scaled by the ratio between the effective pixel sizes of the widget font and of the
@@ -103,7 +104,7 @@ public:
     [[nodiscard]] bool isDynamicLiquidColor() const;
     /** \brief Returns true if liquid fill uses a multi-color gradient. */
     [[nodiscard]] bool isGradientLiquid() const;
-    /** \brief Returns true if the digital LCD readout pod is displayed. */
+    /** \brief Returns true if the digital readout pod is displayed. */
     [[nodiscard]] bool digitalDisplayVisible() const;
     /** \brief Returns true if graduation scale marks and numeric labels are visible. */
     [[nodiscard]] bool scaleVisible() const;

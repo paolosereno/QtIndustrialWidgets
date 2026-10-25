@@ -23,17 +23,20 @@ class StripChartTestAccess;
 
 /**
  * \class StripChart
- * \brief Real-time multi-channel scrolling oscilloscope and strip chart recorder.
+ * \brief Multi-channel scrolling strip chart for streaming data.
  *
- * StripChart provides high-performance scrolling telemetry waveform visualization for industrial test benches,
- * SCADA systems, and embedded monitoring.
+ * StripChart draws the latest samples of one or more channels in a scrolling window, against the sample
+ * index or against time.
  *
  * Features include:
- * - O(1) circular ring buffer storage per channel avoiding memory allocations during streaming.
- * - Sub-millisecond rendering with Hi-DPI cached background reticle grid and bezel.
- * - Manual Y-range bounds or dynamic smooth auto-scaling.
- * - Multi-channel legend overlay with live telemetry readouts.
- * - Real-time axis (std::chrono::nanoseconds) and M4 min/max decimation to one bucket per device-pixel column
+ * - A ring buffer of fixed capacity per channel (setCapacity()). In the streaming case of docs/benchmarks.md,
+ *   appending samples makes no heap allocation; painting does (the same table counts them).
+ * - The background, grid and bezel are drawn into a pixmap at the device pixel ratio, redrawn only when the
+ *   size or the appearance changes.
+ * - Y range set by hand (setYRange()) or by autoscale (setAutoScaleY()): the range grows at once when the data
+ *   leave it, and shrinks only after 30 consecutive recomputations in which the data span is less than 50 % of it.
+ * - A legend with the name and the latest value of each visible channel.
+ * - A time axis (std::chrono::nanoseconds) and M4 min/max decimation to one bucket per device-pixel column
  *   (measured paint times: docs/benchmarks.md).
  *
  * Fonts: the texts use the widget font (setFont(), style sheets) at sizes derived from the widget
@@ -74,8 +77,8 @@ class QTINDUSTRIALWIDGETS_EXPORT StripChart : public QWidget
 public:
     /** \brief Horizontal X-axis progression mode. */
     enum class XAxisMode {
-        SampleIndex, ///< Legacy mode: X coordinate mapped to ring buffer sample slot index (default)
-        Time         ///< Real-time mode: X coordinate mapped to nanosecond timestamps
+        SampleIndex, ///< X coordinate mapped to ring buffer sample slot index (default)
+        Time         ///< X coordinate mapped to nanosecond timestamps
     };
     Q_ENUM(XAxisMode)
 
@@ -117,13 +120,13 @@ public:
     [[nodiscard]] double yMaximum() const;
     /** \brief Returns true if vertical auto-scaling is enabled. */
     [[nodiscard]] bool isAutoScaleY() const;
-    /** \brief Returns true if oscilloscope reticle grid is displayed. */
+    /** \brief Returns true if the grid is displayed. */
     [[nodiscard]] bool isGridVisible() const;
     /** \brief Returns true if top legend overlay is displayed. */
     [[nodiscard]] bool isLegendVisible() const;
     /** \brief Returns the reticle grid lines color. */
     [[nodiscard]] QColor gridColor() const;
-    /** \brief Returns the oscilloscope screen dark background color. */
+    /** \brief Returns the background color. */
     [[nodiscard]] QColor backgroundColor() const;
     /** \brief Returns the outer chassis bezel frame color. */
     [[nodiscard]] QColor bezelColor() const;
@@ -174,8 +177,8 @@ public:
     /** \brief Sets the decimation mode.
      *
      * When decimation is active, traces are rendered using a cosmetic 1-device-pixel pen
-     * without antialiasing to guarantee bounded frame time (O(W)). Custom channel pen
-     * widths and antialiasing apply when decimation is inactive.
+     * without antialiasing. Custom channel pen widths and antialiasing apply when decimation
+     * is inactive.
      */
     void setDecimationMode(DecimationMode mode);
 
