@@ -30,7 +30,7 @@ include(FetchContent)
 FetchContent_Declare(
     QtIndustrialWidgets
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
-    GIT_TAG        v2.5.0
+    GIT_TAG        v2.5.1
 )
 
 # Optional: do not build the examples, the Designer plugin and the tests
@@ -173,7 +173,7 @@ Release). Without it, the version ranges can pick a newer dependency than the on
 and `--build=missing` then builds Qt from source. The Windows binaries are built with C++17: if your profile has
 another `compiler.cppstd` (`conan profile detect` gives 14 for MSVC 2022), pass `-s compiler.cppstd=17`.
 
-Then require `qtindustrialwidgets/2.5.0` in your project's conanfile, use `find_package(QtIndustrialWidgets CONFIG
+Then require `qtindustrialwidgets/2.5.1` in your project's conanfile, use `find_package(QtIndustrialWidgets CONFIG
 REQUIRED)` and link `QtIndustrialWidgets::QtIndustrialWidgets`. `shared=True` needs a shared Qt
 (`-o "qt/*:shared=True"`); with a static Qt the recipe refuses it, because a shared library built against a static Qt
 carries its own copy of Qt. On Linux, Qt's `xorg/system` dependency installs the X11 development packages with the
