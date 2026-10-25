@@ -218,6 +218,8 @@ private Q_SLOTS:
     void switchStylesAndOrientations();
     void signalEmission();
     void keyboardInteraction();
+    void closedGuardBlocksUserInput_data();
+    void closedGuardBlocksUserInput();
     void renderOffscreen();
     void extremeResizeNoCrash();
     void ledDoesNotCoverLabels_data() { addSwitchRows(); }
@@ -329,6 +331,110 @@ void tst_IndustrialSwitch::keyboardInteraction()
 
     QTest::keyClick(&sw, Qt::Key_Space);
     QCOMPARE(sw.position(), 0);
+}
+
+// #142: with the safety guard closed, no key, click, drag or wheel step changes the position; the only
+// effect of user input is opening the guard (click, Space, Return), as docs/widgets.md says
+void tst_IndustrialSwitch::closedGuardBlocksUserInput_data()
+{
+    QTest::addColumn<int>("orientation");
+    QTest::addColumn<int>("positions");
+    QTest::addColumn<int>("start");
+    for (const Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+        const char *on = o == Qt::Vertical ? "vertical" : "horizontal";
+        QTest::addRow("%s, 2 positions, at 0", on) << int(o) << 2 << 0;
+        QTest::addRow("%s, 2 positions, at 1", on) << int(o) << 2 << 1;
+        QTest::addRow("%s, 3 positions, at 1", on) << int(o) << 3 << 1;
+    }
+}
+
+void tst_IndustrialSwitch::closedGuardBlocksUserInput()
+{
+    QFETCH(int, orientation);
+    QFETCH(int, positions);
+    QFETCH(int, start);
+    const auto o = static_cast<Qt::Orientation>(orientation);
+
+    IndustrialSwitch sw;
+    sw.setAnimated(false);
+    sw.setOrientation(o);
+    sw.setPositionCount(positions);
+    sw.resize(o == Qt::Vertical ? QSize(100, 160) : QSize(160, 100));
+    sw.setHasSafetyGuard(true);
+
+    // Puts the switch back at the start position with the guard closed
+    const auto rearm = [&] {
+        sw.setGuardOpen(false);
+        sw.setPosition(start);
+        QCOMPARE(sw.position(), start);
+        QVERIFY(!sw.isGuardOpen());
+    };
+
+    // Keys: those that open the guard, and those that move an unguarded switch
+    const QList<Qt::Key> openingKeys{Qt::Key_Space, Qt::Key_Return};
+    const QList<Qt::Key> movingKeys{Qt::Key_Up, Qt::Key_Right, Qt::Key_Down, Qt::Key_Left};
+    for (const Qt::Key key : openingKeys + movingKeys) {
+        rearm();
+        QSignalSpy posSpy(&sw, &IndustrialSwitch::positionChanged);
+        QTest::keyClick(&sw, key);
+        const QString what = QStringLiteral("key ") + QKeySequence(key).toString();
+        QVERIFY2(sw.position() == start && posSpy.isEmpty(),
+                 qPrintable(what + QStringLiteral(" moved the switch to %1 with the guard closed").arg(sw.position())));
+        QVERIFY2(sw.isGuardOpen() == openingKeys.contains(key),
+                 qPrintable(what + (sw.isGuardOpen() ? QStringLiteral(" opened") : QStringLiteral(" did not open"))
+                            + QStringLiteral(" the guard")));
+    }
+
+    // Control: with the guard open, the same moving keys do move the switch when the move is possible,
+    // so the keys above did reach the widget
+    for (const Qt::Key key : movingKeys) {
+        const bool up = key == Qt::Key_Up || key == Qt::Key_Right;
+        if ((up && start == positions - 1) || (!up && start == 0)) {
+            continue;
+        }
+        rearm();
+        sw.setGuardOpen(true);
+        QTest::keyClick(&sw, key);
+        QCOMPARE(sw.position(), up ? start + 1 : start - 1);
+    }
+
+    // Clicks over the whole widget: each one may only open the guard
+    const QRect r = sw.rect();
+    const QList<QPoint> points{r.center(), QPoint(r.center().x(), r.top() + 8), QPoint(r.center().x(), r.bottom() - 8),
+                               QPoint(r.left() + 8, r.center().y()), QPoint(r.right() - 8, r.center().y())};
+    for (const QPoint &pt : points) {
+        rearm();
+        QSignalSpy posSpy(&sw, &IndustrialSwitch::positionChanged);
+        QTest::mouseClick(&sw, Qt::LeftButton, Qt::NoModifier, pt);
+        QVERIFY2(sw.position() == start && posSpy.isEmpty(),
+                 qPrintable(QStringLiteral("a click at (%1, %2) moved the switch to %3 with the guard closed")
+                                .arg(pt.x()).arg(pt.y()).arg(sw.position())));
+        QVERIFY2(sw.isGuardOpen(), "a click did not open the guard");
+    }
+
+    // Drag across the switch with the guard closed (the press opens the guard; the drag must not move it)
+    rearm();
+    {
+        QSignalSpy posSpy(&sw, &IndustrialSwitch::positionChanged);
+        const QPoint from = o == Qt::Vertical ? QPoint(r.center().x(), r.bottom() - 8) : QPoint(r.left() + 8, r.center().y());
+        const QPoint to = o == Qt::Vertical ? QPoint(r.center().x(), r.top() + 8) : QPoint(r.right() - 8, r.center().y());
+        QTest::mousePress(&sw, Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(&sw, to);
+        QTest::mouseRelease(&sw, Qt::LeftButton, Qt::NoModifier, to);
+        QVERIFY2(sw.position() == start && posSpy.isEmpty(), "a drag moved the switch with the guard closed");
+    }
+
+    // Wheel steps in both directions
+    for (const int delta : {120, -120}) {
+        rearm();
+        QSignalSpy posSpy(&sw, &IndustrialSwitch::positionChanged);
+        QWheelEvent wheel(QPointF(r.center()), sw.mapToGlobal(QPointF(r.center())), QPoint(), QPoint(0, delta),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(&sw, &wheel);
+        QVERIFY2(sw.position() == start && posSpy.isEmpty(),
+                 qPrintable(QStringLiteral("a wheel step of %1 moved the switch with the guard closed").arg(delta)));
+        QVERIFY(!sw.isGuardOpen());
+    }
 }
 
 void tst_IndustrialSwitch::renderOffscreen()

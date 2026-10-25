@@ -1037,11 +1037,14 @@ void IndustrialSwitch::mouseReleaseEvent(QMouseEvent *event)
 
 void IndustrialSwitch::keyPressEvent(QKeyEvent *event)
 {
+    // A closed guard blocks every key (#142): Space and Return open it, the others are not handled
     if (d_ptr->m_hasSafetyGuard && !d_ptr->m_isGuardOpen) {
         if (event->key() == Qt::Key_Space || event->key() == Qt::Key_Return) {
             setGuardOpen(true);
-            return;
+        } else {
+            QWidget::keyPressEvent(event);
         }
+        return;
     }
 
     switch (event->key()) {
