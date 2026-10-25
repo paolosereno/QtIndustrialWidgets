@@ -15,8 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.5.1] - 2026-10-25
+
 ### Added
-- **Code of Conduct and citation metadata** (#130): `CODE_OF_CONDUCT.md` is the Contributor Covenant 2.1 (text under CC-BY-4.0, `LICENSES/CC-BY-4.0.txt`), with reports to pablitos1024@gmail.com; `CONTRIBUTING.md`, the README and the issue chooser link it. `CITATION.cff` (CFF 1.2.0) describes version 2.5.0 for GitHub's *Cite this repository*.
+- **Code of Conduct and citation metadata** (#130): `CODE_OF_CONDUCT.md` is the Contributor Covenant 2.1 (text under CC-BY-4.0, `LICENSES/CC-BY-4.0.txt`), with reports to pablitos1024@gmail.com; `CONTRIBUTING.md`, the README and the issue chooser link it. `CITATION.cff` (CFF 1.2.0) describes the current release for GitHub's *Cite this repository*.
 - **vcpkg registry** (#113): the port is published in [paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry), from version 2.5.0. The README and `docs/getting_started.md` (method 4) give installation from the registry (a `vcpkg-configuration.json` with a `git` registry) as the main vcpkg method; the overlay port stays as the alternative.
 
 ### Changed
