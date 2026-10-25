@@ -28,11 +28,16 @@ if $install_deps; then
         libgl1-mesa-dev libxkbcommon-dev
 fi
 
+# Prefix /usr (#133): on Debian and Ubuntu GNUInstallDirs then gives the multiarch CMAKE_INSTALL_LIBDIR
+# (lib/x86_64-linux-gnu), so the plugin lands in Qt's own plugin directory (qtpaths6 --plugin-dir) and the absolute
+# entry of its run path is the directory where the .deb puts the library. The .tar.gz has the same layout: it is for
+# Debian and Ubuntu.
 build_dir=build/package
 rm -rf "$build_dir"
 mkdir -p "$build_dir"
 cmake -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
     -DBUILD_DOCS=OFF \
     -DBUILD_TESTS=OFF \
     -DBUILD_EXAMPLES=OFF \
