@@ -78,7 +78,7 @@ target_link_libraries(my_app
 )
 ```
 
-### Method 3: Debian / Ubuntu Native Package (.deb)
+### Method 3: Ubuntu 24.04 Native Package (.deb)
 
 Download the `.deb` package from the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases) page and install:
 

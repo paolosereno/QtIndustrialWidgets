@@ -43,7 +43,7 @@ are built on Ubuntu 24.04 with Ubuntu's Qt, with the prefix `/usr` and the multi
 
 - **`.deb`**: the plugin is installed to `/usr/lib/x86_64-linux-gnu/qt6/plugins/designer/`, Qt's own plugin directory
   on Ubuntu (`qtpaths6 --plugin-dir`), so Qt Designer loads it with no further setting. The library is in
-  `/usr/lib/x86_64-linux-gnu/`. The `packaging.yml` workflow installs the `.deb` with apt and checks that Qt Designer
+  `/usr/lib/x86_64-linux-gnu/`. The `linux-packages.yml` workflow installs the `.deb` with apt and checks that Qt Designer
   loads the plugin.
 - **`.tar.gz`**: the plugin is in `<extracted dir>/lib/x86_64-linux-gnu/qt6/plugins/designer/`, a directory Qt does not
   scan. Qt Designer finds it only with `QT_PLUGIN_PATH` set to the parent of `designer/`:
