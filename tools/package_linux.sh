@@ -28,24 +28,28 @@ if $install_deps; then
         libgl1-mesa-dev libxkbcommon-dev
 fi
 
-# Prefix /usr (#133): on Debian and Ubuntu GNUInstallDirs then gives the multiarch CMAKE_INSTALL_LIBDIR
-# (lib/x86_64-linux-gnu), so the plugin lands in Qt's own plugin directory (qtpaths6 --plugin-dir) and the absolute
-# entry of its run path is the directory where the .deb puts the library. The .tar.gz has the same layout: it is for
-# Debian and Ubuntu.
+# Prefix /usr (#133): on Ubuntu GNUInstallDirs then gives the multiarch CMAKE_INSTALL_LIBDIR (lib/x86_64-linux-gnu),
+# so the plugin lands in Qt's own plugin directory (qtpaths6 --plugin-dir) and the absolute entry of its run path is
+# the directory where the .deb puts the library. The .tar.gz has the same layout. Both are built and checked on
+# Ubuntu 24.04.
 build_dir=build/package
 rm -rf "$build_dir"
-mkdir -p "$build_dir"
 cmake -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DBUILD_DOCS=OFF \
     -DBUILD_TESTS=OFF \
     -DBUILD_EXAMPLES=OFF \
-    -DBUILD_DESIGNER_PLUGIN=ON | tee "$build_dir/configure.log"
-# The packages ship the Designer plugin: fail instead of packaging without it
-grep -q "QtIndustrialWidgets: Qt Designer found, building designer plugin" "$build_dir/configure.log"
-
+    -DBUILD_DESIGNER_PLUGIN=ON
 cmake --build "$build_dir"
+
+# The packages ship the Designer plugin: fail instead of packaging without it
+plugin="$build_dir/lib/QtIndustrialWidgetsPlugin.so"
+if [[ ! -f "$plugin" ]]; then
+    echo "error: $plugin was not built (Qt Designer not found?): not packaging without the Designer plugin" >&2
+    exit 1
+fi
+
 mkdir -p "$output_dir"
 cpack --config "$build_dir/CPackConfig.cmake" -G "DEB;TGZ" -B "$output_dir"
 # CPack's own work directory; only the packages stay in the output directory
