@@ -11,6 +11,10 @@
 #include <QtGui/QColor>
 #include <memory>
 
+namespace QtIndustrialWidgets {
+
+class IndustrialSwitchPrivate;
+
 /**
  * \class IndustrialSwitch
  * \brief Toggle lever or rocker switch with an optional safety guard.
@@ -34,10 +38,6 @@
  * });
  * \endcode
  */
-namespace QtIndustrialWidgets {
-
-class IndustrialSwitchPrivate;
-
 class QTINDUSTRIALWIDGETS_EXPORT IndustrialSwitch : public QWidget
 {
     Q_OBJECT
