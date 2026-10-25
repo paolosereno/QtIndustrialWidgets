@@ -12,8 +12,8 @@ Security fixes are made for the latest minor release only.
 
 | Version | Supported |
 |---|---|
-| 2.3.x | Yes |
-| < 2.3 | No |
+| Latest minor release (the highest `x.y` on the [Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases) page) | Yes |
+| Earlier minor releases | No |
 
 ## Reporting a vulnerability
 
