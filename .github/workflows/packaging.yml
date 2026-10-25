@@ -507,7 +507,8 @@ jobs:
           QT_DEBUG_PLUGINS: "1"
         run: |
           plugin=$(find "$TGZ_ROOT" -name QtIndustrialWidgetsPlugin.so)
-          export QT_PLUGIN_PATH=$(dirname "$(dirname "$plugin")")
+          QT_PLUGIN_PATH=$(dirname "$(dirname "$plugin")")
+          export QT_PLUGIN_PATH
           echo "QT_PLUGIN_PATH=$QT_PLUGIN_PATH"
           timeout 20 /usr/lib/qt6/bin/designer > designer-tgz.log 2>&1 || true
           grep 'designer/.*loaded library' designer-tgz.log || true
