@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT
 
 # Builds the Linux release packages, the .deb and the .tar.gz (#133). The only place that configures and packages for
-# Linux: release.yml publishes what it produces, and the deb job of packaging.yml checks the same packages.
+# Linux: release.yml publishes what it produces, and the deb job of linux-packages.yml checks the same packages.
 #
 # Usage: tools/package_linux.sh [--install-deps] <output-dir>
 #   --install-deps  install the build dependencies with apt-get (Ubuntu 24.04, as on the CI runners)

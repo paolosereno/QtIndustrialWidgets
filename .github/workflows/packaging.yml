@@ -8,7 +8,7 @@
 # (paolosereno/vcpkg-registry), as users do, and checks that the registry has the latest release. Each job runs on
 # Linux, Windows and macOS.
 #
-# The deb job checks the Linux release packages (#133), built by tools/package_linux.sh as release.yml builds them.
+# The Linux release packages (#133) are checked by linux-packages.yml (#136).
 #
 # Not run on every pull request: vcpkg builds Qt from source, so the job relies on its binary cache (actions/cache,
 # vcpkg "files" provider). Runs twice a week (so that the cache, evicted after 7 days without use, stays warm), on
@@ -38,8 +38,6 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - "tools/package_linux.sh"
-      - ".github/workflows/release.yml"
       - "ports/**"
       - "conanfile.py"
       - "conan.lock"
@@ -48,8 +46,6 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "tools/package_linux.sh"
-      - ".github/workflows/release.yml"
       - "ports/**"
       - "conanfile.py"
       - "conan.lock"
@@ -457,105 +453,3 @@ jobs:
       - name: Size of the Conan package cache
         if: always()
         run: du -sh ~/.conan2/p
-
-  # ============================================================
-  # The Linux release packages (#133): tools/package_linux.sh builds the .deb and the .tar.gz exactly as release.yml
-  # does. The .tar.gz is checked first, with no package installed (test_package with CMAKE_PREFIX_PATH, and Qt Designer
-  # with QT_PLUGIN_PATH, as docs/designer_plugin.md describes); then the .deb is installed with apt and checked:
-  # Qt Designer must load the plugin from where the package puts it, with no QT_PLUGIN_PATH; the plugin's run path
-  # must not name /usr/local; test_package must build and run against the installed package.
-  # ============================================================
-  deb:
-    name: Linux packages (Ubuntu 24.04, .deb and .tar.gz)
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build the packages as release.yml does
-        run: tools/package_linux.sh --install-deps dist
-
-      - name: Version of the packages
-        run: |
-          version=$(sed -n 's/^    VERSION \([0-9][0-9.]*\)$/\1/p' CMakeLists.txt)
-          test -n "$version"
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-
-      - name: Install Qt Designer
-        run: sudo apt-get install -y designer-qt6
-
-      # The extracted .tar.gz, with CMAKE_PREFIX_PATH and no other QtIndustrialWidgets on the system
-      - name: test_package against the extracted .tar.gz
-        run: |
-          mkdir -p "$RUNNER_TEMP/tgz"
-          tar -xzf dist/QtIndustrialWidgets-*.tar.gz -C "$RUNNER_TEMP/tgz"
-          root=$(find "$RUNNER_TEMP/tgz" -mindepth 1 -maxdepth 1 -type d)
-          echo "TGZ_ROOT=$root" >> "$GITHUB_ENV"
-          find "$root" -name 'QtIndustrialWidgetsConfig.cmake' -o -name 'QtIndustrialWidgetsPlugin.so'
-          cmake -S test_package -B build/tp-tgz -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$root" \
-            -DQIW_EXPECTED_VERSION="$VERSION"
-          dir=$(sed -n 's/^QtIndustrialWidgets_DIR:PATH=//p' build/tp-tgz/CMakeCache.txt)
-          echo "QtIndustrialWidgets_DIR=$dir"
-          case "$dir" in "$root"/*) ;; *) echo "::error::found $dir, not the extracted .tar.gz"; exit 1 ;; esac
-          cmake --build build/tp-tgz
-          ./build/tp-tgz/consumer
-
-      # docs/designer_plugin.md: with the .tar.gz, Qt Designer finds the plugin through QT_PLUGIN_PATH
-      - name: Qt Designer loads the plugin of the .tar.gz, with QT_PLUGIN_PATH
-        env:
-          QT_DEBUG_PLUGINS: "1"
-        run: |
-          plugin=$(find "$TGZ_ROOT" -name QtIndustrialWidgetsPlugin.so)
-          QT_PLUGIN_PATH=$(dirname "$(dirname "$plugin")")
-          export QT_PLUGIN_PATH
-          echo "QT_PLUGIN_PATH=$QT_PLUGIN_PATH"
-          timeout 20 /usr/lib/qt6/bin/designer > designer-tgz.log 2>&1 || true
-          grep 'designer/.*loaded library' designer-tgz.log || true
-          if ! grep -q "\"$plugin\" loaded library" designer-tgz.log; then
-            echo "::error::Qt Designer did not load $plugin"
-            exit 1
-          fi
-
-      - name: Install the .deb with apt
-        id: install
-        run: |
-          dpkg-deb -c dist/qtindustrialwidgets_*.deb | grep -E 'designer/|libQtIndustrialWidgets'
-          sudo apt-get install -y ./dist/qtindustrialwidgets_*.deb
-          plugin=$(dpkg -L qtindustrialwidgets | grep '/QtIndustrialWidgetsPlugin\.so$')
-          echo "plugin=$plugin" >> "$GITHUB_OUTPUT"
-          echo "installed plugin: $plugin"
-          echo "qtpaths6 --plugin-dir: $(qtpaths6 --plugin-dir)"
-
-      # Designer scans <plugin dir>/designer; QT_DEBUG_PLUGINS=1 logs every library it loads
-      - name: Qt Designer loads the plugin, with no QT_PLUGIN_PATH
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        env:
-          QT_DEBUG_PLUGINS: "1"
-        run: |
-          unset QT_PLUGIN_PATH
-          status=0
-          timeout 20 /usr/lib/qt6/bin/designer > designer.log 2>&1 || status=$?
-          echo "designer exit status: $status (124: still running after 20 s, stopped by timeout)"
-          grep 'designer/.*loaded library' designer.log || true
-          if ! grep -q "\"${{ steps.install.outputs.plugin }}\" loaded library" designer.log; then
-            echo "::error::Qt Designer did not load ${{ steps.install.outputs.plugin }}"
-            exit 1
-          fi
-
-      - name: The plugin's run path does not name /usr/local
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: |
-          readelf -d "${{ steps.install.outputs.plugin }}" | grep -E 'RUNPATH|RPATH'
-          if readelf -d "${{ steps.install.outputs.plugin }}" | grep -E 'RUNPATH|RPATH' | grep -q '/usr/local'; then
-            echo "::error::the run path of the packaged plugin names /usr/local"
-            exit 1
-          fi
-
-      - name: test_package against the installed .deb
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: |
-          cmake -S test_package -B build/tp-deb -G Ninja -DCMAKE_BUILD_TYPE=Release -DQIW_EXPECTED_VERSION="$VERSION"
-          grep '^QtIndustrialWidgets_DIR:PATH=' build/tp-deb/CMakeCache.txt
-          cmake --build build/tp-deb
-          ./build/tp-deb/consumer
