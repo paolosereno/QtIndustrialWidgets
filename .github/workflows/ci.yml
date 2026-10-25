@@ -35,6 +35,45 @@ jobs:
         uses: fsfe/reuse-action@v6
 
   # ============================================================
+  # 0b. actionlint (#138): every workflow in .github/workflows (syntax, expressions, action inputs) and its run: blocks
+  # through shellcheck. Both tools at a fixed version, downloaded from their GitHub releases and checked against
+  # the SHA-256 below, so that a new release cannot change the result.
+  # ============================================================
+  actionlint:
+    name: actionlint (workflows)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      SHELLCHECK_VERSION: "0.11.0"
+      SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install actionlint and shellcheck
+        run: |
+          set -euo pipefail
+          tools="$RUNNER_TEMP/lint-tools"
+          mkdir -p "$tools"
+          cd "$tools"
+          curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | sha256sum -c
+          tar -xzf "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" actionlint
+          curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256}  shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | sha256sum -c
+          tar -xJf "shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          ./actionlint -version
+          ./shellcheck --version
+          echo "$tools" >> "$GITHUB_PATH"
+
+      # shellcheck by its path, so that a shellcheck of the runner image is never used
+      - name: actionlint
+        run: actionlint -shellcheck "$RUNNER_TEMP/lint-tools/shellcheck"
+
+  # ============================================================
   # 1. Linux (Ubuntu 24.04 LTS - GCC & Qt 6)
   # ============================================================
   build-linux:
@@ -90,12 +129,13 @@ jobs:
           # every printed file exists
           while read -r f; do test -s "$f" || { echo "missing: $f"; exit 1; }; done < "$RUNNER_TEMP/export.log"
           # the dark images are exactly the committed docs/images, each with its light variant
-          diff <(ls "$out" | grep -v -- '-light\.png$' | sort) <(ls docs/images | sort)
+          diff <(find "$out" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name '*-light.png' -printf '%f\n' | sort) \
+               <(find docs/images -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%f\n' | sort)
           for f in docs/images/*.png; do
             n=$(basename "$f" .png)
             test -s "$out/$n-light.png" || { echo "missing light variant: $n-light.png"; exit 1; }
           done
-          echo "$(ls "$out" | wc -l) images exported"
+          echo "$(find "$out" -mindepth 1 -maxdepth 1 ! -name '.*' | wc -l) images exported"
 
       - name: Upload gallery images artifact
         uses: actions/upload-artifact@v4
@@ -122,7 +162,8 @@ jobs:
             echo "(docs/gallery_images.md), or take them from the gallery-images artifact of this run."
             exit 1
           fi
-          echo "docs/images: all $(ls docs/images/*.png | wc -l) images equal the export"
+          committed=(docs/images/*.png)
+          echo "docs/images: all ${#committed[@]} images equal the export"
 
       # The GitHub Pages site (#80): landing page at the root, Doxygen under api/ with the gallery images,
       # redirect stubs at the old addresses

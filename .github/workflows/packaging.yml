@@ -145,7 +145,7 @@ jobs:
             cp -r ports/qtindustrialwidgets "$overlay/"
             # vcpkg identifies a package by its port files, not by the sources: the tree hash of the checkout is
             # written into the copy, so a cached build of other sources is never reused (Qt still comes from the cache)
-            python - "$overlay/qtindustrialwidgets/portfile.cmake" "$(posix "$GITHUB_WORKSPACE")" "$(git rev-parse HEAD^{tree})" <<'PY'
+            python - "$overlay/qtindustrialwidgets/portfile.cmake" "$(posix "$GITHUB_WORKSPACE")" "$(git rev-parse "HEAD^{tree}")" <<'PY'
           import re, sys
           path, source, tree = sys.argv[1:]
           text = open(path).read()
@@ -183,7 +183,7 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then generator=(-G "Visual Studio 17 2022" -A x64); else generator=(-G Ninja -DCMAKE_BUILD_TYPE=Release); fi
           cmake -S test_package -B build-consumer "${generator[@]}" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET -DVCPKG_OVERLAY_PORTS="$OVERLAY_PORTS"
+            -DVCPKG_TARGET_TRIPLET="$TRIPLET" -DVCPKG_HOST_TRIPLET="$TRIPLET" -DVCPKG_OVERLAY_PORTS="$OVERLAY_PORTS"
 
       # The entry keeps only the binaries this run installed, so it does not grow with every change of the port. It is
       # saved when they differ from the restored ones, whatever the reason (port, compiler, tools): vcpkg's ABI hashes
@@ -360,7 +360,7 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then generator=(-G "Visual Studio 17 2022" -A x64); else generator=(-G Ninja -DCMAKE_BUILD_TYPE=Release); fi
           cmake -S "$CONSUMER" -B build-consumer "${generator[@]}" \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=$TRIPLET -DVCPKG_HOST_TRIPLET=$TRIPLET \
+            -DVCPKG_TARGET_TRIPLET="$TRIPLET" -DVCPKG_HOST_TRIPLET="$TRIPLET" \
             -DQIW_EXPECTED_VERSION="$EXPECTED_VERSION"
 
       - name: Build the consumer
