@@ -127,7 +127,7 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
   target_link_libraries(my_app PRIVATE QtIndustrialWidgets::QtIndustrialWidgets)
   ```
 - **Prebuilt packages** from [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases):
-  `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` on Debian / Ubuntu, or extract the `.tar.gz` (Linux, built
+  `sudo dpkg -i qtindustrialwidgets_<version>_amd64.deb` on Ubuntu 24.04, or extract the `.tar.gz` (Linux, built
   and checked on Ubuntu 24.04) / `.zip` (Windows) and add the extracted directory to `CMAKE_PREFIX_PATH`.
 - **vcpkg**: from the registry [paolosereno/vcpkg-registry](https://github.com/paolosereno/vcpkg-registry), with
   `"qtindustrialwidgets"` in your `vcpkg.json` and the registry in your `vcpkg-configuration.json` (see
