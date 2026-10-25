@@ -460,7 +460,8 @@ jobs:
 
   # ============================================================
   # The Linux release packages (#133): tools/package_linux.sh builds the .deb and the .tar.gz exactly as release.yml
-  # does. The .tar.gz is checked first, with no package installed; then the .deb is installed with apt and checked:
+  # does. The .tar.gz is checked first, with no package installed (test_package with CMAKE_PREFIX_PATH, and Qt Designer
+  # with QT_PLUGIN_PATH, as docs/designer_plugin.md describes); then the .deb is installed with apt and checked:
   # Qt Designer must load the plugin from where the package puts it, with no QT_PLUGIN_PATH; the plugin's run path
   # must not name /usr/local; test_package must build and run against the installed package.
   # ============================================================
@@ -481,12 +482,16 @@ jobs:
           test -n "$version"
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
+      - name: Install Qt Designer
+        run: sudo apt-get install -y designer-qt6
+
       # The extracted .tar.gz, with CMAKE_PREFIX_PATH and no other QtIndustrialWidgets on the system
       - name: test_package against the extracted .tar.gz
         run: |
           mkdir -p "$RUNNER_TEMP/tgz"
           tar -xzf dist/QtIndustrialWidgets-*.tar.gz -C "$RUNNER_TEMP/tgz"
           root=$(find "$RUNNER_TEMP/tgz" -mindepth 1 -maxdepth 1 -type d)
+          echo "TGZ_ROOT=$root" >> "$GITHUB_ENV"
           find "$root" -name 'QtIndustrialWidgetsConfig.cmake' -o -name 'QtIndustrialWidgetsPlugin.so'
           cmake -S test_package -B build/tp-tgz -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$root" \
             -DQIW_EXPECTED_VERSION="$VERSION"
@@ -496,11 +501,26 @@ jobs:
           cmake --build build/tp-tgz
           ./build/tp-tgz/consumer
 
-      - name: Install the .deb with apt, and Qt Designer
+      # docs/designer_plugin.md: with the .tar.gz, Qt Designer finds the plugin through QT_PLUGIN_PATH
+      - name: Qt Designer loads the plugin of the .tar.gz, with QT_PLUGIN_PATH
+        env:
+          QT_DEBUG_PLUGINS: "1"
+        run: |
+          plugin=$(find "$TGZ_ROOT" -name QtIndustrialWidgetsPlugin.so)
+          export QT_PLUGIN_PATH=$(dirname "$(dirname "$plugin")")
+          echo "QT_PLUGIN_PATH=$QT_PLUGIN_PATH"
+          timeout 20 /usr/lib/qt6/bin/designer > designer-tgz.log 2>&1 || true
+          grep 'designer/.*loaded library' designer-tgz.log || true
+          if ! grep -q "\"$plugin\" loaded library" designer-tgz.log; then
+            echo "::error::Qt Designer did not load $plugin"
+            exit 1
+          fi
+
+      - name: Install the .deb with apt
         id: install
         run: |
           dpkg-deb -c dist/qtindustrialwidgets_*.deb | grep -E 'designer/|libQtIndustrialWidgets'
-          sudo apt-get install -y ./dist/qtindustrialwidgets_*.deb designer-qt6
+          sudo apt-get install -y ./dist/qtindustrialwidgets_*.deb
           plugin=$(dpkg -L qtindustrialwidgets | grep '/QtIndustrialWidgetsPlugin\.so$')
           echo "plugin=$plugin" >> "$GITHUB_OUTPUT"
           echo "installed plugin: $plugin"
