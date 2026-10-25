@@ -90,6 +90,14 @@ Replace `<version>` with the version of the package you downloaded from [Release
 
 Then use `find_package(QtIndustrialWidgets REQUIRED)` in your `CMakeLists.txt`.
 
+The package installs the library and its CMake package under `/usr/lib/x86_64-linux-gnu/`, and the Qt Designer plugin
+in Ubuntu's Qt plugin directory, `/usr/lib/x86_64-linux-gnu/qt6/plugins/designer/` (see
+[Qt Designer plugin](designer_plugin.md)).
+
+The Linux `.tar.gz` of the same release has the same layout (`lib/x86_64-linux-gnu/…`); both are built and checked on Ubuntu 24.04.
+Extract it and add the extracted directory to `CMAKE_PREFIX_PATH`; Qt Designer finds its plugin only with
+`QT_PLUGIN_PATH=<extracted dir>/lib/x86_64-linux-gnu/qt6/plugins`.
+
 ### Method 4: vcpkg C++ Package Manager
 
 The port is published in the vcpkg registry
