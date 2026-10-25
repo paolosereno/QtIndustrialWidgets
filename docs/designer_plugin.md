@@ -39,7 +39,7 @@ On Windows there is no run path: `QtIndustrialWidgets.dll` must be in a director
 
 The `.deb` and the `.tar.gz` of the [GitHub Releases](https://github.com/paolosereno/QtIndustrialWidgets/releases)
 are built on Ubuntu 24.04 with Ubuntu's Qt, with the prefix `/usr` and the multiarch library directory
-`lib/x86_64-linux-gnu` (both packages are for Debian and Ubuntu):
+`lib/x86_64-linux-gnu` (both packages are built and checked on Ubuntu 24.04):
 
 - **`.deb`**: the plugin is installed to `/usr/lib/x86_64-linux-gnu/qt6/plugins/designer/`, Qt's own plugin directory
   on Ubuntu (`qtpaths6 --plugin-dir`), so Qt Designer loads it with no further setting. The library is in
@@ -52,8 +52,8 @@ are built on Ubuntu 24.04 with Ubuntu's Qt, with the prefix `/usr` and the multi
   QT_PLUGIN_PATH=<extracted dir>/lib/x86_64-linux-gnu/qt6/plugins designer
   ```
 
-The `.deb` of v2.5.0 and earlier installed the plugin to `/usr/lib/qt6/plugins/designer/`, where Qt Designer does not
-look: with those packages, start Designer with `QT_PLUGIN_PATH=/usr/lib/qt6/plugins`.
+The `.deb` of v2.5.0 installed the plugin to `/usr/lib/qt6/plugins/designer/`, where Qt Designer does not
+look: with that package, start Designer with `QT_PLUGIN_PATH=/usr/lib/qt6/plugins`.
 
 To use the plugin from the build tree, copy it into the `designer/` folder of a Qt plugin directory, for example the
 one of the Qt that built it (`qtpaths6 --plugin-dir`, on Ubuntu `/usr/lib/x86_64-linux-gnu/qt6/plugins`):

@@ -94,7 +94,7 @@ The package installs the library and its CMake package under `/usr/lib/x86_64-li
 in Ubuntu's Qt plugin directory, `/usr/lib/x86_64-linux-gnu/qt6/plugins/designer/` (see
 [Qt Designer plugin](designer_plugin.md)).
 
-The Linux `.tar.gz` of the same release has the same layout (`lib/x86_64-linux-gnu/…`): it is for Debian and Ubuntu.
+The Linux `.tar.gz` of the same release has the same layout (`lib/x86_64-linux-gnu/…`); both are built and checked on Ubuntu 24.04.
 Extract it and add the extracted directory to `CMAKE_PREFIX_PATH`; Qt Designer finds its plugin only with
 `QT_PLUGIN_PATH=<extracted dir>/lib/x86_64-linux-gnu/qt6/plugins`.
 
