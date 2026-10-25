@@ -24,7 +24,8 @@ class IndustrialSwitchPrivate;
  * - 2 positions (labels OFF / ON by default) or 3 positions (OFF / AUTO / ON by default); the labels are set
  *   with setLabelOff(), setLabelCenter() and setLabelOn().
  * - Optional safety guard cover: while it is closed, a mouse click, Space or Return opens it instead of moving
- *   the switch; a click on the open guard closes it.
+ *   the switch, and no other key, drag or wheel step moves it; a click on the open guard closes it. Calls from
+ *   the application (setPosition(), setChecked(), toggle()) are not blocked by the guard.
  * - Animated movement with QVariantAnimation (130 ms, QEasingCurve::OutBack; the guard 180 ms, OutCubic).
  * - Optional status LED, faceplate screws, and labels.
  *
