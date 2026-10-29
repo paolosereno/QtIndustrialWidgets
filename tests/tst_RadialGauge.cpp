@@ -8,7 +8,6 @@
 #include "FontTestUtils.h"
 
 #include <memory>
-#include <QtGui/QFontDatabase>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -20,12 +19,14 @@
 #include <memory>
 #include <limits>
 
+#include "ReadoutTestUtils.h"
 #include "TextInkTestUtils.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/ValueClassification.h"
 
 using namespace QtIndustrialWidgets;
+using namespace ReadoutTest;
 
 namespace {
 
@@ -138,48 +139,6 @@ QVector<QPoint> needlePixelsOutside(const QImage &image, const QRect &box)
     return out;
 }
 
-// Column groups of the readout ink inside \a box: runs of adjacent columns that hold near-white ink, left to
-// right, each with the top and bottom ink row of every column
-struct InkGroup {
-    QVector<int> top;
-    QVector<int> bottom;
-};
-
-QVector<InkGroup> readoutInkGroups(const QImage &image, const QRect &box)
-{
-    QVector<InkGroup> groups;
-    bool inGroup = false;
-    for (int x = box.left(); x <= box.right(); ++x) {
-        int top = -1;
-        int bottom = -1;
-        for (int y = box.top(); y <= box.bottom(); ++y) {
-            const QRgb p = image.pixel(x, y);
-            if (qRed(p) >= 200 && qGreen(p) >= 200 && qBlue(p) >= 200) {
-                if (top < 0) {
-                    top = y;
-                }
-                bottom = y;
-            }
-        }
-        if (top < 0) {
-            inGroup = false;
-            continue;
-        }
-        if (!inGroup) {
-            groups.push_back(InkGroup{});
-            inGroup = true;
-        }
-        groups.back().top.push_back(top);
-        groups.back().bottom.push_back(bottom);
-    }
-    return groups;
-}
-
-int spread(const QVector<int> &v)
-{
-    return *std::max_element(v.begin(), v.end()) - *std::min_element(v.begin(), v.end());
-}
-
 // Device-pixel box of the digital display: the pixels that change when it is shown
 QRect displayBox(RadialGauge &gauge)
 {
@@ -235,23 +194,6 @@ void checkOutOfRangeMark(const QFont *font)
         QVERIFY2(flat <= 1 && pointed >= 2,
                  qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
     }
-}
-
-// The test font of tests/fonts: the readout characters (0-9 . - < > and the space) and no glyph for U+25B2 or
-// U+25BC, loaded from the repository so that the test does not depend on the installed fonts. With
-// NoFontMerging a mark drawn as one of those characters would come out as a missing-glyph box, or not at all
-QFont readoutTestFont(QString *error)
-{
-    const QString path = QStringLiteral(QIW_TEST_FONT_DIR "/QiwReadoutTest-Bold.ttf");
-    const int id = QFontDatabase::addApplicationFont(path);
-    const QStringList families = id >= 0 ? QFontDatabase::applicationFontFamilies(id) : QStringList();
-    if (families.isEmpty()) {
-        *error = QStringLiteral("cannot load %1").arg(path);
-        return QFont();
-    }
-    QFont f(families.first());
-    f.setStyleStrategy(QFont::NoFontMerging);
-    return f;
 }
 
 } // namespace
@@ -972,35 +914,11 @@ void tst_RadialGauge::nanHidesNeedleAndShowsDashes()
 
     const QImage invalid = renderGauge(gauge);
     QCOMPARE(needlePixels(invalid).size(), 0);
-    // "---": three ink groups, where the held "50.0" gives four, each flat with its top and bottom edges level
-    // with those of the others. Checked by groups, not by glyph shapes: without installed fonts (Windows
-    // offscreen CI) every character is drawn as the same box. The dashes sit at fractional positions, so their
-    // first and last columns are antialiased ends, only partly covered: the edges are compared on the interior
-    // columns of each dash only (at least 3), and the widths are not compared
+    // "---" (ReadoutTest::dashesError()), where the held "50.0" gives four ink groups
     const QVector<InkGroup> held = readoutInkGroups(valid, box);
     QVERIFY2(held.size() == 4, qPrintable(QStringLiteral("%1 ink groups for \"50.0\"").arg(held.size())));
-    const QVector<InkGroup> dashes = readoutInkGroups(invalid, box);
-    QVERIFY2(dashes.size() == 3, qPrintable(QStringLiteral("%1 ink groups for the invalid readout").arg(dashes.size())));
-    const auto interior = [](const QVector<int> &v) { return v.mid(1, v.size() - 2); };
-    QVERIFY2(dashes.first().top.size() >= 5,
-             qPrintable(QStringLiteral("first dash %1 px wide").arg(dashes.first().top.size())));
-    const int top = interior(dashes.first().top).first();
-    const int bottom = interior(dashes.first().bottom).first();
-    for (const InkGroup &g : dashes) {
-        const QVector<int> t = interior(g.top);
-        const QVector<int> b = interior(g.bottom);
-        const QString what = QStringLiteral("dash %1 px wide, interior top %2..%3, bottom %4..%5 (first dash: top %6, bottom %7)")
-                                 .arg(g.top.size())
-                                 .arg(t.isEmpty() ? -1 : *std::min_element(t.begin(), t.end()))
-                                 .arg(t.isEmpty() ? -1 : *std::max_element(t.begin(), t.end()))
-                                 .arg(b.isEmpty() ? -1 : *std::min_element(b.begin(), b.end()))
-                                 .arg(b.isEmpty() ? -1 : *std::max_element(b.begin(), b.end()))
-                                 .arg(top)
-                                 .arg(bottom);
-        QVERIFY2(t.size() >= 3, qPrintable(what));
-        QVERIFY2(spread(t) == 0 && spread(b) == 0, qPrintable(what));
-        QVERIFY2(t.first() == top && b.first() == bottom, qPrintable(what));
-    }
+    const QString dashes = dashesError(readoutInkGroups(invalid, box));
+    QVERIFY2(dashes.isEmpty(), qPrintable(dashes));
 
     // Without the digital display the needle is hidden too
     gauge.setDigitalDisplayVisible(false);

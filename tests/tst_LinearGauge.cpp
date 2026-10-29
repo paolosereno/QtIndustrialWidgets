@@ -7,6 +7,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 
 #include "FontTestUtils.h"
+#include "ReadoutTestUtils.h"
 
 #include <memory>
 #include <QtGui/QFontInfo>
@@ -14,6 +15,7 @@
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
+#include <QtTest/QSignalSpy>
 
 #include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
@@ -25,6 +27,7 @@
 #include <limits>
 
 using namespace QtIndustrialWidgets;
+using namespace ReadoutTest;
 
 class tst_LinearGauge : public QObject
 {
@@ -52,6 +55,20 @@ private Q_SLOTS:
     void scaleLabelMinGap();
     void scaleLabelsReadable_data();
     void scaleLabelsReadable();
+    void nanHidesLiquidAndShowsHatch_data();
+    void nanHidesLiquidAndShowsHatch();
+    void hatchVisibleAtSmallSizes_data();
+    void hatchVisibleAtSmallSizes();
+    void nanReadoutShowsDashes_data();
+    void nanReadoutShowsDashes();
+    void nanEmitsValueChangedOnce();
+    void outOfRangeReadoutShowsTheTrueValue_data();
+    void outOfRangeReadoutShowsTheTrueValue();
+    void infiniteReadoutDiffersFromTheBound_data();
+    void infiniteReadoutDiffersFromTheBound();
+    void rangeChangeReclassifiesTheLastInput();
+    void outOfRangeMarkIsAShape_data();
+    void outOfRangeMarkIsAShape();
 };
 
 namespace {
@@ -198,6 +215,150 @@ QString scaleLabelText(double value, int precision)
                           : QString::number(value, 'f', (value == std::floor(value)) ? 0 : 1);
 }
 
+// #151 ------------------------------------------------------------------------------------------------------
+
+// The gauge rendered at the screen device pixel ratio (QT_SCALE_FACTOR in ctest)
+QImage renderGauge(LinearGauge &gauge)
+{
+    return gauge.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+}
+
+// A gauge whose liquid and hatch can be told apart in a render: the liquid is pure blue (its gradient stops
+// are lighter and darker shades of it) and the scale colour, used by the hatch of an invalid input, pure green
+void prepareForTube(LinearGauge &gauge, Qt::Orientation orientation, bool thermometer, const QSize &size)
+{
+    gauge.setOrientation(orientation);
+    gauge.setThermometerMode(thermometer);
+    gauge.setRange(0.0, 100.0);
+    gauge.setDynamicLiquidColor(false);
+    gauge.setLiquidColor(QColor(0, 0, 255));
+    gauge.setScaleColor(QColor(0, 255, 0));
+    gauge.resize(size);
+}
+
+bool isLiquidPixel(QRgb p)
+{
+    return qBlue(p) > 150 && qBlue(p) - qRed(p) > 80 && qBlue(p) - qGreen(p) > 80;
+}
+
+bool isHatchPixel(QRgb p)
+{
+    return qGreen(p) > 150 && qGreen(p) - qRed(p) > 80 && qGreen(p) - qBlue(p) > 80;
+}
+
+template <typename Pred>
+QVector<QPoint> pixelsWhere(const QImage &image, Pred pred)
+{
+    QVector<QPoint> out;
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            if (pred(line[x])) {
+                out.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return out;
+}
+
+// The inside of the tube (and bulb): the liquid pixels of a full gauge
+QVector<QPoint> liquidArea(LinearGauge &gauge)
+{
+    const double held = gauge.value();
+    gauge.setValue(gauge.maximum());
+    const QVector<QPoint> area = pixelsWhere(renderGauge(gauge), isLiquidPixel);
+    gauge.setValue(held);
+    return area;
+}
+
+// Empty when the hatch pixels of \a image cover \a area as a pattern of lines: hatch ink in at least 80 % of the
+// rows and of the columns of the area, on 10 % to 60 % of its pixels (neither a fill nor a few strokes)
+QString hatchError(const QImage &image, const QVector<QPoint> &area)
+{
+    if (area.isEmpty()) {
+        return QStringLiteral("no tube area");
+    }
+    QSet<int> rows;
+    QSet<int> columns;
+    QSet<int> inkRows;
+    QSet<int> inkColumns;
+    int ink = 0;
+    for (const QPoint &p : area) {
+        rows.insert(p.y());
+        columns.insert(p.x());
+        if (isHatchPixel(image.pixel(p))) {
+            ++ink;
+            inkRows.insert(p.y());
+            inkColumns.insert(p.x());
+        }
+    }
+    const double rowCover = double(inkRows.size()) / rows.size();
+    const double columnCover = double(inkColumns.size()) / columns.size();
+    const double density = double(ink) / area.size();
+    if (rowCover < 0.8 || columnCover < 0.8 || density < 0.1 || density > 0.6) {
+        return QStringLiteral("hatch on %1 % of the rows, %2 % of the columns, %3 % of the %4 tube pixels")
+            .arg(rowCover * 100.0, 0, 'f', 1)
+            .arg(columnCover * 100.0, 0, 'f', 1)
+            .arg(density * 100.0, 0, 'f', 1)
+            .arg(area.size());
+    }
+    return QString();
+}
+
+void addTubeLayouts()
+{
+    QTest::addColumn<Qt::Orientation>("orientation");
+    QTest::addColumn<bool>("thermometer");
+    QTest::addColumn<QSize>("size");
+    QTest::newRow("vertical-thermometer") << Qt::Vertical << true << QSize(120, 320);
+    QTest::newRow("vertical-bar") << Qt::Vertical << false << QSize(120, 320);
+    QTest::newRow("horizontal-thermometer") << Qt::Horizontal << true << QSize(420, 110);
+    QTest::newRow("horizontal-bar") << Qt::Horizontal << false << QSize(420, 110);
+}
+
+// A gauge whose readout can be read in a render: drawn in the near-white liquid colour (dynamic colour off),
+// in the test font, without a unit
+void prepareForReadout(LinearGauge &gauge, Qt::Orientation orientation, const QFont &font)
+{
+    const bool vertical = orientation == Qt::Vertical;
+    gauge.setOrientation(orientation);
+    gauge.setThermometerMode(vertical);
+    gauge.setRange(0.0, 100.0);
+    gauge.setUnit(QString());
+    gauge.setDynamicLiquidColor(false);
+    gauge.setLiquidColor(QColor(250, 250, 250));
+    gauge.setFont(font);
+    gauge.resize(vertical ? QSize(120, 320) : QSize(420, 110));
+}
+
+// Device-pixel box of the digital display
+QRect podBox(LinearGauge &gauge, const QImage &image)
+{
+    const internal::GaugeRect pod =
+        internal::linearGaugeDisplayRect(gauge.orientation() == Qt::Vertical, gauge.width(), gauge.height());
+    const double dpr = image.devicePixelRatio();
+    return QRectF(pod.x * dpr, pod.y * dpr, pod.w * dpr, pod.h * dpr).toAlignedRect() & image.rect();
+}
+
+// Pixels outside \a box that differ between two renders of the same size
+int differingPixelsOutside(const QImage &a, const QImage &b, const QRect &box)
+{
+    int n = 0;
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            n += (!box.contains(x, y) && a.pixel(x, y) != b.pixel(x, y)) ? 1 : 0;
+        }
+    }
+    return n;
+}
+
+void addReadoutLayouts()
+{
+    QTest::addColumn<Qt::Orientation>("orientation");
+    QTest::newRow("vertical") << Qt::Vertical;
+    QTest::newRow("horizontal") << Qt::Horizontal;
+}
+
 } // namespace
 
 void tst_LinearGauge::initTestCase()
@@ -314,9 +475,9 @@ void tst_LinearGauge::nanAndInfinityResilience()
     gauge.setValue(50.0);
     QCOMPARE(gauge.value(), 50.0);
 
-    // NaN input must be ignored (fail-safe hold)
+    // NaN input is shown as invalid, never as the last value (#151; it was held before)
     gauge.setValue(std::numeric_limits<double>::quiet_NaN());
-    QCOMPARE(gauge.value(), 50.0);
+    QVERIFY(std::isnan(gauge.value()));
 
     // +Infinity must clamp to maximum
     gauge.setValue(std::numeric_limits<double>::infinity());
@@ -807,6 +968,236 @@ void tst_LinearGauge::fontScaleFromEffectiveSize()
     QCOMPARE(internal::scalePixelSize(9, std::numeric_limits<double>::quiet_NaN()), 9);
     QCOMPARE(internal::scalePointSize(7.5, 1.0), 7.5);
     QCOMPARE(internal::scalePointSize(7.5, 2.0), 15.0);
+}
+
+// #151: a NaN input empties the tube and bulb and hatches them, so the last valid value is never shown
+void tst_LinearGauge::nanHidesLiquidAndShowsHatch_data()
+{
+    addTubeLayouts();
+}
+
+void tst_LinearGauge::nanHidesLiquidAndShowsHatch()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QFETCH(bool, thermometer);
+    QFETCH(QSize, size);
+    LinearGauge gauge;
+    prepareForTube(gauge, orientation, thermometer, size);
+    const QVector<QPoint> area = liquidArea(gauge);
+    QVERIFY(!area.isEmpty());
+
+    gauge.setValue(50.0);
+    QVERIFY(!pixelsWhere(renderGauge(gauge), isLiquidPixel).isEmpty());
+    // Before the input: no hatch
+    QVERIFY2(!hatchError(renderGauge(gauge), area).isEmpty(), "a valid value is hatched");
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QVERIFY2(std::isnan(gauge.value()), qPrintable(QStringLiteral("value() = %1").arg(gauge.value())));
+    const QImage invalid = renderGauge(gauge);
+    QCOMPARE(pixelsWhere(invalid, isLiquidPixel).size(), 0);
+    const QString hatch = hatchError(invalid, area);
+    QVERIFY2(hatch.isEmpty(), qPrintable(hatch));
+}
+
+// #151: the hatch stays a visible pattern at the minimum size of the gauge
+void tst_LinearGauge::hatchVisibleAtSmallSizes_data()
+{
+    QTest::addColumn<Qt::Orientation>("orientation");
+    QTest::addColumn<bool>("thermometer");
+    for (const Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+        for (const bool thermometer : {true, false}) {
+            QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(o == Qt::Vertical ? "vertical" : "horizontal",
+                                                                 thermometer ? "thermometer" : "bar")))
+                << o << thermometer;
+        }
+    }
+}
+
+void tst_LinearGauge::hatchVisibleAtSmallSizes()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QFETCH(bool, thermometer);
+    LinearGauge gauge;
+    prepareForTube(gauge, orientation, thermometer, QSize(1, 1));
+    gauge.resize(gauge.minimumSizeHint());
+    const QVector<QPoint> area = liquidArea(gauge);
+    QVERIFY(!area.isEmpty());
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    const QString hatch = hatchError(renderGauge(gauge), area);
+    QVERIFY2(hatch.isEmpty(), qPrintable(QStringLiteral("%1x%2: ").arg(gauge.width()).arg(gauge.height()) + hatch));
+}
+
+// #151: a NaN input reads "---", not the held value
+void tst_LinearGauge::nanReadoutShowsDashes_data()
+{
+    addReadoutLayouts();
+}
+
+void tst_LinearGauge::nanReadoutShowsDashes()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    LinearGauge gauge;
+    prepareForReadout(gauge, orientation, font);
+    gauge.setValue(50.0);
+    const QImage valid = renderGauge(gauge);
+    const QRect box = podBox(gauge, valid);
+    // The held "50.0" does not pass as "---" (at DPR 1 its 12 px digits touch, so its ink groups are not counted)
+    QVERIFY2(!dashesError(readoutInkGroups(valid, box)).isEmpty(), "\"50.0\" reads as \"---\"");
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QVERIFY2(std::isnan(gauge.value()), qPrintable(QStringLiteral("value() = %1").arg(gauge.value())));
+    const QString dashes = dashesError(readoutInkGroups(renderGauge(gauge), box));
+    QVERIFY2(dashes.isEmpty(), qPrintable(dashes));
+}
+
+// #151: entering the invalid state emits valueChanged(NaN) once; a repeated NaN emits nothing
+void tst_LinearGauge::nanEmitsValueChangedOnce()
+{
+    LinearGauge gauge;
+    gauge.setValue(50.0);
+    QSignalSpy spy(&gauge, &LinearGauge::valueChanged);
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(std::isnan(spy.at(0).at(0).toDouble()));
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(spy.count(), 1);
+
+    gauge.setValue(50.0);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toDouble(), 50.0);
+}
+
+// #151: a finite value above (below) the range fills the tube as the maximum (minimum) does, but the readout
+// is not the one of the bound: it shows the true value
+void tst_LinearGauge::outOfRangeReadoutShowsTheTrueValue_data()
+{
+    addReadoutLayouts();
+}
+
+void tst_LinearGauge::outOfRangeReadoutShowsTheTrueValue()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    LinearGauge gauge;
+    prepareForReadout(gauge, orientation, font);
+
+    gauge.setValue(100.0);
+    const QImage atMaximum = renderGauge(gauge);
+    const QRect box = podBox(gauge, atMaximum);
+    gauge.setValue(150.0);
+    QCOMPARE(gauge.value(), 100.0);
+    const QImage above = renderGauge(gauge);
+    QCOMPARE(differingPixelsOutside(above, atMaximum, box), 0);
+    QVERIFY2(above.copy(box) != atMaximum.copy(box), "the readout of 150 equals the readout of the maximum");
+
+    gauge.setValue(0.0);
+    const QImage atMinimum = renderGauge(gauge);
+    gauge.setValue(-20.0);
+    QCOMPARE(gauge.value(), 0.0);
+    const QImage below = renderGauge(gauge);
+    QCOMPARE(differingPixelsOutside(below, atMinimum, box), 0);
+    QVERIFY2(below.copy(box) != atMinimum.copy(box), "the readout of -20 equals the readout of the minimum");
+}
+
+// #151: +Inf (-Inf) fills the tube as the maximum (minimum) does, with a readout that is not the bound's
+void tst_LinearGauge::infiniteReadoutDiffersFromTheBound_data()
+{
+    addReadoutLayouts();
+}
+
+void tst_LinearGauge::infiniteReadoutDiffersFromTheBound()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    LinearGauge gauge;
+    prepareForReadout(gauge, orientation, font);
+
+    gauge.setValue(100.0);
+    const QImage atMaximum = renderGauge(gauge);
+    const QRect box = podBox(gauge, atMaximum);
+    gauge.setValue(std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 100.0);
+    const QImage plusInf = renderGauge(gauge);
+    QCOMPARE(differingPixelsOutside(plusInf, atMaximum, box), 0);
+    QVERIFY2(plusInf.copy(box) != atMaximum.copy(box), "the readout of +Inf equals the readout of the maximum");
+
+    gauge.setValue(0.0);
+    const QImage atMinimum = renderGauge(gauge);
+    gauge.setValue(-std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 0.0);
+    const QImage minusInf = renderGauge(gauge);
+    QCOMPARE(differingPixelsOutside(minusInf, atMinimum, box), 0);
+    QVERIFY2(minusInf.copy(box) != atMinimum.copy(box), "the readout of -Inf equals the readout of the minimum");
+}
+
+// #151: a range change classifies the last input again instead of keeping the clamped value
+void tst_LinearGauge::rangeChangeReclassifiesTheLastInput()
+{
+    LinearGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setValue(150.0);
+    QCOMPARE(gauge.value(), 100.0);
+    gauge.setRange(0.0, 200.0);
+    QCOMPARE(gauge.value(), 150.0);
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    gauge.setRange(0.0, 300.0);
+    QVERIFY(std::isnan(gauge.value()));
+}
+
+// #151: the readout of an out-of-range input holds one more ink group than the same text read as a valid
+// value: a triangle with one flat side and the other narrowing to the apex, painted as a shape (the test font
+// has no glyph for it)
+void tst_LinearGauge::outOfRangeMarkIsAShape_data()
+{
+    addReadoutLayouts();
+}
+
+void tst_LinearGauge::outOfRangeMarkIsAShape()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    struct Case {
+        double input;
+        bool up;
+    };
+    for (const Case &c : {Case{150.0, true}, Case{-50.0, false}}) {
+        LinearGauge outOfRange;
+        prepareForReadout(outOfRange, orientation, font);
+        outOfRange.setValue(c.input);
+        const QImage marked = renderGauge(outOfRange);
+
+        // The same text read as a valid value, on a range that holds it
+        LinearGauge valid;
+        prepareForReadout(valid, orientation, font);
+        valid.setRange(std::min(0.0, c.input), std::max(100.0, c.input));
+        valid.setValue(c.input);
+        const QImage plain = renderGauge(valid);
+
+        const QVector<InkGroup> markedInk = readoutInkGroups(marked, podBox(outOfRange, marked));
+        const QVector<InkGroup> plainInk = readoutInkGroups(plain, podBox(valid, plain));
+        const QString where = QStringLiteral("input %1").arg(c.input);
+        QVERIFY2(markedInk.size() == plainInk.size() + 1,
+                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text")
+                                        .arg(markedInk.size()).arg(plainInk.size())));
+        const InkGroup &tri = markedInk.first();
+        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
+        const int flat = c.up ? spread(tri.bottom) : spread(tri.top);
+        const int pointed = c.up ? spread(tri.top) : spread(tri.bottom);
+        QVERIFY2(flat <= 1 && pointed >= 2,
+                 qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
+    }
 }
 
 QTEST_MAIN(tst_LinearGauge)
