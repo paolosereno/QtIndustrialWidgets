@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
+#include <QtIndustrialWidgets/ValueState.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
 #include <QtCore/QVector>
@@ -30,6 +31,19 @@ class LevelMeterPrivate;
  * - Dynamic 3-stage colored threshold bands (Normal / Warning / Error overload).
  * - Peak hold indicator bar: held for peakHoldTimeMs(), then falling linearly at peakDecayRate() units per second.
  * - Scale ticks, channel division gutters and labels cached in a pixmap at the device pixel ratio.
+ *
+ * Value state, per channel (valueState(int), #151): the last input of each channel is kept unclamped
+ * (rawValue(int)) and classified against the range; a range change classifies it again. Before the first
+ * setValue() of a channel there is no input: its initial value follows the range, clamped to it at each range
+ * change, and its state stays \c Valid.
+ * - \c Valid: the bar shows the value.
+ * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the bar stops at the end of the
+ *   scale and value(int) is the bound. On a dB scale, -Inf (digital silence) is shown at the minimum, as
+ *   before, with the state \c Underrange.
+ * - \c Invalid (NaN): the bar is empty and hatched with diagonal lines in textColor(), the peak marker is
+ *   hidden, value(int) and peakValue(int) are NaN and the peak does not decay; the last valid value is never
+ *   shown. A NaN never signals an overload. The first valid value after it starts a new peak, and signals an
+ *   overload if it is above the error threshold.
  *
  * Every scale tick is drawn, but only the labels that keep max(4 px, half the scale font height) from
  * each other: drawn labels never overlap. The first and last labels (the ends of the scale) are always
@@ -121,10 +135,24 @@ public:
     /** \brief Returns the header title caption. */
     [[nodiscard]] QString title() const;
 
-    /** \brief Returns the current value of a channel. */
+    /**
+     * \brief Returns the indicated value of a channel: its last input clamped to [minimum, maximum] (±Inf gives
+     * the bound), or NaN when the input is NaN (valueState() is then ValueState::Invalid). minimum() for a
+     * channel that does not exist.
+     */
     [[nodiscard]] double value(int channel = 0) const;
-    /** \brief Returns the current peak hold value of a channel. */
+    /** \brief Returns the current peak hold value of a channel, NaN while the channel is invalid (#151). */
     [[nodiscard]] double peakValue(int channel = 0) const;
+    /**
+     * \brief Returns the last input of a channel as it was given, unclamped (#151); before the first setValue() of
+     * the channel, its initial value clamped to the range; NaN for a channel that does not exist.
+     */
+    [[nodiscard]] double rawValue(int channel = 0) const;
+    /**
+     * \brief Returns the state of the last input of a channel against the range (#151); ValueState::Invalid for a
+     * channel that does not exist (whose value() stays minimum(), as before #151, for compatibility).
+     */
+    [[nodiscard]] QtIndustrialWidgets::ValueState valueState(int channel = 0) const;
     /** \brief Returns all channel current values. */
     [[nodiscard]] QVector<double> values() const;
 
@@ -150,7 +178,11 @@ public:
 public Q_SLOTS:
     /** \brief Sets the value for channel 0. */
     void setValue(double value);
-    /** \brief Sets the value for a specific channel. */
+    /**
+     * \brief Sets the input of a channel. value() is the input clamped within [minimum, maximum], and NaN for a
+     * NaN input; rawValue() keeps the input and valueState() classifies it (#151). valueChanged() is emitted when
+     * value() changes (once when the input becomes NaN), then valueStateChanged() when the state changes.
+     */
     void setValue(int channel, double value);
     /** \brief Sets values for all channels simultaneously. */
     void setValues(const QVector<double> &values);
@@ -159,7 +191,11 @@ public Q_SLOTS:
 
     /** \brief Sets the number of concurrent channels. */
     void setChannelCount(int count);
-    /** \brief Sets the scale range bounds. */
+    /**
+     * \brief Sets the scale range bounds. Non-finite bounds and min >= max are ignored. The last input of every
+     * channel is classified again against the new range (#151): 150 on 0–100 is shown at 100, and at 150 after
+     * setRange(0, 200); valueChanged() and valueStateChanged() are emitted for the channels that change.
+     */
     void setRange(double min, double max);
     /** \brief Sets the minimum scale value. */
     void setMinimum(double min);
@@ -205,12 +241,14 @@ public Q_SLOTS:
 Q_SIGNALS:
     /** \brief Emitted when a channel's value changes. */
     void valueChanged(int channel, double value);
-    /** \brief Emitted when a channel's value exceeds the error threshold. */
+    /** \brief Emitted when a channel's value exceeds the error threshold (never for a NaN input). */
     void overloadOccurred(int channel);
     /** \brief Emitted when the scale range changes. */
     void rangeChanged(double min, double max);
     /** \brief Emitted when visual styling properties change. */
     void appearanceChanged();
+    /** \brief Emitted when valueState() of a channel changes, after valueChanged() when both change. */
+    void valueStateChanged(int channel, QtIndustrialWidgets::ValueState state);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

@@ -6,6 +6,8 @@
 
 #include "internal/LevelMeterLayout.h"
 #include "internal/NumberFormat.h"
+#include "internal/ValueClassification.h"
+#include "internal/ValueStateDrawing.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
@@ -17,6 +19,7 @@
 #include <QtGui/QRadialGradient>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 namespace QtIndustrialWidgets {
 
@@ -26,7 +29,16 @@ struct ChannelData {
     double peakValue = 0.0;
     qint64 lastPeakTime = 0;
     bool overloadState = false;
+    double rawValue = 0.0;                 // #151: the last input, unclamped
+    bool hasInput = false;                 // #151: setValue() called: before it, rawValue is the initial value
+    ValueState state = ValueState::Valid;  // #151: rawValue classified against the range
 };
+
+// The tolerance of a value change (unchanged within it); NaN == NaN, so Invalid -> Invalid is not a change
+bool sameLevel(double a, double b)
+{
+    return (std::isnan(a) && std::isnan(b)) || std::abs(a - b) < 1e-4;
+}
 
 class LevelMeterPrivate {
 public:
@@ -61,6 +73,37 @@ public:
     QPixmap m_cachedBackground;
     bool m_cacheValid = false;
     qint64 m_lastDecayTime = 0;
+
+    struct Changes {
+        bool value = false;
+        bool state = false;
+        bool peakRaised = false;
+    };
+
+    // #151: classifies the last input of \a ch against the range and moves the value to it. A NaN hides the
+    // peak (NaN, so that it does not decay back into view); the first valid value after it starts a new peak
+    Changes applyInput(ChannelData &ch, qint64 now) const
+    {
+        const double shown = internal::shownValue(ch.rawValue, m_minimum, m_maximum);
+        const ValueState state = internal::publicValueState(internal::classifyInput(ch.rawValue, m_minimum, m_maximum));
+        Changes changes;
+        changes.state = (state != ch.state);
+        ch.state = state;
+        if (sameLevel(shown, ch.value)) {
+            return changes;
+        }
+        changes.value = true;
+        const bool wasInvalid = std::isnan(ch.value);
+        ch.value = shown;
+        if (std::isnan(shown)) {
+            ch.peakValue = shown;
+        } else if (wasInvalid || ch.value >= ch.peakValue) {
+            ch.peakValue = ch.value;
+            ch.lastPeakTime = now;
+            changes.peakRaised = true;
+        }
+        return changes;
+    }
 };
 
 LevelMeter::LevelMeter(QWidget *parent)
@@ -73,6 +116,7 @@ LevelMeter::LevelMeter(QWidget *parent)
     for (auto &ch : d_ptr->m_channels) {
         ch.value = d_ptr->m_minimum;
         ch.peakValue = d_ptr->m_minimum;
+        ch.rawValue = d_ptr->m_minimum;
     }
 
     d_ptr->m_decayTimer = new QTimer(this);
@@ -122,6 +166,24 @@ double LevelMeter::peakValue(int channel) const
     return d->m_minimum;
 }
 
+double LevelMeter::rawValue(int channel) const
+{
+    Q_D(const LevelMeter);
+    if (channel >= 0 && channel < d->m_channels.size()) {
+        return d->m_channels[channel].rawValue;
+    }
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
+ValueState LevelMeter::valueState(int channel) const
+{
+    Q_D(const LevelMeter);
+    if (channel >= 0 && channel < d->m_channels.size()) {
+        return d->m_channels[channel].state;
+    }
+    return ValueState::Invalid;
+}
+
 QVector<double> LevelMeter::values() const
 {
     Q_D(const LevelMeter);
@@ -168,28 +230,27 @@ void LevelMeter::setValue(double value)
 void LevelMeter::setValue(int channel, double value)
 {
     if (channel < 0 || channel >= d_ptr->m_channels.size()) return;
-    if (std::isnan(value)) return;
-    if (std::isinf(value)) {
-        value = (value > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
-    }
 
-    double clamped = std::clamp(value, d_ptr->m_minimum, d_ptr->m_maximum);
+    // #151: the input is kept as it is; a NaN is shown as invalid, never as the last value
     ChannelData &ch = d_ptr->m_channels[channel];
-    if (std::abs(ch.value - clamped) < 1e-4) return;
-
-    ch.value = clamped;
-
+    ch.rawValue = value;
+    ch.hasInput = true;
     qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (ch.value >= ch.peakValue) {
-        ch.peakValue = ch.value;
-        ch.lastPeakTime = now;
-        if (d_ptr->m_peakHoldEnabled && !d_ptr->m_decayTimer->isActive()) {
-            d_ptr->m_lastDecayTime = now;
-            d_ptr->m_decayTimer->start();
+    const LevelMeterPrivate::Changes changes = d_ptr->applyInput(ch, now);
+    if (!changes.value) {
+        if (changes.state) {
+            Q_EMIT valueStateChanged(channel, ch.state);
         }
+        return;
     }
 
-    if (ch.value >= d_ptr->m_errorThreshold) {
+    if (changes.peakRaised && d_ptr->m_peakHoldEnabled && !d_ptr->m_decayTimer->isActive()) {
+        d_ptr->m_lastDecayTime = now;
+        d_ptr->m_decayTimer->start();
+    }
+
+    // A NaN never signals an overload and ends one, so that an overload after it is signalled again
+    if (!std::isnan(ch.value) && ch.value >= d_ptr->m_errorThreshold) {
         if (!ch.overloadState) {
             ch.overloadState = true;
             Q_EMIT overloadOccurred(channel);
@@ -199,6 +260,9 @@ void LevelMeter::setValue(int channel, double value)
     }
 
     Q_EMIT valueChanged(channel, ch.value);
+    if (changes.state) {
+        Q_EMIT valueStateChanged(channel, ch.state);
+    }
     update();
 }
 
@@ -249,10 +313,15 @@ void LevelMeter::setChannelCount(int count)
     if (d_ptr->m_channelCount == count) return;
     d_ptr->m_channelCount = count;
 
+    const int previousCount = static_cast<int>(d_ptr->m_channels.size());
     d_ptr->m_channels.resize(d_ptr->m_channelCount);
     for (auto &ch : d_ptr->m_channels) {
         ch.value = std::clamp(ch.value, d_ptr->m_minimum, d_ptr->m_maximum);
         ch.peakValue = std::clamp(ch.peakValue, d_ptr->m_minimum, d_ptr->m_maximum);
+    }
+    // #151: a new channel starts with a valid input at its value
+    for (int i = previousCount; i < d_ptr->m_channels.size(); ++i) {
+        d_ptr->m_channels[i].rawValue = d_ptr->m_channels[i].value;
     }
 
     d_ptr->m_cacheValid = false;
@@ -267,13 +336,29 @@ void LevelMeter::setRange(double min, double max)
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
 
+    // #151: the last input of every channel is classified again against the new range
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QVector<LevelMeterPrivate::Changes> changes;
+    changes.reserve(d_ptr->m_channels.size());
     for (auto &ch : d_ptr->m_channels) {
-        ch.value = std::clamp(ch.value, d_ptr->m_minimum, d_ptr->m_maximum);
         ch.peakValue = std::clamp(ch.peakValue, d_ptr->m_minimum, d_ptr->m_maximum);
+        // Before the first setValue() there is no input: the initial value follows the range
+        if (!ch.hasInput) {
+            ch.rawValue = std::clamp(ch.rawValue, d_ptr->m_minimum, d_ptr->m_maximum);
+        }
+        changes.append(d_ptr->applyInput(ch, now));
     }
 
     d_ptr->m_cacheValid = false;
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    for (int i = 0; i < changes.size(); ++i) {
+        if (changes[i].value) {
+            Q_EMIT valueChanged(i, d_ptr->m_channels[i].value);
+        }
+        if (changes[i].state) {
+            Q_EMIT valueStateChanged(i, d_ptr->m_channels[i].state);
+        }
+    }
     updateGeometry(); // the size hints depend on the scale labels (#40)
     Q_EMIT appearanceChanged();
     update();
@@ -898,6 +983,14 @@ void LevelMeter::paintEvent(QPaintEvent * /*event*/)
             drawSegmentedBar(painter, ch.value, ch.peakValue, br);
         } else {
             drawContinuousBar(painter, ch.value, ch.peakValue, br);
+        }
+        // #151: an invalid input empties the bar (NaN is drawn as the minimum, with no peak) and hatches it
+        if (ch.state == ValueState::Invalid) {
+            QPainterPath area;
+            area.addRect(br);
+            painter.setRenderHint(QPainter::Antialiasing);
+            internal::drawInvalidHatch(painter, area, d_ptr->m_orientation == Qt::Vertical ? br.width() : br.height(),
+                                       d_ptr->m_textColor);
         }
     }
 }

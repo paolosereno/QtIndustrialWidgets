@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/LevelMeter.h>
 
 #include "FontTestUtils.h"
+#include "HatchTestUtils.h"
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -21,6 +22,8 @@
 #include "internal/LinearGaugeScale.h"
 
 using namespace QtIndustrialWidgets;
+using HatchTest::hatchError;
+using HatchTest::isHatchPixel;
 
 namespace {
 
@@ -308,6 +311,106 @@ double scaleMinGap(const QFont &widgetFont)
     return internal::scaleLabelMinGap(QFontMetricsF(internal::levelMeterScaleFont(widgetFont)).height());
 }
 
+// #151: a meter whose bar, peak marker and hatch can be told apart in a render: every zone colour is pure blue
+// (the lit segments and the fill are lighter and darker shades of it), the peak marker pure red (thresholds above
+// the range, so that the marker never takes the error colour) and the text colour, used by the hatch of an
+// invalid input, pure green. No unit, title or channel labels
+void prepareForBars(LevelMeter &m, Qt::Orientation o, LevelMeter::DisplayMode mode, int channels, const QSize &size)
+{
+    m.setOrientation(o);
+    m.setDisplayMode(mode);
+    m.setChannelCount(channels);
+    m.setChannelLabels(QStringList());
+    m.setUnit(QString());
+    m.setTitle(QString());
+    m.setRange(0.0, 100.0);
+    m.setWarningThreshold(200.0);
+    m.setErrorThreshold(300.0);
+    m.setNormalColor(QColor(0, 0, 255));
+    m.setWarningColor(QColor(0, 0, 255));
+    m.setErrorColor(QColor(0, 0, 255));
+    m.setPeakColor(QColor(255, 0, 0));
+    m.setTextColor(QColor(0, 255, 0));
+    m.resize(size);
+}
+
+bool isBarPixel(QRgb p)
+{
+    return qBlue(p) > 150 && qBlue(p) - qRed(p) > 80 && qBlue(p) - qGreen(p) > 80;
+}
+
+bool isPeakPixel(QRgb p)
+{
+    return qRed(p) > 150 && qRed(p) - qGreen(p) > 80 && qRed(p) - qBlue(p) > 80;
+}
+
+
+template <typename Pred>
+QVector<QPoint> pixelsWhere(const QImage &image, const QVector<QPoint> &area, Pred pred)
+{
+    QVector<QPoint> out;
+    for (const QPoint &p : area) {
+        if (pred(image.pixel(p))) {
+            out.push_back(p);
+        }
+    }
+    return out;
+}
+
+QVector<QPoint> allPixels(const QImage &image)
+{
+    QVector<QPoint> out;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            out.push_back(QPoint(x, y));
+        }
+    }
+    return out;
+}
+
+// The inside of the bar of \a channel: the pixels in the bar colour with that channel at the maximum (the others
+// at the minimum), and not with every channel at the minimum: the scale ticks and labels, painted in the zone
+// colours too, are left out. The values end at the minimum, with the peaks reset
+QVector<QPoint> barArea(LevelMeter &m, int channel)
+{
+    for (int c = 0; c < m.channelCount(); ++c) {
+        m.setValue(c, m.minimum());
+    }
+    m.resetPeaks();
+    const QImage empty = grabMeter(m);
+    m.setValue(channel, m.maximum());
+    const QImage full = grabMeter(m);
+    QVector<QPoint> area;
+    for (const QPoint &p : pixelsWhere(full, allPixels(full), isBarPixel)) {
+        if (!isBarPixel(empty.pixel(p))) {
+            area.push_back(p);
+        }
+    }
+    m.setValue(channel, m.minimum());
+    m.resetPeaks();
+    return area;
+}
+
+void addBarLayouts()
+{
+    QTest::addColumn<Qt::Orientation>("orientation");
+    QTest::addColumn<LevelMeter::DisplayMode>("mode");
+    for (const Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+        for (const LevelMeter::DisplayMode mode : {LevelMeter::DisplayMode::Segmented, LevelMeter::DisplayMode::Continuous}) {
+            QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(o == Qt::Vertical ? "vertical" : "horizontal",
+                                                                 mode == LevelMeter::DisplayMode::Segmented ? "segmented" : "continuous")))
+                << o << mode;
+        }
+    }
+}
+
+QSize barLayoutSize(Qt::Orientation o)
+{
+    return o == Qt::Vertical ? QSize(140, 300) : QSize(300, 140);
+}
+
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+
 } // namespace
 
 class tst_LevelMeter : public QObject
@@ -340,6 +443,21 @@ private Q_SLOTS:
     void contentInsideChassisAtMinimumSize();
     void unitKeepsMinimumGapFromScale_data();
     void unitKeepsMinimumGapFromScale();
+    void nanHidesBarAndPeakAndShowsHatch_data() { addBarLayouts(); }
+    void nanHidesBarAndPeakAndShowsHatch();
+    void hatchVisibleAtSmallSizes_data() { addBarLayouts(); }
+    void hatchVisibleAtSmallSizes();
+    void nanOnOneChannelOnly();
+    void nanValueAndSignals();
+    void firstValidValueAfterNanResetsThePeak();
+    void peakStaysHiddenWhileInvalid();
+    void nanNeverSignalsOverload();
+    void rangeChangeReclassifiesTheLastInput();
+    void valueStateAndRawValue();
+    void valueStateSignalOrder();
+    void valueStatePerChannel();
+    void minusInfinityOnTheDbScaleIsUnderrange();
+    void initialValueFollowsTheRange();
 };
 
 void tst_LevelMeter::defaultValues()
@@ -471,9 +589,9 @@ void tst_LevelMeter::nanAndInfinityResilience()
     meter.setValue(0, -10.0);
     QCOMPARE(meter.value(0), -10.0);
 
-    // NaN input ignored
+    // #151: a NaN input is shown as invalid, never as the last value
     meter.setValue(0, std::numeric_limits<double>::quiet_NaN());
-    QCOMPARE(meter.value(0), -10.0);
+    QVERIFY(std::isnan(meter.value(0)));
 
     // +Inf and -Inf clamped
     meter.setValue(0, std::numeric_limits<double>::infinity());
@@ -961,6 +1079,309 @@ void tst_LevelMeter::horizontalLabelsBelowTheTicks()
     const auto bands = runs(rows);
     QVERIFY2(bands.size() >= 2, qPrintable(QStringLiteral("%1 band of scale ink: label text over the ticks (%2x%3, DPR %4)")
                                                .arg(bands.size()).arg(m->width()).arg(m->height()).arg(dpr)));
+}
+
+// #151: a NaN input empties the bar, hides the peak marker and hatches the bar, so the last valid value is
+// never shown
+void tst_LevelMeter::nanHidesBarAndPeakAndShowsHatch()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QFETCH(LevelMeter::DisplayMode, mode);
+    LevelMeter m;
+    prepareForBars(m, orientation, mode, 1, barLayoutSize(orientation));
+    const QVector<QPoint> area = barArea(m, 0);
+    QVERIFY(!area.isEmpty());
+
+    m.setValue(0, 80.0);
+    m.setValue(0, 40.0);
+    const QImage valid = grabMeter(m);
+    QVERIFY(!pixelsWhere(valid, area, isBarPixel).isEmpty());
+    QVERIFY(!pixelsWhere(valid, allPixels(valid), isPeakPixel).isEmpty());
+    // Before the input: no hatch
+    QVERIFY2(!hatchError(valid, area).isEmpty(), "a valid value is hatched");
+
+    m.setValue(0, kNaN);
+    const QImage invalid = grabMeter(m);
+    QCOMPARE(pixelsWhere(invalid, area, isBarPixel).size(), 0);
+    QCOMPARE(pixelsWhere(invalid, allPixels(invalid), isPeakPixel).size(), 0);
+    const QString hatch = hatchError(invalid, area);
+    QVERIFY2(hatch.isEmpty(), qPrintable(hatch));
+}
+
+// #151: the hatch stays a visible pattern at the minimum size of the meter
+void tst_LevelMeter::hatchVisibleAtSmallSizes()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QFETCH(LevelMeter::DisplayMode, mode);
+    LevelMeter m;
+    prepareForBars(m, orientation, mode, 1, QSize(1, 1));
+    m.resize(m.minimumSizeHint());
+    const QVector<QPoint> area = barArea(m, 0);
+    QVERIFY(!area.isEmpty());
+    m.setValue(0, kNaN);
+    const QString hatch = hatchError(grabMeter(m), area);
+    QVERIFY2(hatch.isEmpty(), qPrintable(QStringLiteral("%1x%2: ").arg(m.width()).arg(m.height()) + hatch));
+}
+
+// #151: the state is per channel: a NaN on one channel leaves the other one as it is
+void tst_LevelMeter::nanOnOneChannelOnly()
+{
+    LevelMeter m;
+    prepareForBars(m, Qt::Vertical, LevelMeter::DisplayMode::Continuous, 2, QSize(140, 300));
+    const QVector<QPoint> area0 = barArea(m, 0);
+    const QVector<QPoint> area1 = barArea(m, 1);
+    QVERIFY(!area0.isEmpty());
+    QVERIFY(!area1.isEmpty());
+
+    m.setValue(0, 50.0);
+    m.setValue(1, 50.0);
+    m.setValue(0, kNaN);
+    QVERIFY(std::isnan(m.value(0)));
+    QCOMPARE(m.value(1), 50.0);
+    QCOMPARE(m.peakValue(1), 50.0);
+
+    const QImage img = grabMeter(m);
+    QCOMPARE(pixelsWhere(img, area0, isBarPixel).size(), 0);
+    QVERIFY(!pixelsWhere(img, area1, isBarPixel).isEmpty());
+    const QString hatch0 = hatchError(img, area0);
+    QVERIFY2(hatch0.isEmpty(), qPrintable(hatch0));
+    QCOMPARE(pixelsWhere(img, area1, isHatchPixel).size(), 0);
+}
+
+// #151: NaN reads back as NaN, the peak too; valueChanged(NaN) is emitted once, a repeated NaN emits nothing
+void tst_LevelMeter::nanValueAndSignals()
+{
+    LevelMeter m;
+    m.setRange(-60.0, 6.0);
+    m.setValue(0, -10.0);
+    QSignalSpy spy(&m, &LevelMeter::valueChanged);
+
+    m.setValue(0, kNaN);
+    QVERIFY2(std::isnan(m.value(0)), qPrintable(QStringLiteral("value(0) = %1").arg(m.value(0))));
+    QVERIFY2(std::isnan(m.peakValue(0)), qPrintable(QStringLiteral("peakValue(0) = %1").arg(m.peakValue(0))));
+    QVERIFY(std::isnan(m.values().at(0)));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QVERIFY(std::isnan(spy.at(0).at(1).toDouble()));
+
+    m.setValue(0, kNaN);
+    QCOMPARE(spy.count(), 1);
+
+    m.setValue(0, -20.0);
+    QCOMPARE(m.value(0), -20.0);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(1).toDouble(), -20.0);
+}
+
+// #151: the peak of the values before a NaN is not carried over: the first valid value starts a new peak
+void tst_LevelMeter::firstValidValueAfterNanResetsThePeak()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    m.setValue(0, 80.0);
+    m.setValue(0, 40.0);
+    QCOMPARE(m.peakValue(0), 80.0);
+
+    m.setValue(0, kNaN);
+    m.setValue(0, 30.0);
+    QCOMPARE(m.value(0), 30.0);
+    QCOMPARE(m.peakValue(0), 30.0);
+
+    // From there the peak holds as usual
+    m.setValue(0, 60.0);
+    m.setValue(0, 20.0);
+    QCOMPARE(m.peakValue(0), 60.0);
+}
+
+// #151: while a channel is invalid its peak does not decay back into view: it stays NaN
+void tst_LevelMeter::peakStaysHiddenWhileInvalid()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    m.setPeakHoldTimeMs(0);
+    m.setPeakDecayRate(1000.0);
+    m.setValue(0, 80.0);
+    m.setValue(0, 40.0);
+    m.setValue(0, kNaN);
+    QTest::qWait(150);
+    QVERIFY2(std::isnan(m.peakValue(0)), qPrintable(QStringLiteral("peakValue(0) = %1").arg(m.peakValue(0))));
+    QVERIFY(std::isnan(m.value(0)));
+}
+
+// #151: a NaN never signals an overload, and an overload after a NaN is signalled again
+void tst_LevelMeter::nanNeverSignalsOverload()
+{
+    LevelMeter m;
+    m.setRange(-20.0, 10.0);
+    m.setErrorThreshold(0.0);
+    QSignalSpy spy(&m, &LevelMeter::overloadOccurred);
+
+    m.setValue(0, 2.5);
+    QCOMPARE(spy.count(), 1);
+    m.setValue(0, kNaN);
+    QCOMPARE(spy.count(), 1);
+    m.setValue(0, 5.0);
+    QCOMPARE(spy.count(), 2);
+}
+
+// #151: a range change classifies the last input again: 150 on 0..100 is shown at 100, then at 150 on 0..200
+void tst_LevelMeter::rangeChangeReclassifiesTheLastInput()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    m.setValue(0, 150.0);
+    QCOMPARE(m.value(0), 100.0);
+
+    QSignalSpy spy(&m, &LevelMeter::valueChanged);
+    m.setRange(0.0, 200.0);
+    QCOMPARE(m.value(0), 150.0);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).toDouble(), 150.0);
+
+    // A NaN stays invalid across a range change
+    m.setValue(0, kNaN);
+    m.setRange(-10.0, 10.0);
+    QVERIFY(std::isnan(m.value(0)));
+}
+
+void tst_LevelMeter::valueStateAndRawValue()
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    QCOMPARE(m.valueState(0), ValueState::Valid);
+    QCOMPARE(m.rawValue(0), 0.0);
+
+    struct Step {
+        double input;
+        ValueState state;
+        double value;
+    };
+    const Step steps[] = {
+        {50.0, ValueState::Valid, 50.0},        {150.0, ValueState::Overrange, 100.0},
+        {inf, ValueState::Overrange, 100.0},    {-20.0, ValueState::Underrange, 0.0},
+        {-inf, ValueState::Underrange, 0.0},    {100.0, ValueState::Valid, 100.0},
+        {0.0, ValueState::Valid, 0.0},          {kNaN, ValueState::Invalid, kNaN},
+        {75.0, ValueState::Valid, 75.0},
+    };
+    for (const Step &step : steps) {
+        m.setValue(0, step.input);
+        const QString where = QStringLiteral("input %1").arg(step.input);
+        QVERIFY2(m.valueState(0) == step.state, qPrintable(where));
+        if (std::isnan(step.value)) {
+            QVERIFY2(std::isnan(m.value(0)) && std::isnan(m.rawValue(0)), qPrintable(where));
+        } else {
+            QVERIFY2(m.value(0) == step.value, qPrintable(where));
+            QVERIFY2(m.rawValue(0) == step.input, qPrintable(where));
+        }
+    }
+
+    // A channel that does not exist is Invalid with a NaN input; value() stays minimum() for compatibility
+    for (const int missing : {2, 5, -1}) {
+        const QString where = QStringLiteral("channel %1").arg(missing);
+        QVERIFY2(m.valueState(missing) == ValueState::Invalid, qPrintable(where));
+        QVERIFY2(std::isnan(m.rawValue(missing)), qPrintable(where));
+        QVERIFY2(m.value(missing) == 0.0, qPrintable(where));
+    }
+    m.setRange(-10.0, 100.0);
+    QCOMPARE(m.value(5), -10.0);
+}
+
+void tst_LevelMeter::valueStateSignalOrder()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    m.setValue(0, 50.0);
+
+    QStringList events;
+    connect(&m, &LevelMeter::valueChanged, &m,
+            [&events](int c, double v) { events << QStringLiteral("value %1 %2").arg(c).arg(v); });
+    connect(&m, &LevelMeter::valueStateChanged, &m,
+            [&events](int c, ValueState st) { events << QStringLiteral("state %1 %2").arg(c).arg(static_cast<int>(st)); });
+
+    m.setValue(0, kNaN);
+    QCOMPARE(events, QStringList({QStringLiteral("value 0 nan"), QStringLiteral("state 0 3")}));
+    events.clear();
+    m.setValue(0, kNaN);
+    QVERIFY(events.isEmpty());
+
+    m.setValue(0, 150.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 0 100"), QStringLiteral("state 0 2")}));
+    events.clear();
+    // Same value() and state: no signal
+    m.setValue(0, 160.0);
+    QVERIFY(events.isEmpty());
+    // Same value(), new state: only the state
+    m.setValue(0, 100.0);
+    QCOMPARE(events, QStringList({QStringLiteral("state 0 0")}));
+    events.clear();
+
+    // The range change emits the value, then the state, of the channels that change
+    m.setValue(0, 160.0);
+    events.clear();
+    m.setRange(0.0, 200.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 0 160"), QStringLiteral("state 0 0")}));
+}
+
+// #151: each channel has its own state, and a new channel starts valid at its value
+void tst_LevelMeter::valueStatePerChannel()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    QSignalSpy spy(&m, &LevelMeter::valueStateChanged);
+    m.setValues({kNaN, 120.0});
+    QCOMPARE(m.valueState(0), ValueState::Invalid);
+    QCOMPARE(m.valueState(1), ValueState::Overrange);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).value<ValueState>(), ValueState::Invalid);
+    QCOMPARE(spy.at(1).at(0).toInt(), 1);
+    QCOMPARE(spy.at(1).at(1).value<ValueState>(), ValueState::Overrange);
+
+    m.setChannelCount(3);
+    QCOMPARE(m.valueState(0), ValueState::Invalid);
+    QCOMPARE(m.valueState(1), ValueState::Overrange);
+    QCOMPARE(m.valueState(2), ValueState::Valid);
+    QCOMPARE(m.rawValue(2), m.value(2));
+}
+
+// #151: -Inf (digital silence) on a dB scale is shown at the minimum, as before, and is Underrange
+void tst_LevelMeter::minusInfinityOnTheDbScaleIsUnderrange()
+{
+    LevelMeter m;
+    m.setRange(-60.0, 6.0);
+    m.setUnit(QStringLiteral("dB"));
+    m.setValue(0, -12.0);
+    m.setValue(0, -std::numeric_limits<double>::infinity());
+    QCOMPARE(m.value(0), -60.0);
+    QCOMPARE(m.valueState(0), ValueState::Underrange);
+    QVERIFY(std::isinf(m.rawValue(0)) && m.rawValue(0) < 0.0);
+    // The peak decays as for any value at the minimum: it is not hidden
+    QCOMPARE(m.peakValue(0), -12.0);
+}
+
+// #151: before the first setValue() of a channel there is no input to classify: the initial value follows the
+// range, as before #151 (the default minimum, -60, is not an underrange of 0..100)
+void tst_LevelMeter::initialValueFollowsTheRange()
+{
+    LevelMeter m;
+    m.setValue(1, -12.0);
+    QSignalSpy states(&m, &LevelMeter::valueStateChanged);
+    m.setRange(0.0, 100.0);
+    QCOMPARE(m.valueState(0), ValueState::Valid);
+    QCOMPARE(m.value(0), 0.0);
+    QCOMPARE(m.rawValue(0), 0.0);
+    // Channel 1 had an input: it is classified
+    QCOMPARE(m.valueState(1), ValueState::Underrange);
+    QCOMPARE(m.rawValue(1), -12.0);
+    QCOMPARE(states.count(), 1);
+    QCOMPARE(states.at(0).at(0).toInt(), 1);
+
+    m.setRange(20.0, 50.0);
+    QCOMPARE(m.valueState(0), ValueState::Valid);
+    QCOMPARE(m.value(0), 20.0);
+    QCOMPARE(states.count(), 1);
 }
 
 QTEST_MAIN(tst_LevelMeter)
