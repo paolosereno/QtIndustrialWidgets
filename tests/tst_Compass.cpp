@@ -152,6 +152,7 @@ private Q_SLOTS:
     void flagVisibleAtMinimumSize();
     void valueStateOnlyValidOrInvalid();
     void valueStateSignalOrder();
+    void headingUpInvalidDimsTheBug();
 };
 
 void tst_Compass::initTestCase()
@@ -681,6 +682,36 @@ void tst_Compass::valueStateSignalOrder()
     events.clear();
     c.setHeading(450.0);
     QVERIFY(events.isEmpty());
+}
+
+// #151: heading-up, the position of the bug from 12 o'clock reads as a course deviation, unknown while the heading
+// is invalid: the bug is still drawn (the target is kept) but dimmed with the card. North-up the bug is an
+// absolute bearing and stays at full colour
+void tst_Compass::headingUpInvalidDimsTheBug()
+{
+    const auto bright = [](QRgb p) { return qGreen(p) > 150 && qBlue(p) > 150 && qRed(p) < 90; };
+    const auto dim = [](QRgb p) { return qGreen(p) > 60 && qBlue(p) > 60 && qRed(p) < 50 && std::abs(qGreen(p) - qBlue(p)) < 30; };
+    for (const Compass::DisplayMode mode : {Compass::DisplayMode::HeadingUp, Compass::DisplayMode::NorthUp}) {
+        const QString where = mode == Compass::DisplayMode::HeadingUp ? QStringLiteral("heading-up") : QStringLiteral("north-up");
+        Compass c;
+        prepareForDial(c, mode, 47.0);
+        c.setBugColor(QColor(0, 255, 255));
+        c.setTargetHeading(75.0);
+        c.setHeadingBugVisible(true);
+        const QImage valid = renderCompass(c);
+        const Dial d = dialOf(c, valid);
+        QVERIFY2(!ringPixels(valid, d, 0.8, 1.05, bright).isEmpty(), qPrintable(where));
+
+        c.setHeading(kNaN);
+        const QImage invalid = renderCompass(c);
+        const int brightBug = ringPixels(invalid, d, 0.8, 1.05, bright).size();
+        if (mode == Compass::DisplayMode::HeadingUp) {
+            QVERIFY2(brightBug == 0, qPrintable(QStringLiteral("%1: %2 full-colour bug pixels").arg(where).arg(brightBug)));
+            QVERIFY2(!ringPixels(invalid, d, 0.8, 1.05, dim).isEmpty(), qPrintable(where + QStringLiteral(": no bug")));
+        } else {
+            QVERIFY2(brightBug > 0, qPrintable(where));
+        }
+    }
 }
 
 QTEST_MAIN(tst_Compass)
