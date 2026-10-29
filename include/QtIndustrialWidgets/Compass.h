@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
+#include <QtIndustrialWidgets/ValueState.h>
 #include <QtWidgets/QWidget>
 #include <QtGui/QColor>
 #include <memory>
@@ -33,6 +34,17 @@ class CompassPrivate;
  * - Central digital readout pod with 3-digit padded heading angle (e.g. `045°`).
  * - Circular card cached in a pixmap at the device pixel ratio: a heading change redraws only the moving parts.
  *
+ * Value state (valueState(), #151): a heading has no range (every finite angle is normalized into [0, 360)), so
+ * the state is only \c Valid or \c Invalid; \c Overrange and \c Underrange are never reported.
+ * - \c Valid: a finite heading.
+ * - \c Invalid: NaN or ±Inf, which have no direction. heading() and courseDeviation() return NaN and
+ *   headingChanged(NaN) is emitted once (a repeated invalid input emits nothing). A red "HDG" failure flag is
+ *   drawn on the dial and the readout shows "---°". North-up draws no needle; heading-up draws the card at 0°
+ *   with dimmed colours and no lubber line, so that it is not read as a heading of 000; the heading bug is dimmed
+ *   with the card, since its place from 12 o'clock would read as a course deviation. targetHeading() is kept,
+ *   and a click on a heading-up dial reads the card at 0°.
+ * setTargetHeading() ignores a non-finite target: the last target is kept.
+ *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
  * the layout does not yet make room for larger text.
@@ -57,6 +69,7 @@ class QTINDUSTRIALWIDGETS_EXPORT Compass : public QWidget
     Q_PROPERTY(bool lubberLineVisible READ isLubberLineVisible WRITE setLubberLineVisible NOTIFY appearanceChanged)
     Q_PROPERTY(bool digitalReadoutVisible READ isDigitalReadoutVisible WRITE setDigitalReadoutVisible NOTIFY appearanceChanged)
     Q_PROPERTY(double courseDeviation READ courseDeviation NOTIFY headingChanged)
+    Q_PROPERTY(QtIndustrialWidgets::ValueState valueState READ valueState NOTIFY valueStateChanged)
 
     Q_PROPERTY(QColor dialColor READ dialColor WRITE setDialColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
@@ -82,8 +95,10 @@ public:
     explicit Compass(QWidget *parent = nullptr);
     ~Compass() override;
 
-    /** \brief Returns the current vessel/aircraft heading in degrees [0.0, 360.0). */
+    /** \brief Returns the current vessel/aircraft heading in degrees [0.0, 360.0), or NaN when it is invalid. */
     [[nodiscard]] double heading() const;
+    /** \brief Returns ValueState::Valid for a finite heading, ValueState::Invalid for NaN or ±Inf (#151). */
+    [[nodiscard]] QtIndustrialWidgets::ValueState valueState() const;
     /** \brief Returns the target / course heading bug in degrees [0.0, 360.0). */
     [[nodiscard]] double targetHeading() const;
     /** \brief Returns the display mode (HeadingUp or NorthUp). */
@@ -99,7 +114,8 @@ public:
 
     /**
      * \brief Computes the signed course deviation from the target heading in degrees [-180.0, +180.0].
-     * A positive value indicates deviation to starboard (right), negative to port (left).
+     * A positive value indicates deviation to starboard (right), negative to port (left). NaN while the
+     * heading is invalid.
      */
     [[nodiscard]] double courseDeviation() const;
 
@@ -120,9 +136,16 @@ public:
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:
-    /** \brief Sets the current heading in degrees (automatically normalized to [0, 360)). */
+    /**
+     * \brief Sets the current heading in degrees (automatically normalized to [0, 360)). NaN and ±Inf make the
+     * heading invalid (#151): heading() is then NaN. headingChanged() is emitted when heading() changes (once
+     * when it becomes invalid), then valueStateChanged() when the state changes.
+     */
     void setHeading(double heading);
-    /** \brief Sets the target heading bug in degrees (automatically normalized to [0, 360)). */
+    /**
+     * \brief Sets the target heading bug in degrees (automatically normalized to [0, 360)); NaN and ±Inf are
+     * ignored.
+     */
     void setTargetHeading(double targetHeading);
     /** \brief Sets the compass display mode (HeadingUp or NorthUp). */
     void setDisplayMode(DisplayMode mode);
@@ -153,6 +176,8 @@ Q_SIGNALS:
     void displayModeChanged(DisplayMode mode);
     /** \brief Emitted when appearance colors or visual configurations change. */
     void appearanceChanged();
+    /** \brief Emitted when valueState() changes, after headingChanged() (#151). */
+    void valueStateChanged(QtIndustrialWidgets::ValueState state);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

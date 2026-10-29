@@ -11,6 +11,7 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace QtIndustrialWidgets {
 
@@ -38,7 +39,40 @@ public:
     // Card cache pixmap
     QPixmap m_cardCache;
     bool m_cacheDirty{true};
+
+    // #151: NaN and ±Inf have no direction (m_heading is then NaN)
+    ValueState m_valueState{ValueState::Valid};
+
+    [[nodiscard]] bool isInvalid() const { return m_valueState == ValueState::Invalid; }
+    // The rotation of the card: the heading, or 0° (North up) while the heading is invalid
+    [[nodiscard]] double cardRotation() const { return isInvalid() ? 0.0 : m_heading; }
 };
+
+namespace {
+
+// #151: the failure flag of an invalid heading, centred above the readout. A fixed red with white letters, as
+// on aircraft heading indicators: it means a failure whatever the theme
+void drawHeadingFailureFlag(QPainter &painter, const QFont &widgetFont, double radius)
+{
+    const double flagW = std::clamp(radius * 0.42, 34.0, 90.0);
+    const double flagH = std::clamp(radius * 0.17, 14.0, 30.0);
+    const QRectF flag(-flagW / 2.0, -radius * 0.45 - flagH / 2.0, flagW, flagH);
+
+    painter.save();
+    painter.setPen(QPen(QColor(20, 20, 20), 1.0));
+    painter.setBrush(QColor(225, 29, 46));
+    painter.drawRoundedRect(flag, 2.0, 2.0);
+
+    QFont f = widgetFont;
+    f.setBold(true);
+    f.setPixelSize(std::max(7, static_cast<int>(flagH * 0.6)));
+    painter.setFont(f);
+    painter.setPen(QColor(255, 255, 255));
+    painter.drawText(flag, Qt::AlignCenter, QStringLiteral("HDG"));
+    painter.restore();
+}
+
+} // namespace
 
 
 
@@ -53,6 +87,7 @@ Compass::Compass(QWidget *parent)
 Compass::~Compass() = default;
 
 double Compass::heading() const { Q_D(const Compass); return d->m_heading; }
+ValueState Compass::valueState() const { Q_D(const Compass); return d->m_valueState; }
 double Compass::targetHeading() const { Q_D(const Compass); return d->m_targetHeading; }
 Compass::DisplayMode Compass::displayMode() const { Q_D(const Compass); return d->m_displayMode; }
 bool Compass::isHeadingBugVisible() const { Q_D(const Compass); return d->m_bugVisible; }
@@ -101,13 +136,27 @@ double Compass::courseDeviation() const
 
 void Compass::setHeading(double heading)
 {
+    // #151: NaN and ±Inf have no direction: the heading is invalid, never the last heading or 0°
     if (!std::isfinite(heading)) {
+        if (d_ptr->isInvalid()) {
+            return;
+        }
+        d_ptr->m_heading = std::numeric_limits<double>::quiet_NaN();
+        d_ptr->m_valueState = ValueState::Invalid;
+        Q_EMIT headingChanged(d_ptr->m_heading);
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
+        update();
         return;
     }
     double norm = normalizeDegrees(heading);
-    if (std::abs(d_ptr->m_heading - norm) > 0.001) {
+    const bool wasInvalid = d_ptr->isInvalid();
+    if (wasInvalid || std::abs(d_ptr->m_heading - norm) > 0.001) {
         d_ptr->m_heading = norm;
+        d_ptr->m_valueState = ValueState::Valid;
         Q_EMIT headingChanged(d_ptr->m_heading);
+        if (wasInvalid) {
+            Q_EMIT valueStateChanged(d_ptr->m_valueState);
+        }
         update();
     }
 }
@@ -290,8 +339,8 @@ void Compass::mousePressEvent(QMouseEvent *event)
             d_ptr->m_isDraggingBug = true;
             double angle = angleFromPoint(event->position());
             if (d_ptr->m_displayMode == DisplayMode::HeadingUp) {
-                // In HeadingUp mode, dial is rotated by -d_ptr->m_heading, so cursor angle corresponds to:
-                setTargetHeading(normalizeDegrees(angle + d_ptr->m_heading));
+                // In HeadingUp mode, dial is rotated by -cardRotation(), so cursor angle corresponds to:
+                setTargetHeading(normalizeDegrees(angle + d_ptr->cardRotation()));
             } else {
                 setTargetHeading(angle);
             }
@@ -306,7 +355,7 @@ void Compass::mouseMoveEvent(QMouseEvent *event)
     if (d_ptr->m_isDraggingBug && (event->buttons() & Qt::LeftButton)) {
         double angle = angleFromPoint(event->position());
         if (d_ptr->m_displayMode == DisplayMode::HeadingUp) {
-            setTargetHeading(normalizeDegrees(angle + d_ptr->m_heading));
+            setTargetHeading(normalizeDegrees(angle + d_ptr->cardRotation()));
         } else {
             setTargetHeading(angle);
         }
@@ -524,10 +573,10 @@ void Compass::paintEvent(QPaintEvent *)
 
     // 1. Draw Compass Card
     if (d_ptr->m_displayMode == DisplayMode::HeadingUp) {
-        // HeadingUp: Card rotates by -d_ptr->m_heading around center
+        // HeadingUp: Card rotates by -heading around center (#151: drawn at 0°, dimmed, while invalid)
         painter.save();
         painter.translate(center);
-        painter.rotate(-d_ptr->m_heading);
+        painter.rotate(-d_ptr->cardRotation());
         painter.drawPixmap(-width() / 2, -height() / 2, d_ptr->m_cardCache);
 
         // Draw Target Heading Bug rotated on the moving card:
@@ -554,10 +603,20 @@ void Compass::paintEvent(QPaintEvent *)
             painter.restore();
         }
 
+        // #151: an invalid heading veils the card and the bug (whose place from 12 o'clock would read as a
+        // course deviation) with the dial colour; the veil covers the tip of the bug, drawn up to the radius
+        if (d_ptr->isInvalid()) {
+            QColor veil = d_ptr->m_dialColor;
+            veil.setAlpha(170);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(veil);
+            painter.drawEllipse(QPointF(0.0, 0.0), radius + 1.0, radius + 1.0);
+        }
+
         painter.restore();
 
-        // 2. Static Lubber Line at 12 o'clock (Fixed vessel bow reference)
-        if (d_ptr->m_lubberVisible) {
+        // 2. Static Lubber Line at 12 o'clock (Fixed vessel bow reference); none for an invalid heading (#151)
+        if (d_ptr->m_lubberVisible && !d_ptr->isInvalid()) {
             painter.save();
             painter.translate(center);
 
@@ -610,7 +669,8 @@ void Compass::paintEvent(QPaintEvent *)
             painter.restore();
         }
 
-        // Draw Rotating Magnetic Needle pointing to d_ptr->m_heading
+        // Draw Rotating Magnetic Needle pointing to d_ptr->m_heading; none for an invalid heading (#151)
+        if (!d_ptr->isInvalid()) {
         painter.save();
         painter.rotate(d_ptr->m_heading);
 
@@ -655,6 +715,7 @@ void Compass::paintEvent(QPaintEvent *)
         painter.drawPath(southHalfDark);
 
         painter.restore();
+        }
 
         // Lubber reference line at 12 o'clock
         if (d_ptr->m_lubberVisible) {
@@ -676,6 +737,14 @@ void Compass::paintEvent(QPaintEvent *)
             painter.restore();
         }
 
+        painter.restore();
+    }
+
+    // #151: failure flag of an invalid heading
+    if (d_ptr->isInvalid()) {
+        painter.save();
+        painter.translate(center);
+        drawHeadingFailureFlag(painter, font(), radius);
         painter.restore();
     }
 
@@ -704,8 +773,11 @@ void Compass::paintEvent(QPaintEvent *)
         painter.setFont(podFont);
         painter.setPen(d_ptr->m_textColor);
 
-        int intHdg = static_cast<int>(std::round(d_ptr->m_heading)) % 360;
-        QString text = QStringLiteral("%1°").arg(intHdg, 3, 10, QLatin1Char('0'));
+        QString text = QStringLiteral("---°"); // #151: an invalid heading
+        if (!d_ptr->isInvalid()) {
+            int intHdg = static_cast<int>(std::round(d_ptr->m_heading)) % 360;
+            text = QStringLiteral("%1°").arg(intHdg, 3, 10, QLatin1Char('0'));
+        }
         painter.drawText(podRect, Qt::AlignCenter, text);
 
         painter.restore();

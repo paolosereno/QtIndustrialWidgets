@@ -242,6 +242,7 @@ set_target_properties(tst_LevelMeterLayout PROPERTIES
 add_dpr_tests(tst_LevelMeterLayout)
 add_industrial_widget_test(tst_AnnunciatorPanel)
 add_industrial_widget_test(tst_Compass)
+target_compile_definitions(tst_Compass PRIVATE QIW_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fonts")
 add_executable(tst_CircularBargraph
     tst_CircularBargraph.cpp
     $<TARGET_OBJECTS:CircularBargraphSegments>

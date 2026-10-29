@@ -25,6 +25,10 @@ class IndustrialKnobPrivate;
  * The background ticks and scale are cached in a pixmap at the device pixel ratio, so a rotation redraws only the
  * moving parts.
  *
+ * Non-finite input (#151): the knob is an input control, so it has no value state (see QtIndustrialWidgets::ValueState
+ * for the indicators). setValue() ignores NaN (the knob keeps its position) and clamps +Inf / -Inf to maximum() /
+ * minimum(); setRange() ignores non-finite bounds.
+ *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
  * the layout does not yet make room for larger text.
