@@ -305,8 +305,9 @@ void addReadoutRows(bool stateOnly)
                            {"overrange wide", 10000.0, 2, 12000.0}};
     const Case valid[] = {{"valid", 100.0, 1, 50.0}, {"valid wide", 10000.0, 2, 10000.0}};
     for (const int side : sides) {
-        for (const QString &unit : {QString(), QStringLiteral("%")}) {
-            const char *u = unit.isEmpty() ? "no unit" : "unit";
+        // A long unit does not fit in the smaller pods and is left out there
+        for (const QString &unit : {QString(), QStringLiteral("%"), QStringLiteral("rpm x1000")}) {
+            const char *u = unit.isEmpty() ? "no unit" : (unit.size() == 1 ? "unit" : "long unit");
             for (const Case &c : states) {
                 QTest::addRow("%d px, %s, %s", side, u, c.name) << side << c.maximum << c.precision << c.value << unit;
             }
@@ -1451,8 +1452,8 @@ void tst_CircularBargraph::minimumSizeHintFitsTheStateIndicators()
 }
 
 // #167: out of range the readout shows the input itself, as in the gauges, not the bound: two inputs above the
-// range (or two below it) read differently, while +Inf reads as the bound ('>' + maximum), like an input equal to
-// it only in the number
+// range (or two below it) read differently, and +Inf ('>' + maximum) differs from a finite input. The inputs differ
+// in length, so that the readouts differ also without fonts, where every glyph is the same box
 void tst_CircularBargraph::outOfRangeReadoutShowsTheInput()
 {
     const auto inkOf = [](double v) {
@@ -1460,8 +1461,8 @@ void tst_CircularBargraph::outOfRangeReadoutShowsTheInput()
         prepareReadout(b, 200, 100.0, 1, v, QString());
         return readoutInk(b);
     };
-    QVERIFY2(inkOf(120.0) != inkOf(150.0), "Overrange 120 and 150 give the same readout");
-    QVERIFY2(inkOf(-10.0) != inkOf(-30.0), "Underrange -10 and -30 give the same readout");
+    QVERIFY2(inkOf(120.0) != inkOf(1200.0), "Overrange 120 and 1200 give the same readout");
+    QVERIFY2(inkOf(-10.0) != inkOf(-300.0), "Underrange -10 and -300 give the same readout");
     QVERIFY2(inkOf(120.0) != inkOf(std::numeric_limits<double>::infinity()), "Overrange 120 and +Inf read the same");
 }
 
