@@ -31,7 +31,8 @@ Circular gauge for speed, pressure, temperature and similar values (`qiw::Radial
     shows the input itself (for example `8350` on a 0–8000 scale), or `>max` / `<min` for ±Inf, after a triangle
     pointing up (above the range) or down (below it), so the state is not shown by colour alone.
   - A NaN input is `Invalid`: no needle, display `---`, `value()` NaN. The last valid value is not shown, and
-    `warningExceeded()` / `errorExceeded()` are not emitted while the input is invalid.
+    `warningExceeded()` / `errorExceeded()` are not emitted for an invalid input: use `valueStateChanged()` to
+    detect it.
 
 <img src="images/radial-gauge-invalid.png" alt="RadialGauge with an invalid (NaN) input" width="300">
 

@@ -43,10 +43,12 @@ class RadialGaugePrivate;
  * - \c Valid: the needle and the readout show the value.
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the needle rests at the stop and
  *   value() is the bound. The readout shows the input itself (e.g. 8350 on a 0–8000 scale), or ">max" / "<min"
- *   for ±Inf, preceded by a triangle pointing up (above the range) or down (below it), so that the state is not
- *   told by colour alone. The text is made smaller, if needed, to fit the pod of the valid values.
+ *   for ±Inf, preceded by a triangle pointing up (above the range) or down (below it), painted as a shape (it does
+ *   not depend on the fonts installed), so that the state is not told by colour alone. The text is made
+ *   smaller, if needed, to fit the pod of the valid values.
  * - \c Invalid (NaN): the needle is not drawn, the readout shows "---" and value() is NaN; the last valid
- *   value is never shown. warningExceeded() and errorExceeded() are not emitted while the input is invalid.
+ *   value is never shown. warningExceeded() and errorExceeded() are not emitted for an invalid input; use
+ *   valueStateChanged() to detect it.
  *
  * The dial scale, graduation ticks, numbers, and threshold bands are rendered into a QPixmap at the device pixel ratio
  * that is rebuilt only when geometry or visual properties change; a value change redraws only the needle and the readout.
@@ -219,9 +221,19 @@ Q_SIGNALS:
     void rangeChanged(double min, double max);
     /** \brief Emitted when warning or error thresholds change. */
     void thresholdChanged(double warning, double error);
-    /** \brief Emitted when the indicated value enters or leaves the warning zone (not while it is invalid). */
+    /**
+     * \brief Emitted when the indicated value enters or leaves the warning zone.
+     *
+     * Not emitted for an invalid (NaN) input: the zone state of the last valid value is kept. Use
+     * valueStateChanged() to detect an invalid input.
+     */
     void warningExceeded(bool exceeded);
-    /** \brief Emitted when the indicated value enters or leaves the critical error zone (not while it is invalid). */
+    /**
+     * \brief Emitted when the indicated value enters or leaves the critical error zone.
+     *
+     * Not emitted for an invalid (NaN) input: the zone state of the last valid value is kept. Use
+     * valueStateChanged() to detect an invalid input.
+     */
     void errorExceeded(bool exceeded);
     /** \brief Emitted when visual appearance properties change. */
     void appearanceChanged();
