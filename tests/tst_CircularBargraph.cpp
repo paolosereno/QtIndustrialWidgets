@@ -442,6 +442,7 @@ private Q_SLOTS:
     void readoutNeverBelowSevenPoints_data();
     void readoutNeverBelowSevenPoints();
     void minimumSizeHintFitsTheStateIndicators();
+    void outOfRangeReadoutShowsTheInput();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -1447,6 +1448,21 @@ void tst_CircularBargraph::minimumSizeHintFitsTheStateIndicators()
         const QString outside = inkOutsidePod(ink, podOf(b));
         QVERIFY2(outside.isEmpty(), qPrintable(outside));
     }
+}
+
+// #167: out of range the readout shows the input itself, as in the gauges, not the bound: two inputs above the
+// range (or two below it) read differently, while +Inf reads as the bound ('>' + maximum), like an input equal to
+// it only in the number
+void tst_CircularBargraph::outOfRangeReadoutShowsTheInput()
+{
+    const auto inkOf = [](double v) {
+        CircularBargraph b;
+        prepareReadout(b, 200, 100.0, 1, v, QString());
+        return readoutInk(b);
+    };
+    QVERIFY2(inkOf(120.0) != inkOf(150.0), "Overrange 120 and 150 give the same readout");
+    QVERIFY2(inkOf(-10.0) != inkOf(-30.0), "Underrange -10 and -30 give the same readout");
+    QVERIFY2(inkOf(120.0) != inkOf(std::numeric_limits<double>::infinity()), "Overrange 120 and +Inf read the same");
 }
 
 QTEST_MAIN(tst_CircularBargraph)
