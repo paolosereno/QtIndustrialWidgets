@@ -625,10 +625,11 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         d_ptr->m_valueFontPx = layout.valueFontPx;
 
         if (!podRect.isEmpty()) {
-            // Subtle recessed LCD box
+            // Recessed LCD box, opaque so that the readout contrast does not depend on the dial (#159): the
+            // default errorColor() reaches 4.5:1 down to the bottom of the gradient
             QLinearGradient podGrad(podRect.topLeft(), podRect.bottomLeft());
-            podGrad.setColorAt(0.0, QColor(10, 12, 16, 220));
-            podGrad.setColorAt(1.0, QColor(22, 26, 34, 220));
+            podGrad.setColorAt(0.0, QColor(10, 12, 16));
+            podGrad.setColorAt(1.0, QColor(18, 21, 28));
 
             painter.setPen(QPen(d_ptr->m_bezelColor.darker(120), 1.2));
             painter.setBrush(podGrad);
@@ -680,6 +681,8 @@ void RadialGauge::paintEvent(QPaintEvent *)
         QFont valFont = font();
         valFont.setPixelSize(d_ptr->m_valueFontPx);
         valFont.setBold(true);
+        // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
+        valFont.setStyleStrategy(QFont::StyleStrategy(valFont.styleStrategy() | QFont::NoSubpixelAntialias));
 
         QColor displayColor = d_ptr->m_readoutColor;
         if (state != ValueState::Invalid) {

@@ -564,7 +564,7 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             const internal::GaugeRect pod = internal::linearGaugeDisplayRect(true, w, h);
             QRectF podRect(pod.x, pod.y, pod.w, pod.h);
             painter.setPen(QPen(d_ptr->m_bezelColor.darker(140), 1.0));
-            painter.setBrush(QColor(16, 20, 26, 220));
+            painter.setBrush(QColor(16, 20, 26)); // opaque: the readout contrast does not depend on the bezel (#159)
             painter.drawRoundedRect(podRect, 3.0, 3.0);
         }
     } else {
@@ -683,7 +683,7 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             const internal::GaugeRect pod = internal::linearGaugeDisplayRect(false, w, h);
             QRectF podRect(pod.x, pod.y, pod.w, pod.h);
             painter.setPen(QPen(d_ptr->m_bezelColor.darker(140), 1.0));
-            painter.setBrush(QColor(16, 20, 26, 220));
+            painter.setBrush(QColor(16, 20, 26)); // opaque: the readout contrast does not depend on the bezel (#159)
             painter.drawRoundedRect(podRect, 3.0, 3.0);
         }
     }
@@ -772,6 +772,8 @@ void LinearGauge::paintEvent(QPaintEvent *)
             QFont f = font();
             f.setPixelSize(internal::scalePixelSize(12, internal::fontScale(font(), QApplication::font())));
             f.setBold(true);
+            // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
+            f.setStyleStrategy(QFont::StyleStrategy(f.styleStrategy() | QFont::NoSubpixelAntialias));
             if (state == ValueState::Valid) {
                 QString txt = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit);
                 painter.setFont(f);
@@ -833,6 +835,8 @@ void LinearGauge::paintEvent(QPaintEvent *)
             QFont f = font();
             f.setPixelSize(internal::scalePixelSize(12, internal::fontScale(font(), QApplication::font())));
             f.setBold(true);
+            // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
+            f.setStyleStrategy(QFont::StyleStrategy(f.styleStrategy() | QFont::NoSubpixelAntialias));
             if (state == ValueState::Valid) {
                 QString txt = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
                 painter.setFont(f);
