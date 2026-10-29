@@ -19,7 +19,6 @@
 #include <functional>
 #include <memory>
 #include <limits>
-#include <optional>
 
 #include "TextInkTestUtils.h"
 #include "internal/LinearGaugeScale.h"
@@ -238,35 +237,21 @@ void checkOutOfRangeMark(const QFont *font)
     }
 }
 
-// A font that has no glyph for U+25B2 (black up-pointing triangle) and does not fall back to fonts that do:
-// a mark drawn as that character would come out as a missing-glyph box, or not at all
-std::optional<QFont> fontWithoutTriangleGlyph()
+// The test font of tests/fonts: the readout characters (0-9 . - < > and the space) and no glyph for U+25B2 or
+// U+25BC, loaded from the repository so that the test does not depend on the installed fonts. With
+// NoFontMerging a mark drawn as one of those characters would come out as a missing-glyph box, or not at all
+QFont readoutTestFont(QString *error)
 {
-    QStringList families{QApplication::font().family()};
-    families += QFontDatabase::families();
-    // No hidden system font (such as macOS' emoji font). Either a font that draws every readout character, or,
-    // where no font is installed (Windows offscreen CI), a font that has none of them: every character is then
-    // the same box, and the triangle must still be a shape
-    const QString readoutChars = QStringLiteral("0123456789.-<>");
-    for (const QString &family : families) {
-        if (QFontDatabase::isPrivateFamily(family)) {
-            continue;
-        }
-        QFont f(family);
-        f.setStyleStrategy(QFont::NoFontMerging);
-        const QFontMetricsF fm(f);
-        if (fm.inFontUcs4(0x25B2) || fm.inFontUcs4(0x25BC)) {
-            continue;
-        }
-        const auto inFont = [&](QChar c) { return fm.inFontUcs4(c.unicode()); };
-        const bool drawsReadout = QFontDatabase::writingSystems(family).contains(QFontDatabase::Latin)
-                                  && std::all_of(readoutChars.begin(), readoutChars.end(), inFont);
-        const bool noGlyphs = std::none_of(readoutChars.begin(), readoutChars.end(), inFont);
-        if (drawsReadout || noGlyphs) {
-            return f;
-        }
+    const QString path = QStringLiteral(QIW_TEST_FONT_DIR "/QiwReadoutTest-Bold.ttf");
+    const int id = QFontDatabase::addApplicationFont(path);
+    const QStringList families = id >= 0 ? QFontDatabase::applicationFontFamilies(id) : QStringList();
+    if (families.isEmpty()) {
+        *error = QStringLiteral("cannot load %1").arg(path);
+        return QFont();
     }
-    return std::nullopt;
+    QFont f(families.first());
+    f.setStyleStrategy(QFont::NoFontMerging);
+    return f;
 }
 
 } // namespace
@@ -1221,11 +1206,16 @@ void tst_RadialGauge::outOfRangeMarkIsAShape()
 // #151: the mark is a painted shape, so a widget font without the triangle characters still shows it
 void tst_RadialGauge::outOfRangeMarkWithoutTheGlyphInTheFont()
 {
-    const std::optional<QFont> font = fontWithoutTriangleGlyph();
-    QVERIFY2(font, "no font lacks U+25B2 and U+25BC and has all or none of the readout characters");
-    QVERIFY(!QFontMetricsF(*font).inFontUcs4(0x25B2));
-    qInfo("font without the triangle glyphs: %s", qPrintable(QFontInfo(*font).family()));
-    checkOutOfRangeMark(&*font);
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    const QFontMetricsF fm(font);
+    QVERIFY2(!fm.inFontUcs4(0x25B2) && !fm.inFontUcs4(0x25BC), "the test font has a triangle glyph");
+    for (const QChar c : QStringLiteral("0123456789.-<>")) {
+        QVERIFY2(fm.inFontUcs4(c.unicode()), qPrintable(QStringLiteral("the test font has no glyph for '%1'").arg(c)));
+    }
+    qInfo("test font: %s", qPrintable(QFontInfo(font).family()));
+    checkOutOfRangeMark(&font);
 }
 
 // #151: an out-of-range value wider than the pod's valid values is drawn smaller, inside the pod
