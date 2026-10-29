@@ -65,7 +65,7 @@ void drawInvalidHatch(QPainter &painter, const QPainterPath &area, double thickn
     if (bounds.isEmpty()) {
         return;
     }
-    const double spacing = std::max(4.0, thickness * 0.45);
+    const double spacing = std::clamp(thickness * 0.45, 4.0, 8.0);
     painter.save();
     painter.setClipPath(area, Qt::IntersectClip);
     painter.setPen(QPen(color, 1.2, Qt::SolidLine, Qt::FlatCap));

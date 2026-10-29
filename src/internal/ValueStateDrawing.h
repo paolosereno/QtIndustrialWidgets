@@ -33,8 +33,8 @@ void drawStateReadout(QPainter &painter, const QRectF &podRect, QFont font, cons
 /**
  * \brief Hatches \a area with diagonal lines in \a color, #151: the mark of an invalid (NaN) input in a bar.
  *
- * The lines are 1.2 px wide, spaced by max(4, 0.45 × \a thickness) px, where \a thickness is the width of the
- * bar across its length, so that the pattern stays visible on thin bars.
+ * The lines are 1.2 px wide, spaced by 0.45 × \a thickness px, between 4 and 8 px, where \a thickness is the
+ * width of the bar across its length: the pattern stays visible on thin bars and dense on wide ones.
  */
 void drawInvalidHatch(QPainter &painter, const QPainterPath &area, double thickness, const QColor &color);
 
