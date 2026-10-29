@@ -24,6 +24,16 @@ Circular gauge for speed, pressure, temperature and similar values (`qiw::Radial
   of the scale labels.
 - **Rendering**: the static scale is cached in a pixmap and rebuilt on geometry or appearance changes; a value change
   redraws the needle and the display.
+- **Value state** (#151): `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid` (the
+  `QtIndustrialWidgets::ValueState` enum), with `valueStateChanged()`; `rawValue()` keeps the unclamped input, and a
+  range change classifies it again.
+  - An input outside the range (finite or ±Inf) puts the needle at the stop and `value()` at the bound. The display
+    shows the input itself (for example `8350` on a 0–8000 scale), or `>max` / `<min` for ±Inf, after a triangle
+    pointing up (above the range) or down (below it), so the state is not shown by colour alone.
+  - A NaN input is `Invalid`: no needle, display `---`, `value()` NaN. The last valid value is not shown, and
+    `warningExceeded()` / `errorExceeded()` are not emitted while the input is invalid.
+
+<img src="images/radial-gauge-invalid.png" alt="RadialGauge with an invalid (NaN) input" width="300">
 
 ## LinearGauge
 
