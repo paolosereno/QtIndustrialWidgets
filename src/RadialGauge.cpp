@@ -8,6 +8,7 @@
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/ValueClassification.h"
+#include "internal/ValueStateDrawing.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -678,47 +679,8 @@ void RadialGauge::paintEvent(QPaintEvent *)
             painter.setPen(displayColor);
             painter.drawText(podRect, Qt::AlignCenter, valStr);
         } else {
-            // #151: the pod is sized for the valid values; the text of an out-of-range or invalid input,
-            // and the out-of-range triangle, are made smaller if needed to fit it
-            const bool outOfRange = (state == ValueState::Overrange || state == ValueState::Underrange);
-            const double available = podRect.width() - 2.0 * std::max(2.0, podRect.height() * 0.12);
-            double triW = 0.0;
-            double gap = 0.0;
-            for (int px = d_ptr->m_valueFontPx;; --px) {
-                valFont.setPixelSize(px);
-                const QFontMetricsF vfm(valFont);
-                triW = outOfRange ? vfm.capHeight() * 0.9 : 0.0;
-                gap = outOfRange ? triW * 0.35 : 0.0;
-                if (triW + gap + vfm.horizontalAdvance(valStr) <= available || px <= 6) {
-                    break;
-                }
-            }
-            const QFontMetricsF vfm(valFont);
-            const double textW = vfm.horizontalAdvance(valStr);
-            const double left = podRect.center().x() - (triW + gap + textW) * 0.5;
-            const QRectF textRect(left + triW + gap, podRect.top(), textW, podRect.height());
-
-            painter.setFont(valFont);
-            painter.setPen(displayColor);
-            painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextDontClip, valStr);
-
-            if (outOfRange) {
-                // Centred on the digits: AlignVCenter centres the line box (ascent + descent)
-                const double baseline = podRect.center().y() - vfm.height() * 0.5 + vfm.ascent();
-                const double midY = baseline - vfm.capHeight() * 0.5;
-                const double halfH = triW * 0.5;
-                QPolygonF tri;
-                if (state == ValueState::Overrange) {
-                    tri << QPointF(left, midY + halfH) << QPointF(left + triW, midY + halfH)
-                        << QPointF(left + triW * 0.5, midY - halfH);
-                } else {
-                    tri << QPointF(left, midY - halfH) << QPointF(left + triW, midY - halfH)
-                        << QPointF(left + triW * 0.5, midY + halfH);
-                }
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(displayColor);
-                painter.drawPolygon(tri);
-            }
+            // #151: triangle for an out-of-range input, text made smaller if needed to fit the pod
+            internal::drawStateReadout(painter, podRect, valFont, valStr, internal::inputStateOf(state), displayColor);
         }
     }
 
