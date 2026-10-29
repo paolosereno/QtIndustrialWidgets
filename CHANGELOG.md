@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **vcpkg port** (#147): `portfile.cmake` carries the SHA512 of the `v2.5.1` tag archive (the tagged commit still had the `v2.5.0` hash, since the hash can be computed only after the tag).
+- **`Compass`: north-up lubber line at 12 o'clock** (#165): in `DisplayMode::NorthUp` the lubber line was drawn at the right edge of the widget, outside the dial, because the painter was translated to the centre twice. It is now at 12 o'clock, as in heading-up, also when the heading is invalid. Heading-up is unchanged.
 
 ---
 

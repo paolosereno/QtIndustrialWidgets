@@ -190,10 +190,10 @@ Heading indicator (`qiw::Compass`).
 - **References**: lubber line (`lubberLineVisible`) and digital heading readout (`digitalReadoutVisible`).
 - **Value state** (#151): a heading has no range, so `valueState()` is only `Valid` or `Invalid`, with
   `valueStateChanged()`. NaN and ±Inf have no direction: `heading()` and `courseDeviation()` are NaN, a red `HDG`
-  failure flag is drawn on the dial and the readout shows `---°`. North-up draws no needle; heading-up draws the
-  card at 0° with dimmed colours and no lubber line, so that it is not read as a heading of 000, and dims the
-  heading bug with it (its place from 12 o'clock would read as a course deviation). A non-finite target heading
-  is ignored.
+  failure flag is drawn on the dial and the readout shows `---°`. North-up draws no needle and keeps the lubber
+  line, which marks the fixed north of its card, not the heading; heading-up draws the card at 0° with dimmed
+  colours and no lubber line, so that it is not read as a heading of 000, and dims the heading bug with it (its
+  place from 12 o'clock would read as a course deviation). A non-finite target heading is ignored.
 
 ## CircularBargraph
 

@@ -39,10 +39,11 @@ class CompassPrivate;
  * - \c Valid: a finite heading.
  * - \c Invalid: NaN or ±Inf, which have no direction. heading() and courseDeviation() return NaN and
  *   headingChanged(NaN) is emitted once (a repeated invalid input emits nothing). A red "HDG" failure flag is
- *   drawn on the dial and the readout shows "---°". North-up draws no needle; heading-up draws the card at 0°
- *   with dimmed colours and no lubber line, so that it is not read as a heading of 000; the heading bug is dimmed
- *   with the card, since its place from 12 o'clock would read as a course deviation. targetHeading() is kept,
- *   and a click on a heading-up dial reads the card at 0°.
+ *   drawn on the dial and the readout shows "---°". North-up draws no needle and keeps the lubber line, which
+ *   marks the fixed north of its card, not the heading; heading-up draws the card at 0° with dimmed colours and
+ *   no lubber line, so that it is not read as a heading of 000; the heading bug is dimmed with the card, since
+ *   its place from 12 o'clock would read as a course deviation. targetHeading() is kept, and a click on a
+ *   heading-up dial reads the card at 0°.
  * setTargetHeading() ignores a non-finite target: the last target is kept.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
