@@ -41,6 +41,10 @@ class RadialGaugePrivate;
  * Value state (valueState(), #151): the last input is kept unclamped (rawValue()) and classified against the
  * range; a range change classifies it again. Before the first setValue() there is no input: the initial value
  * (0) follows the range, clamped to it at each range change, and the state stays \c Valid.
+ *
+ * Before the first setValue() the gauge reports valueState() \c Valid, no valueStateChanged(), and value() ==
+ * rawValue() == 0 clamped to the range: the minimum for a range from 0 up (the default 0–100, or 10–100), 0
+ * for a range across 0, the maximum for a range below 0 (as before #151). The readout shows that value.
  * - \c Valid: the needle and the readout show the value.
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the needle rests at the stop and
  *   value() is the bound. The readout shows the input itself (e.g. 8350 on a 0–8000 scale), or ">max" / "<min"
@@ -119,7 +123,10 @@ public:
      * Not notified separately: valueChanged() reports changes of value(), valueStateChanged() of the state.
      */
     [[nodiscard]] double rawValue() const;
-    /** \brief Returns the classification of rawValue() against the current range. */
+    /**
+     * \brief Returns the classification of rawValue() against the current range; \c Valid before the first
+     * setValue().
+     */
     [[nodiscard]] ValueState valueState() const;
     /** \brief Returns the decimal precision for the digital readout display. */
     [[nodiscard]] int precision() const;

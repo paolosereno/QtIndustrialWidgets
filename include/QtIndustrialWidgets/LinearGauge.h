@@ -28,6 +28,10 @@ class LinearGaugePrivate;
  * Value state (valueState(), #151): the last input is kept unclamped (rawValue()) and classified against the
  * range; a range change classifies it again. Before the first setValue() there is no input: the initial value
  * (0) follows the range, clamped to it at each range change, and the state stays \c Valid.
+ *
+ * Before the first setValue() the gauge reports valueState() \c Valid, no valueStateChanged(), and value() ==
+ * rawValue() == 0 clamped to the range: the minimum for a range from 0 up (the default 0–100, or 10–100), 0
+ * for a range across 0, the maximum for a range below 0 (as before #151). The readout shows that value.
  * - \c Valid: the liquid and the readout show the value.
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the liquid stops at the end of the
  *   scale and value() is the bound. The readout shows the input itself (e.g. 135 on a 0–100 scale), or ">max" /
@@ -111,7 +115,7 @@ public:
      * first setValue(), the initial value clamped to the range.
      */
     [[nodiscard]] double rawValue() const;
-    /** \brief Returns the state of the last input against the range (#151). */
+    /** \brief Returns the state of the last input against the range (#151); \c Valid before the first setValue(). */
     [[nodiscard]] QtIndustrialWidgets::ValueState valueState() const;
     /** \brief Returns the decimal precision for the digital readout. */
     [[nodiscard]] int precision() const;
