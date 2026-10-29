@@ -84,7 +84,14 @@ public:
     };
     Q_ENUM(DisplayMode)
 
-    /** \brief Classification of the last input passed to setValue(). */
+    /**
+     * \brief Classification of the last input passed to setValue().
+     *
+     * Same enumerators and values (0-3) as the namespace-level QtIndustrialWidgets::ValueState used by the other
+     * widgets (#151), so a static_cast between the two is exact. This enum stays in 2.x: making it an alias
+     * would change the mangled names of valueState() and valueStateChanged() and the type name registered with
+     * the meta-object system. Unifying the two is a candidate for 3.0.
+     */
     enum class ValueState {
         Valid,      ///< Finite and within [minimum(), maximum()] (bounds included)
         Underrange, ///< Below minimum() or -Inf: readout '<' + minimum, first segment blinks

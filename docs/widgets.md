@@ -107,6 +107,8 @@ Rotary knob (`qiw::IndustrialKnob`).
   Home/End.
 - **Rendering**: the knob has a serrated grip of 32 teeth; ticks and scale are cached, so a rotation redraws only the
   moving parts.
+- **Non-finite input** (#151): the knob is an input control and has no value state. `setValue()` ignores NaN (the knob
+  keeps its position) and clamps ±Inf to the ends of the range.
 
 ## StripChart
 
@@ -186,6 +188,11 @@ Heading indicator (`qiw::Compass`).
   difference from the heading is `courseDeviation`.
 - **Card**: cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) labels and three-digit degree numbers.
 - **References**: lubber line (`lubberLineVisible`) and digital heading readout (`digitalReadoutVisible`).
+- **Value state** (#151): a heading has no range, so `valueState()` is only `Valid` or `Invalid`, with
+  `valueStateChanged()`. NaN and ±Inf have no direction: `heading()` and `courseDeviation()` are NaN, a red `HDG`
+  failure flag is drawn on the dial and the readout shows `---°`. North-up draws no needle; heading-up draws the
+  card at 0° with dimmed colours and no lubber line, so that it is not read as a heading of 000. A non-finite
+  target heading is ignored.
 
 ## CircularBargraph
 
