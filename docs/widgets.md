@@ -11,14 +11,16 @@ One section per widget: what it shows, its main properties and how it is driven.
 [gallery_images.md](gallery_images.md)). The colour properties of each widget are listed in [theming.md](theming.md);
 the complete API is in the class documentation.
 
-**Readout of the value states** (#151), the same for `RadialGauge` and `LinearGauge`:
+**Readout of the value states** (#151), the same for `RadialGauge`, `LinearGauge` and `CircularBargraph` (#167):
 - an invalid (NaN) input reads `---`;
 - an input outside the range reads the input itself, or `>max` / `<min` for ±Inf, after a triangle pointing up or
   down, painted as a shape (it does not depend on the installed fonts); the text is made smaller, if needed, to fit
   the display;
 - the unit is shown in every state where it is shown for a valid value: `RadialGauge` keeps its unit label on the
   dial, the vertical `LinearGauge` display keeps the unit after the readout (`--- °C`, `▲ 135.4 °C`). The
-  horizontal `LinearGauge` display shows no unit, in any state.
+  horizontal `LinearGauge` display shows no unit, in any state. `CircularBargraph` keeps the text at 7 pt or more
+  and, when the pod is too small, leaves out the unit, then the number, never `---` or the triangle (see its
+  section).
 
 **Readout colours** (#159): the readout pods of `RadialGauge`, `LinearGauge`, `Compass` and `IndustrialKnob` are
 opaque and dark in every theme. Their readout is drawn in `readoutColor` (`RadialGauge`: normal zone and `---`;
@@ -214,10 +216,16 @@ Bargraph of curved segments on an arc (`qiw::CircularBargraph`).
   centre; unlit segments show a dimmed tint of their zone over `ghostColor`. The setters keep
   `warningThreshold <= errorThreshold`.
 - **Peak hold**: optional, held for `peakHoldTimeMs`, then decaying at `peakDecayRate`.
-- **Digital display**: optional, with `precision` and `unit`.
+- **Digital display**: optional, with `precision` and `unit`, in a round pod inside the arc. The value is drawn at
+  7 pt or more and never cut nor shortened; what does not fit in the pod is left out, the unit first, then the
+  number (#167). `---` and the triangle are always shown, so only a valid readout may disappear.
+  `minimumSizeHint()` is the smallest size at which `---` and the triangle fit in the pod at 7 pt, computed from the
+  widget font (50 × 50 with DejaVu Sans, 56 × 56 with no fonts installed, never less than 50 × 50), or 50 × 50 when
+  the display is hidden.
 - **Value state**: `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`. Out-of-range inputs
-  (including ±Inf) are shown at the range bound with the end segment blinking and a `<` / `>` readout; a NaN input is
-  shown as `Invalid` (all segments unlit, readout `---`). `rawValue()` keeps the unclamped input.
+  (including ±Inf) are shown at the range bound with the end segment blinking; the readout follows the common rule
+  above (`▲ 120.0`, `>100.0` for +Inf). A NaN input is shown as `Invalid` (all segments unlit, readout `---`).
+  `rawValue()` keeps the unclamped input.
 
 ## AnalysisChart
 

@@ -32,8 +32,13 @@ class CircularBargraphPrivate;
  *   second.
  * - Optional centered digital readout pod with unit label.
  * - Value state (valueState()): out-of-range inputs (including ±Inf) are shown at the range
- *   bound with a blinking end segment and a '<' / '>' readout; a NaN input is shown as
- *   \c Invalid (all segments ghost, readout "---"). D-pointer ABI stability.
+ *   bound with a blinking end segment; the readout shows a triangle pointing up or down and the
+ *   input itself ('>' + maximum / '<' + minimum for ±Inf). A NaN input is shown as \c Invalid
+ *   (all segments ghost, readout "---"). D-pointer ABI stability.
+ * - Readout fit (#167): the readout stays inside the pod, with the value at 7 pt or more. When it
+ *   does not fit, the unit is left out first, then the number; "---" and the triangle are always
+ *   shown, so only a valid readout may disappear. minimumSizeHint() is the smallest size at which
+ *   "---" and the triangle fit at 7 pt, from the metrics of the widget font, and never below 50 x 50.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
@@ -94,8 +99,8 @@ public:
      */
     enum class ValueState {
         Valid,      ///< Finite and within [minimum(), maximum()] (bounds included)
-        Underrange, ///< Below minimum() or -Inf: readout '<' + minimum, first segment blinks
-        Overrange,  ///< Above maximum() or +Inf: full bar, last segment blinks, readout '>' + maximum
+        Underrange, ///< Below minimum() or -Inf: first segment blinks, readout ▼ and the input ('<' + minimum for -Inf)
+        Overrange,  ///< Above maximum() or +Inf: full bar, last segment blinks, readout ▲ and the input ('>' + maximum for +Inf)
         Invalid     ///< NaN: all segments ghost, readout "---", value() and peakValue() are NaN
     };
     Q_ENUM(ValueState)

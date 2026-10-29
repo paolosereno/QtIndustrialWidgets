@@ -5,7 +5,10 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 
 #include "internal/CircularBargraphSegments.h"
+#include "internal/NumberFormat.h"
+#include "internal/ValueClassification.h"
 
+#include <QtGui/QFontMetricsF>
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
@@ -25,6 +28,154 @@ constexpr double kPi = 3.14159265358979323846;
 
 namespace {
 constexpr int kBlinkHalfPeriodMs = 250; // ~2 Hz out-of-range blink
+
+// #167: the readout in the pod well. The value (and its state triangle) never goes below 7 pt; the unit keeps its
+// rule (52 % of the value, at least 5.5 pt). What does not fit in the pod is left out, the unit first, then the
+// number; the state indicator ("---", the triangle) is never left out, and only a valid readout may disappear
+constexpr double kMinimumValuePt = 7.0;
+constexpr int kMinimumSide = 50; // floor of minimumSizeHint()
+
+// Pod well radius for a widget of side \a side, as in paintEvent()
+double podRadiusFor(double side)
+{
+    const double radius = side * 0.5 - 4.0;
+    return radius * 0.66 * 0.90;
+}
+
+QFont valueFontAt(const QFont &base, double pt)
+{
+    QFont f = base;
+    f.setBold(true);
+    f.setPointSizeF(pt);
+    return f;
+}
+
+QFont unitFontAt(const QFont &base, double valuePt)
+{
+    QFont f = base;
+    f.setPointSizeF(std::max(5.5, valuePt * 0.52));
+    return f;
+}
+
+struct ReadoutLine {
+    QString text;           // may be empty: the triangle alone
+    bool triangle = false;  // Overrange / Underrange mark, left of the text
+    double centreY = 0.0;   // relative to the pod centre
+};
+
+// Geometry of a line drawn by drawReadoutLine(): the text baseline, the left end and the triangle size
+struct LineGeometry {
+    double left;
+    double baseline;
+    double triW;
+    double gap;
+    double textX;
+    double midY;
+};
+
+LineGeometry lineGeometry(const QFontMetricsF &fm, const ReadoutLine &line)
+{
+    LineGeometry g{};
+    g.triW = line.triangle ? fm.capHeight() * 0.9 : 0.0; // as in internal::drawStateReadout()
+    g.gap = (line.triangle && !line.text.isEmpty()) ? g.triW * 0.35 : 0.0;
+    const double width = g.triW + g.gap + (line.text.isEmpty() ? 0.0 : fm.horizontalAdvance(line.text));
+    g.left = -width * 0.5;
+    g.textX = g.left + g.triW + g.gap;
+    g.baseline = line.centreY - fm.height() * 0.5 + fm.ascent();
+    g.midY = g.baseline - fm.capHeight() * 0.5;
+    return g;
+}
+
+// True when the ink of \a line lies inside the circle of radius \a r around the pod centre
+bool lineFits(const QFontMetricsF &fm, const ReadoutLine &line, double r)
+{
+    const LineGeometry g = lineGeometry(fm, line);
+    QVector<QRectF> boxes;
+    if (line.triangle) {
+        boxes.push_back(QRectF(g.left, g.midY - g.triW * 0.5, g.triW, g.triW));
+    }
+    if (!line.text.isEmpty()) {
+        boxes.push_back(fm.tightBoundingRect(line.text).translated(g.textX, g.baseline));
+    }
+    for (const QRectF &b : boxes) {
+        for (const QPointF &p : {b.topLeft(), b.topRight(), b.bottomLeft(), b.bottomRight()}) {
+            if (std::hypot(p.x(), p.y()) > r) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+struct ReadoutLayout {
+    bool visible = false;
+    double valuePt = 0.0;
+    ReadoutLine value;
+    ReadoutLine unit; // empty text: no unit
+};
+
+// The largest readout that fits in a pod of radius \a podRadius: value font from \a preferredPt down to 7 pt,
+// with the unit, then without it, then (out of range) the triangle alone
+ReadoutLayout layoutReadout(const QFont &base, const QPaintDevice *device, double podRadius, double preferredPt,
+                            const QString &text, bool triangle, const QString &unit)
+{
+    const auto tryLayout = [&](const QString &valueText, bool withUnit) {
+        for (double pt = std::max(preferredPt, kMinimumValuePt);; pt = std::max(kMinimumValuePt, pt - 0.5)) {
+            ReadoutLayout l;
+            l.valuePt = pt;
+            l.value = {valueText, triangle, withUnit ? -0.30 * podRadius : 0.0};
+            const QFontMetricsF vfm(valueFontAt(base, pt), device);
+            bool fits = lineFits(vfm, l.value, podRadius);
+            if (fits && withUnit) {
+                l.unit = {unit, false, 0.425 * podRadius};
+                fits = lineFits(QFontMetricsF(unitFontAt(base, pt), device), l.unit, podRadius);
+            }
+            if (fits) {
+                l.visible = true;
+                return l;
+            }
+            if (pt <= kMinimumValuePt) {
+                return ReadoutLayout{};
+            }
+        }
+    };
+    if (!unit.isEmpty()) {
+        const ReadoutLayout l = tryLayout(text, true);
+        if (l.visible) {
+            return l;
+        }
+    }
+    const ReadoutLayout l = tryLayout(text, false);
+    if (l.visible || !triangle) {
+        return l;
+    }
+    return tryLayout(QString(), false);
+}
+
+void drawReadoutLine(QPainter &painter, const QPointF &centre, const QFont &font, const ReadoutLine &line,
+                     bool up, const QColor &color)
+{
+    const QFontMetricsF fm(font, painter.device());
+    const LineGeometry g = lineGeometry(fm, line);
+    painter.setPen(color);
+    painter.setFont(font);
+    if (!line.text.isEmpty()) {
+        painter.drawText(centre + QPointF(g.textX, g.baseline), line.text);
+    }
+    if (line.triangle) {
+        const double halfH = g.triW * 0.5;
+        const QPointF o = centre + QPointF(g.left, g.midY);
+        QPolygonF tri;
+        if (up) {
+            tri << o + QPointF(0.0, halfH) << o + QPointF(g.triW, halfH) << o + QPointF(g.triW * 0.5, -halfH);
+        } else {
+            tri << o + QPointF(0.0, -halfH) << o + QPointF(g.triW, -halfH) << o + QPointF(g.triW * 0.5, halfH);
+        }
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+        painter.drawPolygon(tri);
+    }
+}
 
 internal::InputState toInputState(CircularBargraph::ValueState st)
 {
@@ -254,7 +405,23 @@ QSize CircularBargraph::sizeHint() const
 
 QSize CircularBargraph::minimumSizeHint() const
 {
-    return QSize(50, 50);
+    if (!d_ptr->m_digitalDisplayVisible) {
+        return QSize(kMinimumSide, kMinimumSide);
+    }
+    // #167: the smallest side, not below 50, at which the state indicators ("---" and the triangle) fit in the
+    // pod at 7 pt, from the metrics of the widget font
+    const QFontMetricsF fm(valueFontAt(font(), kMinimumValuePt), this);
+    const ReadoutLine dashes{QStringLiteral("---"), false, 0.0};
+    const ReadoutLine triangle{QString(), true, 0.0};
+    int side = kMinimumSide;
+    while (side < 4000) {
+        const double r = podRadiusFor(side);
+        if (lineFits(fm, dashes, r) && lineFits(fm, triangle, r)) {
+            break;
+        }
+        ++side;
+    }
+    return QSize(side, side);
 }
 
 void CircularBargraph::setValue(double val)
@@ -420,6 +587,7 @@ void CircularBargraph::setDigitalDisplayVisible(bool visible)
         return;
     }
     d_ptr->m_digitalDisplayVisible = visible;
+    updateGeometry(); // minimumSizeHint() makes room for the readout (#167)
     Q_EMIT appearanceChanged();
     update();
 }
@@ -621,38 +789,30 @@ void CircularBargraph::paintEvent(QPaintEvent *)
         }
     }
 
-    // 3. Optional Centered Digital Readout Pod
-    if (d_ptr->m_digitalDisplayVisible && rInner > 15.0) {
-        const QString valStr = internal::formatReadout(toInputState(d_ptr->m_valueState), d_ptr->m_value,
-                                                       d_ptr->m_minimum, d_ptr->m_maximum,
-                                                       d_ptr->m_precision);
+    // 3. Optional Centered Digital Readout Pod (#167: fitted in the pod well, see layoutReadout())
+    if (d_ptr->m_digitalDisplayVisible) {
         const double podRadius = rInner * 0.90;
 
         // Dark recessed pod circular well
         painter.setBrush(d_ptr->m_dialColor.darker(130));
         painter.drawEllipse(center, podRadius, podRadius);
 
-        const double fontSize = std::max(7.0, rInner * 0.36);
-        QFont valFont = font();
-        valFont.setBold(true);
-        valFont.setPointSizeF(fontSize);
-        painter.setFont(valFont);
-        painter.setPen(d_ptr->m_textColor);
-
-        if (d_ptr->m_unit.isEmpty()) {
-            const QRectF valRect(center.x() - podRadius, center.y() - podRadius, podRadius * 2.0, podRadius * 2.0);
-            painter.drawText(valRect, Qt::AlignCenter, valStr);
-        } else {
-            const QRectF valRect(center.x() - podRadius, center.y() - podRadius * 0.75, podRadius * 2.0, podRadius * 0.9);
-            painter.drawText(valRect, Qt::AlignCenter, valStr);
-
-            QFont unitFont = font();
-            unitFont.setPointSizeF(std::max(5.5, fontSize * 0.52));
-            painter.setFont(unitFont);
-            painter.setPen(d_ptr->m_textColor.darker(125));
-
-            const QRectF unitRect(center.x() - podRadius, center.y() + podRadius * 0.10, podRadius * 2.0, podRadius * 0.65);
-            painter.drawText(unitRect, Qt::AlignCenter, d_ptr->m_unit);
+        const internal::InputState state = toInputState(d_ptr->m_valueState);
+        // Out of range: the true input, as in the gauges (">max" / "<min" for ±Inf); Invalid: "---"
+        const QString text = state == internal::InputState::Valid
+            ? internal::formatFixed(d_ptr->m_value, d_ptr->m_precision)
+            : internal::gaugeReadoutText(state, d_ptr->m_rawValue, d_ptr->m_minimum, d_ptr->m_maximum,
+                                         d_ptr->m_precision);
+        const bool outOfRange = state == internal::InputState::Overrange || state == internal::InputState::Underrange;
+        const ReadoutLayout layout = layoutReadout(font(), this, podRadius, rInner * 0.36, text, outOfRange,
+                                                   d_ptr->m_unit);
+        if (layout.visible) {
+            drawReadoutLine(painter, center, valueFontAt(font(), layout.valuePt), layout.value,
+                            state == internal::InputState::Overrange, d_ptr->m_textColor);
+            if (!layout.unit.text.isEmpty()) {
+                drawReadoutLine(painter, center, unitFontAt(font(), layout.valuePt), layout.unit, false,
+                                d_ptr->m_textColor.darker(125));
+            }
         }
     }
 }

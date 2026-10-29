@@ -98,13 +98,5 @@ struct SegmentInput {
  */
 std::vector<SegmentState> computeSegmentStates(const SegmentInput &in);
 
-/**
- * \brief Text of the digital readout (without unit).
- *
- * Valid: \a value; Overrange: '>' + \a maximum; Underrange: '<' + \a minimum;
- * Invalid: "---". Numbers use \a precision decimals.
- */
-QString formatReadout(InputState state, double value, double minimum, double maximum, int precision);
-
 } // namespace internal
 } // namespace QtIndustrialWidgets
