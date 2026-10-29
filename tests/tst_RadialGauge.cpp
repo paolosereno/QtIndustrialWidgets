@@ -21,6 +21,7 @@
 #include "TextInkTestUtils.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/ValueClassification.h"
 
 using namespace QtIndustrialWidgets;
 
@@ -122,6 +123,61 @@ QVector<QPoint> needlePixels(const QImage &image)
     return out;
 }
 
+// Needle pixels outside \a box. The antialiased edges of the needle blend with what lies under them, so where
+// the needle crosses the digital display they change with the readout
+QVector<QPoint> needlePixelsOutside(const QImage &image, const QRect &box)
+{
+    QVector<QPoint> out;
+    for (const QPoint &p : needlePixels(image)) {
+        if (!box.contains(p)) {
+            out.push_back(p);
+        }
+    }
+    return out;
+}
+
+// Column groups of the readout ink inside \a box: runs of adjacent columns that hold near-white ink, left to
+// right, each with the top and bottom ink row of every column
+struct InkGroup {
+    QVector<int> top;
+    QVector<int> bottom;
+};
+
+QVector<InkGroup> readoutInkGroups(const QImage &image, const QRect &box)
+{
+    QVector<InkGroup> groups;
+    bool inGroup = false;
+    for (int x = box.left(); x <= box.right(); ++x) {
+        int top = -1;
+        int bottom = -1;
+        for (int y = box.top(); y <= box.bottom(); ++y) {
+            const QRgb p = image.pixel(x, y);
+            if (qRed(p) >= 200 && qGreen(p) >= 200 && qBlue(p) >= 200) {
+                if (top < 0) {
+                    top = y;
+                }
+                bottom = y;
+            }
+        }
+        if (top < 0) {
+            inGroup = false;
+            continue;
+        }
+        if (!inGroup) {
+            groups.push_back(InkGroup{});
+            inGroup = true;
+        }
+        groups.back().top.push_back(top);
+        groups.back().bottom.push_back(bottom);
+    }
+    return groups;
+}
+
+int spread(const QVector<int> &v)
+{
+    return *std::max_element(v.begin(), v.end()) - *std::min_element(v.begin(), v.end());
+}
+
 // Device-pixel box of the digital display: the pixels that change when it is shown
 QRect displayBox(RadialGauge &gauge)
 {
@@ -182,6 +238,12 @@ private Q_SLOTS:
     void outOfRangeReadoutShowsTheTrueValue();
     void infiniteReadoutDiffersFromTheBound();
     void rangeChangeReclassifiesTheLastInput();
+    void valueStateAndRawValue();
+    void valueStateSignalOrder();
+    void invalidInputKeepsZoneSignals();
+    void readoutTextOfEveryState();
+    void outOfRangeMarkIsAShape();
+    void longOutOfRangeReadoutStaysInThePod();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -298,9 +360,9 @@ void tst_RadialGauge::nanAndInfinityResilience()
     gauge.setValue(50.0);
     QCOMPARE(gauge.value(), 50.0);
 
-    // NaN input must be ignored (fail-safe hold)
+    // NaN input is shown as invalid, never as the last value (#151; it was held before)
     gauge.setValue(std::numeric_limits<double>::quiet_NaN());
-    QCOMPARE(gauge.value(), 50.0);
+    QVERIFY(std::isnan(gauge.value()));
 
     // +Infinity must clamp to maximum
     gauge.setValue(std::numeric_limits<double>::infinity());
@@ -902,7 +964,7 @@ void tst_RadialGauge::outOfRangeReadoutShowsTheTrueValue()
     gauge.setValue(150.0);
     QCOMPARE(gauge.value(), 100.0);
     const QImage above = renderGauge(gauge);
-    QCOMPARE(TextInk::sorted(needlePixels(above)), TextInk::sorted(needlePixels(atMaximum)));
+    QCOMPARE(TextInk::sorted(needlePixelsOutside(above, box)), TextInk::sorted(needlePixelsOutside(atMaximum, box)));
     QVERIFY2(above.copy(box) != atMaximum.copy(box), "the readout of 150 equals the readout of the maximum");
 
     gauge.setValue(0.0);
@@ -910,7 +972,7 @@ void tst_RadialGauge::outOfRangeReadoutShowsTheTrueValue()
     gauge.setValue(-20.0);
     QCOMPARE(gauge.value(), 0.0);
     const QImage below = renderGauge(gauge);
-    QCOMPARE(TextInk::sorted(needlePixels(below)), TextInk::sorted(needlePixels(atMinimum)));
+    QCOMPARE(TextInk::sorted(needlePixelsOutside(below, box)), TextInk::sorted(needlePixelsOutside(atMinimum, box)));
     QVERIFY2(below.copy(box) != atMinimum.copy(box), "the readout of -20 equals the readout of the minimum");
 }
 
@@ -926,7 +988,7 @@ void tst_RadialGauge::infiniteReadoutDiffersFromTheBound()
     gauge.setValue(std::numeric_limits<double>::infinity());
     QCOMPARE(gauge.value(), 100.0);
     const QImage plusInf = renderGauge(gauge);
-    QCOMPARE(TextInk::sorted(needlePixels(plusInf)), TextInk::sorted(needlePixels(atMaximum)));
+    QCOMPARE(TextInk::sorted(needlePixelsOutside(plusInf, box)), TextInk::sorted(needlePixelsOutside(atMaximum, box)));
     QVERIFY2(plusInf.copy(box) != atMaximum.copy(box), "the readout of +Inf equals the readout of the maximum");
 
     gauge.setValue(0.0);
@@ -934,7 +996,7 @@ void tst_RadialGauge::infiniteReadoutDiffersFromTheBound()
     gauge.setValue(-std::numeric_limits<double>::infinity());
     QCOMPARE(gauge.value(), 0.0);
     const QImage minusInf = renderGauge(gauge);
-    QCOMPARE(TextInk::sorted(needlePixels(minusInf)), TextInk::sorted(needlePixels(atMinimum)));
+    QCOMPARE(TextInk::sorted(needlePixelsOutside(minusInf, box)), TextInk::sorted(needlePixelsOutside(atMinimum, box)));
     QVERIFY2(minusInf.copy(box) != atMinimum.copy(box), "the readout of -Inf equals the readout of the minimum");
 }
 
@@ -955,6 +1017,175 @@ void tst_RadialGauge::rangeChangeReclassifiesTheLastInput()
     gauge.setValue(std::numeric_limits<double>::quiet_NaN());
     gauge.setRange(0.0, 300.0);
     QVERIFY(std::isnan(gauge.value()));
+}
+
+void tst_RadialGauge::valueStateAndRawValue()
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    RadialGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    QCOMPARE(gauge.valueState(), ValueState::Valid);
+
+    struct Step {
+        double input;
+        ValueState state;
+        double value;
+    };
+    const Step steps[] = {
+        {50.0, ValueState::Valid, 50.0},        {150.0, ValueState::Overrange, 100.0},
+        {inf, ValueState::Overrange, 100.0},    {-20.0, ValueState::Underrange, 0.0},
+        {-inf, ValueState::Underrange, 0.0},    {100.0, ValueState::Valid, 100.0},
+        {0.0, ValueState::Valid, 0.0},          {nan, ValueState::Invalid, nan},
+        {75.0, ValueState::Valid, 75.0},
+    };
+    for (const Step &step : steps) {
+        gauge.setValue(step.input);
+        const QString where = QStringLiteral("input %1").arg(step.input);
+        QVERIFY2(gauge.valueState() == step.state, qPrintable(where));
+        if (std::isnan(step.value)) {
+            QVERIFY2(std::isnan(gauge.value()) && std::isnan(gauge.rawValue()), qPrintable(where));
+        } else {
+            QVERIFY2(gauge.value() == step.value, qPrintable(where));
+            QVERIFY2(gauge.rawValue() == step.input, qPrintable(where));
+        }
+    }
+    QCOMPARE(gauge.property("valueState").value<ValueState>(), ValueState::Valid);
+    QCOMPARE(gauge.property("rawValue").toDouble(), 75.0);
+}
+
+void tst_RadialGauge::valueStateSignalOrder()
+{
+    RadialGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setValue(50.0);
+
+    QStringList events;
+    connect(&gauge, &RadialGauge::valueChanged, &gauge,
+            [&events](double v) { events << QStringLiteral("value %1").arg(v); });
+    connect(&gauge, &RadialGauge::valueStateChanged, &gauge,
+            [&events](ValueState st) { events << QStringLiteral("state %1").arg(static_cast<int>(st)); });
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(events, QStringList({QStringLiteral("value nan"), QStringLiteral("state 3")}));
+    events.clear();
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QVERIFY(events.isEmpty());
+
+    gauge.setValue(150.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 100"), QStringLiteral("state 2")}));
+    events.clear();
+    // Same value() and state: the readout changes, no signal
+    gauge.setValue(160.0);
+    QVERIFY(events.isEmpty());
+
+    // The range change emits valueChanged as before #151, then the new state
+    gauge.setRange(0.0, 200.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 160"), QStringLiteral("state 0")}));
+}
+
+// #151: the zones of an invalid input are unknown, so the zone signals keep their last state
+void tst_RadialGauge::invalidInputKeepsZoneSignals()
+{
+    RadialGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setWarningThreshold(70.0);
+    gauge.setErrorThreshold(85.0);
+    QSignalSpy warning(&gauge, &RadialGauge::warningExceeded);
+    QSignalSpy error(&gauge, &RadialGauge::errorExceeded);
+
+    gauge.setValue(90.0);
+    QCOMPARE(error.count(), 1);
+    QCOMPARE(error.at(0).at(0).toBool(), true);
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(error.count(), 1);
+    QCOMPARE(warning.count(), 0);
+
+    gauge.setValue(50.0);
+    QCOMPARE(error.count(), 2);
+    QCOMPARE(error.at(1).at(0).toBool(), false);
+}
+
+void tst_RadialGauge::readoutTextOfEveryState()
+{
+    using IS = internal::InputState;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    QCOMPARE(internal::gaugeReadoutText(IS::Valid, 42.31, 0.0, 100.0, 1), QStringLiteral("42.3"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Overrange, 8350.0, 0.0, 8000.0, 0), QStringLiteral("8350"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Underrange, -12.5, 0.0, 100.0, 1), QStringLiteral("-12.5"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Overrange, inf, 0.0, 8000.0, 0), QStringLiteral(">8000"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Underrange, -inf, -20.0, 80.0, 2), QStringLiteral("<-20.00"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Invalid, nan, 0.0, 100.0, 1), QStringLiteral("---"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Valid, -0.04, -1.0, 1.0, 1), QStringLiteral("0.0"));
+}
+
+// #151: the out-of-range readout carries a triangle, so the state is not told by colour alone: one more ink
+// group than the same text read as a valid value, pointing up above the range and down below it
+void tst_RadialGauge::outOfRangeMarkIsAShape()
+{
+    struct Case {
+        double minimum;
+        double maximum;
+        double input;
+        bool up;
+    };
+    const Case cases[] = {{0.0, 100.0, 150.0, true}, {0.0, 100.0, -50.0, false}};
+    for (const Case &c : cases) {
+        RadialGauge outOfRange;
+        prepareForReadout(outOfRange);
+        outOfRange.setValue(50.0);
+        const QRect box = displayBox(outOfRange);
+        outOfRange.setValue(c.input);
+
+        // The same text read as a valid value, on a range that holds it
+        RadialGauge valid;
+        prepareForReadout(valid);
+        valid.setRange(std::min(c.minimum, c.input), std::max(c.maximum, c.input));
+        valid.setValue(c.input);
+        const QRect validBox = displayBox(valid);
+
+        const QVector<InkGroup> marked = readoutInkGroups(renderGauge(outOfRange), box);
+        const QVector<InkGroup> plain = readoutInkGroups(renderGauge(valid), validBox);
+        const QString where = QStringLiteral("input %1").arg(c.input);
+        QVERIFY2(marked.size() == plain.size() + 1,
+                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text").arg(marked.size()).arg(plain.size())));
+
+        // The triangle: one flat side, and the other narrowing to the apex
+        const InkGroup &tri = marked.first();
+        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
+        const int flat = c.up ? spread(tri.bottom) : spread(tri.top);
+        const int pointed = c.up ? spread(tri.top) : spread(tri.bottom);
+        QVERIFY2(flat <= 1 && pointed >= 2,
+                 qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
+    }
+}
+
+// #151: an out-of-range value wider than the pod's valid values is drawn smaller, inside the pod
+void tst_RadialGauge::longOutOfRangeReadoutStaysInThePod()
+{
+    RadialGauge gauge;
+    prepareForReadout(gauge);
+    gauge.setValue(50.0);
+    const QRect box = displayBox(gauge);
+
+    gauge.setValue(123456789.0);
+    QCOMPARE(gauge.valueState(), ValueState::Overrange);
+    gauge.setDigitalDisplayVisible(false);
+    const QImage without = renderGauge(gauge);
+    gauge.setDigitalDisplayVisible(true);
+    const QImage with = renderGauge(gauge);
+    QVector<QPoint> display = differingPixels(without, with);
+    // The needle at the stop crosses the pod; its blended edge pixels are not the readout
+    display.erase(std::remove_if(display.begin(), display.end(),
+                                 [&](const QPoint &p) { return isNeedlePixel(with.pixel(p)); }),
+                  display.end());
+    const QRect drawn = boundingBox(display);
+    QVERIFY2(box.contains(drawn),
+             qPrintable(QStringLiteral("readout box %1,%2 %3x%4 outside the pod %5,%6 %7x%8")
+                            .arg(drawn.x()).arg(drawn.y()).arg(drawn.width()).arg(drawn.height())
+                            .arg(box.x()).arg(box.y()).arg(box.width()).arg(box.height())));
 }
 
 QTEST_MAIN(tst_RadialGauge)
