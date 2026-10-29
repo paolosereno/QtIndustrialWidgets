@@ -69,6 +69,10 @@ private Q_SLOTS:
     void rangeChangeReclassifiesTheLastInput();
     void outOfRangeMarkIsAShape_data();
     void outOfRangeMarkIsAShape();
+    void valueStateAndRawValue();
+    void valueStateSignalOrder();
+    void longOutOfRangeReadoutStaysInThePod_data();
+    void longOutOfRangeReadoutStaysInThePod();
 };
 
 namespace {
@@ -224,9 +228,11 @@ QImage renderGauge(LinearGauge &gauge)
 }
 
 // A gauge whose liquid and hatch can be told apart in a render: the liquid is pure blue (its gradient stops
-// are lighter and darker shades of it) and the scale colour, used by the hatch of an invalid input, pure green
+// are lighter and darker shades of it) and the scale colour, used by the hatch of an invalid input, pure green.
+// The digital display is hidden, since its readout is drawn in the liquid colour
 void prepareForTube(LinearGauge &gauge, Qt::Orientation orientation, bool thermometer, const QSize &size)
 {
+    gauge.setDigitalDisplayVisible(false);
     gauge.setOrientation(orientation);
     gauge.setThermometerMode(thermometer);
     gauge.setRange(0.0, 100.0);
@@ -329,6 +335,16 @@ void prepareForReadout(LinearGauge &gauge, Qt::Orientation orientation, const QF
     gauge.setLiquidColor(QColor(250, 250, 250));
     gauge.setFont(font);
     gauge.resize(vertical ? QSize(120, 320) : QSize(420, 110));
+}
+
+// The test font at twice the size of the application font: the readout (12 px at the application font) is
+// drawn at 24 px, so that its dashes are wide enough to be measured at DPR 1
+QFont largeReadoutFont(const QFont &testFont)
+{
+    QFont f = FontTest::doubledFont();
+    f.setFamily(testFont.family());
+    f.setStyleStrategy(QFont::NoFontMerging);
+    return f;
 }
 
 // Device-pixel box of the digital display
@@ -1040,11 +1056,12 @@ void tst_LinearGauge::nanReadoutShowsDashes()
     const QFont font = readoutTestFont(&error);
     QVERIFY2(error.isEmpty(), qPrintable(error));
     LinearGauge gauge;
-    prepareForReadout(gauge, orientation, font);
+    prepareForReadout(gauge, orientation, largeReadoutFont(font));
     gauge.setValue(50.0);
     const QImage valid = renderGauge(gauge);
     const QRect box = podBox(gauge, valid);
-    // The held "50.0" does not pass as "---" (at DPR 1 its 12 px digits touch, so its ink groups are not counted)
+    // The held "50.0" does not pass as "---" (it may not fit the narrow horizontal display, so its ink groups
+    // are not counted)
     QVERIFY2(!dashesError(readoutInkGroups(valid, box)).isEmpty(), "\"50.0\" reads as \"---\"");
 
     gauge.setValue(std::numeric_limits<double>::quiet_NaN());
@@ -1156,7 +1173,8 @@ void tst_LinearGauge::rangeChangeReclassifiesTheLastInput()
 
 // #151: the readout of an out-of-range input holds one more ink group than the same text read as a valid
 // value: a triangle with one flat side and the other narrowing to the apex, painted as a shape (the test font
-// has no glyph for it)
+// has no glyph for it). One digit without decimals, so that the text is not made smaller in the narrow
+// horizontal display and the ink groups of both readouts can be compared
 void tst_LinearGauge::outOfRangeMarkIsAShape_data()
 {
     addReadoutLayouts();
@@ -1172,16 +1190,19 @@ void tst_LinearGauge::outOfRangeMarkIsAShape()
         double input;
         bool up;
     };
-    for (const Case &c : {Case{150.0, true}, Case{-50.0, false}}) {
+    for (const Case &c : {Case{5.0, true}, Case{-5.0, false}}) {
         LinearGauge outOfRange;
         prepareForReadout(outOfRange, orientation, font);
+        outOfRange.setRange(0.0, 1.0);
+        outOfRange.setPrecision(0);
         outOfRange.setValue(c.input);
         const QImage marked = renderGauge(outOfRange);
 
         // The same text read as a valid value, on a range that holds it
         LinearGauge valid;
         prepareForReadout(valid, orientation, font);
-        valid.setRange(std::min(0.0, c.input), std::max(100.0, c.input));
+        valid.setRange(std::min(0.0, c.input), std::max(1.0, c.input));
+        valid.setPrecision(0);
         valid.setValue(c.input);
         const QImage plain = renderGauge(valid);
 
@@ -1198,6 +1219,110 @@ void tst_LinearGauge::outOfRangeMarkIsAShape()
         QVERIFY2(flat <= 1 && pointed >= 2,
                  qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
     }
+}
+
+// #151
+void tst_LinearGauge::valueStateAndRawValue()
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    LinearGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    QCOMPARE(gauge.valueState(), ValueState::Valid);
+
+    struct Step {
+        double input;
+        ValueState state;
+        double value;
+    };
+    const Step steps[] = {
+        {50.0, ValueState::Valid, 50.0},        {150.0, ValueState::Overrange, 100.0},
+        {inf, ValueState::Overrange, 100.0},    {-20.0, ValueState::Underrange, 0.0},
+        {-inf, ValueState::Underrange, 0.0},    {100.0, ValueState::Valid, 100.0},
+        {0.0, ValueState::Valid, 0.0},          {nan, ValueState::Invalid, nan},
+        {75.0, ValueState::Valid, 75.0},
+    };
+    for (const Step &step : steps) {
+        gauge.setValue(step.input);
+        const QString where = QStringLiteral("input %1").arg(step.input);
+        QVERIFY2(gauge.valueState() == step.state, qPrintable(where));
+        if (std::isnan(step.value)) {
+            QVERIFY2(std::isnan(gauge.value()) && std::isnan(gauge.rawValue()), qPrintable(where));
+        } else {
+            QVERIFY2(gauge.value() == step.value, qPrintable(where));
+            QVERIFY2(gauge.rawValue() == step.input, qPrintable(where));
+        }
+    }
+    QCOMPARE(gauge.property("valueState").value<ValueState>(), ValueState::Valid);
+    QCOMPARE(gauge.property("rawValue").toDouble(), 75.0);
+}
+
+void tst_LinearGauge::valueStateSignalOrder()
+{
+    LinearGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setValue(50.0);
+
+    QStringList events;
+    connect(&gauge, &LinearGauge::valueChanged, &gauge,
+            [&events](double v) { events << QStringLiteral("value %1").arg(v); });
+    connect(&gauge, &LinearGauge::valueStateChanged, &gauge,
+            [&events](ValueState st) { events << QStringLiteral("state %1").arg(static_cast<int>(st)); });
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(events, QStringList({QStringLiteral("value nan"), QStringLiteral("state 3")}));
+    events.clear();
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QVERIFY(events.isEmpty());
+
+    gauge.setValue(150.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 100"), QStringLiteral("state 2")}));
+    events.clear();
+    // Same value() and state: the readout changes, no signal
+    gauge.setValue(160.0);
+    QVERIFY(events.isEmpty());
+
+    // The range change emits valueChanged as before #151, then the new state
+    gauge.setRange(0.0, 200.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 160"), QStringLiteral("state 0")}));
+}
+
+// #151: an out-of-range value wider than the display is drawn smaller, inside it
+void tst_LinearGauge::longOutOfRangeReadoutStaysInThePod_data()
+{
+    addReadoutLayouts();
+}
+
+void tst_LinearGauge::longOutOfRangeReadoutStaysInThePod()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    LinearGauge gauge;
+    prepareForReadout(gauge, orientation, font);
+    gauge.setPrecision(0);
+    gauge.setValue(100.0);
+    const QImage atMaximum = renderGauge(gauge);
+    const QRect box = podBox(gauge, atMaximum);
+    gauge.setValue(123456789.0);
+    QCOMPARE(gauge.valueState(), ValueState::Overrange);
+    const QImage image = renderGauge(gauge);
+
+    // Same fill as the maximum, so the pixels that differ are those of the two readouts (the valid "100" fits)
+    QRect drawn;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            if (image.pixel(x, y) != atMaximum.pixel(x, y)) {
+                drawn |= QRect(x, y, 1, 1);
+            }
+        }
+    }
+    QVERIFY(!drawn.isEmpty());
+    QVERIFY2(box.contains(drawn),
+             qPrintable(QStringLiteral("readouts %1,%2 %3x%4 outside the display %5,%6 %7x%8")
+                            .arg(drawn.x()).arg(drawn.y()).arg(drawn.width()).arg(drawn.height())
+                            .arg(box.x()).arg(box.y()).arg(box.width()).arg(box.height())));
 }
 
 QTEST_MAIN(tst_LinearGauge)
