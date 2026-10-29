@@ -7,6 +7,7 @@
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/ValueClassification.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -23,7 +24,9 @@ class RadialGaugePrivate {
 public:
     double m_minimum{0.0};
     double m_maximum{100.0};
-    double m_value{0.0};
+    double m_value{0.0};    // m_rawValue clamped to the range, NaN when Invalid
+    double m_rawValue{0.0}; // Last input, unclamped (#151)
+    ValueState m_valueState{ValueState::Valid};
     int m_precision{1};
     QString m_unit{QStringLiteral("bar")};
 
@@ -59,7 +62,26 @@ public:
     // Threshold state tracking
     bool m_wasWarning{false};
     bool m_wasError{false};
+
+    struct Changes {
+        bool value{false};
+        bool state{false};
+    };
+    // Recomputes value and state from m_rawValue and the range. Emits nothing.
+    Changes applyInput();
 };
+
+RadialGaugePrivate::Changes RadialGaugePrivate::applyInput()
+{
+    const double newValue = internal::shownValue(m_rawValue, m_minimum, m_maximum);
+    const ValueState newState = internal::publicValueState(internal::classifyInput(m_rawValue, m_minimum, m_maximum));
+    Changes changes;
+    changes.value = !internal::sameShownValue(newValue, m_value);
+    changes.state = (newState != m_valueState);
+    m_value = newValue;
+    m_valueState = newState;
+    return changes;
+}
 
 
 
@@ -76,6 +98,8 @@ RadialGauge::~RadialGauge() = default;
 double RadialGauge::minimum() const { Q_D(const RadialGauge); return d->m_minimum; }
 double RadialGauge::maximum() const { Q_D(const RadialGauge); return d->m_maximum; }
 double RadialGauge::value() const { Q_D(const RadialGauge); return d->m_value; }
+double RadialGauge::rawValue() const { Q_D(const RadialGauge); return d->m_rawValue; }
+ValueState RadialGauge::valueState() const { Q_D(const RadialGauge); return d->m_valueState; }
 int RadialGauge::precision() const { Q_D(const RadialGauge); return d->m_precision; }
 QString RadialGauge::unit() const { Q_D(const RadialGauge); return d->m_unit; }
 double RadialGauge::startAngle() const { Q_D(const RadialGauge); return d->m_startAngle; }
@@ -110,34 +134,37 @@ QSize RadialGauge::minimumSizeHint() const
 
 void RadialGauge::setValue(double val)
 {
-    if (std::isnan(val)) {
-        return;
+    // #151: the input is kept as it is; a NaN is shown as invalid, never as the last value
+    const bool sameInput = (std::isnan(val) && std::isnan(d_ptr->m_rawValue)) || val == d_ptr->m_rawValue;
+    d_ptr->m_rawValue = val;
+    const RadialGaugePrivate::Changes changes = d_ptr->applyInput();
+
+    if (changes.value) {
+        Q_EMIT valueChanged(d_ptr->m_value);
+
+        // The zones of an invalid input are unknown: the last zone state is kept
+        if (d_ptr->m_valueState != ValueState::Invalid) {
+            bool isWarning = (d_ptr->m_value >= d_ptr->m_warningThreshold && d_ptr->m_value < d_ptr->m_errorThreshold);
+            bool isError = (d_ptr->m_value >= d_ptr->m_errorThreshold);
+
+            if (isWarning != d_ptr->m_wasWarning) {
+                d_ptr->m_wasWarning = isWarning;
+                Q_EMIT warningExceeded(isWarning);
+            }
+            if (isError != d_ptr->m_wasError) {
+                d_ptr->m_wasError = isError;
+                Q_EMIT errorExceeded(isError);
+            }
+        }
     }
-    if (std::isinf(val)) {
-        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    if (changes.state) {
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
     }
 
-    double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
-    if (qFuzzyCompare(clamped, d_ptr->m_value)) {
-        return;
+    // An out-of-range input can change the readout without changing value()
+    if (!sameInput) {
+        update();
     }
-
-    d_ptr->m_value = clamped;
-    Q_EMIT valueChanged(d_ptr->m_value);
-
-    bool isWarning = (d_ptr->m_value >= d_ptr->m_warningThreshold && d_ptr->m_value < d_ptr->m_errorThreshold);
-    bool isError = (d_ptr->m_value >= d_ptr->m_errorThreshold);
-
-    if (isWarning != d_ptr->m_wasWarning) {
-        d_ptr->m_wasWarning = isWarning;
-        Q_EMIT warningExceeded(isWarning);
-    }
-    if (isError != d_ptr->m_wasError) {
-        d_ptr->m_wasError = isError;
-        Q_EMIT errorExceeded(isError);
-    }
-
-    update();
 }
 
 void RadialGauge::setMinimum(double min)
@@ -161,11 +188,15 @@ void RadialGauge::setRange(double min, double max)
 
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
-    d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
+    // #151: the last input is classified again against the new range
+    const RadialGaugePrivate::Changes changes = d_ptr->applyInput();
 
     invalidateCache();
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
     Q_EMIT valueChanged(d_ptr->m_value);
+    if (changes.state) {
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
+    }
     update();
 }
 
@@ -621,65 +652,116 @@ void RadialGauge::paintEvent(QPaintEvent *)
 
     if (radius <= 5.0) return;
 
+    const ValueState state = d_ptr->m_valueState;
+
     // 2. Dynamic Digital Readout (pod geometry and font from renderStaticScale())
     if (d_ptr->m_digitalDisplayVisible && !d_ptr->m_podRect.isEmpty()) {
         const QRectF podRect = d_ptr->m_podRect;
 
-        QString valStr = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
+        const QString valStr = internal::gaugeReadoutText(internal::inputStateOf(state), d_ptr->m_rawValue,
+                                                          d_ptr->m_minimum, d_ptr->m_maximum, d_ptr->m_precision);
         QFont valFont = font();
         valFont.setPixelSize(d_ptr->m_valueFontPx);
         valFont.setBold(true);
-        painter.setFont(valFont);
 
         QColor displayColor = d_ptr->m_textColor;
-        if (d_ptr->m_value >= d_ptr->m_errorThreshold) {
-            displayColor = d_ptr->m_errorColor;
-        } else if (d_ptr->m_value >= d_ptr->m_warningThreshold) {
-            displayColor = d_ptr->m_warningColor;
+        if (state != ValueState::Invalid) {
+            if (d_ptr->m_value >= d_ptr->m_errorThreshold) {
+                displayColor = d_ptr->m_errorColor;
+            } else if (d_ptr->m_value >= d_ptr->m_warningThreshold) {
+                displayColor = d_ptr->m_warningColor;
+            }
         }
 
-        painter.setPen(displayColor);
-        painter.drawText(podRect, Qt::AlignCenter, valStr);
+        if (state == ValueState::Valid) {
+            painter.setFont(valFont);
+            painter.setPen(displayColor);
+            painter.drawText(podRect, Qt::AlignCenter, valStr);
+        } else {
+            // #151: the pod is sized for the valid values; the text of an out-of-range or invalid input,
+            // and the out-of-range triangle, are made smaller if needed to fit it
+            const bool outOfRange = (state == ValueState::Overrange || state == ValueState::Underrange);
+            const double available = podRect.width() - 2.0 * std::max(2.0, podRect.height() * 0.12);
+            double triW = 0.0;
+            double gap = 0.0;
+            for (int px = d_ptr->m_valueFontPx;; --px) {
+                valFont.setPixelSize(px);
+                const QFontMetricsF vfm(valFont);
+                triW = outOfRange ? vfm.capHeight() * 0.9 : 0.0;
+                gap = outOfRange ? triW * 0.35 : 0.0;
+                if (triW + gap + vfm.horizontalAdvance(valStr) <= available || px <= 6) {
+                    break;
+                }
+            }
+            const QFontMetricsF vfm(valFont);
+            const double textW = vfm.horizontalAdvance(valStr);
+            const double left = podRect.center().x() - (triW + gap + textW) * 0.5;
+            const QRectF textRect(left + triW + gap, podRect.top(), textW, podRect.height());
+
+            painter.setFont(valFont);
+            painter.setPen(displayColor);
+            painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextDontClip, valStr);
+
+            if (outOfRange) {
+                // Centred on the digits: AlignVCenter centres the line box (ascent + descent)
+                const double baseline = podRect.center().y() - vfm.height() * 0.5 + vfm.ascent();
+                const double midY = baseline - vfm.capHeight() * 0.5;
+                const double halfH = triW * 0.5;
+                QPolygonF tri;
+                if (state == ValueState::Overrange) {
+                    tri << QPointF(left, midY + halfH) << QPointF(left + triW, midY + halfH)
+                        << QPointF(left + triW * 0.5, midY - halfH);
+                } else {
+                    tri << QPointF(left, midY - halfH) << QPointF(left + triW, midY - halfH)
+                        << QPointF(left + triW * 0.5, midY + halfH);
+                }
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(displayColor);
+                painter.drawPolygon(tri);
+            }
+        }
     }
 
-    // 3. Dynamic Vector Needle
-    double needleAngle = valueToAngle(d_ptr->m_value);
-    const double needleLen = radius * 0.76;
-    const double needleTail = radius * 0.18;
-    const double needleBaseW = std::max(2.5, radius * 0.042);
+    // 3. Dynamic Vector Needle (#151: none for an invalid input)
+    if (state != ValueState::Invalid) {
+        double needleAngle = valueToAngle(d_ptr->m_value);
+        const double needleLen = radius * 0.76;
+        const double needleTail = radius * 0.18;
+        const double needleBaseW = std::max(2.5, radius * 0.042);
 
-    painter.save();
-    painter.translate(center);
-    painter.rotate(needleAngle);
+        painter.save();
+        painter.translate(center);
+        painter.rotate(needleAngle);
 
-    // Left half (light metallic facet)
-    QPolygonF leftPolygon;
-    leftPolygon << QPointF(0.0, -needleLen)
-                << QPointF(-needleBaseW, 0.0)
-                << QPointF(-needleBaseW * 0.5, needleTail)
-                << QPointF(0.0, needleTail)
-                << QPointF(0.0, -needleLen);
+        // Left half (light metallic facet)
+        QPolygonF leftPolygon;
+        leftPolygon << QPointF(0.0, -needleLen)
+                    << QPointF(-needleBaseW, 0.0)
+                    << QPointF(-needleBaseW * 0.5, needleTail)
+                    << QPointF(0.0, needleTail)
+                    << QPointF(0.0, -needleLen);
 
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(d_ptr->m_needleColor.lighter(125));
-    painter.drawPolygon(leftPolygon);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(d_ptr->m_needleColor.lighter(125));
+        painter.drawPolygon(leftPolygon);
 
-    // Right half (shaded metallic facet)
-    QPolygonF rightPolygon;
-    rightPolygon << QPointF(0.0, -needleLen)
-                 << QPointF(0.0, needleTail)
-                 << QPointF(needleBaseW * 0.5, needleTail)
-                 << QPointF(needleBaseW, 0.0)
-                 << QPointF(0.0, -needleLen);
+        // Right half (shaded metallic facet)
+        QPolygonF rightPolygon;
+        rightPolygon << QPointF(0.0, -needleLen)
+                     << QPointF(0.0, needleTail)
+                     << QPointF(needleBaseW * 0.5, needleTail)
+                     << QPointF(needleBaseW, 0.0)
+                     << QPointF(0.0, -needleLen);
 
-    painter.setBrush(d_ptr->m_needleColor.darker(120));
-    painter.drawPolygon(rightPolygon);
+        painter.setBrush(d_ptr->m_needleColor.darker(120));
+        painter.drawPolygon(rightPolygon);
 
-    // Sharp central ridge line for 3D needle look
-    painter.setPen(QPen(QColor(255, 255, 255, 160), 1.0));
-    painter.drawLine(QPointF(0.0, -needleLen + 4.0), QPointF(0.0, needleTail - 2.0));
+        // Sharp central ridge line for 3D needle look
+        painter.setPen(QPen(QColor(255, 255, 255, 160), 1.0));
+        painter.drawLine(QPointF(0.0, -needleLen + 4.0), QPointF(0.0, needleTail - 2.0));
 
-    painter.restore();
+        painter.restore();
+    }
 
     // 4. Center Pivot Cap (multi-stage chrome / industrial hub)
     const double pivotRadius = std::max(4.0, radius * 0.11);

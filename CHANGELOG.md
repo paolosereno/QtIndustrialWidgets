@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`QtIndustrialWidgets::ValueState`** (#151): a namespace-level enum (`Valid`, `Underrange`, `Overrange`, `Invalid`, header `ValueState.h`, registered with `Q_ENUM_NS`) with the same enumerators and values as `CircularBargraph::ValueState`, which is unchanged.
+- **`RadialGauge` value state** (#151): `valueState()` (property `valueState`), the signal `valueStateChanged(QtIndustrialWidgets::ValueState)` and `rawValue()`, the last input, unclamped. The gallery has a new showcase, `radial-gauge-invalid`.
+
+### Changed
+- **`RadialGauge`: a NaN input is shown as invalid** (#151): the needle is hidden, the display shows `---`, `value()` returns NaN and `valueChanged(NaN)` is emitted once (a repeated NaN emits nothing). Before, a NaN was ignored and the last valid value stayed on the dial. `warningExceeded()` and `errorExceeded()` are not emitted for an invalid input (the zone state of the last valid value is kept); `valueStateChanged()` reports it.
+- **`RadialGauge`: out-of-range readout** (#151): an input outside the range still puts the needle at the stop and `value()` at the bound, but the display shows the input itself (for example `8350` on a 0–8000 scale), or `>max` / `<min` for ±Inf, after a triangle pointing up or down; the text is made smaller, if needed, to fit the display. Before, the display showed the bound.
+- **`RadialGauge`: a range change classifies the last input again** (#151): 150 on a 0–100 range is shown at 100; after `setRange(0, 200)` it is shown at 150. Before, the input was clamped when it was set and the original value was lost.
+
 ### Fixed
 - **vcpkg port** (#147): `portfile.cmake` carries the SHA512 of the `v2.5.1` tag archive (the tagged commit still had the `v2.5.0` hash, since the hash can be computed only after the tag).
 
