@@ -153,6 +153,8 @@ private Q_SLOTS:
     void valueStateOnlyValidOrInvalid();
     void valueStateSignalOrder();
     void headingUpInvalidDimsTheBug();
+    void northUpLubberAtTwelveOClock_data();
+    void northUpLubberAtTwelveOClock();
 };
 
 void tst_Compass::initTestCase()
@@ -712,6 +714,45 @@ void tst_Compass::headingUpInvalidDimsTheBug()
             QVERIFY2(brightBug > 0, qPrintable(where));
         }
     }
+}
+
+void tst_Compass::northUpLubberAtTwelveOClock_data()
+{
+    QTest::addColumn<double>("heading");
+    QTest::newRow("047") << 47.0;
+    QTest::newRow("200") << 200.0;
+    // The card stays at north, so the lubber line is kept for an invalid heading (unlike heading-up)
+    QTest::newRow("invalid") << kNaN;
+}
+
+// #165: north-up draws the lubber line at 12 o'clock, at the top of the dial, as heading-up does; before, the
+// painter was translated to the centre twice and the lubber line landed at the right edge of the widget
+void tst_Compass::northUpLubberAtTwelveOClock()
+{
+    QFETCH(double, heading);
+    Compass c;
+    prepareForDial(c, Compass::DisplayMode::NorthUp, heading);
+    const QImage img = renderCompass(c);
+    const Dial d = dialOf(c, img);
+
+    // Every lubber pixel of the widget, wherever it is
+    const QVector<QPoint> lubber = ringPixels(img, d, 0.0, 10.0, isLubber);
+    QVERIFY(!lubber.isEmpty());
+    QPointF sum;
+    for (const QPoint &p : lubber) {
+        const QPointF q = QPointF(p) + QPointF(0.5, 0.5) - d.centre;
+        QVERIFY2(std::abs(q.x()) < 0.1 * d.radius && q.y() < -0.8 * d.radius,
+                 qPrintable(QStringLiteral("lubber pixel at (%1, %2) from the centre, radius %3")
+                                .arg(q.x()).arg(q.y()).arg(d.radius)));
+        sum += q;
+    }
+    const QPointF centroid = sum / lubber.size();
+    QVERIFY2(std::abs(centroid.x()) < 0.03 * d.radius && std::abs(centroid.y() + d.radius) < 0.1 * d.radius,
+             qPrintable(QStringLiteral("lubber centroid at (%1, %2) from the centre, radius %3")
+                            .arg(centroid.x()).arg(centroid.y()).arg(d.radius)));
+
+    c.setLubberLineVisible(false);
+    QCOMPARE(ringPixels(renderCompass(c), d, 0.0, 10.0, isLubber).size(), 0);
 }
 
 QTEST_MAIN(tst_Compass)

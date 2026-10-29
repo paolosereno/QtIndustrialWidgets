@@ -717,10 +717,9 @@ void Compass::paintEvent(QPaintEvent *)
         painter.restore();
         }
 
-        // Lubber reference line at 12 o'clock
+        // Lubber reference line at 12 o'clock (the painter is already at the centre, #165)
         if (d_ptr->m_lubberVisible) {
             painter.save();
-            painter.translate(center);
             const double lubberR = radius + 2.0;
             const double lubberW = std::clamp(radius * 0.08, 6.0, 14.0);
             const double lubberH = std::clamp(radius * 0.12, 8.0, 18.0);
