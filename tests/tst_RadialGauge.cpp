@@ -190,21 +190,6 @@ QRect displayBox(RadialGauge &gauge)
     return boundingBox(differingPixels(without, renderGauge(gauge)));
 }
 
-// Ink box of the readout text inside \a box: its near-white pixels (textColor is 245, 246, 250)
-QRect readoutInk(const QImage &image, const QRect &box)
-{
-    QVector<QPoint> ink;
-    for (int y = box.top(); y <= box.bottom(); ++y) {
-        const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
-        for (int x = box.left(); x <= box.right(); ++x) {
-            if (qRed(line[x]) >= 200 && qGreen(line[x]) >= 200 && qBlue(line[x]) >= 200) {
-                ink.push_back(QPoint(x, y));
-            }
-        }
-    }
-    return boundingBox(ink);
-}
-
 // The readout of an out-of-range input holds one more ink group than the same text read as a valid value:
 // a triangle with one flat side and the other narrowing to the apex. With \a font set on both gauges
 // when given
@@ -259,10 +244,25 @@ std::optional<QFont> fontWithoutTriangleGlyph()
 {
     QStringList families{QApplication::font().family()};
     families += QFontDatabase::families();
+    // No hidden system font (such as macOS' emoji font). Either a font that draws every readout character, or,
+    // where no font is installed (Windows offscreen CI), a font that has none of them: every character is then
+    // the same box, and the triangle must still be a shape
+    const QString readoutChars = QStringLiteral("0123456789.-<>");
     for (const QString &family : families) {
+        if (QFontDatabase::isPrivateFamily(family)) {
+            continue;
+        }
         QFont f(family);
         f.setStyleStrategy(QFont::NoFontMerging);
-        if (!QFontMetricsF(f).inFontUcs4(0x25B2) && !QFontMetricsF(f).inFontUcs4(0x25BC)) {
+        const QFontMetricsF fm(f);
+        if (fm.inFontUcs4(0x25B2) || fm.inFontUcs4(0x25BC)) {
+            continue;
+        }
+        const auto inFont = [&](QChar c) { return fm.inFontUcs4(c.unicode()); };
+        const bool drawsReadout = QFontDatabase::writingSystems(family).contains(QFontDatabase::Latin)
+                                  && std::all_of(readoutChars.begin(), readoutChars.end(), inFont);
+        const bool noGlyphs = std::none_of(readoutChars.begin(), readoutChars.end(), inFont);
+        if (drawsReadout || noGlyphs) {
             return f;
         }
     }
@@ -981,19 +981,41 @@ void tst_RadialGauge::nanHidesNeedleAndShowsDashes()
 
     const QImage valid = renderGauge(gauge);
     QVERIFY(!needlePixels(valid).isEmpty());
-    const QRect digits = readoutInk(valid, box);
-    QVERIFY(!digits.isEmpty());
 
     gauge.setValue(std::numeric_limits<double>::quiet_NaN());
     QVERIFY2(std::isnan(gauge.value()), qPrintable(QStringLiteral("value() = %1").arg(gauge.value())));
 
     const QImage invalid = renderGauge(gauge);
     QCOMPARE(needlePixels(invalid).size(), 0);
-    // "---" is one thin row of ink, the digits of "50.0" are a full line of text
-    const QRect dashes = readoutInk(invalid, box);
-    QVERIFY2(!dashes.isEmpty(), "no readout ink");
-    QVERIFY2(dashes.height() * 3 <= digits.height(),
-             qPrintable(QStringLiteral("readout ink %1 px high, digits %2 px").arg(dashes.height()).arg(digits.height())));
+    // "---": three ink groups, where the held "50.0" gives four, each flat with its top and bottom edges level
+    // with those of the others. Checked by groups, not by glyph shapes: without installed fonts (Windows
+    // offscreen CI) every character is drawn as the same box. The dashes sit at fractional positions, so their
+    // first and last columns are antialiased ends, only partly covered: the edges are compared on the interior
+    // columns of each dash only (at least 3), and the widths are not compared
+    const QVector<InkGroup> held = readoutInkGroups(valid, box);
+    QVERIFY2(held.size() == 4, qPrintable(QStringLiteral("%1 ink groups for \"50.0\"").arg(held.size())));
+    const QVector<InkGroup> dashes = readoutInkGroups(invalid, box);
+    QVERIFY2(dashes.size() == 3, qPrintable(QStringLiteral("%1 ink groups for the invalid readout").arg(dashes.size())));
+    const auto interior = [](const QVector<int> &v) { return v.mid(1, v.size() - 2); };
+    QVERIFY2(dashes.first().top.size() >= 5,
+             qPrintable(QStringLiteral("first dash %1 px wide").arg(dashes.first().top.size())));
+    const int top = interior(dashes.first().top).first();
+    const int bottom = interior(dashes.first().bottom).first();
+    for (const InkGroup &g : dashes) {
+        const QVector<int> t = interior(g.top);
+        const QVector<int> b = interior(g.bottom);
+        const QString what = QStringLiteral("dash %1 px wide, interior top %2..%3, bottom %4..%5 (first dash: top %6, bottom %7)")
+                                 .arg(g.top.size())
+                                 .arg(t.isEmpty() ? -1 : *std::min_element(t.begin(), t.end()))
+                                 .arg(t.isEmpty() ? -1 : *std::max_element(t.begin(), t.end()))
+                                 .arg(b.isEmpty() ? -1 : *std::min_element(b.begin(), b.end()))
+                                 .arg(b.isEmpty() ? -1 : *std::max_element(b.begin(), b.end()))
+                                 .arg(top)
+                                 .arg(bottom);
+        QVERIFY2(t.size() >= 3, qPrintable(what));
+        QVERIFY2(spread(t) == 0 && spread(b) == 0, qPrintable(what));
+        QVERIFY2(t.first() == top && b.first() == bottom, qPrintable(what));
+    }
 
     // Without the digital display the needle is hidden too
     gauge.setDigitalDisplayVisible(false);
@@ -1200,7 +1222,7 @@ void tst_RadialGauge::outOfRangeMarkIsAShape()
 void tst_RadialGauge::outOfRangeMarkWithoutTheGlyphInTheFont()
 {
     const std::optional<QFont> font = fontWithoutTriangleGlyph();
-    QVERIFY2(font, "no installed font lacks U+25B2 and U+25BC");
+    QVERIFY2(font, "no font lacks U+25B2 and U+25BC and has all or none of the readout characters");
     QVERIFY(!QFontMetricsF(*font).inFontUcs4(0x25B2));
     qInfo("font without the triangle glyphs: %s", qPrintable(QFontInfo(*font).family()));
     checkOutOfRangeMark(&*font);
