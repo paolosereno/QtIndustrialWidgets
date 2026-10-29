@@ -32,6 +32,7 @@ public:
     double m_maximum{100.0};
     double m_value{0.0};    // m_rawValue clamped to the range, NaN when Invalid
     double m_rawValue{0.0}; // Last input, unclamped (#151)
+    bool m_hasInput{false}; // setValue() called: before it, m_rawValue is the initial value (#151)
     ValueState m_valueState{ValueState::Valid};
     int m_precision{1};
     QString m_unit{QStringLiteral("°C")};
@@ -166,6 +167,7 @@ void LinearGauge::setValue(double val)
     // #151: the input is kept as it is; a NaN is shown as invalid, never as the last value
     const bool sameInput = (std::isnan(val) && std::isnan(d_ptr->m_rawValue)) || val == d_ptr->m_rawValue;
     d_ptr->m_rawValue = val;
+    d_ptr->m_hasInput = true;
     const LinearGaugePrivate::Changes changes = d_ptr->applyInput();
 
     if (changes.value) {
@@ -198,6 +200,10 @@ void LinearGauge::setRange(double min, double max)
 
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
+    // #151: before the first setValue() there is no input: the initial value follows the range
+    if (!d_ptr->m_hasInput) {
+        d_ptr->m_rawValue = std::clamp(d_ptr->m_rawValue, min, max);
+    }
     // #151: the last input is classified again against the new range
     const LinearGaugePrivate::Changes changes = d_ptr->applyInput();
 
