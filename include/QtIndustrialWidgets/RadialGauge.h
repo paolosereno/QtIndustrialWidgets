@@ -39,7 +39,8 @@ class RadialGaugePrivate;
  * minimum is drawn and that of the maximum is not.
  *
  * Value state (valueState(), #151): the last input is kept unclamped (rawValue()) and classified against the
- * range; a range change classifies it again.
+ * range; a range change classifies it again. Before the first setValue() there is no input: the initial value
+ * (0) follows the range, clamped to it at each range change, and the state stays \c Valid.
  * - \c Valid: the needle and the readout show the value.
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the needle rests at the stop and
  *   value() is the bound. The readout shows the input itself (e.g. 8350 on a 0–8000 scale), or ">max" / "<min"
@@ -113,7 +114,7 @@ public:
     [[nodiscard]] double value() const;
     /**
      * \brief Returns the last input passed to setValue(), unclamped (may be ±Inf or NaN): the number the
-     * readout shows for a finite input.
+     * readout shows for a finite input. Before the first setValue(), the initial value clamped to the range.
      *
      * Not notified separately: valueChanged() reports changes of value(), valueStateChanged() of the state.
      */

@@ -35,7 +35,8 @@ Circular gauge for speed, pressure, temperature and similar values (`qiw::Radial
   redraws the needle and the display.
 - **Value state** (#151): `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid` (the
   `QtIndustrialWidgets::ValueState` enum), with `valueStateChanged()`; `rawValue()` keeps the unclamped input, and a
-  range change classifies it again.
+  range change classifies it again. Before the first `setValue()` there is no input: the initial value (0) follows
+  the range, so a range that does not hold 0 shows its minimum, in the `Valid` state.
   - An input outside the range (finite or ±Inf) puts the needle at the stop and `value()` at the bound. The display
     shows the input itself (for example `8350` on a 0–8000 scale), or `>max` / `<min` for ±Inf, after a triangle
     pointing up (above the range) or down (below it), so the state is not shown by colour alone.
@@ -58,7 +59,8 @@ Bar gauge and thermometer (`qiw::LinearGauge`).
 - **Scale and display**: major and minor ticks with labels (`scaleVisible`), optional digital display with `precision`
   and `unit`.
 - **Value state** (#151): `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`, with
-  `valueStateChanged()`; `rawValue()` keeps the unclamped input, and a range change classifies it again.
+  `valueStateChanged()`; `rawValue()` keeps the unclamped input, and a range change classifies it again. Before the
+  first `setValue()` the initial value (0) follows the range, as in `RadialGauge`.
   - An input outside the range (finite or ±Inf) fills the tube to its end and puts `value()` at the bound. The
     display shows the input itself (for example `135.4 °C` on a 0–120 scale), or `>max` / `<min` for ±Inf, after a
     triangle pointing up (above the range) or down (below it), so the state is not shown by colour alone.

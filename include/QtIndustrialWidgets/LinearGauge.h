@@ -26,7 +26,8 @@ class LinearGaugePrivate;
  * optional gradient liquid fills, and an integrated digital readout pod.
  *
  * Value state (valueState(), #151): the last input is kept unclamped (rawValue()) and classified against the
- * range; a range change classifies it again.
+ * range; a range change classifies it again. Before the first setValue() there is no input: the initial value
+ * (0) follows the range, clamped to it at each range change, and the state stays \c Valid.
  * - \c Valid: the liquid and the readout show the value.
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the liquid stops at the end of the
  *   scale and value() is the bound. The readout shows the input itself (e.g. 135 on a 0–100 scale), or ">max" /
@@ -105,7 +106,10 @@ public:
      * or NaN when the input is NaN (valueState() is then ValueState::Invalid).
      */
     [[nodiscard]] double value() const;
-    /** \brief Returns the last input as it was given, unclamped (#151): the number the readout shows. */
+    /**
+     * \brief Returns the last input as it was given, unclamped (#151): the number the readout shows. Before the
+     * first setValue(), the initial value clamped to the range.
+     */
     [[nodiscard]] double rawValue() const;
     /** \brief Returns the state of the last input against the range (#151). */
     [[nodiscard]] QtIndustrialWidgets::ValueState valueState() const;
