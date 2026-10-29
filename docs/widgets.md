@@ -155,7 +155,8 @@ Multi-channel level meter (`qiw::LevelMeter`).
 - **Orientation and scale**: vertical or horizontal, optional scale (`scaleVisible`) with a `unit` such as dB.
 - **Value state, per channel** (#151): `valueState(int)` reports `Valid`, `Underrange`, `Overrange` or `Invalid`, with
   `valueStateChanged(int, ValueState)`; `rawValue(int)` keeps the unclamped input, and a range change classifies it
-  again. Before the first `setValue()` of a channel its initial value follows the range.
+  again. Before the first `setValue()` of a channel its initial value follows the range. A channel that does not
+  exist reports `Invalid` and a NaN `rawValue(int)`; its `value(int)` stays `minimum()` for compatibility.
   - An input outside the range (finite or ±Inf) fills the bar to its end and puts `value(int)` at the bound. On a dB
     scale, -Inf (digital silence) stays at the minimum, with the state `Underrange`.
   - A NaN input is `Invalid`: the bar is empty and hatched with diagonal lines in `textColor`, the peak marker is

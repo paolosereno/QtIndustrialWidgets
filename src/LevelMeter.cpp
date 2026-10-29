@@ -19,6 +19,7 @@
 #include <QtGui/QRadialGradient>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 namespace QtIndustrialWidgets {
 
@@ -171,7 +172,7 @@ double LevelMeter::rawValue(int channel) const
     if (channel >= 0 && channel < d->m_channels.size()) {
         return d->m_channels[channel].rawValue;
     }
-    return d->m_minimum;
+    return std::numeric_limits<double>::quiet_NaN();
 }
 
 ValueState LevelMeter::valueState(int channel) const
@@ -180,7 +181,7 @@ ValueState LevelMeter::valueState(int channel) const
     if (channel >= 0 && channel < d->m_channels.size()) {
         return d->m_channels[channel].state;
     }
-    return ValueState::Valid;
+    return ValueState::Invalid;
 }
 
 QVector<double> LevelMeter::values() const

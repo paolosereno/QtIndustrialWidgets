@@ -145,12 +145,12 @@ public:
     [[nodiscard]] double peakValue(int channel = 0) const;
     /**
      * \brief Returns the last input of a channel as it was given, unclamped (#151); before the first setValue() of
-     * the channel, its initial value clamped to the range; minimum() for a channel that does not exist.
+     * the channel, its initial value clamped to the range; NaN for a channel that does not exist.
      */
     [[nodiscard]] double rawValue(int channel = 0) const;
     /**
-     * \brief Returns the state of the last input of a channel against the range (#151); ValueState::Valid for a
-     * channel that does not exist (whose value() is minimum()).
+     * \brief Returns the state of the last input of a channel against the range (#151); ValueState::Invalid for a
+     * channel that does not exist (whose value() stays minimum(), as before #151, for compatibility).
      */
     [[nodiscard]] QtIndustrialWidgets::ValueState valueState(int channel = 0) const;
     /** \brief Returns all channel current values. */

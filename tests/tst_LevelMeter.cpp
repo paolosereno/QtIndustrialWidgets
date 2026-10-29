@@ -1313,11 +1313,15 @@ void tst_LevelMeter::valueStateAndRawValue()
         }
     }
 
-    // A channel that does not exist reads as before: minimum(), and Valid
-    QCOMPARE(m.rawValue(5), 0.0);
-    QCOMPARE(m.valueState(5), ValueState::Valid);
-    QCOMPARE(m.rawValue(-1), 0.0);
-    QCOMPARE(m.valueState(-1), ValueState::Valid);
+    // A channel that does not exist is Invalid with a NaN input; value() stays minimum() for compatibility
+    for (const int missing : {2, 5, -1}) {
+        const QString where = QStringLiteral("channel %1").arg(missing);
+        QVERIFY2(m.valueState(missing) == ValueState::Invalid, qPrintable(where));
+        QVERIFY2(std::isnan(m.rawValue(missing)), qPrintable(where));
+        QVERIFY2(m.value(missing) == 0.0, qPrintable(where));
+    }
+    m.setRange(-10.0, 100.0);
+    QCOMPARE(m.value(5), -10.0);
 }
 
 void tst_LevelMeter::valueStateSignalOrder()
