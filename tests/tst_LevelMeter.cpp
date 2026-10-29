@@ -489,6 +489,11 @@ private Q_SLOTS:
     void peakStaysHiddenWhileInvalid();
     void nanNeverSignalsOverload();
     void rangeChangeReclassifiesTheLastInput();
+    void valueStateAndRawValue();
+    void valueStateSignalOrder();
+    void valueStatePerChannel();
+    void minusInfinityOnTheDbScaleIsUnderrange();
+    void initialValueFollowsTheRange();
 };
 
 void tst_LevelMeter::defaultValues()
@@ -1274,6 +1279,141 @@ void tst_LevelMeter::rangeChangeReclassifiesTheLastInput()
     m.setValue(0, kNaN);
     m.setRange(-10.0, 10.0);
     QVERIFY(std::isnan(m.value(0)));
+}
+
+void tst_LevelMeter::valueStateAndRawValue()
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    QCOMPARE(m.valueState(0), ValueState::Valid);
+    QCOMPARE(m.rawValue(0), 0.0);
+
+    struct Step {
+        double input;
+        ValueState state;
+        double value;
+    };
+    const Step steps[] = {
+        {50.0, ValueState::Valid, 50.0},        {150.0, ValueState::Overrange, 100.0},
+        {inf, ValueState::Overrange, 100.0},    {-20.0, ValueState::Underrange, 0.0},
+        {-inf, ValueState::Underrange, 0.0},    {100.0, ValueState::Valid, 100.0},
+        {0.0, ValueState::Valid, 0.0},          {kNaN, ValueState::Invalid, kNaN},
+        {75.0, ValueState::Valid, 75.0},
+    };
+    for (const Step &step : steps) {
+        m.setValue(0, step.input);
+        const QString where = QStringLiteral("input %1").arg(step.input);
+        QVERIFY2(m.valueState(0) == step.state, qPrintable(where));
+        if (std::isnan(step.value)) {
+            QVERIFY2(std::isnan(m.value(0)) && std::isnan(m.rawValue(0)), qPrintable(where));
+        } else {
+            QVERIFY2(m.value(0) == step.value, qPrintable(where));
+            QVERIFY2(m.rawValue(0) == step.input, qPrintable(where));
+        }
+    }
+
+    // A channel that does not exist reads as before: minimum(), and Valid
+    QCOMPARE(m.rawValue(5), 0.0);
+    QCOMPARE(m.valueState(5), ValueState::Valid);
+    QCOMPARE(m.rawValue(-1), 0.0);
+    QCOMPARE(m.valueState(-1), ValueState::Valid);
+}
+
+void tst_LevelMeter::valueStateSignalOrder()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    m.setValue(0, 50.0);
+
+    QStringList events;
+    connect(&m, &LevelMeter::valueChanged, &m,
+            [&events](int c, double v) { events << QStringLiteral("value %1 %2").arg(c).arg(v); });
+    connect(&m, &LevelMeter::valueStateChanged, &m,
+            [&events](int c, ValueState st) { events << QStringLiteral("state %1 %2").arg(c).arg(static_cast<int>(st)); });
+
+    m.setValue(0, kNaN);
+    QCOMPARE(events, QStringList({QStringLiteral("value 0 nan"), QStringLiteral("state 0 3")}));
+    events.clear();
+    m.setValue(0, kNaN);
+    QVERIFY(events.isEmpty());
+
+    m.setValue(0, 150.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 0 100"), QStringLiteral("state 0 2")}));
+    events.clear();
+    // Same value() and state: no signal
+    m.setValue(0, 160.0);
+    QVERIFY(events.isEmpty());
+    // Same value(), new state: only the state
+    m.setValue(0, 100.0);
+    QCOMPARE(events, QStringList({QStringLiteral("state 0 0")}));
+    events.clear();
+
+    // The range change emits the value, then the state, of the channels that change
+    m.setValue(0, 160.0);
+    events.clear();
+    m.setRange(0.0, 200.0);
+    QCOMPARE(events, QStringList({QStringLiteral("value 0 160"), QStringLiteral("state 0 0")}));
+}
+
+// #151: each channel has its own state, and a new channel starts valid at its value
+void tst_LevelMeter::valueStatePerChannel()
+{
+    LevelMeter m;
+    m.setRange(0.0, 100.0);
+    QSignalSpy spy(&m, &LevelMeter::valueStateChanged);
+    m.setValues({kNaN, 120.0});
+    QCOMPARE(m.valueState(0), ValueState::Invalid);
+    QCOMPARE(m.valueState(1), ValueState::Overrange);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).value<ValueState>(), ValueState::Invalid);
+    QCOMPARE(spy.at(1).at(0).toInt(), 1);
+    QCOMPARE(spy.at(1).at(1).value<ValueState>(), ValueState::Overrange);
+
+    m.setChannelCount(3);
+    QCOMPARE(m.valueState(0), ValueState::Invalid);
+    QCOMPARE(m.valueState(1), ValueState::Overrange);
+    QCOMPARE(m.valueState(2), ValueState::Valid);
+    QCOMPARE(m.rawValue(2), m.value(2));
+}
+
+// #151: -Inf (digital silence) on a dB scale is shown at the minimum, as before, and is Underrange
+void tst_LevelMeter::minusInfinityOnTheDbScaleIsUnderrange()
+{
+    LevelMeter m;
+    m.setRange(-60.0, 6.0);
+    m.setUnit(QStringLiteral("dB"));
+    m.setValue(0, -12.0);
+    m.setValue(0, -std::numeric_limits<double>::infinity());
+    QCOMPARE(m.value(0), -60.0);
+    QCOMPARE(m.valueState(0), ValueState::Underrange);
+    QVERIFY(std::isinf(m.rawValue(0)) && m.rawValue(0) < 0.0);
+    // The peak decays as for any value at the minimum: it is not hidden
+    QCOMPARE(m.peakValue(0), -12.0);
+}
+
+// #151: before the first setValue() of a channel there is no input to classify: the initial value follows the
+// range, as before #151 (the default minimum, -60, is not an underrange of 0..100)
+void tst_LevelMeter::initialValueFollowsTheRange()
+{
+    LevelMeter m;
+    m.setValue(1, -12.0);
+    QSignalSpy states(&m, &LevelMeter::valueStateChanged);
+    m.setRange(0.0, 100.0);
+    QCOMPARE(m.valueState(0), ValueState::Valid);
+    QCOMPARE(m.value(0), 0.0);
+    QCOMPARE(m.rawValue(0), 0.0);
+    // Channel 1 had an input: it is classified
+    QCOMPARE(m.valueState(1), ValueState::Underrange);
+    QCOMPARE(m.rawValue(1), -12.0);
+    QCOMPARE(states.count(), 1);
+    QCOMPARE(states.at(0).at(0).toInt(), 1);
+
+    m.setRange(20.0, 50.0);
+    QCOMPARE(m.valueState(0), ValueState::Valid);
+    QCOMPARE(m.value(0), 20.0);
+    QCOMPARE(states.count(), 1);
 }
 
 QTEST_MAIN(tst_LevelMeter)
