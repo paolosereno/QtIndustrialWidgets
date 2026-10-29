@@ -12,6 +12,7 @@
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -220,6 +221,103 @@ bool untouchedOutside(const QImage &img, const QRectF &inside)
     return true;
 }
 
+
+// #167: the readout ink (value, state indicator and unit): the pixels that change when textColor() goes from
+// transparent to pure magenta. The two renders are taken without running the event loop, so a blinking end
+// segment cannot change between them
+QVector<QPoint> readoutInk(CircularBargraph &b)
+{
+    b.setTextColor(QColor(255, 0, 255, 0));
+    const QImage without = b.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    b.setTextColor(QColor(255, 0, 255));
+    const QImage with = b.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    QVector<QPoint> ink;
+    for (int y = 0; y < with.height(); ++y) {
+        for (int x = 0; x < with.width(); ++x) {
+            if (with.pixel(x, y) != without.pixel(x, y)) {
+                ink.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return ink;
+}
+
+// As in CircularBargraph::paintEvent(): the pod well is a circle of 0.9 x the inner radius of the segments, which
+// start at 0.66 x the radius; ink inside it covers no segment
+struct Pod {
+    QPointF centre; // device px
+    double radius;  // device px
+};
+
+Pod podOf(CircularBargraph &b)
+{
+    const qreal dpr = b.grab().devicePixelRatio();
+    const double radius = std::min(b.width(), b.height()) / 2.0 - 4.0;
+    return {QPointF(b.width() * 0.5 * dpr, b.height() * 0.5 * dpr), radius * 0.66 * 0.90 * dpr};
+}
+
+// Empty when every ink pixel lies inside the pod
+QString inkOutsidePod(const QVector<QPoint> &ink, const Pod &pod)
+{
+    int outside = 0;
+    double farthest = 0.0;
+    for (const QPoint &p : ink) {
+        const double r = std::hypot(p.x() + 0.5 - pod.centre.x(), p.y() + 0.5 - pod.centre.y());
+        farthest = std::max(farthest, r);
+        outside += r > pod.radius ? 1 : 0;
+    }
+    if (outside == 0) {
+        return {};
+    }
+    return QStringLiteral("%1 of %2 readout pixels outside the pod (radius %3 px), the farthest at %4 px")
+        .arg(outside).arg(ink.size()).arg(pod.radius, 0, 'f', 1).arg(farthest, 0, 'f', 1);
+}
+
+// The sizes from the smallest supported one (the minimumSizeHint() of main, 50 x 50) up
+void addReadoutRows(bool stateOnly)
+{
+    QTest::addColumn<int>("side");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<double>("value");
+    QTest::addColumn<QString>("unit");
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    struct Case {
+        const char *name;
+        double maximum;
+        int precision;
+        double value;
+    };
+    const Case states[] = {{"invalid", 100.0, 1, std::numeric_limits<double>::quiet_NaN()},
+                           {"overrange", 100.0, 1, 120.0},
+                           {"overrange +inf", 100.0, 1, inf},
+                           {"underrange", 100.0, 1, -10.0},
+                           {"underrange -inf", 100.0, 1, -inf},
+                           {"overrange wide", 10000.0, 2, 12000.0}};
+    const Case valid[] = {{"valid", 100.0, 1, 50.0}, {"valid wide", 10000.0, 2, 10000.0}};
+    for (const int side : {50, 52, 54, 56, 60, 80, 120, 260, 400}) {
+        for (const QString &unit : {QString(), QStringLiteral("%")}) {
+            const char *u = unit.isEmpty() ? "no unit" : "unit";
+            for (const Case &c : states) {
+                QTest::addRow("%d px, %s, %s", side, u, c.name) << side << c.maximum << c.precision << c.value << unit;
+            }
+            if (!stateOnly) {
+                for (const Case &c : valid) {
+                    QTest::addRow("%d px, %s, %s", side, u, c.name) << side << c.maximum << c.precision << c.value << unit;
+                }
+            }
+        }
+    }
+}
+
+void prepareReadout(CircularBargraph &b, int side, double maximum, int precision, double value, const QString &unit)
+{
+    b.setRange(0.0, maximum);
+    b.setPrecision(precision);
+    b.setUnit(unit);
+    b.setValue(value);
+    b.resize(side, side);
+}
 } // namespace
 
 class tst_CircularBargraph : public QObject
@@ -261,6 +359,10 @@ private Q_SLOTS:
     void thresholdsOrderIndependent();
     void pixelColorAtSegmentCenters_data();
     void pixelColorAtSegmentCenters();
+    void stateIndicatorInsideThePod_data();
+    void stateIndicatorInsideThePod();
+    void readoutNeverCoversTheSegments_data();
+    void readoutNeverCoversTheSegments();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -1143,6 +1245,49 @@ void tst_CircularBargraph::textSizeIgnoresWidgetFontSize()
     const int grown = FontTest::textGlyphHeight(*large);
     QVERIFY2(base > 0, "no text drawn in textColor");
     QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
+}
+
+void tst_CircularBargraph::stateIndicatorInsideThePod_data()
+{
+    addReadoutRows(true);
+}
+
+// #167: Invalid ("---"), Overrange and Underrange (the triangle) always show their indicator, inside the pod
+// well, at every size from the smallest supported one up: the segments alone do not tell an invalid input from a
+// valid one at the minimum
+void tst_CircularBargraph::stateIndicatorInsideThePod()
+{
+    QFETCH(int, side);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, value);
+    QFETCH(QString, unit);
+    CircularBargraph b;
+    prepareReadout(b, side, maximum, precision, value, unit);
+    const QVector<QPoint> ink = readoutInk(b);
+    QVERIFY2(!ink.isEmpty(), "no state indicator drawn");
+    const QString outside = inkOutsidePod(ink, podOf(b));
+    QVERIFY2(outside.isEmpty(), qPrintable(outside));
+}
+
+void tst_CircularBargraph::readoutNeverCoversTheSegments_data()
+{
+    addReadoutRows(false);
+}
+
+// #167: in every state and at every size from the smallest supported one up, no readout pixel lies outside the
+// pod well (only a valid value may be left out entirely)
+void tst_CircularBargraph::readoutNeverCoversTheSegments()
+{
+    QFETCH(int, side);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, value);
+    QFETCH(QString, unit);
+    CircularBargraph b;
+    prepareReadout(b, side, maximum, precision, value, unit);
+    const QString outside = inkOutsidePod(readoutInk(b), podOf(b));
+    QVERIFY2(outside.isEmpty(), qPrintable(outside));
 }
 
 QTEST_MAIN(tst_CircularBargraph)
