@@ -73,6 +73,7 @@ private Q_SLOTS:
     void valueStateSignalOrder();
     void longOutOfRangeReadoutStaysInThePod_data();
     void longOutOfRangeReadoutStaysInThePod();
+    void unitShownForAnInvalidInput();
 };
 
 namespace {
@@ -1323,6 +1324,26 @@ void tst_LinearGauge::longOutOfRangeReadoutStaysInThePod()
              qPrintable(QStringLiteral("readouts %1,%2 %3x%4 outside the display %5,%6 %7x%8")
                             .arg(drawn.x()).arg(drawn.y()).arg(drawn.width()).arg(drawn.height())
                             .arg(box.x()).arg(box.y()).arg(box.width()).arg(box.height())));
+}
+
+// #151: the vertical display keeps the unit after "---", as after a valid value
+void tst_LinearGauge::unitShownForAnInvalidInput()
+{
+    QString error;
+    const QFont font = largeReadoutFont(readoutTestFont(&error));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVector<int> groups;
+    for (const QString &unit : {QString(), QStringLiteral("88")}) {
+        LinearGauge gauge;
+        prepareForReadout(gauge, Qt::Vertical, font);
+        gauge.setUnit(unit);
+        gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+        const QImage image = renderGauge(gauge);
+        groups << readoutInkGroups(image, podBox(gauge, image)).size();
+    }
+    QVERIFY2(groups.at(0) == 3 && groups.at(1) == 5,
+             qPrintable(QStringLiteral("%1 ink groups without the unit, %2 with the unit \"88\"")
+                            .arg(groups.at(0)).arg(groups.at(1))));
 }
 
 QTEST_MAIN(tst_LinearGauge)

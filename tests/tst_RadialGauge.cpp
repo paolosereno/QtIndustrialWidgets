@@ -239,6 +239,7 @@ private Q_SLOTS:
     void outOfRangeMarkIsAShape();
     void outOfRangeMarkWithoutTheGlyphInTheFont();
     void longOutOfRangeReadoutStaysInThePod();
+    void unitShownForAnInvalidInput();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -1160,6 +1161,46 @@ void tst_RadialGauge::longOutOfRangeReadoutStaysInThePod()
              qPrintable(QStringLiteral("readout box %1,%2 %3x%4 outside the pod %5,%6 %7x%8")
                             .arg(drawn.x()).arg(drawn.y()).arg(drawn.width()).arg(drawn.height())
                             .arg(box.x()).arg(box.y()).arg(box.width()).arg(box.height())));
+}
+
+// #151: the unit label stays on the dial for an invalid input, drawn as for a valid value
+void tst_RadialGauge::unitShownForAnInvalidInput()
+{
+    QString error;
+    const QFont font = readoutTestFont(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    const auto make = [&font](RadialGauge &g, const QString &unit, double value) {
+        prepareForReadout(g);
+        g.setFont(font);
+        g.setUnit(unit);
+        g.setValue(value);
+    };
+    // The unit label: the pixels that the unit changes on a valid gauge (value 0, needle away from the label)
+    RadialGauge validUnit;
+    make(validUnit, QStringLiteral("88"), 0.0);
+    RadialGauge validPlain;
+    make(validPlain, QString(), 0.0);
+    const QImage withUnit = renderGauge(validUnit);
+    // The readout box of the gauge without a unit (with one, displayBox() also holds the unit label, which is
+    // drawn only with the display)
+    const QRect box = displayBox(validPlain);
+    const QVector<QPoint> label = differingPixels(withUnit, renderGauge(validPlain));
+
+    RadialGauge invalidUnit;
+    make(invalidUnit, QStringLiteral("88"), std::numeric_limits<double>::quiet_NaN());
+    const QImage invalid = renderGauge(invalidUnit);
+    int outside = 0;
+    int different = 0;
+    for (const QPoint &p : label) {
+        if (box.contains(p) || isNeedlePixel(withUnit.pixel(p))) {
+            continue;
+        }
+        ++outside;
+        different += invalid.pixel(p) != withUnit.pixel(p) ? 1 : 0;
+    }
+    QVERIFY2(outside > 0, "no unit label outside the display");
+    QVERIFY2(different == 0,
+             qPrintable(QStringLiteral("%1 of the %2 unit label pixels differ for an invalid input").arg(different).arg(outside)));
 }
 
 QTEST_MAIN(tst_RadialGauge)
