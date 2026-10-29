@@ -48,6 +48,15 @@ Bar gauge and thermometer (`qiw::LinearGauge`).
   gradient fill (`gradientLiquid`).
 - **Scale and display**: major and minor ticks with labels (`scaleVisible`), optional digital display with `precision`
   and `unit`.
+- **Value state** (#151): `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`, with
+  `valueStateChanged()`; `rawValue()` keeps the unclamped input, and a range change classifies it again.
+  - An input outside the range (finite or ±Inf) fills the tube to its end and puts `value()` at the bound. The
+    display shows the input itself (for example `135.4 °C` on a 0–120 scale), or `>max` / `<min` for ±Inf, after a
+    triangle pointing up (above the range) or down (below it), so the state is not shown by colour alone.
+  - A NaN input is `Invalid`: the tube and the bulb are empty and hatched with diagonal lines in `scaleColor`, the
+    display shows `---` and `value()` is NaN. The last valid value is not shown.
+
+<img src="images/linear-gauge-invalid.png" alt="LinearGauge with an invalid (NaN) input" width="120">
 
 ## SevenSegmentDisplay
 
