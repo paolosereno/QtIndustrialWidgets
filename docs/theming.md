@@ -24,6 +24,8 @@ page quotes them.
 - `needleColor`: needle.
 - `scaleColor`: graduation ticks.
 - `textColor`: numeric labels.
+- `readoutColor`: the digital readout in the normal zone and `---` (default `#f5f6fa`); in the warning and error zones
+  the readout takes `warningColor` and `errorColor`.
 - `normalColor`, `warningColor`, `errorColor`: the threshold arc bands (shown while `thresholdBandsVisible` is true).
 
 ### Linear gauge (`qiw::LinearGauge`)
@@ -32,6 +34,8 @@ page quotes them.
 - `liquidColor`: liquid column.
 - `scaleColor`: graduation ticks.
 - `textColor`: numeric labels.
+- `readoutColor`: `---`, the readout of an invalid input (default `#f0f4f8`); a finite input is shown in the colour of
+  its zone.
 - `normalColor`, `warningColor`, `errorColor`: with `dynamicLiquidColor` set, the liquid column takes `errorColor`
   from the error threshold up, `warningColor` from the warning threshold up and `normalColor` below it, instead of
   `liquidColor`.
@@ -69,6 +73,7 @@ page quotes them.
 - `dialColor`: compass card (`HeadingUp` mode) or fixed rose (`NorthUp` mode).
 - `bezelColor`: outer rim.
 - `textColor`: degree numbers, graduation ticks and the letters NE, SE, SW, NW.
+- `readoutColor`: the digital heading readout, `---°` included (default `#e1e7ec`).
 - `cardinalColor`: the letters E, S, W and the cardinal points of the rose.
 - `needleColor`: north end of the needle and the letter N (default `#eb3b5a`).
 - `needleTailColor`: south end of the needle (default `#a0afc3`).
@@ -81,6 +86,9 @@ page quotes them.
 `peakColor`, `ghostColor`, `dialColor`, `textColor`), `StripChart` (`gridColor`, `backgroundColor`, `bezelColor`) and
 `AnalysisChart` (`gridColor`, `backgroundColor`, `bezelColor`, `textColor`, `cursorColor`) have colour properties as
 well; their API pages describe them.
+
+The readout pods of `RadialGauge`, `LinearGauge`, `Compass` and `IndustrialKnob` are dark in every theme, so a light
+theme sets `textColor` dark but keeps a light `readoutColor` (#159, see [widgets.md](widgets.md)).
 
 ---
 

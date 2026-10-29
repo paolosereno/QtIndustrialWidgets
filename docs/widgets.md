@@ -20,6 +20,14 @@ the complete API is in the class documentation.
   dial, the vertical `LinearGauge` display keeps the unit after the readout (`--- °C`, `▲ 135.4 °C`). The
   horizontal `LinearGauge` display shows no unit, in any state.
 
+**Readout colours** (#159): the readout pods of `RadialGauge`, `LinearGauge`, `Compass` and `IndustrialKnob` are
+opaque and dark in every theme. Their readout is drawn in `readoutColor` (`RadialGauge`: normal zone and `---`;
+`LinearGauge`: `---`; `Compass`: always), or in the colour of its zone, never in `textColor`, which colours the scale
+labels and is dark in a light theme. `IndustrialKnob` draws its readout in `pointerColor`; the `CircularBargraph` pod
+follows `dialColor` and its readout `textColor`. With the default readout and zone colours, in the gallery's dark and
+light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) against its pod
+(`tests/tst_ReadoutContrast.cpp`).
+
 ## RadialGauge
 
 <img src="images/radial-gauge-warning.png" alt="RadialGauge" width="300">
