@@ -578,13 +578,6 @@ void Compass::paintEvent(QPaintEvent *)
         painter.translate(center);
         painter.rotate(-d_ptr->cardRotation());
         painter.drawPixmap(-width() / 2, -height() / 2, d_ptr->m_cardCache);
-        if (d_ptr->isInvalid()) {
-            QColor veil = d_ptr->m_dialColor;
-            veil.setAlpha(170);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(veil);
-            painter.drawEllipse(QPointF(0.0, 0.0), radius, radius);
-        }
 
         // Draw Target Heading Bug rotated on the moving card:
         if (d_ptr->m_bugVisible) {
@@ -608,6 +601,16 @@ void Compass::paintEvent(QPaintEvent *)
             painter.setBrush(d_ptr->m_bugColor);
             painter.drawPath(bug);
             painter.restore();
+        }
+
+        // #151: an invalid heading veils the card and the bug (whose place from 12 o'clock would read as a
+        // course deviation) with the dial colour; the veil covers the tip of the bug, drawn up to the radius
+        if (d_ptr->isInvalid()) {
+            QColor veil = d_ptr->m_dialColor;
+            veil.setAlpha(170);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(veil);
+            painter.drawEllipse(QPointF(0.0, 0.0), radius + 1.0, radius + 1.0);
         }
 
         painter.restore();
