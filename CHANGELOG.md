@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 - **`tst_ReadoutContrast`** (#159): the WCAG 2.x contrast of the readout of `RadialGauge`, `LinearGauge`, `Compass`, `IndustrialKnob` and `CircularBargraph` against its pod, measured from rendered pixels with the default readout and zone colours, in the gallery's dark and light styling and in every value state, is at least 4.5:1; `readoutColor` is independent of `textColor`.
-- **`CircularBargraph` readout fit** (#167), at every size from `minimumSizeHint()` up, with and without unit, at every DPR: Invalid, Underrange and Overrange always show their indicator, inside the pod; no readout pixel covers the segments; a value shown is at least as wide as the same text drawn at 7 pt, and a lone triangle is at least the 7 pt one; `minimumSizeHint()` grows with a wider font, and is 50 × 50 with the display off; two out-of-range inputs read differently (the input, not the bound).
+- **`CircularBargraph` readout fit** (#167), at every size from `minimumSizeHint()` up, with and without unit, at every DPR: Invalid, Underrange and Overrange always show their indicator, inside the pod; no readout pixel covers the segments; a value shown is at least as wide as the same text drawn at 7 pt, and a lone triangle is at least the 7 pt one; `minimumSizeHint()` grows with a wider font, and is 50 × 50 with the display off; two out-of-range inputs read differently (the input, not the bound); the pod is drawn at every size, also below `minimumSizeHint()`.
 
 ---
 

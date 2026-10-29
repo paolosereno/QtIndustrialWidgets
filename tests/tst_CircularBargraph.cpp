@@ -477,6 +477,8 @@ private Q_SLOTS:
     void readoutNeverBelowSevenPoints();
     void minimumSizeHintFitsTheStateIndicators();
     void outOfRangeReadoutShowsTheInput();
+    void podDrawnAtEverySize_data();
+    void podDrawnAtEverySize();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -1496,6 +1498,33 @@ void tst_CircularBargraph::outOfRangeReadoutShowsTheInput()
     QVERIFY2(inkOf(120.0) != inkOf(1200.0), "Overrange 120 and 1200 give the same readout");
     QVERIFY2(inkOf(-10.0) != inkOf(-300.0), "Underrange -10 and -300 give the same readout");
     QVERIFY2(inkOf(120.0) != inkOf(std::numeric_limits<double>::infinity()), "Overrange 120 and +Inf read the same");
+}
+
+void tst_CircularBargraph::podDrawnAtEverySize_data()
+{
+    QTest::addColumn<int>("side");
+    for (const int side : {50, 51, 52, 53, 54, 55, 56, 58, 60, 80, 200}) {
+        QTest::addRow("%d px", side) << side;
+    }
+}
+
+// #167: the pod well is drawn whenever the digital display is on, also below minimumSizeHint() (before, pod and
+// readout were left out below 54 x 54). A point of the pod, between the readout and its rim, has the pod colour,
+// which is not there with the display off
+void tst_CircularBargraph::podDrawnAtEverySize()
+{
+    QFETCH(int, side);
+    CircularBargraph b;
+    b.setValue(std::numeric_limits<double>::quiet_NaN()); // "---", the smallest readout
+    b.resize(side, side);
+    const Pod pod = podOf(b);
+    const QPoint probe = (pod.centre + QPointF(0.0, pod.radius * 0.8)).toPoint();
+    const QColor podColor = b.dialColor().darker(130);
+    const QImage on = b.grab().toImage().convertToFormat(QImage::Format_RGB32);
+    b.setDigitalDisplayVisible(false);
+    const QImage off = b.grab().toImage().convertToFormat(QImage::Format_RGB32);
+    QCOMPARE(QColor(on.pixel(probe)).name(), podColor.name());
+    QVERIFY2(off.pixel(probe) != on.pixel(probe), "the probe has the pod colour also without the pod");
 }
 
 QTEST_MAIN(tst_CircularBargraph)
