@@ -90,6 +90,62 @@ QRect valueInkBox(RadialGauge &gauge)
     return boundingBox(differingPixels(withoutValue, renderGauge(gauge)));
 }
 
+// #151: a gauge whose needle and readout can be told apart in a render. The needle is pure blue
+// (its facets are lighter and darker shades of it), a hue nothing else uses with the bands hidden;
+// the readout stays in the near-white textColor (thresholds above the range), without a unit.
+void prepareForReadout(RadialGauge &gauge)
+{
+    configure(gauge, GaugeConfig{300, 0.0, 100.0, 1, -135.0, 270.0});
+    gauge.setUnit(QString());
+    gauge.setThresholdBandsVisible(false);
+    gauge.setWarningThreshold(1000.0);
+    gauge.setErrorThreshold(2000.0);
+    gauge.setNeedleColor(QColor(0, 0, 255));
+}
+
+bool isNeedlePixel(QRgb p)
+{
+    return qBlue(p) > 150 && qBlue(p) - qRed(p) > 80 && qBlue(p) - qGreen(p) > 80;
+}
+
+QVector<QPoint> needlePixels(const QImage &image)
+{
+    QVector<QPoint> out;
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            if (isNeedlePixel(line[x])) {
+                out.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return out;
+}
+
+// Device-pixel box of the digital display: the pixels that change when it is shown
+QRect displayBox(RadialGauge &gauge)
+{
+    gauge.setDigitalDisplayVisible(false);
+    const QImage without = renderGauge(gauge);
+    gauge.setDigitalDisplayVisible(true);
+    return boundingBox(differingPixels(without, renderGauge(gauge)));
+}
+
+// Ink box of the readout text inside \a box: its near-white pixels (textColor is 245, 246, 250)
+QRect readoutInk(const QImage &image, const QRect &box)
+{
+    QVector<QPoint> ink;
+    for (int y = box.top(); y <= box.bottom(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = box.left(); x <= box.right(); ++x) {
+            if (qRed(line[x]) >= 200 && qGreen(line[x]) >= 200 && qBlue(line[x]) >= 200) {
+                ink.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return boundingBox(ink);
+}
+
 } // namespace
 
 class tst_RadialGauge : public QObject
@@ -121,6 +177,11 @@ private Q_SLOTS:
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
     void digitalDisplayIgnoresUndrawnLabels();
+    void nanHidesNeedleAndShowsDashes();
+    void nanEmitsValueChangedOnce();
+    void outOfRangeReadoutShowsTheTrueValue();
+    void infiniteReadoutDiffersFromTheBound();
+    void rangeChangeReclassifiesTheLastInput();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -777,6 +838,123 @@ void tst_RadialGauge::textSizeIgnoresWidgetFontSize()
     const int grown = FontTest::textGlyphHeight(*large);
     QVERIFY2(base > 0, "no text drawn in textColor");
     QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
+}
+
+// #151: a NaN input is shown as invalid, never as the last value: no needle, readout "---"
+void tst_RadialGauge::nanHidesNeedleAndShowsDashes()
+{
+    RadialGauge gauge;
+    prepareForReadout(gauge);
+    gauge.setValue(50.0);
+    const QRect box = displayBox(gauge);
+    QVERIFY(!box.isEmpty());
+
+    const QImage valid = renderGauge(gauge);
+    QVERIFY(!needlePixels(valid).isEmpty());
+    const QRect digits = readoutInk(valid, box);
+    QVERIFY(!digits.isEmpty());
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QVERIFY2(std::isnan(gauge.value()), qPrintable(QStringLiteral("value() = %1").arg(gauge.value())));
+
+    const QImage invalid = renderGauge(gauge);
+    QCOMPARE(needlePixels(invalid).size(), 0);
+    // "---" is one thin row of ink, the digits of "50.0" are a full line of text
+    const QRect dashes = readoutInk(invalid, box);
+    QVERIFY2(!dashes.isEmpty(), "no readout ink");
+    QVERIFY2(dashes.height() * 3 <= digits.height(),
+             qPrintable(QStringLiteral("readout ink %1 px high, digits %2 px").arg(dashes.height()).arg(digits.height())));
+
+    // Without the digital display the needle is hidden too
+    gauge.setDigitalDisplayVisible(false);
+    QCOMPARE(needlePixels(renderGauge(gauge)).size(), 0);
+}
+
+// #151: entering the invalid state emits valueChanged(NaN) once; a repeated NaN emits nothing
+void tst_RadialGauge::nanEmitsValueChangedOnce()
+{
+    RadialGauge gauge;
+    gauge.setValue(50.0);
+    QSignalSpy spy(&gauge, &RadialGauge::valueChanged);
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(std::isnan(spy.at(0).at(0).toDouble()));
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(spy.count(), 1);
+
+    gauge.setValue(50.0);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toDouble(), 50.0);
+}
+
+// #151: a finite value above the range keeps the needle at the stop, but the readout is not the
+// one of the maximum itself: it shows the true value
+void tst_RadialGauge::outOfRangeReadoutShowsTheTrueValue()
+{
+    RadialGauge gauge;
+    prepareForReadout(gauge);
+    gauge.setValue(100.0);
+    const QRect box = displayBox(gauge);
+    const QImage atMaximum = renderGauge(gauge);
+
+    gauge.setValue(150.0);
+    QCOMPARE(gauge.value(), 100.0);
+    const QImage above = renderGauge(gauge);
+    QCOMPARE(TextInk::sorted(needlePixels(above)), TextInk::sorted(needlePixels(atMaximum)));
+    QVERIFY2(above.copy(box) != atMaximum.copy(box), "the readout of 150 equals the readout of the maximum");
+
+    gauge.setValue(0.0);
+    const QImage atMinimum = renderGauge(gauge);
+    gauge.setValue(-20.0);
+    QCOMPARE(gauge.value(), 0.0);
+    const QImage below = renderGauge(gauge);
+    QCOMPARE(TextInk::sorted(needlePixels(below)), TextInk::sorted(needlePixels(atMinimum)));
+    QVERIFY2(below.copy(box) != atMinimum.copy(box), "the readout of -20 equals the readout of the minimum");
+}
+
+// #151: +Inf / -Inf keep the needle at the stop, and the readout is not the one of the bound
+void tst_RadialGauge::infiniteReadoutDiffersFromTheBound()
+{
+    RadialGauge gauge;
+    prepareForReadout(gauge);
+    gauge.setValue(100.0);
+    const QRect box = displayBox(gauge);
+    const QImage atMaximum = renderGauge(gauge);
+
+    gauge.setValue(std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 100.0);
+    const QImage plusInf = renderGauge(gauge);
+    QCOMPARE(TextInk::sorted(needlePixels(plusInf)), TextInk::sorted(needlePixels(atMaximum)));
+    QVERIFY2(plusInf.copy(box) != atMaximum.copy(box), "the readout of +Inf equals the readout of the maximum");
+
+    gauge.setValue(0.0);
+    const QImage atMinimum = renderGauge(gauge);
+    gauge.setValue(-std::numeric_limits<double>::infinity());
+    QCOMPARE(gauge.value(), 0.0);
+    const QImage minusInf = renderGauge(gauge);
+    QCOMPARE(TextInk::sorted(needlePixels(minusInf)), TextInk::sorted(needlePixels(atMinimum)));
+    QVERIFY2(minusInf.copy(box) != atMinimum.copy(box), "the readout of -Inf equals the readout of the minimum");
+}
+
+// #151: a range change classifies the last input again instead of keeping the clamped value
+void tst_RadialGauge::rangeChangeReclassifiesTheLastInput()
+{
+    RadialGauge gauge;
+    gauge.setRange(0.0, 100.0);
+    gauge.setValue(150.0);
+    QCOMPARE(gauge.value(), 100.0);
+
+    gauge.setRange(0.0, 200.0);
+    QCOMPARE(gauge.value(), 150.0);
+
+    gauge.setRange(0.0, 120.0);
+    QCOMPARE(gauge.value(), 120.0);
+
+    gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+    gauge.setRange(0.0, 300.0);
+    QVERIFY(std::isnan(gauge.value()));
 }
 
 QTEST_MAIN(tst_RadialGauge)
