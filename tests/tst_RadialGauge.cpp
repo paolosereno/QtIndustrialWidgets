@@ -240,6 +240,7 @@ private Q_SLOTS:
     void outOfRangeMarkWithoutTheGlyphInTheFont();
     void longOutOfRangeReadoutStaysInThePod();
     void unitShownForAnInvalidInput();
+    void initialValueFollowsTheRange();
 };
 
 void tst_RadialGauge::initTestCase()
@@ -1201,6 +1202,40 @@ void tst_RadialGauge::unitShownForAnInvalidInput()
     QVERIFY2(outside > 0, "no unit label outside the display");
     QVERIFY2(different == 0,
              qPrintable(QStringLiteral("%1 of the %2 unit label pixels differ for an invalid input").arg(different).arg(outside)));
+}
+
+// #151: before the first setValue() there is no input to classify: the initial value follows the range, as
+// before #151, so that configuring a range that does not hold it shows the minimum, not an out-of-range readout
+void tst_RadialGauge::initialValueFollowsTheRange()
+{
+    RadialGauge fresh;
+    fresh.resize(QSize(240, 240));
+    QSignalSpy states(&fresh, &RadialGauge::valueStateChanged);
+    fresh.setRange(10.0, 100.0);
+    QCOMPARE(fresh.valueState(), ValueState::Valid);
+    QCOMPARE(fresh.value(), 10.0);
+    QCOMPARE(fresh.rawValue(), 10.0);
+    QCOMPARE(states.count(), 0);
+
+    // Drawn as the minimum given as an input
+    RadialGauge given;
+    given.resize(QSize(240, 240));
+    given.setRange(10.0, 100.0);
+    given.setValue(10.0);
+    QVERIFY(renderGauge(fresh) == renderGauge(given));
+
+    fresh.setRange(-50.0, -10.0);
+    QCOMPARE(fresh.valueState(), ValueState::Valid);
+    QCOMPARE(fresh.value(), -10.0);
+    QCOMPARE(states.count(), 0);
+
+    // An input given with setValue() is classified, even if it is the initial value
+    RadialGauge explicitZero;
+    explicitZero.setValue(0.0);
+    explicitZero.setRange(10.0, 100.0);
+    QCOMPARE(explicitZero.valueState(), ValueState::Underrange);
+    QCOMPARE(explicitZero.rawValue(), 0.0);
+    QCOMPARE(explicitZero.value(), 10.0);
 }
 
 QTEST_MAIN(tst_RadialGauge)

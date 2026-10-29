@@ -74,6 +74,7 @@ private Q_SLOTS:
     void longOutOfRangeReadoutStaysInThePod_data();
     void longOutOfRangeReadoutStaysInThePod();
     void unitShownForAnInvalidInput();
+    void initialValueFollowsTheRange();
 };
 
 namespace {
@@ -1344,6 +1345,40 @@ void tst_LinearGauge::unitShownForAnInvalidInput()
     QVERIFY2(groups.at(0) == 3 && groups.at(1) == 5,
              qPrintable(QStringLiteral("%1 ink groups without the unit, %2 with the unit \"88\"")
                             .arg(groups.at(0)).arg(groups.at(1))));
+}
+
+// #151: before the first setValue() there is no input to classify: the initial value follows the range, as
+// before #151, so that configuring a range that does not hold it shows the minimum, not an out-of-range readout
+void tst_LinearGauge::initialValueFollowsTheRange()
+{
+    LinearGauge fresh;
+    fresh.resize(QSize(120, 320));
+    QSignalSpy states(&fresh, &LinearGauge::valueStateChanged);
+    fresh.setRange(10.0, 100.0);
+    QCOMPARE(fresh.valueState(), ValueState::Valid);
+    QCOMPARE(fresh.value(), 10.0);
+    QCOMPARE(fresh.rawValue(), 10.0);
+    QCOMPARE(states.count(), 0);
+
+    // Drawn as the minimum given as an input
+    LinearGauge given;
+    given.resize(QSize(120, 320));
+    given.setRange(10.0, 100.0);
+    given.setValue(10.0);
+    QVERIFY(renderGauge(fresh) == renderGauge(given));
+
+    fresh.setRange(-50.0, -10.0);
+    QCOMPARE(fresh.valueState(), ValueState::Valid);
+    QCOMPARE(fresh.value(), -10.0);
+    QCOMPARE(states.count(), 0);
+
+    // An input given with setValue() is classified, even if it is the initial value
+    LinearGauge explicitZero;
+    explicitZero.setValue(0.0);
+    explicitZero.setRange(10.0, 100.0);
+    QCOMPARE(explicitZero.valueState(), ValueState::Underrange);
+    QCOMPARE(explicitZero.rawValue(), 0.0);
+    QCOMPARE(explicitZero.value(), 10.0);
 }
 
 QTEST_MAIN(tst_LinearGauge)
