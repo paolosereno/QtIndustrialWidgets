@@ -47,6 +47,27 @@ set_target_properties(M4Decimator PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(ValueClassification OBJECT
+    internal/ValueClassification.cpp
+    internal/ValueClassification.h
+)
+
+target_include_directories(ValueClassification
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(ValueClassification
+    PUBLIC
+        Qt6::Core
+)
+
+set_target_properties(ValueClassification PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(CircularBargraphSegments OBJECT
     internal/CircularBargraphSegments.cpp
     internal/CircularBargraphSegments.h
@@ -55,6 +76,7 @@ add_library(CircularBargraphSegments OBJECT
 target_include_directories(CircularBargraphSegments
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/include
 )
 
 target_link_libraries(CircularBargraphSegments
@@ -207,6 +229,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     Compass.cpp
     CircularBargraph.cpp
     $<TARGET_OBJECTS:NumberFormat>
+    $<TARGET_OBJECTS:ValueClassification>
     $<TARGET_OBJECTS:M4Decimator>
     $<TARGET_OBJECTS:CircularBargraphSegments>
     $<TARGET_OBJECTS:LinearGaugeScale>
@@ -216,6 +239,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     $<TARGET_OBJECTS:FontScale>
     $<TARGET_OBJECTS:AnalysisChartView>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/ValueState.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/RadialGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/LinearGauge.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/SevenSegmentDisplay.h

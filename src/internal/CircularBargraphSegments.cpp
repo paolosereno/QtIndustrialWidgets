@@ -11,20 +11,6 @@
 namespace QtIndustrialWidgets {
 namespace internal {
 
-InputState classifyInput(double raw, double minimum, double maximum)
-{
-    if (std::isnan(raw)) {
-        return InputState::Invalid;
-    }
-    if (raw > maximum) {
-        return InputState::Overrange;
-    }
-    if (raw < minimum) {
-        return InputState::Underrange;
-    }
-    return InputState::Valid;
-}
-
 std::vector<Zone> computeSegmentZones(double minimum, double maximum, double warningThreshold,
                                       double errorThreshold, int segmentCount)
 {

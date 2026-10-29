@@ -9,6 +9,9 @@
 #include <QtCore/QString>
 #include <QtCore/qglobal.h>
 #include <QtGui/QColor>
+
+#include "internal/ValueClassification.h"
+
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -23,17 +26,6 @@ enum class SegmentState : quint8 {
     Lit,  ///< Illuminated with the active zone color
     Peak, ///< Peak-hold indicator (peak color)
     Ghost ///< Invalid input: plain ghost color, no zone tint
-};
-
-/**
- * \enum InputState
- * \brief Classification of the raw input (mirrors CircularBargraph::ValueState).
- */
-enum class InputState : quint8 {
-    Valid,      ///< Finite and within [minimum, maximum]
-    Underrange, ///< Below minimum (including -Inf)
-    Overrange,  ///< Above maximum (including +Inf)
-    Invalid     ///< NaN
 };
 
 /**
@@ -70,9 +62,6 @@ struct PeakDecayStep {
 
 /** \brief One decay step: the peak falls by \a rate * \a dtSeconds towards \a value. */
 PeakDecayStep decayPeakStep(double peak, double value, double rate, double dtSeconds);
-
-/** \brief Classifies a raw input against the range. */
-InputState classifyInput(double raw, double minimum, double maximum);
 
 /**
  * \struct SegmentInput

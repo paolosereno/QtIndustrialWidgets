@@ -44,6 +44,8 @@ add_executable(tst_RadialGauge
     tst_RadialGauge.cpp
     $<TARGET_OBJECTS:LinearGaugeScale>
     $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:ValueClassification>
+    $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_RadialGauge
     PRIVATE
@@ -239,6 +241,7 @@ add_industrial_widget_test(tst_Compass)
 add_executable(tst_CircularBargraph
     tst_CircularBargraph.cpp
     $<TARGET_OBJECTS:CircularBargraphSegments>
+    $<TARGET_OBJECTS:ValueClassification>
     $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_CircularBargraph

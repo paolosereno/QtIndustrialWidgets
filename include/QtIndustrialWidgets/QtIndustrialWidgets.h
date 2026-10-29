@@ -12,6 +12,7 @@
 #pragma once
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
+#include <QtIndustrialWidgets/ValueState.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
