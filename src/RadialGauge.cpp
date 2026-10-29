@@ -51,6 +51,7 @@ public:
     QColor m_dialColor{QColor(24, 28, 36)};           // Slate Black
     QColor m_scaleColor{QColor(210, 218, 226)};       // Light Silver
     QColor m_textColor{QColor(245, 246, 250)};        // Crisp White
+    QColor m_readoutColor{QColor(245, 246, 250)};     // Readout on the dark pod (#159)
     QColor m_bezelColor{QColor(53, 59, 72)};          // Gunmetal Gray
 
     // High performance static scale cache
@@ -120,6 +121,7 @@ QColor RadialGauge::errorColor() const { Q_D(const RadialGauge); return d->m_err
 QColor RadialGauge::dialColor() const { Q_D(const RadialGauge); return d->m_dialColor; }
 QColor RadialGauge::scaleColor() const { Q_D(const RadialGauge); return d->m_scaleColor; }
 QColor RadialGauge::textColor() const { Q_D(const RadialGauge); return d->m_textColor; }
+QColor RadialGauge::readoutColor() const { Q_D(const RadialGauge); return d->m_readoutColor; }
 QColor RadialGauge::bezelColor() const { Q_D(const RadialGauge); return d->m_bezelColor; }
 
 
@@ -357,6 +359,14 @@ void RadialGauge::setTextColor(const QColor &color)
     if (d_ptr->m_textColor == color) return;
     d_ptr->m_textColor = color;
     invalidateCache();
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void RadialGauge::setReadoutColor(const QColor &color)
+{
+    if (d_ptr->m_readoutColor == color) return;
+    d_ptr->m_readoutColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
@@ -671,7 +681,7 @@ void RadialGauge::paintEvent(QPaintEvent *)
         valFont.setPixelSize(d_ptr->m_valueFontPx);
         valFont.setBold(true);
 
-        QColor displayColor = d_ptr->m_textColor;
+        QColor displayColor = d_ptr->m_readoutColor;
         if (state != ValueState::Invalid) {
             if (d_ptr->m_value >= d_ptr->m_errorThreshold) {
                 displayColor = d_ptr->m_errorColor;

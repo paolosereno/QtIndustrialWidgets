@@ -18,6 +18,7 @@
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
+#include <QtTest/QSignalSpy>
 
 #include <algorithm>
 #include <cmath>
@@ -328,6 +329,9 @@ private Q_SLOTS:
     void industrialKnob();
     void circularBargraph_data();
     void circularBargraph();
+    void readoutColorProperty();
+    void readoutFollowsReadoutColorNotTextColor_data();
+    void readoutFollowsReadoutColorNotTextColor();
 };
 
 void tst_ReadoutContrast::radialGauge_data()
@@ -512,6 +516,121 @@ void tst_ReadoutContrast::circularBargraph()
     const QRect box = QRectF(centre.x() - r, centre.y() - r, 2.0 * r, 2.0 * r).toAlignedRect();
     auto inWell = [&](int x, int y) { return std::hypot(x + 0.5 - centre.x(), y + 0.5 - centre.y()) <= r; };
     checkReading(measureReadout(img, box, inWell), scaledPixels(40, dpr));
+}
+
+namespace {
+// readoutColor(): default, setter, property and appearanceChanged(), emitted once per change
+template <typename Widget>
+void checkReadoutColorProperty(const QColor &defaultColor)
+{
+    Widget w;
+    QCOMPARE(w.readoutColor(), defaultColor);
+    QCOMPARE(w.property("readoutColor").template value<QColor>(), defaultColor);
+    QSignalSpy spy(&w, &Widget::appearanceChanged);
+    w.setReadoutColor(QColor(10, 20, 30));
+    QCOMPARE(w.readoutColor(), QColor(10, 20, 30));
+    QCOMPARE(spy.count(), 1);
+    w.setReadoutColor(QColor(10, 20, 30));
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(w.setProperty("readoutColor", QColor(40, 50, 60)));
+    QCOMPARE(w.readoutColor(), QColor(40, 50, 60));
+    QCOMPARE(spy.count(), 2);
+    // textColor() is independent
+    QCOMPARE(w.textColor(), defaultColor);
+}
+
+bool isMagenta(QRgb p) { return qRed(p) > 200 && qBlue(p) > 200 && qGreen(p) < 60; }
+bool isPureGreen(QRgb p) { return qGreen(p) > 200 && qRed(p) < 60 && qBlue(p) < 60; }
+
+int countIn(const QImage &img, const QRect &box, bool (*pred)(QRgb))
+{
+    int n = 0;
+    for (int y = box.top(); y <= box.bottom(); ++y) {
+        for (int x = box.left(); x <= box.right(); ++x) {
+            n += pred(img.pixel(x, y)) ? 1 : 0;
+        }
+    }
+    return n;
+}
+} // namespace
+
+// #159: the new property of the three widgets whose readout used textColor()
+void tst_ReadoutContrast::readoutColorProperty()
+{
+    checkReadoutColorProperty<RadialGauge>(QColor(245, 246, 250));
+    checkReadoutColorProperty<LinearGauge>(QColor(240, 244, 248));
+    checkReadoutColorProperty<Compass>(QColor(225, 231, 236));
+}
+
+void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor_data()
+{
+    QTest::addColumn<QString>("widget");
+    QTest::addColumn<double>("value");
+    QTest::newRow("RadialGauge valid") << QStringLiteral("RadialGauge") << 50.0;
+    QTest::newRow("RadialGauge invalid") << QStringLiteral("RadialGauge") << kNaN;
+    QTest::newRow("RadialGauge underrange") << QStringLiteral("RadialGauge") << -20.0;
+    QTest::newRow("LinearGauge invalid") << QStringLiteral("LinearGauge") << kNaN;
+    QTest::newRow("Compass valid") << QStringLiteral("Compass") << 47.0;
+    QTest::newRow("Compass invalid") << QStringLiteral("Compass") << kNaN;
+}
+
+// #159: with textColor() pure green and readoutColor() magenta, the readout is magenta and has no green
+void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor()
+{
+    QFETCH(QString, widget);
+    QFETCH(double, value);
+    const QColor text(0, 255, 0);
+    const QColor readout(255, 0, 255);
+    QImage img;
+    QRect pod;
+    if (widget == QLatin1String("RadialGauge")) {
+        auto make = [&](RadialGauge &g, bool display) {
+            g.setRange(0.0, 100.0);
+            g.setWarningThreshold(1000.0); // the whole range is the normal zone
+            g.setErrorThreshold(2000.0);
+            g.setThresholdBandsVisible(false);
+            g.setValue(value);
+            g.setTextColor(text);
+            g.setReadoutColor(readout);
+            g.setDigitalDisplayVisible(display);
+            g.resize(300, 300);
+        };
+        RadialGauge g;
+        make(g, true);
+        RadialGauge withoutDisplay;
+        make(withoutDisplay, false);
+        img = renderOn(g, true);
+        pod = largestDifference(img, renderOn(withoutDisplay, true));
+    } else if (widget == QLatin1String("LinearGauge")) {
+        LinearGauge g;
+        g.setOrientation(Qt::Vertical);
+        g.setValue(value);
+        g.setTextColor(text);
+        g.setReadoutColor(readout);
+        g.resize(120, 320);
+        img = renderOn(g, true);
+        const internal::GaugeRect r = internal::linearGaugeDisplayRect(true, 120, 320);
+        pod = deviceRect(QRectF(r.x, r.y, r.w, r.h), img.devicePixelRatio());
+    } else {
+        Compass c;
+        c.setHeading(value);
+        c.setTextColor(text);
+        c.setCardinalColor(text);
+        c.setReadoutColor(readout);
+        c.resize(300, 300);
+        img = renderOn(c, true);
+        const double radius = 150.0 - 6.0;
+        const double podW = std::clamp(radius * 0.52, 48.0, 110.0);
+        const double podH = std::clamp(radius * 0.26, 24.0, 50.0);
+        const QPointF centre(c.rect().center());
+        pod = deviceRect(QRectF(centre.x() - podW / 2.0, centre.y() - podH / 2.0, podW, podH), img.devicePixelRatio());
+    }
+    QVERIFY(!pod.isEmpty());
+    const int magenta = countIn(img, pod, isMagenta);
+    const int green = countIn(img, pod, isPureGreen);
+    QVERIFY2(magenta >= scaledPixels(10, img.devicePixelRatio()),
+             qPrintable(QStringLiteral("%1 readout pixels in readoutColor()").arg(magenta)));
+    QVERIFY2(green == 0, qPrintable(QStringLiteral("%1 readout pixels in textColor()").arg(green)));
 }
 
 QTEST_MAIN(tst_ReadoutContrast)

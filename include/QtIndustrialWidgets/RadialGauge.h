@@ -95,6 +95,7 @@ class QTINDUSTRIALWIDGETS_EXPORT RadialGauge : public QWidget
     Q_PROPERTY(QColor dialColor READ dialColor WRITE setDialColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor scaleColor READ scaleColor WRITE setScaleColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
+    Q_PROPERTY(QColor readoutColor READ readoutColor WRITE setReadoutColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
     Q_PROPERTY(double rawValue READ rawValue)
     Q_PROPERTY(QtIndustrialWidgets::ValueState valueState READ valueState NOTIFY valueStateChanged)
@@ -163,6 +164,12 @@ public:
     [[nodiscard]] QColor scaleColor() const;
     /** \brief Returns the numeric label font color. */
     [[nodiscard]] QColor textColor() const;
+    /**
+     * \brief Returns the colour of the digital readout in the normal zone and of "---" (#159).
+     *
+     * Independent of textColor(), since the readout pod is dark in every theme. Default QColor(245, 246, 250).
+     */
+    [[nodiscard]] QColor readoutColor() const;
     /** \brief Returns the outer rim bezel color. */
     [[nodiscard]] QColor bezelColor() const;
 
@@ -219,6 +226,8 @@ public Q_SLOTS:
     void setScaleColor(const QColor &color);
     /** \brief Sets the numeric text labels color. */
     void setTextColor(const QColor &color);
+    /** \brief Sets the colour of the digital readout in the normal zone and of "---" (#159). */
+    void setReadoutColor(const QColor &color);
     /** \brief Sets the outer rim bezel color. */
     void setBezelColor(const QColor &color);
 

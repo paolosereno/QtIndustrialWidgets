@@ -51,6 +51,7 @@ public:
     QColor m_troughColor{QColor(30, 36, 45)};
     QColor m_scaleColor{QColor(200, 208, 218)};
     QColor m_textColor{QColor(240, 244, 248)};
+    QColor m_readoutColor{QColor(240, 244, 248)}; // "---" on the dark pod (#159)
     QColor m_bezelColor{QColor(44, 53, 64)};
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
@@ -129,6 +130,7 @@ QColor LinearGauge::errorColor() const { Q_D(const LinearGauge); return d->m_err
 QColor LinearGauge::troughColor() const { Q_D(const LinearGauge); return d->m_troughColor; }
 QColor LinearGauge::scaleColor() const { Q_D(const LinearGauge); return d->m_scaleColor; }
 QColor LinearGauge::textColor() const { Q_D(const LinearGauge); return d->m_textColor; }
+QColor LinearGauge::readoutColor() const { Q_D(const LinearGauge); return d->m_readoutColor; }
 QColor LinearGauge::bezelColor() const { Q_D(const LinearGauge); return d->m_bezelColor; }
 
 
@@ -361,6 +363,14 @@ void LinearGauge::setTextColor(const QColor &color)
     if (d_ptr->m_textColor == color) return;
     d_ptr->m_textColor = color;
     invalidateCache();
+    Q_EMIT appearanceChanged();
+    update();
+}
+
+void LinearGauge::setReadoutColor(const QColor &color)
+{
+    if (d_ptr->m_readoutColor == color) return;
+    d_ptr->m_readoutColor = color;
     Q_EMIT appearanceChanged();
     update();
 }
@@ -771,7 +781,7 @@ void LinearGauge::paintEvent(QPaintEvent *)
                 // #151: "---", or the input with a triangle, made smaller if needed to fit the pod
                 const QString txt = QStringLiteral("%1 %2").arg(readoutText(), d_ptr->m_unit);
                 internal::drawStateReadout(painter, podRect, f, txt, internal::inputStateOf(state),
-                                           invalid ? d_ptr->m_textColor : activeColor);
+                                           invalid ? d_ptr->m_readoutColor : activeColor);
             }
         }
     } else {
@@ -831,7 +841,7 @@ void LinearGauge::paintEvent(QPaintEvent *)
             } else {
                 // #151: "---", or the input with a triangle, made smaller if needed to fit the pod
                 internal::drawStateReadout(painter, podRect, f, readoutText(), internal::inputStateOf(state),
-                                           invalid ? d_ptr->m_textColor : activeColor);
+                                           invalid ? d_ptr->m_readoutColor : activeColor);
             }
         }
     }

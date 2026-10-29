@@ -29,7 +29,8 @@ public:
     // Styling colors
     QColor m_dialColor{QColor(20, 24, 32)};       // Deep naval slate
     QColor m_bezelColor{QColor(48, 56, 70)};      // Machined metallic rim
-    QColor m_textColor{QColor(225, 231, 236)};    // Crisp readout text
+    QColor m_textColor{QColor(225, 231, 236)};    // Card ticks and labels
+    QColor m_readoutColor{QColor(225, 231, 236)}; // Readout on the dark pod (#159)
     QColor m_cardinalColor{QColor(0, 229, 255)};  // Cyan / amber highlights for N/E/S/W
     QColor m_needleColor{QColor(235, 59, 90)};    // Vivid red North arrow
     QColor m_needleTailColor{QColor(160, 175, 195)}; // Slate South arrow
@@ -98,6 +99,7 @@ bool Compass::isDigitalReadoutVisible() const { Q_D(const Compass); return d->m_
 QColor Compass::dialColor() const { Q_D(const Compass); return d->m_dialColor; }
 QColor Compass::bezelColor() const { Q_D(const Compass); return d->m_bezelColor; }
 QColor Compass::textColor() const { Q_D(const Compass); return d->m_textColor; }
+QColor Compass::readoutColor() const { Q_D(const Compass); return d->m_readoutColor; }
 QColor Compass::cardinalColor() const { Q_D(const Compass); return d->m_cardinalColor; }
 QColor Compass::needleColor() const { Q_D(const Compass); return d->m_needleColor; }
 QColor Compass::needleTailColor() const { Q_D(const Compass); return d->m_needleTailColor; }
@@ -244,6 +246,15 @@ void Compass::setTextColor(const QColor &color)
     if (d_ptr->m_textColor != color) {
         d_ptr->m_textColor = color;
         invalidateCache();
+        Q_EMIT appearanceChanged();
+        update();
+    }
+}
+
+void Compass::setReadoutColor(const QColor &color)
+{
+    if (d_ptr->m_readoutColor != color) {
+        d_ptr->m_readoutColor = color;
         Q_EMIT appearanceChanged();
         update();
     }
@@ -770,7 +781,7 @@ void Compass::paintEvent(QPaintEvent *)
         podFont.setBold(true);
         podFont.setPointSizeF(std::clamp(podH * 0.48, 8.0, 20.0));
         painter.setFont(podFont);
-        painter.setPen(d_ptr->m_textColor);
+        painter.setPen(d_ptr->m_readoutColor);
 
         QString text = QStringLiteral("---°"); // #151: an invalid heading
         if (!d_ptr->isInvalid()) {
