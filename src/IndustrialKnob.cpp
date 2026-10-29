@@ -544,7 +544,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
         QRectF podRect((w - podW) * 0.5, h - podH - 2.0, podW, podH);
 
         painter.setPen(QPen(d_ptr->m_knobColor.darker(160), 1.0));
-        painter.setBrush(QColor(16, 20, 26, 220));
+        painter.setBrush(QColor(16, 20, 26)); // opaque, as the gauge pods (#159)
         painter.drawRoundedRect(podRect, 3.0, 3.0);
     }
 
@@ -695,6 +695,8 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
         QFont valFont = font();
         valFont.setPixelSize(11);
         valFont.setBold(true);
+        // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
+        valFont.setStyleStrategy(QFont::StyleStrategy(valFont.styleStrategy() | QFont::NoSubpixelAntialias));
         painter.setFont(valFont);
         painter.setPen(d_ptr->m_pointerColor);
         painter.drawText(podRect, Qt::AlignCenter, valStr);

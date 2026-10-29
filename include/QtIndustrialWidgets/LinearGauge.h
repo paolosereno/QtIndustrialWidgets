@@ -39,7 +39,7 @@ class LinearGaugePrivate;
  *   (it does not depend on the fonts installed), so that the state is not told by colour alone. The text is made
  *   smaller, if needed, to fit the display of the valid values.
  * - \c Invalid (NaN): the tube and the bulb are empty and hatched with diagonal lines in scaleColor(), the
- *   readout shows "---" in textColor() and value() is NaN; the last valid value is never shown.
+ *   readout shows "---" in readoutColor() and value() is NaN; the last valid value is never shown.
  *
  * Scale geometry, graduation ticks, and the trough background are cached in a QPixmap at the device pixel ratio,
  * rebuilt only when the size or a visual property changes; a value change does not rebuild it.
@@ -85,6 +85,7 @@ class QTINDUSTRIALWIDGETS_EXPORT LinearGauge : public QWidget
     Q_PROPERTY(QColor troughColor READ troughColor WRITE setTroughColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor scaleColor READ scaleColor WRITE setScaleColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
+    Q_PROPERTY(QColor readoutColor READ readoutColor WRITE setReadoutColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
     Q_PROPERTY(double rawValue READ rawValue)
     Q_PROPERTY(QtIndustrialWidgets::ValueState valueState READ valueState NOTIFY valueStateChanged)
@@ -152,6 +153,13 @@ public:
     [[nodiscard]] QColor scaleColor() const;
     /** \brief Returns the numeric label font color. */
     [[nodiscard]] QColor textColor() const;
+    /**
+     * \brief Returns the colour of "---", the readout of an invalid input (#159).
+     *
+     * Independent of textColor(), since the readout pod is dark in every theme. A finite input is shown in the
+     * colour of its zone. Default QColor(240, 244, 248).
+     */
+    [[nodiscard]] QColor readoutColor() const;
     /** \brief Returns the outer rim bezel frame color. */
     [[nodiscard]] QColor bezelColor() const;
 
@@ -214,6 +222,8 @@ public Q_SLOTS:
     void setScaleColor(const QColor &color);
     /** \brief Sets the numeric text labels color. */
     void setTextColor(const QColor &color);
+    /** \brief Sets the colour of "---", the readout of an invalid input (#159). */
+    void setReadoutColor(const QColor &color);
     /** \brief Sets the outer rim bezel frame color. */
     void setBezelColor(const QColor &color);
 

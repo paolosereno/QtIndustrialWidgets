@@ -75,6 +75,7 @@ class QTINDUSTRIALWIDGETS_EXPORT Compass : public QWidget
     Q_PROPERTY(QColor dialColor READ dialColor WRITE setDialColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
+    Q_PROPERTY(QColor readoutColor READ readoutColor WRITE setReadoutColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor cardinalColor READ cardinalColor WRITE setCardinalColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor needleColor READ needleColor WRITE setNeedleColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor needleTailColor READ needleTailColor WRITE setNeedleTailColor NOTIFY appearanceChanged)
@@ -127,6 +128,12 @@ public:
     [[nodiscard]] QColor dialColor() const;
     [[nodiscard]] QColor bezelColor() const;
     [[nodiscard]] QColor textColor() const;
+    /**
+     * \brief Returns the colour of the digital heading readout, "---°" included (#159).
+     *
+     * Independent of textColor(), since the readout pod is dark in every theme. Default QColor(225, 231, 236).
+     */
+    [[nodiscard]] QColor readoutColor() const;
     [[nodiscard]] QColor cardinalColor() const;
     [[nodiscard]] QColor needleColor() const;
     [[nodiscard]] QColor needleTailColor() const;
@@ -162,6 +169,8 @@ public Q_SLOTS:
     void setDialColor(const QColor &color);
     void setBezelColor(const QColor &color);
     void setTextColor(const QColor &color);
+    /** \brief Sets the colour of the digital heading readout, "---°" included (#159). */
+    void setReadoutColor(const QColor &color);
     void setCardinalColor(const QColor &color);
     void setNeedleColor(const QColor &color);
     void setNeedleTailColor(const QColor &color);
