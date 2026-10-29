@@ -93,6 +93,19 @@ QWidget *radialGaugeWarning(Theme theme)
     return g;
 }
 
+QWidget *radialGaugeInvalid(Theme theme)
+{
+    auto *g = new RadialGauge;
+    g->setRange(0.0, 8000.0);
+    g->setWarningThreshold(6000.0);
+    g->setErrorThreshold(7000.0);
+    g->setPrecision(0);
+    g->setUnit(QStringLiteral("RPM"));
+    g->setValue(std::numeric_limits<double>::quiet_NaN()); // sensor fault: no needle, "---"
+    styleRadialGauge(g, theme);
+    return g;
+}
+
 QWidget *linearGaugeThermometer(Theme theme)
 {
     auto *g = new LinearGauge;
@@ -460,6 +473,7 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("LinearGauge"), QStringLiteral("thermometer"), QSize(120, 320), linearGaugeThermometer},
         {QStringLiteral("LinearGauge"), QStringLiteral("horizontal"), QSize(420, 110), linearGaugeHorizontal},
         {QStringLiteral("RadialGauge"), QStringLiteral("warning"), QSize(300, 300), radialGaugeWarning},
+        {QStringLiteral("RadialGauge"), QStringLiteral("invalid"), QSize(300, 300), radialGaugeInvalid},
         {QStringLiteral("SevenSegmentDisplay"), QStringLiteral("value"), QSize(300, 110), sevenSegmentValue},
         {QStringLiteral("StripChart"), QStringLiteral("channels"), QSize(640, 300), stripChartChannels},
     };
