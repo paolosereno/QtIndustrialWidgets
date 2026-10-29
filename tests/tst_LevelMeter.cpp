@@ -6,7 +6,7 @@
 #include <QtIndustrialWidgets/LevelMeter.h>
 
 #include "FontTestUtils.h"
-#include <QtCore/QSet>
+#include "HatchTestUtils.h"
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -22,6 +22,8 @@
 #include "internal/LinearGaugeScale.h"
 
 using namespace QtIndustrialWidgets;
+using HatchTest::hatchError;
+using HatchTest::isHatchPixel;
 
 namespace {
 
@@ -342,10 +344,6 @@ bool isPeakPixel(QRgb p)
     return qRed(p) > 150 && qRed(p) - qGreen(p) > 80 && qRed(p) - qBlue(p) > 80;
 }
 
-bool isHatchPixel(QRgb p)
-{
-    return qGreen(p) > 150 && qGreen(p) - qRed(p) > 80 && qGreen(p) - qBlue(p) > 80;
-}
 
 template <typename Pred>
 QVector<QPoint> pixelsWhere(const QImage &image, const QVector<QPoint> &area, Pred pred)
@@ -391,40 +389,6 @@ QVector<QPoint> barArea(LevelMeter &m, int channel)
     m.setValue(channel, m.minimum());
     m.resetPeaks();
     return area;
-}
-
-// Empty when the hatch pixels of \a image cover \a area as a pattern of lines: hatch ink in at least 80 % of the
-// rows and of the columns of the area, on 10 % to 60 % of its pixels (neither a fill nor a few strokes)
-QString hatchError(const QImage &image, const QVector<QPoint> &area)
-{
-    if (area.isEmpty()) {
-        return QStringLiteral("no bar area");
-    }
-    QSet<int> rows;
-    QSet<int> columns;
-    QSet<int> inkRows;
-    QSet<int> inkColumns;
-    int ink = 0;
-    for (const QPoint &p : area) {
-        rows.insert(p.y());
-        columns.insert(p.x());
-        if (isHatchPixel(image.pixel(p))) {
-            ++ink;
-            inkRows.insert(p.y());
-            inkColumns.insert(p.x());
-        }
-    }
-    const double rowCover = double(inkRows.size()) / rows.size();
-    const double columnCover = double(inkColumns.size()) / columns.size();
-    const double density = double(ink) / area.size();
-    if (rowCover < 0.8 || columnCover < 0.8 || density < 0.1 || density > 0.6) {
-        return QStringLiteral("hatch on %1 % of the rows, %2 % of the columns, %3 % of the %4 bar pixels")
-            .arg(rowCover * 100.0, 0, 'f', 1)
-            .arg(columnCover * 100.0, 0, 'f', 1)
-            .arg(density * 100.0, 0, 'f', 1)
-            .arg(area.size());
-    }
-    return QString();
 }
 
 void addBarLayouts()

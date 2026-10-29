@@ -7,6 +7,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 
 #include "FontTestUtils.h"
+#include "HatchTestUtils.h"
 #include "ReadoutTestUtils.h"
 
 #include <memory>
@@ -27,6 +28,8 @@
 #include <limits>
 
 using namespace QtIndustrialWidgets;
+using HatchTest::hatchError;
+using HatchTest::isHatchPixel;
 using namespace ReadoutTest;
 
 class tst_LinearGauge : public QObject
@@ -249,10 +252,6 @@ bool isLiquidPixel(QRgb p)
     return qBlue(p) > 150 && qBlue(p) - qRed(p) > 80 && qBlue(p) - qGreen(p) > 80;
 }
 
-bool isHatchPixel(QRgb p)
-{
-    return qGreen(p) > 150 && qGreen(p) - qRed(p) > 80 && qGreen(p) - qBlue(p) > 80;
-}
 
 template <typename Pred>
 QVector<QPoint> pixelsWhere(const QImage &image, Pred pred)
@@ -277,40 +276,6 @@ QVector<QPoint> liquidArea(LinearGauge &gauge)
     const QVector<QPoint> area = pixelsWhere(renderGauge(gauge), isLiquidPixel);
     gauge.setValue(held);
     return area;
-}
-
-// Empty when the hatch pixels of \a image cover \a area as a pattern of lines: hatch ink in at least 80 % of the
-// rows and of the columns of the area, on 10 % to 60 % of its pixels (neither a fill nor a few strokes)
-QString hatchError(const QImage &image, const QVector<QPoint> &area)
-{
-    if (area.isEmpty()) {
-        return QStringLiteral("no tube area");
-    }
-    QSet<int> rows;
-    QSet<int> columns;
-    QSet<int> inkRows;
-    QSet<int> inkColumns;
-    int ink = 0;
-    for (const QPoint &p : area) {
-        rows.insert(p.y());
-        columns.insert(p.x());
-        if (isHatchPixel(image.pixel(p))) {
-            ++ink;
-            inkRows.insert(p.y());
-            inkColumns.insert(p.x());
-        }
-    }
-    const double rowCover = double(inkRows.size()) / rows.size();
-    const double columnCover = double(inkColumns.size()) / columns.size();
-    const double density = double(ink) / area.size();
-    if (rowCover < 0.8 || columnCover < 0.8 || density < 0.1 || density > 0.6) {
-        return QStringLiteral("hatch on %1 % of the rows, %2 % of the columns, %3 % of the %4 tube pixels")
-            .arg(rowCover * 100.0, 0, 'f', 1)
-            .arg(columnCover * 100.0, 0, 'f', 1)
-            .arg(density * 100.0, 0, 'f', 1)
-            .arg(area.size());
-    }
-    return QString();
 }
 
 void addTubeLayouts()
