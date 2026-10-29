@@ -90,6 +90,28 @@ set_target_properties(tst_LinearGauge PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_LinearGauge)
+# #159: readout contrast of the gauges, the compass, the knob and the bargraph
+add_executable(tst_ReadoutContrast
+    tst_ReadoutContrast.cpp
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_ReadoutContrast
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_ReadoutContrast
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_ReadoutContrast PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_ReadoutContrast)
 add_executable(tst_RadialGaugeLayout
     tst_RadialGaugeLayout.cpp
     $<TARGET_OBJECTS:RadialGaugeLayout>
