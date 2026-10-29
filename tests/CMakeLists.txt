@@ -84,6 +84,8 @@ target_include_directories(tst_LinearGauge
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src
 )
+# Test font loaded with QFontDatabase::addApplicationFont() (tests/fonts/README.md)
+target_compile_definitions(tst_LinearGauge PRIVATE QIW_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fonts")
 set_target_properties(tst_LinearGauge PROPERTIES
     AUTOMOC ON
 )

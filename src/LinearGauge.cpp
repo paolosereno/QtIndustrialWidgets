@@ -7,6 +7,8 @@
 #include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
+#include "internal/ValueClassification.h"
+#include "internal/ValueStateDrawing.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -28,7 +30,9 @@ public:
     bool m_thermometerMode{true};
     double m_minimum{0.0};
     double m_maximum{100.0};
-    double m_value{0.0};
+    double m_value{0.0};    // m_rawValue clamped to the range, NaN when Invalid
+    double m_rawValue{0.0}; // Last input, unclamped (#151)
+    ValueState m_valueState{ValueState::Valid};
     int m_precision{1};
     QString m_unit{QStringLiteral("°C")};
     int m_majorTicks{10};
@@ -50,6 +54,7 @@ public:
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
     QRectF m_tubeRect;
+    QPainterPath m_troughPath; // Inside of the tube (and bulb), hatched for an invalid input (#151)
     QPointF m_bulbCenter;
     double m_bulbRadius{0.0};
     bool m_wasWarning{false};
@@ -66,6 +71,24 @@ public:
             texts << internal::scaleLabelText(val, m_precision);
         }
         return texts;
+    }
+
+    struct Changes {
+        bool value{false};
+        bool state{false};
+    };
+    // Recomputes value and state from m_rawValue and the range. Emits nothing.
+    Changes applyInput()
+    {
+        const double newValue = internal::shownValue(m_rawValue, m_minimum, m_maximum);
+        const ValueState newState =
+            internal::publicValueState(internal::classifyInput(m_rawValue, m_minimum, m_maximum));
+        Changes changes;
+        changes.value = !internal::sameShownValue(newValue, m_value);
+        changes.state = (newState != m_valueState);
+        m_value = newValue;
+        m_valueState = newState;
+        return changes;
     }
 };
 
@@ -86,6 +109,8 @@ bool LinearGauge::isThermometerMode() const { Q_D(const LinearGauge); return d->
 double LinearGauge::minimum() const { Q_D(const LinearGauge); return d->m_minimum; }
 double LinearGauge::maximum() const { Q_D(const LinearGauge); return d->m_maximum; }
 double LinearGauge::value() const { Q_D(const LinearGauge); return d->m_value; }
+double LinearGauge::rawValue() const { Q_D(const LinearGauge); return d->m_rawValue; }
+ValueState LinearGauge::valueState() const { Q_D(const LinearGauge); return d->m_valueState; }
 int LinearGauge::precision() const { Q_D(const LinearGauge); return d->m_precision; }
 QString LinearGauge::unit() const { Q_D(const LinearGauge); return d->m_unit; }
 int LinearGauge::majorTicks() const { Q_D(const LinearGauge); return d->m_majorTicks; }
@@ -138,21 +163,22 @@ void LinearGauge::setThermometerMode(bool thermometer)
 
 void LinearGauge::setValue(double val)
 {
-    if (std::isnan(val)) {
-        return;
+    // #151: the input is kept as it is; a NaN is shown as invalid, never as the last value
+    const bool sameInput = (std::isnan(val) && std::isnan(d_ptr->m_rawValue)) || val == d_ptr->m_rawValue;
+    d_ptr->m_rawValue = val;
+    const LinearGaugePrivate::Changes changes = d_ptr->applyInput();
+
+    if (changes.value) {
+        Q_EMIT valueChanged(d_ptr->m_value);
     }
-    if (std::isinf(val)) {
-        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
+    if (changes.state) {
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
     }
 
-    double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
-    if (qFuzzyCompare(clamped, d_ptr->m_value)) {
-        return;
+    // An out-of-range input can change the readout without changing value()
+    if (!sameInput) {
+        update();
     }
-
-    d_ptr->m_value = clamped;
-    Q_EMIT valueChanged(d_ptr->m_value);
-    update();
 }
 
 void LinearGauge::setMinimum(double min)
@@ -172,11 +198,15 @@ void LinearGauge::setRange(double min, double max)
 
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
-    d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
+    // #151: the last input is classified again against the new range
+    const LinearGaugePrivate::Changes changes = d_ptr->applyInput();
 
     invalidateCache();
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
     Q_EMIT valueChanged(d_ptr->m_value);
+    if (changes.state) {
+        Q_EMIT valueStateChanged(d_ptr->m_valueState);
+    }
     update();
 }
 
@@ -434,8 +464,11 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             QPainterPath troughPath;
             troughPath.addRoundedRect(d_ptr->m_tubeRect, tubeWidth * 0.5, tubeWidth * 0.5);
             troughPath.addEllipse(d_ptr->m_bulbCenter, d_ptr->m_bulbRadius, d_ptr->m_bulbRadius);
-            painter.drawPath(troughPath.simplified());
+            d_ptr->m_troughPath = troughPath.simplified();
+            painter.drawPath(d_ptr->m_troughPath);
         } else {
+            d_ptr->m_troughPath = QPainterPath();
+            d_ptr->m_troughPath.addRoundedRect(d_ptr->m_tubeRect, 4.0, 4.0);
             painter.drawRoundedRect(d_ptr->m_tubeRect, 4.0, 4.0);
         }
 
@@ -552,8 +585,11 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             QPainterPath troughPath;
             troughPath.addRoundedRect(d_ptr->m_tubeRect, tubeHeight * 0.5, tubeHeight * 0.5);
             troughPath.addEllipse(d_ptr->m_bulbCenter, d_ptr->m_bulbRadius, d_ptr->m_bulbRadius);
-            painter.drawPath(troughPath.simplified());
+            d_ptr->m_troughPath = troughPath.simplified();
+            painter.drawPath(d_ptr->m_troughPath);
         } else {
+            d_ptr->m_troughPath = QPainterPath();
+            d_ptr->m_troughPath.addRoundedRect(d_ptr->m_tubeRect, 4.0, 4.0);
             painter.drawRoundedRect(d_ptr->m_tubeRect, 4.0, 4.0);
         }
 
@@ -653,10 +689,22 @@ void LinearGauge::paintEvent(QPaintEvent *)
     // 1. Fast blit of cached background & scale
     painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
-    // 2. Liquid Column & Bulb Dynamic Rendering
+    // 2. Liquid Column & Bulb Dynamic Rendering (#151: none for an invalid input, whose tube is hatched)
+    const ValueState state = d_ptr->m_valueState;
+    const bool invalid = (state == ValueState::Invalid);
+    const auto readoutText = [this, state]() {
+        return internal::gaugeReadoutText(internal::inputStateOf(state), d_ptr->m_rawValue, d_ptr->m_minimum,
+                                          d_ptr->m_maximum, d_ptr->m_precision);
+    };
     QColor activeColor = determineActiveLiquidColor();
-    double factor = (d_ptr->m_maximum > d_ptr->m_minimum) ? (d_ptr->m_value - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum) : 0.0;
+    double factor = (!invalid && d_ptr->m_maximum > d_ptr->m_minimum) ? (d_ptr->m_value - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum) : 0.0;
     factor = std::clamp(factor, 0.0, 1.0);
+    if (invalid) {
+        internal::drawInvalidHatch(painter, d_ptr->m_troughPath,
+                                   d_ptr->m_orientation == Qt::Vertical ? d_ptr->m_tubeRect.width()
+                                                                        : d_ptr->m_tubeRect.height(),
+                                   d_ptr->m_scaleColor);
+    }
 
     if (d_ptr->m_orientation == Qt::Vertical) {
         double fillHeight = d_ptr->m_tubeRect.height() * factor;
@@ -666,7 +714,7 @@ void LinearGauge::paintEvent(QPaintEvent *)
                         fillHeight);
 
         // Fill bulb first if in thermometer mode
-        if (d_ptr->m_thermometerMode) {
+        if (d_ptr->m_thermometerMode && !invalid) {
             QRadialGradient bulbGrad(d_ptr->m_bulbCenter, d_ptr->m_bulbRadius);
             bulbGrad.setColorAt(0.0, activeColor.lighter(130));
             bulbGrad.setColorAt(0.7, activeColor);
@@ -705,13 +753,20 @@ void LinearGauge::paintEvent(QPaintEvent *)
         if (d_ptr->m_digitalDisplayVisible) {
             const internal::GaugeRect pod = internal::linearGaugeDisplayRect(true, width(), height());
             QRectF podRect(pod.x, pod.y, pod.w, pod.h);
-            QString txt = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit);
             QFont f = font();
             f.setPixelSize(internal::scalePixelSize(12, internal::fontScale(font(), QApplication::font())));
             f.setBold(true);
-            painter.setFont(f);
-            painter.setPen(activeColor);
-            painter.drawText(podRect, Qt::AlignCenter, txt);
+            if (state == ValueState::Valid) {
+                QString txt = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit);
+                painter.setFont(f);
+                painter.setPen(activeColor);
+                painter.drawText(podRect, Qt::AlignCenter, txt);
+            } else {
+                // #151: "---", or the input with a triangle, made smaller if needed to fit the pod
+                const QString txt = QStringLiteral("%1 %2").arg(readoutText(), d_ptr->m_unit);
+                internal::drawStateReadout(painter, podRect, f, txt, internal::inputStateOf(state),
+                                           invalid ? d_ptr->m_textColor : activeColor);
+            }
         }
     } else {
         // Horizontal orientation
@@ -721,7 +776,7 @@ void LinearGauge::paintEvent(QPaintEvent *)
                         fillWidth,
                         d_ptr->m_tubeRect.height() - 2.0);
 
-        if (d_ptr->m_thermometerMode) {
+        if (d_ptr->m_thermometerMode && !invalid) {
             QRadialGradient bulbGrad(d_ptr->m_bulbCenter, d_ptr->m_bulbRadius);
             bulbGrad.setColorAt(0.0, activeColor.lighter(130));
             bulbGrad.setColorAt(0.7, activeColor);
@@ -759,13 +814,19 @@ void LinearGauge::paintEvent(QPaintEvent *)
         if (d_ptr->m_digitalDisplayVisible) {
             const internal::GaugeRect pod = internal::linearGaugeDisplayRect(false, width(), height());
             QRectF podRect(pod.x, pod.y, pod.w, pod.h);
-            QString txt = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
             QFont f = font();
             f.setPixelSize(internal::scalePixelSize(12, internal::fontScale(font(), QApplication::font())));
             f.setBold(true);
-            painter.setFont(f);
-            painter.setPen(activeColor);
-            painter.drawText(podRect, Qt::AlignCenter, txt);
+            if (state == ValueState::Valid) {
+                QString txt = internal::formatFixed(d_ptr->m_value, d_ptr->m_precision);
+                painter.setFont(f);
+                painter.setPen(activeColor);
+                painter.drawText(podRect, Qt::AlignCenter, txt);
+            } else {
+                // #151: "---", or the input with a triangle, made smaller if needed to fit the pod
+                internal::drawStateReadout(painter, podRect, f, readoutText(), internal::inputStateOf(state),
+                                           invalid ? d_ptr->m_textColor : activeColor);
+            }
         }
     }
 }

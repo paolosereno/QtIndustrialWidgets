@@ -68,6 +68,28 @@ set_target_properties(ValueClassification PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(ValueStateDrawing OBJECT
+    internal/ValueStateDrawing.cpp
+    internal/ValueStateDrawing.h
+)
+
+target_include_directories(ValueStateDrawing
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(ValueStateDrawing
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+)
+
+set_target_properties(ValueStateDrawing PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(CircularBargraphSegments OBJECT
     internal/CircularBargraphSegments.cpp
     internal/CircularBargraphSegments.h
@@ -230,6 +252,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     CircularBargraph.cpp
     $<TARGET_OBJECTS:NumberFormat>
     $<TARGET_OBJECTS:ValueClassification>
+    $<TARGET_OBJECTS:ValueStateDrawing>
     $<TARGET_OBJECTS:M4Decimator>
     $<TARGET_OBJECTS:CircularBargraphSegments>
     $<TARGET_OBJECTS:LinearGaugeScale>

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QtIndustrialWidgets/qtindustrialwidgets_global.h>
+#include <QtIndustrialWidgets/ValueState.h>
 #include <QtWidgets/QWidget>
 #include <memory>
 #include <QtGui/QColor>
@@ -23,6 +24,17 @@ class LinearGaugePrivate;
  * LinearGauge supports both vertical and horizontal orientations, bulb thermometer or flat panel bar designs,
  * major and minor graduation scales, dynamic threshold liquid color shifts (Normal -> Warning -> Error),
  * optional gradient liquid fills, and an integrated digital readout pod.
+ *
+ * Value state (valueState(), #151): the last input is kept unclamped (rawValue()) and classified against the
+ * range; a range change classifies it again.
+ * - \c Valid: the liquid and the readout show the value.
+ * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the liquid stops at the end of the
+ *   scale and value() is the bound. The readout shows the input itself (e.g. 135 on a 0–100 scale), or ">max" /
+ *   "<min" for ±Inf, preceded by a triangle pointing up (above the range) or down (below it), painted as a shape
+ *   (it does not depend on the fonts installed), so that the state is not told by colour alone. The text is made
+ *   smaller, if needed, to fit the display of the valid values.
+ * - \c Invalid (NaN): the tube and the bulb are empty and hatched with diagonal lines in scaleColor(), the
+ *   readout shows "---" in textColor() and value() is NaN; the last valid value is never shown.
  *
  * Scale geometry, graduation ticks, and the trough background are cached in a QPixmap at the device pixel ratio,
  * rebuilt only when the size or a visual property changes; a value change does not rebuild it.
@@ -69,6 +81,8 @@ class QTINDUSTRIALWIDGETS_EXPORT LinearGauge : public QWidget
     Q_PROPERTY(QColor scaleColor READ scaleColor WRITE setScaleColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor bezelColor READ bezelColor WRITE setBezelColor NOTIFY appearanceChanged)
+    Q_PROPERTY(double rawValue READ rawValue)
+    Q_PROPERTY(QtIndustrialWidgets::ValueState valueState READ valueState NOTIFY valueStateChanged)
 
 public:
     /**
@@ -86,8 +100,15 @@ public:
     [[nodiscard]] double minimum() const;
     /** \brief Returns the maximum scale value. */
     [[nodiscard]] double maximum() const;
-    /** \brief Returns the current indicated value. */
+    /**
+     * \brief Returns the indicated value: the last input clamped to [minimum, maximum] (±Inf gives the bound),
+     * or NaN when the input is NaN (valueState() is then ValueState::Invalid).
+     */
     [[nodiscard]] double value() const;
+    /** \brief Returns the last input as it was given, unclamped (#151): the number the readout shows. */
+    [[nodiscard]] double rawValue() const;
+    /** \brief Returns the state of the last input against the range (#151). */
+    [[nodiscard]] QtIndustrialWidgets::ValueState valueState() const;
     /** \brief Returns the decimal precision for the digital readout. */
     [[nodiscard]] int precision() const;
     /** \brief Returns the measurement unit label (e.g. "°C", "mm"). */
@@ -134,13 +155,21 @@ public Q_SLOTS:
     void setOrientation(Qt::Orientation orientation);
     /** \brief Toggles bulb thermometer mode vs flat panel bar mode. */
     void setThermometerMode(bool thermometer);
-    /** \brief Sets the indicated value, automatically clamped within [minimum, maximum]. */
+    /**
+     * \brief Sets the input. value() is the input clamped within [minimum, maximum], and NaN for a NaN input;
+     * rawValue() keeps the input and valueState() classifies it (#151). valueChanged() is emitted when value()
+     * changes (once when the input becomes NaN), then valueStateChanged() when the state changes.
+     */
     void setValue(double value);
     /** \brief Sets the minimum scale value. */
     void setMinimum(double min);
     /** \brief Sets the maximum scale value. */
     void setMaximum(double max);
-    /** \brief Sets both the minimum and maximum range. */
+    /**
+     * \brief Sets both the minimum and maximum range. Non-finite bounds and min >= max are ignored. The last
+     * input is classified again against the new range (#151): 150 on 0–100 is shown at 100, and at 150 after
+     * setRange(0, 200).
+     */
     void setRange(double min, double max);
     /** \brief Sets the decimal precision for digital display readout. */
     void setPrecision(int precision);
@@ -189,6 +218,8 @@ Q_SIGNALS:
     void thresholdChanged(double warning, double error);
     /** \brief Emitted when visual appearance properties change. */
     void appearanceChanged();
+    /** \brief Emitted when valueState() changes, after valueChanged() when both change. */
+    void valueStateChanged(QtIndustrialWidgets::ValueState state);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

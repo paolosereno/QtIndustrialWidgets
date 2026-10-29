@@ -121,6 +121,21 @@ QWidget *linearGaugeThermometer(Theme theme)
     return g;
 }
 
+QWidget *linearGaugeInvalid(Theme theme)
+{
+    auto *g = new LinearGauge;
+    g->setOrientation(Qt::Vertical);
+    g->setThermometerMode(true);
+    g->setRange(0.0, 120.0);
+    g->setWarningThreshold(95.0);
+    g->setErrorThreshold(108.0);
+    g->setPrecision(1);
+    g->setUnit(QStringLiteral("°C"));
+    g->setValue(std::numeric_limits<double>::quiet_NaN()); // sensor fault: empty, hatched tube, "---"
+    styleLinearGauge(g, theme);
+    return g;
+}
+
 QWidget *linearGaugeHorizontal(Theme theme)
 {
     auto *g = new LinearGauge;
@@ -472,6 +487,7 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("LevelMeter"), QStringLiteral("stereo-db"), QSize(170, 320), levelMeterStereoDb},
         {QStringLiteral("LinearGauge"), QStringLiteral("thermometer"), QSize(120, 320), linearGaugeThermometer},
         {QStringLiteral("LinearGauge"), QStringLiteral("horizontal"), QSize(420, 110), linearGaugeHorizontal},
+        {QStringLiteral("LinearGauge"), QStringLiteral("invalid"), QSize(120, 320), linearGaugeInvalid},
         {QStringLiteral("RadialGauge"), QStringLiteral("warning"), QSize(300, 300), radialGaugeWarning},
         {QStringLiteral("RadialGauge"), QStringLiteral("invalid"), QSize(300, 300), radialGaugeInvalid},
         {QStringLiteral("SevenSegmentDisplay"), QStringLiteral("value"), QSize(300, 110), sevenSegmentValue},
