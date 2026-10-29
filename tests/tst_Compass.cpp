@@ -150,6 +150,8 @@ private Q_SLOTS:
     void bugDragOnInvalidHeadingUpUsesTheCardAtNorth();
     void flagVisibleAtMinimumSize_data();
     void flagVisibleAtMinimumSize();
+    void valueStateOnlyValidOrInvalid();
+    void valueStateSignalOrder();
 };
 
 void tst_Compass::initTestCase()
@@ -634,6 +636,51 @@ void tst_Compass::flagVisibleAtMinimumSize()
     const QImage img = renderCompass(c);
     const QString flag = flagError(img, dialOf(c, img));
     QVERIFY2(flag.isEmpty(), qPrintable(QStringLiteral("%1x%2: ").arg(c.width()).arg(c.height()) + flag));
+}
+
+// #151: a heading has no range: every finite angle is Valid, NaN and ±Inf are Invalid; never Over/Underrange
+void tst_Compass::valueStateOnlyValidOrInvalid()
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    Compass c;
+    QCOMPARE(c.valueState(), ValueState::Valid);
+    struct Step {
+        double input;
+        ValueState state;
+    };
+    const Step steps[] = {
+        {720.5, ValueState::Valid}, {-30.0, ValueState::Valid}, {kNaN, ValueState::Invalid}, {1e9, ValueState::Valid},
+        {inf, ValueState::Invalid}, {359.9, ValueState::Valid}, {-inf, ValueState::Invalid}, {0.0, ValueState::Valid},
+    };
+    for (const Step &step : steps) {
+        c.setHeading(step.input);
+        QVERIFY2(c.valueState() == step.state, qPrintable(QStringLiteral("input %1").arg(step.input)));
+        QCOMPARE(std::isnan(c.heading()), step.state == ValueState::Invalid);
+    }
+    QCOMPARE(c.property("valueState").value<ValueState>(), ValueState::Valid);
+}
+
+void tst_Compass::valueStateSignalOrder()
+{
+    Compass c;
+    c.setHeading(90.0);
+    QStringList events;
+    connect(&c, &Compass::headingChanged, &c, [&events](double h) { events << QStringLiteral("heading %1").arg(h); });
+    connect(&c, &Compass::valueStateChanged, &c,
+            [&events](ValueState st) { events << QStringLiteral("state %1").arg(static_cast<int>(st)); });
+
+    c.setHeading(kNaN);
+    QCOMPARE(events, QStringList({QStringLiteral("heading nan"), QStringLiteral("state 3")}));
+    events.clear();
+    c.setHeading(std::numeric_limits<double>::infinity());
+    QVERIFY(events.isEmpty());
+
+    // Back to the heading held before: still a change, since heading() was NaN
+    c.setHeading(90.0);
+    QCOMPARE(events, QStringList({QStringLiteral("heading 90"), QStringLiteral("state 0")}));
+    events.clear();
+    c.setHeading(450.0);
+    QVERIFY(events.isEmpty());
 }
 
 QTEST_MAIN(tst_Compass)
