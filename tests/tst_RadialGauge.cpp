@@ -8,6 +8,8 @@
 #include "FontTestUtils.h"
 
 #include <memory>
+#include <QtGui/QFontDatabase>
+#include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
@@ -17,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <limits>
+#include <optional>
 
 #include "TextInkTestUtils.h"
 #include "internal/LinearGaugeScale.h"
@@ -202,6 +205,70 @@ QRect readoutInk(const QImage &image, const QRect &box)
     return boundingBox(ink);
 }
 
+// The readout of an out-of-range input holds one more ink group than the same text read as a valid value:
+// a triangle with one flat side and the other narrowing to the apex. With \a font set on both gauges
+// when given
+void checkOutOfRangeMark(const QFont *font)
+{
+    struct Case {
+        double minimum;
+        double maximum;
+        double input;
+        bool up;
+    };
+    const Case cases[] = {{0.0, 100.0, 150.0, true}, {0.0, 100.0, -50.0, false}};
+    for (const Case &c : cases) {
+        RadialGauge outOfRange;
+        prepareForReadout(outOfRange);
+        if (font) {
+            outOfRange.setFont(*font);
+        }
+        outOfRange.setValue(50.0);
+        const QRect box = displayBox(outOfRange);
+        outOfRange.setValue(c.input);
+
+        // The same text read as a valid value, on a range that holds it
+        RadialGauge valid;
+        prepareForReadout(valid);
+        if (font) {
+            valid.setFont(*font);
+        }
+        valid.setRange(std::min(c.minimum, c.input), std::max(c.maximum, c.input));
+        valid.setValue(c.input);
+        const QRect validBox = displayBox(valid);
+
+        const QVector<InkGroup> marked = readoutInkGroups(renderGauge(outOfRange), box);
+        const QVector<InkGroup> plain = readoutInkGroups(renderGauge(valid), validBox);
+        const QString where = QStringLiteral("input %1").arg(c.input);
+        QVERIFY2(marked.size() == plain.size() + 1,
+                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text").arg(marked.size()).arg(plain.size())));
+
+        // The triangle: one flat side, and the other narrowing to the apex
+        const InkGroup &tri = marked.first();
+        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
+        const int flat = c.up ? spread(tri.bottom) : spread(tri.top);
+        const int pointed = c.up ? spread(tri.top) : spread(tri.bottom);
+        QVERIFY2(flat <= 1 && pointed >= 2,
+                 qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
+    }
+}
+
+// A font that has no glyph for U+25B2 (black up-pointing triangle) and does not fall back to fonts that do:
+// a mark drawn as that character would come out as a missing-glyph box, or not at all
+std::optional<QFont> fontWithoutTriangleGlyph()
+{
+    QStringList families{QApplication::font().family()};
+    families += QFontDatabase::families();
+    for (const QString &family : families) {
+        QFont f(family);
+        f.setStyleStrategy(QFont::NoFontMerging);
+        if (!QFontMetricsF(f).inFontUcs4(0x25B2) && !QFontMetricsF(f).inFontUcs4(0x25BC)) {
+            return f;
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 class tst_RadialGauge : public QObject
@@ -243,6 +310,7 @@ private Q_SLOTS:
     void invalidInputKeepsZoneSignals();
     void readoutTextOfEveryState();
     void outOfRangeMarkIsAShape();
+    void outOfRangeMarkWithoutTheGlyphInTheFont();
     void longOutOfRangeReadoutStaysInThePod();
 };
 
@@ -1125,41 +1193,17 @@ void tst_RadialGauge::readoutTextOfEveryState()
 // group than the same text read as a valid value, pointing up above the range and down below it
 void tst_RadialGauge::outOfRangeMarkIsAShape()
 {
-    struct Case {
-        double minimum;
-        double maximum;
-        double input;
-        bool up;
-    };
-    const Case cases[] = {{0.0, 100.0, 150.0, true}, {0.0, 100.0, -50.0, false}};
-    for (const Case &c : cases) {
-        RadialGauge outOfRange;
-        prepareForReadout(outOfRange);
-        outOfRange.setValue(50.0);
-        const QRect box = displayBox(outOfRange);
-        outOfRange.setValue(c.input);
+    checkOutOfRangeMark(nullptr);
+}
 
-        // The same text read as a valid value, on a range that holds it
-        RadialGauge valid;
-        prepareForReadout(valid);
-        valid.setRange(std::min(c.minimum, c.input), std::max(c.maximum, c.input));
-        valid.setValue(c.input);
-        const QRect validBox = displayBox(valid);
-
-        const QVector<InkGroup> marked = readoutInkGroups(renderGauge(outOfRange), box);
-        const QVector<InkGroup> plain = readoutInkGroups(renderGauge(valid), validBox);
-        const QString where = QStringLiteral("input %1").arg(c.input);
-        QVERIFY2(marked.size() == plain.size() + 1,
-                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text").arg(marked.size()).arg(plain.size())));
-
-        // The triangle: one flat side, and the other narrowing to the apex
-        const InkGroup &tri = marked.first();
-        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
-        const int flat = c.up ? spread(tri.bottom) : spread(tri.top);
-        const int pointed = c.up ? spread(tri.top) : spread(tri.bottom);
-        QVERIFY2(flat <= 1 && pointed >= 2,
-                 qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
-    }
+// #151: the mark is a painted shape, so a widget font without the triangle characters still shows it
+void tst_RadialGauge::outOfRangeMarkWithoutTheGlyphInTheFont()
+{
+    const std::optional<QFont> font = fontWithoutTriangleGlyph();
+    QVERIFY2(font, "no installed font lacks U+25B2 and U+25BC");
+    QVERIFY(!QFontMetricsF(*font).inFontUcs4(0x25B2));
+    qInfo("font without the triangle glyphs: %s", qPrintable(QFontInfo(*font).family()));
+    checkOutOfRangeMark(&*font);
 }
 
 // #151: an out-of-range value wider than the pod's valid values is drawn smaller, inside the pod
