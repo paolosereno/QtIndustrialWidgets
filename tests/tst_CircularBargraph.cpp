@@ -9,6 +9,7 @@
 
 #include <memory>
 #include "internal/CircularBargraphSegments.h"
+#include <QtCore/QHash>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -367,33 +368,65 @@ QFont sevenPointValueFont(const QWidget &w)
     return f;
 }
 
-// Width in device px of the ink of \a text drawn in \a font, on an image with the dpi and the device pixel ratio
-// of \a w: the reference the readout is measured against
-int inkWidth(const QString &text, const QFont &font, const QWidget &w, qreal dpr)
+// The ink box, in device px, of a readout line drawn at 7 pt: the triangle (when \a triangle; 0.9 x the cap height,
+// 0.35 of it before the text, as the gauges draw it) and \a text. It is drawn as the widget draws it: same dpi and
+// device pixel ratio as \a w, on an opaque background (so with the same antialiasing, subpixel at DPR 1), and the
+// smallest width and height over all the sub-pixel positions are returned: the edges of a shape cover one column
+// more or less depending on where it falls (in x and in y together: a faint bottom row hides faint side columns), and
+// the raster engine places shapes and glyphs at 1/64 px, so the 64 x 64 offsets give the exact minimum. The
+// reference the readout is measured against, without any slack
+QSize sevenPointLineInk(const QString &text, bool triangle, const QWidget &w, qreal dpr)
 {
-    QImage img(QSize(400, 100) * dpr, QImage::Format_ARGB32);
-    img.setDevicePixelRatio(dpr);
-    img.setDotsPerMeterX(qRound(w.logicalDpiX() / 0.0254));
-    img.setDotsPerMeterY(qRound(w.logicalDpiY() / 0.0254));
-    img.fill(Qt::transparent);
-    {
-        QPainter p(&img);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setFont(font);
-        p.setPen(Qt::white);
-        p.drawText(QPointF(20.0, 60.0), text);
+    static QHash<QString, QSize> cache; // one font and one device pixel ratio per test run
+    const QString key = (triangle ? QStringLiteral("^") : QStringLiteral("_")) + text;
+    if (cache.contains(key)) {
+        return cache.value(key);
     }
-    int left = img.width();
-    int right = -1;
-    for (int y = 0; y < img.height(); ++y) {
-        for (int x = 0; x < img.width(); ++x) {
-            if (qAlpha(img.pixel(x, y)) != 0) {
-                left = std::min(left, x);
-                right = std::max(right, x);
+    const QFont font = sevenPointValueFont(w);
+    const QFontMetricsF fm(font, &w);
+    const double triW = triangle ? fm.capHeight() * 0.9 : 0.0;
+    const double gap = (triangle && !text.isEmpty()) ? triW * 0.35 : 0.0;
+    const QColor background(28, 32, 40);
+    QSize smallest(std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    const QSize area(static_cast<int>(std::ceil(triW + gap + fm.horizontalAdvance(text) + 8.0)),
+                     static_cast<int>(std::ceil(fm.height() + 8.0))); // logical px
+    for (int step = 0; step < 64 * 64; ++step) {
+        const QPointF offset((step % 64) / 64.0 / dpr, (step / 64) / 64.0 / dpr); // logical px
+        QImage img(area * dpr, QImage::Format_RGB32);
+        img.setDevicePixelRatio(dpr);
+        img.setDotsPerMeterX(qRound(w.logicalDpiX() / 0.0254));
+        img.setDotsPerMeterY(qRound(w.logicalDpiY() / 0.0254));
+        img.fill(background);
+        {
+            QPainter p(&img);
+            p.setRenderHint(QPainter::Antialiasing);
+            const QPointF origin = QPointF(4.0, 4.0 + fm.ascent()) + offset; // left end, baseline
+            if (triangle) {
+                const double midY = origin.y() - fm.capHeight() * 0.5;
+                QPolygonF tri;
+                tri << QPointF(origin.x(), midY + triW * 0.5) << QPointF(origin.x() + triW, midY + triW * 0.5)
+                    << QPointF(origin.x() + triW * 0.5, midY - triW * 0.5);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(255, 0, 255));
+                p.drawPolygon(tri);
+            }
+            p.setFont(font);
+            p.setPen(QColor(255, 0, 255));
+            p.drawText(origin + QPointF(triW + gap, 0.0), text);
+        }
+        QRect box;
+        for (int y = 0; y < img.height(); ++y) {
+            const auto *row = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+            for (int x = 0; x < img.width(); ++x) {
+                if (row[x] != background.rgb()) {
+                    box |= QRect(x, y, 1, 1);
+                }
             }
         }
+        smallest = smallest.boundedTo(box.size());
     }
-    return right < 0 ? 0 : right - left + 1;
+    cache.insert(key, smallest);
+    return smallest;
 }
 } // namespace
 
@@ -1379,8 +1412,8 @@ void tst_CircularBargraph::readoutNeverBelowSevenPoints_data()
 // #167: the value line is never drawn below 7 pt nor cut: when the number is shown, its line (triangle included) is
 // at least as wide as the whole text at 7 pt, so a smaller font, a truncated value or fewer decimals fail. When
 // the number is left out (out of range, little room) the triangle alone is still at least the 7 pt one, 0.9 x the
-// cap height wide. Invalid always shows the whole "---". The text width at 7 pt is measured from the same text drawn
-// at 7 pt; the 1 px slack covers the rounding of the triangle to pixels
+// cap height wide. Invalid always shows the whole "---". The 7 pt references are the same lines drawn at 7 pt
+// (sevenPointLineInk())
 void tst_CircularBargraph::readoutNeverBelowSevenPoints()
 {
     QFETCH(int, side);
@@ -1404,21 +1437,20 @@ void tst_CircularBargraph::readoutNeverBelowSevenPoints()
         : (std::isinf(value) ? (value > 0 ? QLatin1Char('>') + QString::number(maximum, 'f', precision)
                                           : QLatin1Char('<') + QString::number(0.0, 'f', precision))
                              : QString::number(value, 'f', precision));
-    const QFontMetricsF fm(sevenPointValueFont(b), &b);
-    const double triW = outOfRange ? fm.capHeight() * 0.9 : 0.0;
-    const double textW = inkWidth(text, sevenPointValueFont(b), b, dpr) / dpr;
-    const double fullW = (triW + (outOfRange ? triW * 0.35 : 0.0) + textW) * dpr;
+    const QSize full = sevenPointLineInk(text, outOfRange, b, dpr);
     const QRect line = splitBands(ink).value;
-    if (line.width() >= fullW - 1.0) {
+    if (line.width() >= full.width()) {
         return; // the whole value line, at 7 pt or more
     }
-    QVERIFY2(outOfRange, qPrintable(QStringLiteral("value line %1 px wide, the text \"%2\" at 7 pt needs %3 px")
-                                        .arg(line.width()).arg(text).arg(fullW, 0, 'f', 1)));
-    // The number is left out: the triangle alone, not narrower than at 7 pt and narrower than the text
-    QVERIFY2(line.width() >= triW * dpr - 1.0 && line.height() >= triW * dpr - 1.0 && line.width() < textW * dpr,
-             qPrintable(QStringLiteral("value line %1 x %2 px: neither the whole text at 7 pt (%3 px) nor the 7 pt "
-                                       "triangle (%4 px)")
-                            .arg(line.width()).arg(line.height()).arg(fullW, 0, 'f', 1).arg(triW * dpr, 0, 'f', 1)));
+    QVERIFY2(outOfRange, qPrintable(QStringLiteral("value line %1 px wide, \"%2\" at 7 pt is %3 px wide")
+                                        .arg(line.width()).arg(text).arg(full.width())));
+    // The number is left out: the triangle alone, not smaller than at 7 pt and narrower than the whole line
+    const QSize tri = sevenPointLineInk(QString(), true, b, dpr);
+    QVERIFY2(line.width() >= tri.width() && line.height() >= tri.height() && line.width() < full.width(),
+             qPrintable(QStringLiteral("value line %1 x %2 px: neither the whole line at 7 pt (%3 px wide) nor the "
+                                       "7 pt triangle (%4 x %5 px)")
+                            .arg(line.width()).arg(line.height()).arg(full.width()).arg(tri.width())
+                            .arg(tri.height())));
 }
 
 // #167: minimumSizeHint() is the smallest size at which "---" and the triangle fit in the pod at 7 pt, from the
