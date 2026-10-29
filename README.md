@@ -181,3 +181,10 @@ following the [Code of Conduct](https://github.com/paolosereno/QtIndustrialWidge
 
 [MIT](LICENSE) (SPDX: `MIT`, full text in [LICENSES/MIT.txt](LICENSES/MIT.txt)). Every file carries SPDX copyright
 and license information, as the [REUSE specification](https://reuse.software/) requires; `reuse lint` checks it in CI.
+
+Two files are under other licenses:
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md): the Contributor Covenant 2.1, `CC-BY-4.0`
+  ([LICENSES/CC-BY-4.0.txt](LICENSES/CC-BY-4.0.txt)), declared in [REUSE.toml](REUSE.toml).
+- [`tests/fonts/QiwReadoutTest-Bold.ttf`](tests/fonts/README.md): a test font reduced from Inter 4.1, `OFL-1.1`
+  ([LICENSES/OFL-1.1.txt](LICENSES/OFL-1.1.txt)), declared in its `.license` file. It is used only by the tests and
+  is not installed.
