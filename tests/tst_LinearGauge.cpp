@@ -1011,6 +1011,10 @@ void tst_LinearGauge::verticalEndLabelStopsAtTheDisplay()
     QVERIFY2(labels.first().start >= border,
              qPrintable(QStringLiteral("top label ink at %1 px, display border at %2 px").arg(labels.first().start).arg(border)));
 
+    // The guard is at work: the ink stops at the clearance, 2 px from the display rectangle
+    const double clearance = labels.first().start - (pod.y + pod.h);
+    QVERIFY2(std::abs(clearance - 2.0) < 0.01, qPrintable(QStringLiteral("ink %1 px from the display").arg(clearance, 0, 'f', 2)));
+
     // Only as far as needed: the shift of the label from its place on the tick, measured against
     // the interior labels, is at most what its ink needs to clear the border, plus 2 px
     const QVector<Run> ticks = runsAlong(magenta, Qt::Vertical, 0.0, isTickPixel);
