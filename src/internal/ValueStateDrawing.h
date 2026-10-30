@@ -25,10 +25,11 @@ namespace internal {
  * Overrange and Underrange: a triangle pointing up or down, painted as a filled polygon (not a font character)
  * in \a color, before the text and centred on the digits. The pod is sized for the valid values, so \a font
  * (with its pixel size set) is made smaller, down to 6 px, until the triangle and the text fit the width of
- * \a podRect less a margin of max(2, 0.12 × its shorter side) on each side.
+ * \a podRect less a margin of max(2, 0.12 × its shorter side) on each side. With \a minimumPx above 0 the font
+ * stops there instead, and an out-of-range text that still does not fit is left out: the triangle stays (#60).
  */
 void drawStateReadout(QPainter &painter, const QRectF &podRect, QFont font, const QString &text, InputState state,
-                      const QColor &color);
+                      const QColor &color, int minimumPx = 0);
 
 /**
  * \brief Hatches \a area with diagonal lines in \a color, #151: the mark of an invalid (NaN) input in a bar.

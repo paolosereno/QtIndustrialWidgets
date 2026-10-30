@@ -21,6 +21,10 @@
 
 namespace QtIndustrialWidgets {
 
+namespace {
+constexpr int kMinimumSide = 90; // floor of minimumSizeHint()
+} // namespace
+
 class RadialGaugePrivate {
 public:
     double m_minimum{0.0};
@@ -61,6 +65,11 @@ public:
     // Digital display geometry, computed with the static scale (see internal/RadialGaugeLayout.h)
     QRectF m_podRect;
     int m_valueFontPx{8};
+    bool m_valueShown{true};
+
+    // minimumSizeHint(), computed once per configuration (0: to be computed)
+    int m_minimumSide{0};
+    double m_minimumSideDpi{0.0};
 
     // Threshold state tracking
     bool m_wasWarning{false};
@@ -72,6 +81,27 @@ public:
     };
     // Recomputes value and state from m_rawValue and the range. Emits nothing.
     Changes applyInput();
+
+    // Scale labels and digital display at a size: the same for renderStaticScale() and minimumSizeHint()
+    struct ScaleLayout {
+        QFont labelFont;
+        QFont unitFont;
+        std::vector<QString> labelTexts;     // One for each major tick
+        internal::RadialScaleLabels labels;  // The labels that keep the minimum gap
+        std::vector<internal::LayoutRect> labelRects; // Boxes of labels.drawn
+        internal::PodLayout pod;             // Empty without the digital display
+    };
+    ScaleLayout scaleLayout(double width, double height, const QFont &widgetFont, double logicalDpi) const;
+    double angleOf(double value) const;
+    // Both ends of the scale and the state indicator at 7 pt are in place at this side
+    bool sideKeepsScaleEnds(int side, bool lastLabelRequired, const QFont &widgetFont, double logicalDpi) const;
+    int computeMinimumSide(int ceiling, const QFont &widgetFont, double logicalDpi) const;
+    // To call when what minimumSizeHint() depends on changes
+    void minimumSizeChanged(QWidget *widget)
+    {
+        m_minimumSide = 0;
+        widget->updateGeometry();
+    }
 };
 
 RadialGaugePrivate::Changes RadialGaugePrivate::applyInput()
@@ -133,7 +163,12 @@ QSize RadialGauge::sizeHint() const
 
 QSize RadialGauge::minimumSizeHint() const
 {
-    return QSize(90, 90);
+    const double dpi = logicalDpiY();
+    if (d_ptr->m_minimumSide == 0 || d_ptr->m_minimumSideDpi != dpi) {
+        d_ptr->m_minimumSide = d_ptr->computeMinimumSide(sizeHint().width(), font(), dpi);
+        d_ptr->m_minimumSideDpi = dpi;
+    }
+    return QSize(d_ptr->m_minimumSide, d_ptr->m_minimumSide);
 }
 
 void RadialGauge::setValue(double val)
@@ -201,6 +236,7 @@ void RadialGauge::setRange(double min, double max)
     const RadialGaugePrivate::Changes changes = d_ptr->applyInput();
 
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
     Q_EMIT valueChanged(d_ptr->m_value);
     if (changes.state) {
@@ -214,6 +250,7 @@ void RadialGauge::setPrecision(int precision)
     if (d_ptr->m_precision == precision) return;
     d_ptr->m_precision = std::max(0, precision);
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -223,6 +260,7 @@ void RadialGauge::setUnit(const QString &unit)
     if (d_ptr->m_unit == unit) return;
     d_ptr->m_unit = unit;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -232,6 +270,7 @@ void RadialGauge::setStartAngle(double angle)
     if (!std::isfinite(angle) || qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
     d_ptr->m_startAngle = angle;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -241,6 +280,7 @@ void RadialGauge::setSpanAngle(double span)
     if (!std::isfinite(span) || span <= 0.0 || qFuzzyCompare(d_ptr->m_spanAngle, span)) return;
     d_ptr->m_spanAngle = span;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -250,6 +290,7 @@ void RadialGauge::setMajorTicks(int count)
     if (d_ptr->m_majorTicks == count || count < 1) return;
     d_ptr->m_majorTicks = count;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -297,6 +338,7 @@ void RadialGauge::setDigitalDisplayVisible(bool visible)
     if (d_ptr->m_digitalDisplayVisible == visible) return;
     d_ptr->m_digitalDisplayVisible = visible;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -396,19 +438,146 @@ void RadialGauge::changeEvent(QEvent *event)
     // #51: the cached text uses the widget font, so a font change invalidates it too
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
         invalidateCache();
+        if (event->type() == QEvent::FontChange) {
+            d_ptr->minimumSizeChanged(this);
+        }
         update();
     }
     QWidget::changeEvent(event);
 }
 
+double RadialGaugePrivate::angleOf(double value) const
+{
+    if (m_maximum <= m_minimum) {
+        return m_startAngle;
+    }
+    double factor = (value - m_minimum) / (m_maximum - m_minimum);
+    factor = std::clamp(factor, 0.0, 1.0);
+    return m_startAngle + factor * m_spanAngle;
+}
+
+RadialGaugePrivate::ScaleLayout RadialGaugePrivate::scaleLayout(double width, double height, const QFont &widgetFont,
+                                                                double logicalDpi) const
+{
+    const QPointF center(width * 0.5, height * 0.5);
+    const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(std::min(width, height));
+    const double radius = geo.radius;
+
+    ScaleLayout out;
+    out.labelFont = widgetFont; // #51: the widget font, not the application font of the pixmap painter
+    out.labelFont.setPixelSize(geo.labelFontPx);
+    out.labelFont.setBold(true);
+
+    const QFontMetricsF fm(out.labelFont);
+    const double valueRange = m_maximum - m_minimum;
+    std::vector<internal::LayoutRect> allLabelRects;
+    for (int i = 0; i <= m_majorTicks; ++i) {
+        const double frac = static_cast<double>(i) / m_majorTicks;
+        const double val = m_minimum + frac * valueRange;
+        const double rad = (angleOf(val) - 90.0) * M_PI / 180.0;
+
+        // Label box, centred at the label radius
+        QString labelStr = internal::scaleLabelText(val, m_precision);
+        const QRectF textRect = fm.boundingRect(labelStr);
+        const QPointF labelCenter(center.x() + geo.labelRadius * std::cos(rad), center.y() + geo.labelRadius * std::sin(rad));
+        out.labelTexts.push_back(labelStr);
+        allLabelRects.push_back({labelCenter.x() - textRect.width() * 0.5, labelCenter.y() - textRect.height() * 0.5,
+                                 textRect.width(), textRect.height()});
+    }
+
+    // Labels: every k-th one, so that the drawn labels keep the LinearGauge minimum gap (#50);
+    // all ticks are drawn by renderStaticScale()
+    out.labels = internal::layoutRadialScaleLabels(allLabelRects, internal::scaleLabelMinGap(fm.height()));
+    for (int i : out.labels.drawn) {
+        out.labelRects.push_back(allLabelRects[static_cast<size_t>(i)]);
+    }
+
+    // Digital display (recessed pod below pivot), sized and placed clear of the scale labels and of
+    // the scale itself: at its preferred place or below the labels, whichever gives the larger value
+    // font, or as a compact pod. The value has precedence over the labels (#43): those the pod would
+    // cut are not drawn. The font is never below 7 pt: without room the unit goes first, then the
+    // number, never the state indicator (#60)
+    if (m_digitalDisplayVisible) {
+        const double pad = std::max(3.0, radius * 0.04);
+        const int minimumValuePx = std::max(internal::minimumReadoutPixelSize(logicalDpi), geo.labelFontPx);
+        const int preferredValuePx = std::max(minimumValuePx, static_cast<int>(radius * 0.15));
+        const QString minText = internal::formatFixed(m_minimum, m_precision);
+        const QString maxText = internal::formatFixed(m_maximum, m_precision);
+        QFont valFont = widgetFont;
+        valFont.setBold(true);
+        auto valueWidth = [&](int px) {
+            valFont.setPixelSize(px);
+            const QFontMetricsF vfm(valFont);
+            return std::max(vfm.horizontalAdvance(minText), vfm.horizontalAdvance(maxText));
+        };
+        auto valueHeight = [&](int px) {
+            valFont.setPixelSize(px);
+            return QFontMetricsF(valFont).height();
+        };
+
+        out.unitFont = out.labelFont;
+        out.unitFont.setPixelSize(std::max(7, static_cast<int>(radius * 0.07)));
+        out.unitFont.setBold(false);
+
+        internal::PodLayoutInput in;
+        in.centerX = center.x();
+        in.centerY = center.y();
+        in.radius = radius;
+        in.labelRects = out.labelRects;
+        in.unitWidth = m_unit.isEmpty() ? 0.0 : QFontMetricsF(out.unitFont).horizontalAdvance(m_unit);
+        in.padding = pad;
+        in.preferredFontPx = preferredValuePx;
+        in.minimumFontPx = minimumValuePx;
+        in.valueWidth = valueWidth;
+        in.valueHeight = valueHeight;
+        valFont.setPixelSize(minimumValuePx);
+        const QFontMetricsF indicatorMetrics(valFont);
+        in.indicatorWidth = std::max(indicatorMetrics.horizontalAdvance(QStringLiteral("---")), indicatorMetrics.capHeight());
+        in.scaleInnerRadius = geo.majorTickInner - internal::podLabelMargin(radius);
+        in.scaleStartAngle = m_startAngle;
+        in.scaleSpanAngle = m_spanAngle;
+        out.pod = internal::layoutDigitalPod(in);
+    }
+    return out;
+}
+
+bool RadialGaugePrivate::sideKeepsScaleEnds(int side, bool lastLabelRequired, const QFont &widgetFont,
+                                            double logicalDpi) const
+{
+    const ScaleLayout layout = scaleLayout(side, side, widgetFont, logicalDpi);
+    if (m_digitalDisplayVisible && !layout.pod.clearOfScale) {
+        return false;
+    }
+    auto shown = [&](int label) {
+        const auto drawn = std::find(layout.labels.drawn.begin(), layout.labels.drawn.end(), label);
+        const int slot = static_cast<int>(drawn - layout.labels.drawn.begin());
+        const std::vector<int> &hidden = layout.pod.hiddenLabels;
+        return drawn != layout.labels.drawn.end() && std::find(hidden.begin(), hidden.end(), slot) == hidden.end();
+    };
+    return shown(0) && (!lastLabelRequired || shown(m_majorTicks));
+}
+
+int RadialGaugePrivate::computeMinimumSide(int ceiling, const QFont &widgetFont, double logicalDpi) const
+{
+    // Ends that lie on each other at the preferred size never both fit (#60, part b): the first one is drawn
+    const std::vector<int> &drawn = scaleLayout(ceiling, ceiling, widgetFont, logicalDpi).labels.drawn;
+    const bool lastLabelRequired = std::find(drawn.begin(), drawn.end(), m_majorTicks) != drawn.end();
+
+    // From the top, since a larger side is not always better: the labels grow in steps. The whole
+    // range from the result up keeps the ends, and the ceiling is returned even if it does not
+    if (!sideKeepsScaleEnds(ceiling, lastLabelRequired, widgetFont, logicalDpi)) {
+        return ceiling;
+    }
+    int side = ceiling;
+    while (side > kMinimumSide && sideKeepsScaleEnds(side - 1, lastLabelRequired, widgetFont, logicalDpi)) {
+        --side;
+    }
+    return side;
+}
+
 double RadialGauge::valueToAngle(double val) const
 {
-    if (d_ptr->m_maximum <= d_ptr->m_minimum) {
-        return d_ptr->m_startAngle;
-    }
-    double factor = (val - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
-    factor = std::clamp(factor, 0.0, 1.0);
-    return d_ptr->m_startAngle + factor * d_ptr->m_spanAngle;
+    return d_ptr->angleOf(val);
 }
 
 void RadialGauge::renderStaticScale(const QSize &targetSize)
@@ -508,7 +677,6 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     const double tickOuter = geo.tickOuter;
     const double majorTickInner = geo.majorTickInner;
     const double minorTickInner = geo.minorTickInner;
-    const double labelRadius = geo.labelRadius;
 
     int totalMinorDivisions = d_ptr->m_majorTicks * (d_ptr->m_minorTicks + 1);
     double valueRange = d_ptr->m_maximum - d_ptr->m_minimum;
@@ -533,17 +701,12 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         }
     }
 
-    // Major ticks and labels font setup
-    QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
-    font.setPixelSize(geo.labelFontPx);
-    font.setBold(true);
-    painter.setFont(font);
+    // Major ticks; labels and digital display as laid out by scaleLayout()
+    const RadialGaugePrivate::ScaleLayout scale = d_ptr->scaleLayout(w, h, this->font(), logicalDpiY());
+    const internal::PodLayout &layout = scale.pod;
 
     QPen majorPen(d_ptr->m_scaleColor, std::max(1.8, radius * 0.022), Qt::SolidLine, Qt::RoundCap);
-    const QFontMetricsF fm(font);
-    std::vector<QString> labelTexts;
-    std::vector<internal::LayoutRect> allLabelRects;
-
+    painter.setPen(majorPen);
     for (int i = 0; i <= d_ptr->m_majorTicks; ++i) {
         double frac = static_cast<double>(i) / d_ptr->m_majorTicks;
         double val = d_ptr->m_minimum + frac * valueRange;
@@ -552,77 +715,29 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
         double cosR = std::cos(rad);
         double sinR = std::sin(rad);
 
-        // Major tick mark
-        painter.setPen(majorPen);
         QPointF p1(center.x() + majorTickInner * cosR, center.y() + majorTickInner * sinR);
         QPointF p2(center.x() + tickOuter * cosR, center.y() + tickOuter * sinR);
         painter.drawLine(p1, p2);
-
-        // Label box, centred at the label radius
-        QString labelStr = internal::scaleLabelText(val, d_ptr->m_precision);
-        QRectF textRect = fm.boundingRect(labelStr);
-        QPointF labelCenter(center.x() + labelRadius * cosR, center.y() + labelRadius * sinR);
-        labelTexts.push_back(labelStr);
-        allLabelRects.push_back({labelCenter.x() - textRect.width() * 0.5, labelCenter.y() - textRect.height() * 0.5,
-                                 textRect.width(), textRect.height()});
     }
 
-    // Labels: every k-th one, so that the drawn labels keep the LinearGauge minimum gap (#50);
-    // all ticks are drawn above
-    const internal::RadialScaleLabels drawnLabels =
-        internal::layoutRadialScaleLabels(allLabelRects, internal::scaleLabelMinGap(fm.height()));
-    std::vector<internal::LayoutRect> labelRects;
+    painter.setFont(scale.labelFont);
     painter.setPen(d_ptr->m_textColor);
-    for (int i : drawnLabels.drawn) {
-        const internal::LayoutRect &r = allLabelRects[static_cast<size_t>(i)];
+    for (size_t i = 0; i < scale.labels.drawn.size(); ++i) {
+        if (std::find(layout.hiddenLabels.begin(), layout.hiddenLabels.end(), static_cast<int>(i)) != layout.hiddenLabels.end()) {
+            continue;
+        }
+        const internal::LayoutRect &r = scale.labelRects[i];
         // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
         // the rectangle only positions the label
-        painter.drawText(QRectF(r.x, r.y, r.w, r.h), Qt::AlignCenter | Qt::TextDontClip, labelTexts[static_cast<size_t>(i)]);
-        labelRects.push_back(r);
+        painter.drawText(QRectF(r.x, r.y, r.w, r.h), Qt::AlignCenter | Qt::TextDontClip,
+                         scale.labelTexts[static_cast<size_t>(scale.labels.drawn[i])]);
     }
 
-    // 4. Digital Display Background & Unit (Recessed pod below pivot), sized and placed clear of
-    //    the scale labels: at its preferred place or below the labels, whichever gives the larger
-    //    value font (down to the label font). The value has precedence: at that font the pod grows
-    //    to hold it whole, even over a label (#43)
     if (d_ptr->m_digitalDisplayVisible) {
-        const double pad = std::max(3.0, radius * 0.04);
-        const int preferredValuePx = std::max(8, static_cast<int>(radius * 0.15));
-        const int minimumValuePx = std::max(8, geo.labelFontPx);
-        const QString minText = internal::formatFixed(d_ptr->m_minimum, d_ptr->m_precision);
-        const QString maxText = internal::formatFixed(d_ptr->m_maximum, d_ptr->m_precision);
-        QFont valFont = this->font();
-        valFont.setBold(true);
-        auto valueWidth = [&](int px) {
-            valFont.setPixelSize(px);
-            const QFontMetricsF vfm(valFont);
-            return std::max(vfm.horizontalAdvance(minText), vfm.horizontalAdvance(maxText));
-        };
-        auto valueHeight = [&](int px) {
-            valFont.setPixelSize(px);
-            return QFontMetricsF(valFont).height();
-        };
-
-        QFont unitFont = font;
-        unitFont.setPixelSize(std::max(7, static_cast<int>(radius * 0.07)));
-        unitFont.setBold(false);
-
-        internal::PodLayoutInput in;
-        in.centerX = center.x();
-        in.centerY = center.y();
-        in.radius = radius;
-        in.labelRects = labelRects;
-        in.unitWidth = d_ptr->m_unit.isEmpty() ? 0.0 : QFontMetricsF(unitFont).horizontalAdvance(d_ptr->m_unit);
-        in.padding = pad;
-        in.preferredFontPx = preferredValuePx;
-        in.minimumFontPx = minimumValuePx;
-        in.valueWidth = valueWidth;
-        in.valueHeight = valueHeight;
-        const internal::PodLayout layout = internal::layoutDigitalPod(in);
-
         const QRectF podRect(layout.pod.x, layout.pod.y, layout.pod.w, layout.pod.h);
         d_ptr->m_podRect = podRect;
         d_ptr->m_valueFontPx = layout.valueFontPx;
+        d_ptr->m_valueShown = layout.showValue;
 
         if (!podRect.isEmpty()) {
             // Recessed LCD box, opaque so that the readout contrast does not depend on the dial (#159): the
@@ -636,8 +751,8 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
             painter.drawRoundedRect(podRect, 4.0, 4.0);
 
             // Static unit text on the dial
-            if (!d_ptr->m_unit.isEmpty()) {
-                painter.setFont(unitFont);
+            if (!d_ptr->m_unit.isEmpty() && layout.showUnit) {
+                painter.setFont(scale.unitFont);
                 const QRectF unitRect(layout.unit.x, layout.unit.y, layout.unit.w, layout.unit.h);
                 painter.setPen(d_ptr->m_scaleColor.darker(110));
                 painter.drawText(unitRect, Qt::AlignCenter, d_ptr->m_unit);
@@ -694,12 +809,16 @@ void RadialGauge::paintEvent(QPaintEvent *)
         }
 
         if (state == ValueState::Valid) {
-            painter.setFont(valFont);
-            painter.setPen(displayColor);
-            painter.drawText(podRect, Qt::AlignCenter, valStr);
+            if (d_ptr->m_valueShown) {
+                painter.setFont(valFont);
+                painter.setPen(displayColor);
+                painter.drawText(podRect, Qt::AlignCenter, valStr);
+            }
         } else {
-            // #151: triangle for an out-of-range input, text made smaller if needed to fit the pod
-            internal::drawStateReadout(painter, podRect, valFont, valStr, internal::inputStateOf(state), displayColor);
+            // #151: triangle for an out-of-range input, text made smaller if needed to fit the pod;
+            // #60: not below 7 pt, and without the number if it still does not fit
+            internal::drawStateReadout(painter, podRect, valFont, valStr, internal::inputStateOf(state), displayColor,
+                                       internal::minimumReadoutPixelSize(logicalDpiY()));
         }
     }
 

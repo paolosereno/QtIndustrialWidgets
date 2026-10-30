@@ -15,30 +15,38 @@ namespace QtIndustrialWidgets {
 namespace internal {
 
 void drawStateReadout(QPainter &painter, const QRectF &podRect, QFont font, const QString &text, InputState state,
-                      const QColor &color)
+                      const QColor &color, int minimumPx)
 {
     const bool outOfRange = (state == InputState::Overrange || state == InputState::Underrange);
     const double available =
         podRect.width() - 2.0 * std::max(2.0, std::min(podRect.width(), podRect.height()) * 0.12);
     double triW = 0.0;
     double gap = 0.0;
+    bool textFits = false;
     for (int px = font.pixelSize();; --px) {
         font.setPixelSize(px);
         const QFontMetricsF fm(font);
         triW = outOfRange ? fm.capHeight() * 0.9 : 0.0;
         gap = outOfRange ? triW * 0.35 : 0.0;
-        if (triW + gap + fm.horizontalAdvance(text) <= available || px <= 6) {
+        textFits = triW + gap + fm.horizontalAdvance(text) <= available;
+        if (textFits || px <= (minimumPx > 0 ? minimumPx : 6)) {
             break;
         }
     }
+    const bool leaveTextOut = minimumPx > 0 && outOfRange && !textFits;
+    if (leaveTextOut) {
+        gap = 0.0;
+    }
     const QFontMetricsF fm(font);
-    const double textW = fm.horizontalAdvance(text);
+    const double textW = leaveTextOut ? 0.0 : fm.horizontalAdvance(text);
     const double left = podRect.center().x() - (triW + gap + textW) * 0.5;
     const QRectF textRect(left + triW + gap, podRect.top(), textW, podRect.height());
 
     painter.setFont(font);
     painter.setPen(color);
-    painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextDontClip, text);
+    if (!leaveTextOut) {
+        painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextDontClip, text);
+    }
 
     if (outOfRange) {
         // Centred on the digits: AlignVCenter centres the line box (ascent + descent)
