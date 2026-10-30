@@ -519,15 +519,20 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
                 lf.setBold(true);
                 return lf;
             };
-            const int fontSize = internal::chooseLabelPixelSize(
+            const internal::VerticalScaleRoom room =
+                internal::linearGaugeVerticalRoom(w, h, d_ptr->m_thermometerMode, d_ptr->m_digitalDisplayVisible);
+            auto metricsAt = [&](int px) {
+                const QFontMetricsF m(labelFontAt(px));
+                std::vector<internal::VerticalLabelMetrics> labels;
+                for (const QString &t : labelTexts) {
+                    const QRectF ink = m.tightBoundingRect(t);
+                    labels.push_back(internal::verticalLabelMetrics(m.height(), m.ascent(), ink.top(), ink.bottom()));
+                }
+                return labels;
+            };
+            const int fontSize = internal::chooseVerticalLabelPixelSize(
                 internal::scalePixelSize(internal::linearGaugeBaseLabelPixelSize(true, h), fontScale),
-                internal::scalePixelSize(8, fontScale), d_ptr->m_tubeRect.height(),
-                [&](int px) {
-                    const QFontMetricsF m(labelFontAt(px));
-                    std::vector<double> e;
-                    for (const QString &t : labelTexts) e.push_back(m.boundingRect(t).height());
-                    return e;
-                },
+                internal::scalePixelSize(8, fontScale), d_ptr->m_tubeRect.height(), room, metricsAt,
                 [&](int px) { return internal::scaleLabelMinGap(QFontMetricsF(labelFontAt(px)).height()); });
             QFont f = labelFontAt(fontSize);
             painter.setFont(f);
@@ -540,16 +545,13 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
                 painter.drawLine(QPointF(tickStartX, y), QPointF(tickStartX + majorTickLen, y));
             }
 
-            // Labels: only those that keep the minimum gap, the end ones inside the scale.
+            // Labels: only those that keep the minimum gap, centred on their ticks (#37), the end
+            // ones moved only to stay off the display and inside the widget.
             // Positions along the scale run upwards from the tube bottom.
             const QFontMetricsF fm(f);
             const QStringList &texts = labelTexts;
-            std::vector<double> extents;
-            for (const QString &s : texts) {
-                extents.push_back(fm.boundingRect(s).height());
-            }
-            const internal::ScaleLabelLayout layout = internal::layoutScaleLabels(
-                extents, d_ptr->m_tubeRect.height(), internal::scaleLabelMinGap(fm.height()));
+            const internal::ScaleLabelLayout layout = internal::layoutVerticalScaleLabels(
+                metricsAt(fontSize), d_ptr->m_tubeRect.height(), internal::scaleLabelMinGap(fm.height()), room);
             painter.setPen(d_ptr->m_textColor);
             for (const internal::ScaleLabelSlot &slot : layout.labels) {
                 QRectF drawR(labelX, d_ptr->m_tubeRect.bottom() - slot.end, w - labelX - 4.0, slot.end - slot.start);
