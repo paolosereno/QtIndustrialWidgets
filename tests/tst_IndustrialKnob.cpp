@@ -57,6 +57,56 @@ ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
     return out;
 }
 
+// Device pixels that differ between two renders of the same size
+QVector<QPoint> differingPixels(const QImage &a, const QImage &b)
+{
+    QVector<QPoint> out;
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            if (a.pixel(x, y) != b.pixel(x, y)) {
+                out.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return out;
+}
+
+QImage renderKnob(IndustrialKnob &knob)
+{
+    return knob.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+}
+
+// The dial as it is drawn, in logical px, from the pixels: its centre from the disc of the knob (the pixels of
+// knobColor) and its radius from the ink of the scale (the pixels of scaleColor) farthest from that centre
+struct DrawnDial {
+    QPointF center;
+    double radius{0.0};
+};
+
+DrawnDial drawnDialOf(IndustrialKnob &knob)
+{
+    const qreal dpr = knob.devicePixelRatioF();
+    knob.setKnobColor(QColor(10, 200, 30));
+    const QImage first = renderKnob(knob);
+    knob.setKnobColor(QColor(200, 30, 10));
+    const QVector<QPoint> disc = differingPixels(first, renderKnob(knob));
+    QRect box;
+    for (const QPoint &p : disc) {
+        box |= QRect(p, QSize(1, 1));
+    }
+    knob.setScaleColor(QColor(10, 200, 30));
+    const QImage scaleFirst = renderKnob(knob);
+    knob.setScaleColor(QColor(200, 30, 10));
+    const QVector<QPoint> scale = differingPixels(scaleFirst, renderKnob(knob));
+
+    DrawnDial dial;
+    dial.center = QPointF(box.x() + box.width() * 0.5, box.y() + box.height() * 0.5) / dpr;
+    for (const QPoint &p : scale) {
+        dial.radius = std::max(dial.radius, std::hypot((p.x() + 0.5) / dpr - dial.center.x(), (p.y() + 0.5) / dpr - dial.center.y()));
+    }
+    return dial;
+}
+
 } // namespace
 
 class tst_IndustrialKnob : public QObject
@@ -77,6 +127,10 @@ private Q_SLOTS:
     void nanAndInfinityResilience();
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
+    void scaleLabelsStayInsideTheWidget_data();
+    void scaleLabelsStayInsideTheWidget();
+    void clickOnTheDrawnDialSelectsItsValue_data();
+    void clickOnTheDrawnDialSelectsItsValue();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -282,6 +336,105 @@ void tst_IndustrialKnob::textSizeIgnoresWidgetFontSize()
     const int grown = FontTest::textGlyphHeight(*large);
     QVERIFY2(base > 0, "no text drawn in textColor");
     QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
+}
+
+void tst_IndustrialKnob::scaleLabelsStayInsideTheWidget_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("discreteSteps"); // 0: continuous
+
+    struct Size { int w; int h; };
+    struct Range { const char *name; double minimum; double maximum; };
+    for (const Size size : {Size{80, 90}, Size{100, 112}, Size{120, 135}, Size{160, 180}, Size{220, 240}, Size{300, 330}, Size{400, 300}}) {
+        for (const Range &r : {Range{"0-100", 0.0, 100.0}, Range{"0-8000", 0.0, 8000.0}, Range{"-1000-1000", -1000.0, 1000.0},
+                               Range{"0-100000", 0.0, 100000.0}, Range{"0-10000000", 0.0, 10000000.0}}) {
+            QTest::addRow("%dx%d, %s", size.w, size.h, r.name) << size.w << size.h << r.minimum << r.maximum << 0;
+        }
+        for (int steps : {5, 12}) {
+            QTest::addRow("%dx%d, discrete %d", size.w, size.h, steps) << size.w << size.h << 0.0 << 100.0 << steps;
+        }
+    }
+}
+
+// #170: the rule of #44: from minimumSizeHint() up no scale label reaches the edge of the widget, where it would
+// be cut. All the ink of the labels, from two renders that differ only in textColor
+void tst_IndustrialKnob::scaleLabelsStayInsideTheWidget()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, discreteSteps);
+
+    IndustrialKnob knob;
+    knob.setRange(minimum, maximum);
+    if (discreteSteps > 0) {
+        knob.setMode(IndustrialKnob::KnobMode::Discrete);
+        knob.setDiscreteSteps(discreteSteps);
+    }
+    knob.resize(width, height);
+    if (width < knob.minimumSizeHint().width() || height < knob.minimumSizeHint().height()) {
+        return; // below the supported size the rule does not apply
+    }
+
+    knob.setTextColor(QColor(255, 0, 255));
+    const QImage first = renderKnob(knob);
+    knob.setTextColor(QColor(255, 255, 0));
+    const QVector<QPoint> ink = differingPixels(first, renderKnob(knob));
+    QVERIFY(ink.size() > 20);
+    int onEdge = 0;
+    for (const QPoint &p : ink) {
+        onEdge += (p.x() == 0 || p.y() == 0 || p.x() == first.width() - 1 || p.y() == first.height() - 1) ? 1 : 0;
+    }
+    QVERIFY2(onEdge == 0, qPrintable(QStringLiteral("%1 pixels of label ink on the edge of the widget").arg(onEdge)));
+}
+
+void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<double>("maximum");
+    struct Size { int w; int h; };
+    for (const Size size : {Size{220, 240}, Size{160, 180}, Size{400, 300}, Size{300, 400}}) {
+        QTest::addRow("%dx%d, 0-100", size.w, size.h) << size.w << size.h << 100.0;
+        QTest::addRow("%dx%d, 0-10000000", size.w, size.h) << size.w << size.h << 10000000.0;
+    }
+}
+
+// #170: the mouse reads the angle around the dial that is drawn. The point clicked is taken from the pixels of the
+// dial, not from its formulas: on its rim, at the angle of the value. 1.5 px across the radius covers the rounding of
+// the click to a pixel and of the centre measured
+void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(double, maximum);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, maximum);
+    knob.setStep(maximum / 100000.0);
+    knob.setPrecision(0);
+    knob.setValueDisplayVisible(false);
+    knob.resize(width, height);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    const double tolerance = maximum * (1.5 / dial.radius * 180.0 / M_PI) / knob.spanAngle();
+    for (double angle : {-90.0, -45.0, 0.0, 45.0, 90.0}) {
+        const double rad = angle * M_PI / 180.0;
+        const QPointF point(dial.center.x() + dial.radius * std::sin(rad), dial.center.y() - dial.radius * std::cos(rad));
+        const double expected = maximum * (angle - knob.startAngle()) / knob.spanAngle();
+        QTest::mouseClick(&knob, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+        QVERIFY2(std::abs(knob.value() - expected) <= tolerance,
+                 qPrintable(QStringLiteral("angle %1: value %2, expected %3 +/- %4 (dial at %5, %6, radius %7)")
+                                .arg(angle).arg(knob.value()).arg(expected).arg(tolerance)
+                                .arg(dial.center.x()).arg(dial.center.y()).arg(dial.radius)));
+    }
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
