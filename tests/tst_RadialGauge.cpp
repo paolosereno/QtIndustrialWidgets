@@ -1264,27 +1264,35 @@ void tst_RadialGauge::outOfRangeReadoutNeverBelow7pt()
     }
 }
 
-// #60(a): minimumSizeHint() makes room for the state indicator: with a font so wide that "---" does not fit at
-// 90 px, the indicator stays clear of the scale at the size it returns
+// #60(a): minimumSizeHint() makes room for the state indicator: with fonts so wide that "---" does not fit at
+// 90 px, the indicator stays clear of the scale at the size it returns. The width of a stretched font depends on
+// the platform, so several are tried: those that reach the ceiling say nothing, and at least one must not
 void tst_RadialGauge::minimumSizeHintMakesRoomForAWideFont()
 {
-    RadialGauge gauge;
-    configure(gauge, GaugeConfig{300, 0.0, 100.0, 0, 0.0, 360.0});
-    gauge.setUnit(QString());
-    QFont wide = gauge.font();
-    wide.setStretch(400);
-    gauge.setFont(wide);
+    int checked = 0;
+    for (int stretch : {150, 200, 250, 300, 400}) {
+        RadialGauge gauge;
+        configure(gauge, GaugeConfig{300, 0.0, 100.0, 0, 0.0, 360.0});
+        gauge.setUnit(QString());
+        QFont wide = gauge.font();
+        wide.setStretch(stretch);
+        gauge.setFont(wide);
 
-    const int hint = gauge.minimumSizeHint().width();
-    QVERIFY2(hint > 90 && hint < gauge.sizeHint().width(), qPrintable(QStringLiteral("hint %1").arg(hint)));
-    gauge.resize(hint, hint);
-    gauge.setWarningThreshold(60.0);
-    gauge.setErrorThreshold(80.0);
-    gauge.setValue(0.0);
-    const int covered = scalePixelsCovered(gauge);
-    QVERIFY2(covered == 0, qPrintable(QStringLiteral("%1 scale pixels covered at %2 px").arg(covered).arg(hint)));
-    isolateReadout(gauge);
-    QVERIFY(readoutInkOf(gauge, std::numeric_limits<double>::quiet_NaN()).size() >= 3);
+        const int hint = gauge.minimumSizeHint().width();
+        if (hint <= 90 || hint >= gauge.sizeHint().width()) {
+            continue;
+        }
+        ++checked;
+        gauge.resize(hint, hint);
+        gauge.setWarningThreshold(60.0);
+        gauge.setErrorThreshold(80.0);
+        gauge.setValue(0.0);
+        const int covered = scalePixelsCovered(gauge);
+        QVERIFY2(covered == 0, qPrintable(QStringLiteral("stretch %1: %2 scale pixels covered at %3 px").arg(stretch).arg(covered).arg(hint)));
+        isolateReadout(gauge);
+        QVERIFY(readoutInkOf(gauge, std::numeric_limits<double>::quiet_NaN()).size() >= 3);
+    }
+    QVERIFY2(checked > 0, "no stretched font gives a size between the floor and the ceiling");
 }
 
 // #51: the scale labels (digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),
