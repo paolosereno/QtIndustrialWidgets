@@ -33,9 +33,9 @@ struct ScaleLabels {
     double minGap{0.0};
 };
 
-ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
+// The labels at a geometry
+ScaleLabels scaleLabelsAt(const IndustrialKnob &knob, const internal::KnobScaleGeometry &geometry)
 {
-    const internal::KnobScaleGeometry geometry = internal::knobScaleGeometry(knob.width(), knob.height());
     ScaleLabels out;
     out.font = knob.font();
     out.font.setPixelSize(geometry.labelFontPx);
@@ -55,6 +55,18 @@ ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
     out.minGap = internal::scaleLabelMinGap(fm.height());
     out.selection = internal::layoutRadialScaleLabels(out.boxes, out.minGap);
     return out;
+}
+
+ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
+{
+    return scaleLabelsAt(knob, internal::knobScaleGeometry(knob.width(), knob.height(), [&](const internal::KnobScaleGeometry &g) {
+        const ScaleLabels at = scaleLabelsAt(knob, g);
+        std::vector<internal::LayoutRect> drawn;
+        for (int i : at.selection.drawn) {
+            drawn.push_back(at.boxes[static_cast<size_t>(i)]);
+        }
+        return drawn;
+    }));
 }
 
 // Device pixels that differ between two renders of the same size

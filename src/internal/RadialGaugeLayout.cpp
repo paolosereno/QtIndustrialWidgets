@@ -29,17 +29,50 @@ RadialScaleGeometry radialScaleGeometry(double side)
     return g;
 }
 
-KnobScaleGeometry knobScaleGeometry(double width, double height)
+namespace {
+
+KnobScaleGeometry knobGeometryOfRadius(double centerX, double centerY, double radius)
 {
-    const double side = std::min(width, height * 0.82);
     KnobScaleGeometry g;
-    g.centerX = width * 0.5;
-    g.centerY = side * 0.5 + 4.0;
-    g.radius = side * 0.5 - 4.0;
+    g.centerX = centerX;
+    g.centerY = centerY;
+    g.radius = radius;
     g.scaleRadius = g.radius * 0.92;
     g.labelRadius = g.scaleRadius + g.radius * 0.12;
     g.labelFontPx = std::clamp(static_cast<int>(g.radius * 0.12), 7, 11);
     return g;
+}
+
+} // namespace
+
+KnobScaleGeometry knobScaleGeometry(double width, double height)
+{
+    const double side = std::min(width, height * 0.82);
+    return knobGeometryOfRadius(width * 0.5, side * 0.5 + 4.0, side * 0.5 - 4.0);
+}
+
+KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels)
+{
+    const KnobScaleGeometry full = knobScaleGeometry(width, height);
+    if (!drawnLabels) {
+        return full;
+    }
+    auto labelsFit = [&](const KnobScaleGeometry &g) {
+        const std::vector<LayoutRect> boxes = drawnLabels(g);
+        return std::all_of(boxes.begin(), boxes.end(), [&](const LayoutRect &box) {
+            return box.x >= kKnobEdgeMargin && box.y >= kKnobEdgeMargin && box.right() <= width - kKnobEdgeMargin
+                   && box.bottom() <= height - kKnobEdgeMargin;
+        });
+    };
+    // From the top: the font and the labels drawn change in steps with the radius
+    const double smallest = full.radius * kKnobMinimumRadiusRatio;
+    for (double radius = full.radius; radius >= smallest; radius -= 0.5) {
+        const KnobScaleGeometry g = knobGeometryOfRadius(full.centerX, full.centerY, radius);
+        if (labelsFit(g)) {
+            return g;
+        }
+    }
+    return knobGeometryOfRadius(full.centerX, full.centerY, smallest);
 }
 
 LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h)
