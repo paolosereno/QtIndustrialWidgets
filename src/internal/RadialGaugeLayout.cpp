@@ -11,6 +11,10 @@
 namespace QtIndustrialWidgets {
 namespace internal {
 
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+} // namespace
+
 RadialScaleGeometry radialScaleGeometry(double side)
 {
     RadialScaleGeometry g;
@@ -44,6 +48,12 @@ LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double 
     const double rad = (angle - 90.0) * degrees;
     return {geometry.centerX + geometry.labelRadius * std::cos(rad) - w * 0.5,
             geometry.centerY + geometry.labelRadius * std::sin(rad) - h * 0.5, w, h};
+}
+
+int minimumReadoutPixelSize(double logicalDpi)
+{
+    const double dpi = std::isfinite(logicalDpi) && logicalDpi > 0.0 ? logicalDpi : 96.0;
+    return static_cast<int>(std::ceil(7.0 * dpi / 72.0));
 }
 
 double layoutRectGap(const LayoutRect &a, const LayoutRect &b)
@@ -109,9 +119,85 @@ double podLabelMargin(double radius)
 
 namespace {
 
+// True when the box of half-width half between y0 and y1 reaches the scale: a point of the box at
+// scaleInnerRadius or beyond lies within the arc. The part of the box beyond the radius is bounded
+// by its corners and by the crossings of the circle with its sides; the ends of the arc are checked
+// too, for an arc narrower than that part.
+// True if the box of half width \a half between \a top and \a bottom (relative to the centre) has a point at
+// radius \a R or more inside the arc from \a start, \a span degrees long
+bool boxReachesArc(double half, double top, double bottom, double R, double start, double span)
+{
+    auto inArc = [&](double x, double y) {
+        if (span >= 360.0) {
+            return true;
+        }
+        const double angle = std::atan2(x, -y) * 180.0 / kPi - start;
+        const double wrapped = std::fmod(std::fmod(angle, 360.0) + 360.0, 360.0);
+        return wrapped <= span;
+    };
+    auto hits = [&](double x, double y) { return std::hypot(x, y) >= R - 1e-9 && inArc(x, y); };
+
+    for (double x : {-half, half}) {
+        for (double y : {top, bottom}) {
+            if (hits(x, y)) {
+                return true;
+            }
+        }
+        if (std::abs(x) < R) {
+            const double y = std::sqrt(R * R - x * x);
+            for (double c : {-y, y}) {
+                if (c >= top && c <= bottom && hits(x, c)) {
+                    return true;
+                }
+            }
+        }
+    }
+    for (double y : {top, bottom}) {
+        if (std::abs(y) < R) {
+            const double x = std::sqrt(R * R - y * y);
+            for (double c : {-x, x}) {
+                if (std::abs(c) <= half && hits(c, y)) {
+                    return true;
+                }
+            }
+        }
+    }
+    for (double angle : {start, start + span}) {
+        const double rad = angle * kPi / 180.0;
+        const double x = R * std::sin(rad);
+        const double y = -R * std::cos(rad);
+        if (std::abs(x) <= half && y >= top && y <= bottom) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+bool podReachesScale(const PodLayoutInput &in, double half, double y0, double y1)
+{
+    const double R = in.scaleInnerRadius;
+    if (R <= 0.0) {
+        return false;
+    }
+    const double top = y0 - in.centerY;
+    const double bottom = y1 - in.centerY;
+    // The ticks at the ends of the arc have a width: the arc to avoid goes past them by the label margin, from
+    // half of it beyond scaleInnerRadius, which holds their round cap and the rim of the pod (#60)
+    const double m = podLabelMargin(in.radius);
+    const double tickStart = R + m * 0.5;
+    const double past = m / tickStart * 180.0 / kPi;
+    return boxReachesArc(half, top, bottom, R, in.scaleStartAngle, in.scaleSpanAngle)
+           || boxReachesArc(half, top, bottom, tickStart, in.scaleStartAngle - past, in.scaleSpanAngle + 2.0 * past);
+}
+
+namespace {
+
 // Half-width available to a box centred on cx between y0 and y1: limited by the preferred
-// half-width, by the inner dial and by every label that overlaps the band vertically.
-double availableHalfWidth(const PodLayoutInput &in, double y0, double y1, double preferredHalf)
+// half-width, by the inner dial, by the scale and, with avoidLabels, by every label that overlaps
+// the band vertically.
+double availableHalfWidth(const PodLayoutInput &in, double y0, double y1, double preferredHalf, bool avoidLabels = true)
 {
     const double m = podLabelMargin(in.radius);
     double half = preferredHalf;
@@ -123,18 +209,32 @@ double availableHalfWidth(const PodLayoutInput &in, double y0, double y1, double
     }
     half = std::min(half, std::sqrt(innerR * innerR - farY * farY));
 
-    for (const LayoutRect &r : in.labelRects) {
-        if (r.bottom() + m <= y0 || r.y - m >= y1) {
-            continue; // not in the band
+    if (avoidLabels) {
+        for (const LayoutRect &r : in.labelRects) {
+            if (r.bottom() + m <= y0 || r.y - m >= y1) {
+                continue; // not in the band
+            }
+            const double left = r.x - m;
+            const double right = r.right() + m;
+            if (left < in.centerX && right > in.centerX) {
+                return 0.0; // a label straddles the centre line
+            }
+            half = std::min(half, left >= in.centerX ? left - in.centerX : in.centerX - right);
         }
-        const double left = r.x - m;
-        const double right = r.right() + m;
-        if (left < in.centerX && right > in.centerX) {
-            return 0.0; // a label straddles the centre line
-        }
-        half = std::min(half, left >= in.centerX ? left - in.centerX : in.centerX - right);
     }
-    return std::max(0.0, half);
+    half = std::max(0.0, half);
+    if (podReachesScale(in, half, y0, y1)) {
+        if (podReachesScale(in, 0.0, y0, y1)) {
+            return 0.0;
+        }
+        double fits = 0.0;
+        for (int i = 0; i < 16; ++i) { // the larger the box, the more of it reaches the scale
+            const double middle = (fits + half) * 0.5;
+            (podReachesScale(in, middle, y0, y1) ? half : fits) = middle;
+        }
+        half = fits;
+    }
+    return half;
 }
 
 } // namespace
@@ -205,15 +305,67 @@ PodLayout layoutDigitalPod(const PodLayoutInput &in)
         }
     }
 
-    double width = chosen.width;
-    out.clearOfLabels = chosen.fit.fits;
-    if (!chosen.fit.fits) {
-        width = std::max(width, minWidth); // the value has precedence over the labels
+    if (chosen.fit.fits) {
+        out.pod = {in.centerX - chosen.width * 0.5, chosen.top, chosen.width, chosen.width > 0.0 ? podH : 0.0};
+        out.unit = {in.centerX - chosen.width * 0.5, chosen.top - unitH, chosen.width, unitH};
+        out.valueFontPx = chosen.fit.pixelSize;
+        out.clearOfLabels = true;
+        return out;
     }
 
-    out.pod = {in.centerX - width * 0.5, chosen.top, width, width > 0.0 ? podH : 0.0};
-    out.unit = {in.centerX - width * 0.5, chosen.top - unitH, width, unitH};
-    out.valueFontPx = chosen.fit.pixelSize;
+    // A pod as high as the text, of the given width: true when it fits at one of the two places
+    auto compactAt = [&](int px, double width, bool avoidLabels, bool withUnit) {
+        const double height = in.valueHeight(px);
+        const double half = std::max(preferredHalf, width * 0.5);
+        for (double top : {preferred.top, lowest}) {
+            const bool unitFits = !withUnit || in.unitWidth <= 0.0
+                                  || availableHalfWidth(in, top - unitH, top, half, avoidLabels) * 2.0 >= in.unitWidth;
+            if (unitFits && availableHalfWidth(in, top, top + height, half, avoidLabels) * 2.0 >= width) {
+                out.pod = {in.centerX - width * 0.5, top, width, height};
+                out.unit = {in.centerX - width * 0.5, top - unitH, width, unitH};
+                out.valueFontPx = px;
+                out.lowered = top > preferred.top;
+                out.showUnit = withUnit;
+                return true;
+            }
+        }
+        return false;
+    };
+    // The labels a pod placed over them would cut
+    auto hideCutLabels = [&]() {
+        const double margin = podLabelMargin(r);
+        for (size_t i = 0; i < in.labelRects.size(); ++i) {
+            const LayoutRect box{in.labelRects[i].x - margin, in.labelRects[i].y - margin,
+                                 in.labelRects[i].w + 2.0 * margin, in.labelRects[i].h + 2.0 * margin};
+            if (box.intersects(out.pod) || (out.showUnit && in.unitWidth > 0.0 && box.intersects(out.unit))) {
+                out.hiddenLabels.push_back(static_cast<int>(i));
+            }
+        }
+        out.clearOfLabels = out.hiddenLabels.empty();
+    };
+
+    for (int px = preferredPx; px >= minimumPx; --px) {
+        if (compactAt(px, in.valueWidth(px) + 2.0 * in.padding, true, true)) {
+            out.clearOfLabels = true;
+            return out;
+        }
+    }
+    if (compactAt(minimumPx, minWidth, false, true) || compactAt(minimumPx, minWidth, false, false)) {
+        hideCutLabels();
+        return out;
+    }
+
+    // Only the state indicator, also if it reaches the scale: it is never left out
+    const double indicatorWidth = in.indicatorWidth + 2.0 * in.padding;
+    if (!compactAt(minimumPx, indicatorWidth, true, false) && !compactAt(minimumPx, indicatorWidth, false, false)) {
+        out.pod = {in.centerX - indicatorWidth * 0.5, preferred.top, indicatorWidth, minHeight};
+        out.unit = {};
+        out.valueFontPx = minimumPx;
+        out.showUnit = false;
+        out.clearOfScale = false;
+    }
+    out.showValue = false;
+    hideCutLabels();
     return out;
 }
 

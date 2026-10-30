@@ -99,6 +99,10 @@ struct PodLayoutInput {
     int minimumFontPx{8};               ///< Smallest value font
     std::function<double(int)> valueWidth;  ///< Width of the widest value text at a pixel size
     std::function<double(int)> valueHeight; ///< Height of the value text at a pixel size
+    double indicatorWidth{0.0};         ///< Width of the state indicator ("---", triangle) at the minimum font
+    double scaleInnerRadius{0.0};       ///< Inner radius of the scale ticks and band (0: no scale to avoid)
+    double scaleStartAngle{0.0};        ///< Start of the scale arc, degrees, 0 = 12 o'clock, clockwise
+    double scaleSpanAngle{360.0};       ///< Span of the scale arc, degrees
 };
 
 /// Result of layoutDigitalPod().
@@ -108,10 +112,21 @@ struct PodLayout {
     int valueFontPx{0};        ///< Pixel size of the value font
     bool lowered{false};       ///< The pod is below the labels instead of at its preferred place
     bool clearOfLabels{false}; ///< The pod and the unit band keep the margin from every label
+    bool showUnit{true};       ///< The unit fits; otherwise it is left out
+    bool showValue{true};      ///< The number fits; otherwise only the state indicator is drawn
+    bool clearOfScale{true};   ///< The pod stays off the scale; false only when not even the indicator has room
+    std::vector<int> hiddenLabels; ///< Indices in labelRects of the labels the pod would cut: not drawn (#60)
 };
+
+/// Smallest pixel size of a readout: 7 pt at the given logical DPI, rounded up (#60, the rule of #167).
+int minimumReadoutPixelSize(double logicalDpi);
 
 /// Free space kept between the pod (or the unit) and a scale label: max(2 px, 0.02 r).
 double podLabelMargin(double radius);
+
+/// True when the box of half width \a half between \a y0 and \a y1, centred on the dial, reaches the scale: the
+/// ticks and the threshold band, or the ticks at the ends of the arc.
+bool podReachesScale(const PodLayoutInput &in, double half, double y0, double y1);
 
 /**
  * \brief Places the RadialGauge digital display pod clear of the scale labels and picks the value font.
@@ -129,10 +144,21 @@ double podLabelMargin(double radius);
  * [minimumFontPx, preferredFontPx] at which the widest value fits with \a padding on each side
  * (fitFontPixelSize()). The place giving the larger font is used; on a tie, the preferred place.
  *
- * The value has precedence over the labels: if the value fits at neither place even at the
- * minimum font, the wider place is used (the preferred one on a tie) and the pod is widened to
- * hold the value at the minimum font (clearOfLabels = false), so that the value is never clipped
- * or abbreviated. Non-finite inputs or missing text metrics give an empty pod.
+ * Neither the pod nor the unit band may reach the ticks and the threshold band: where the arc of
+ * the scale (\a scaleStartAngle, \a scaleSpanAngle) lies, they stay inside \a scaleInnerRadius. Below
+ * and beside the arc the limit is the inner dial, so the gap of a 270-degree scale stays usable (#60).
+ *
+ * When the value does not fit at the minimum font, the following are tried in this order (#60):
+ * - a compact pod, as high as the value line, clear of the labels, at the largest font that fits;
+ * - the same at the minimum font, with the labels it would cut in \a hiddenLabels: the value has
+ *   precedence over the labels (#43; clearOfLabels = false);
+ * - without the unit (showUnit = false);
+ * - only the state indicator, clear of the labels if it can (showValue = false, showUnit = false);
+ * - the same over the labels; with no room there either, over the scale (clearOfScale = false): the
+ *   state indicator is never left out.
+ *
+ * The value is never clipped or abbreviated, and the font is never below \a minimumFontPx.
+ * Non-finite inputs or missing text metrics give an empty pod.
  */
 PodLayout layoutDigitalPod(const PodLayoutInput &in);
 

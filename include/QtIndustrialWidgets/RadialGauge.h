@@ -174,6 +174,21 @@ public:
     [[nodiscard]] QColor bezelColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
+    /**
+     * \brief Returns the smallest size that keeps the scale and the state indicator readable (#60).
+     *
+     * It depends on the configuration: it is computed from the widget font, the range, the precision, the
+     * major ticks, the start and span angles, the unit and the visibility of the digital display, and it changes
+     * with them (updateGeometry() is called). From this size up, the state indicator ("---", the triangle) is
+     * drawn at 7 pt or more without touching the scale, and the first and last scale labels are drawn,
+     * except that on a span where they lie on each other only the first one is. It is never below 90 x 90 and
+     * never above sizeHint(): when the widest scales cannot keep both ends even there, the result is sizeHint().
+     *
+     * Below this size nothing overlaps, and what has no room is left out: the labels the pod would cut,
+     * then the unit, then the number. The state indicator is never left out. The value has precedence over the
+     * labels, the first and last included (#43): below this size a number can take the place of an end label.
+     * Without an indicator to show, a valid value with no room leaves the pod empty.
+     */
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:
