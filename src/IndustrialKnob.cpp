@@ -415,20 +415,14 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
     double rad = std::atan2(dx, -dy);
     double deg = rad * 180.0 / M_PI;
 
-    // Convert into our [startAngle, startAngle + spanAngle] range
-    double relativeAngle = deg - d_ptr->m_startAngle;
-    while (relativeAngle < -180.0) relativeAngle += 360.0;
-    while (relativeAngle > 180.0) relativeAngle -= 360.0;
+    // #170: clockwise from the start of the scale, in [0, 360): the whole dial, not only the half after the start
+    double relativeAngle = std::fmod(deg - d_ptr->m_startAngle, 360.0);
+    if (relativeAngle < 0.0) relativeAngle += 360.0;
 
-    if (relativeAngle < 0.0) {
-        // Closer to start or beyond?
-        if (relativeAngle < -d_ptr->m_spanAngle * 0.5) {
-            setValue(d_ptr->m_maximum);
-        } else {
-            setValue(d_ptr->m_minimum);
-        }
-    } else if (relativeAngle > d_ptr->m_spanAngle) {
-        setValue(d_ptr->m_maximum);
+    if (relativeAngle > d_ptr->m_spanAngle) {
+        // In the gap between the ends of the scale: the nearest one
+        const bool nearerEnd = relativeAngle - d_ptr->m_spanAngle < (360.0 - d_ptr->m_spanAngle) * 0.5;
+        setValue(nearerEnd ? d_ptr->m_maximum : d_ptr->m_minimum);
     } else {
         double factor = relativeAngle / d_ptr->m_spanAngle;
         double newVal = d_ptr->m_minimum + factor * (d_ptr->m_maximum - d_ptr->m_minimum);

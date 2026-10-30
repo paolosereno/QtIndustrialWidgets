@@ -143,6 +143,7 @@ private Q_SLOTS:
     void scaleLabelsStayInsideTheWidget();
     void clickOnTheDrawnDialSelectsItsValue_data();
     void clickOnTheDrawnDialSelectsItsValue();
+    void clickInTheGapSelectsTheNearestEnd();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -447,6 +448,30 @@ void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue()
                                 .arg(angle).arg(knob.value()).arg(expected).arg(tolerance)
                                 .arg(dial.center.x()).arg(dial.center.y()).arg(dial.radius)));
     }
+}
+
+// #170: below the dial, between the two ends of the 270 degrees scale
+void tst_IndustrialKnob::clickInTheGapSelectsTheNearestEnd()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    auto clickAt = [&](double angle) {
+        const double rad = angle * M_PI / 180.0;
+        const QPointF point(dial.center.x() + dial.radius * std::sin(rad), dial.center.y() - dial.radius * std::cos(rad));
+        knob.setValue(50.0);
+        QTest::mouseClick(&knob, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+        return knob.value();
+    };
+    QCOMPARE(clickAt(150.0), 100.0);
+    QCOMPARE(clickAt(170.0), 100.0);
+    QCOMPARE(clickAt(190.0), 0.0);
+    QCOMPARE(clickAt(210.0), 0.0);
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
