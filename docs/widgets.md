@@ -67,7 +67,8 @@ Bar gauge and thermometer (`qiw::LinearGauge`).
 - **Liquid colour**: fixed (`liquidColor`), following the warning and error thresholds (`dynamicLiquidColor`), or a
   gradient fill (`gradientLiquid`).
 - **Scale and display**: major and minor ticks with labels (`scaleVisible`), optional digital display with `precision`
-  and `unit`.
+  and `unit`. On a horizontal gauge the end labels stay inside the scale; on a vertical one every label is centred on
+  its tick, and the end labels move only to stay off the display and inside the widget (#37).
 - **Value state** (#151): `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`, with
   `valueStateChanged()`; `rawValue()` keeps the unclamped input, and a range change classifies it again. Before the
   first `setValue()` the initial value (0) follows the range, as in `RadialGauge`.
