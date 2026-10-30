@@ -133,6 +133,9 @@ private Q_SLOTS:
     void labelGapAlongSeparatingAxis();
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
+    void knobScaleGeometry();
+    void knobLabelsKeepMinimumGap_data();
+    void knobLabelsKeepMinimumGap();
     void primeMajorTicksKeepOnlyEndLabels();
     void fullCircleDropsLastLabel();
     void fullCircleChecksEveryPair();
@@ -412,6 +415,73 @@ void tst_RadialGaugeLayout::scaleLabelsKeepMinimumGap()
         if (10 % d == 0) {
             QVERIFY2(!allPairsKeepGap(boxes, multiplesOf(d, 10, true), minGap),
                      qPrintable(QStringLiteral("step %1 chosen, but %2 also keeps the gap").arg(labels.step).arg(d)));
+        }
+    }
+}
+
+// #60(b): the knob geometry, pinned on a 220x240 knob (side 196.8 = 0.82 h, radius 94.4)
+void tst_RadialGaugeLayout::knobScaleGeometry()
+{
+    const KnobScaleGeometry g = QtIndustrialWidgets::internal::knobScaleGeometry(220.0, 240.0);
+    QCOMPARE(g.centerX, 110.0);
+    QCOMPARE(g.centerY, 102.4);
+    QCOMPARE(g.radius, 94.4);
+    QCOMPARE(g.scaleRadius, 86.848);
+    QCOMPARE(g.labelRadius, 98.176);
+    QCOMPARE(g.labelFontPx, 11);
+    QCOMPARE(QtIndustrialWidgets::internal::knobScaleGeometry(80.0, 90.0).labelFontPx, 7);
+
+    // 0 degrees is 12 o'clock, 90 degrees is 3 o'clock
+    const LayoutRect top = knobLabelBox(g, 0.0, 20.0, 10.0);
+    QCOMPARE(top.x + 10.0, 110.0);
+    QCOMPARE(top.y + 5.0, 102.4 - 98.176);
+    const LayoutRect right = knobLabelBox(g, 90.0, 20.0, 10.0);
+    QCOMPARE(right.x + 10.0, 110.0 + 98.176);
+    QCOMPARE(right.y + 5.0, 102.4);
+}
+
+void tst_RadialGaugeLayout::knobLabelsKeepMinimumGap_data()
+{
+    QTest::addColumn<double>("width");
+    QTest::addColumn<double>("height");
+    QTest::addColumn<int>("labels");
+    QTest::addColumn<int>("characters");
+
+    const QSizeF sizes[] = {{80.0, 90.0}, {100.0, 120.0}, {160.0, 180.0}, {220.0, 240.0}, {300.0, 340.0}};
+    for (const QSizeF &size : sizes) {
+        for (int characters : {1, 3, 6, 8}) {
+            QTest::addRow("%.0fx%.0f, 11 labels of %d characters", size.width(), size.height(), characters)
+                << size.width() << size.height() << 11 << characters;
+        }
+        // Discrete mode with 41 positions
+        QTest::addRow("%.0fx%.0f, 41 labels", size.width(), size.height()) << size.width() << size.height() << 41 << 2;
+    }
+}
+
+// #60(b): on the knob arc the first and last labels are always kept, the drawn labels keep the
+// minimum gap and the step is the smallest divisor that achieves it
+void tst_RadialGaugeLayout::knobLabelsKeepMinimumGap()
+{
+    QFETCH(double, width);
+    QFETCH(double, height);
+    QFETCH(int, labels);
+    QFETCH(int, characters);
+
+    const KnobScaleGeometry g = QtIndustrialWidgets::internal::knobScaleGeometry(width, height);
+    const int n = labels - 1;
+    std::vector<LayoutRect> boxes;
+    for (int i = 0; i <= n; ++i) {
+        boxes.push_back(knobLabelBox(g, -135.0 + 270.0 * i / n, widthOf(characters)(g.labelFontPx), lineHeight(g.labelFontPx)));
+    }
+    const double minGap = scaleLabelMinGap(lineHeight(g.labelFontPx));
+    const RadialScaleLabels selection = layoutRadialScaleLabels(boxes, minGap);
+
+    QCOMPARE(selection.drawn, multiplesOf(selection.step, n, true));
+    QVERIFY2(allPairsKeepGap(boxes, selection.drawn, minGap), qPrintable(QStringLiteral("step %1").arg(selection.step)));
+    for (int d = 1; d < selection.step; ++d) {
+        if (n % d == 0) {
+            QVERIFY2(!allPairsKeepGap(boxes, multiplesOf(d, n, true), minGap),
+                     qPrintable(QStringLiteral("step %1 chosen, but %2 also keeps the gap").arg(selection.step).arg(d)));
         }
     }
 }

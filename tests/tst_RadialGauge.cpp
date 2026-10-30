@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/RadialGauge.h>
 
 #include "FontTestUtils.h"
+#include "LabelInkTestUtils.h"
 
 #include <memory>
 #include <QtGui/QFontMetricsF>
@@ -633,32 +634,6 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap_data()
     }
 }
 
-// Device-pixel ink box of a text drawn alone in the given font at the given device pixel ratio
-QRect inkBoxAlone(const QString &text, const QFont &font, qreal dpr)
-{
-    const QFontMetricsF fm(font);
-    const QSizeF logical(fm.horizontalAdvance(text) + 40.0, fm.height() + 40.0);
-    QImage img((logical * dpr).toSize(), QImage::Format_ARGB32);
-    img.setDevicePixelRatio(dpr);
-    img.fill(Qt::black);
-    {
-        QPainter p(&img);
-        p.setRenderHint(QPainter::TextAntialiasing, true);
-        p.setFont(font);
-        p.setPen(Qt::white);
-        p.drawText(QPointF(20.0, 20.0 + fm.ascent()), text);
-    }
-    QRect box;
-    for (int y = 0; y < img.height(); ++y) {
-        for (int x = 0; x < img.width(); ++x) {
-            if (img.pixel(x, y) != qRgb(0, 0, 0)) {
-                box |= QRect(x, y, 1, 1);
-            }
-        }
-    }
-    return box;
-}
-
 // #50: drawn scale labels keep the LinearGauge minimum gap (scaleLabelMinGap() on the label font
 // height) and the first and last labels are always drawn. Label pixels are those that change with
 // textColor while the display is hidden. They are grouped into clusters: two pixels belong to the
@@ -701,47 +676,11 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap()
     for (int i = 0; i <= majorTicks; ++i) {
         const double v = minimum + (maximum - minimum) * i / majorTicks;
         QCOMPARE(v, std::round(v));
-        largest = largest.expandedTo(inkBoxAlone(QString::number(static_cast<qint64>(v)), labelFont, dpr).size());
+        largest = largest.expandedTo(LabelInk::inkBoxAlone(QString::number(static_cast<qint64>(v)), labelFont, dpr).size());
     }
     const int tolerance = static_cast<int>(std::ceil(dpr));
 
-    // Clusters (union-find over the ink pixels, neighbours searched on a grid)
-    const int reach = static_cast<int>(std::ceil(threshold));
-    QHash<qint64, int> at;
-    auto key = [](int x, int y) { return (static_cast<qint64>(y) << 32) | static_cast<quint32>(x); };
-    for (int i = 0; i < ink.size(); ++i) {
-        at.insert(key(ink[i].x(), ink[i].y()), i);
-    }
-    std::vector<int> parent(static_cast<size_t>(ink.size()));
-    for (int i = 0; i < ink.size(); ++i) {
-        parent[static_cast<size_t>(i)] = i;
-    }
-    std::function<int(int)> root = [&](int i) {
-        while (parent[static_cast<size_t>(i)] != i) {
-            parent[static_cast<size_t>(i)] = parent[static_cast<size_t>(parent[static_cast<size_t>(i)])];
-            i = parent[static_cast<size_t>(i)];
-        }
-        return i;
-    };
-    for (int i = 0; i < ink.size(); ++i) {
-        for (int dy = -reach; dy <= reach; ++dy) {
-            for (int dx = -reach; dx <= reach; ++dx) {
-                // free pixels between the two along the separating axis
-                const int free = std::max(std::abs(dx), std::abs(dy)) - 1;
-                if (free >= threshold) {
-                    continue;
-                }
-                const auto it = at.constFind(key(ink[i].x() + dx, ink[i].y() + dy));
-                if (it != at.constEnd()) {
-                    parent[static_cast<size_t>(root(i))] = root(it.value());
-                }
-            }
-        }
-    }
-    QHash<int, QRect> clusters;
-    for (int i = 0; i < ink.size(); ++i) {
-        clusters[root(i)] |= QRect(ink[i], QSize(1, 1));
-    }
+    const QVector<QRect> clusters = LabelInk::inkClusters(ink, threshold);
 
     for (const QRect &c : qAsConst(clusters)) {
         QVERIFY2(c.width() <= largest.width() + tolerance && c.height() <= largest.height() + tolerance,

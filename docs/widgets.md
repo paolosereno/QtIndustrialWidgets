@@ -112,7 +112,9 @@ Rotary knob (`qiw::IndustrialKnob`).
 - **Modes**: `KnobMode::Continuous` (any value in the range, with `step`) or `KnobMode::Discrete` (`discreteSteps`
   positions, for selectors).
 - **Scale**: arc set by `startAngle` and `spanAngle`, major and minor ticks with labels, an active track
-  (`trackVisible`) and a value display (`valueDisplayVisible`).
+  (`trackVisible`) and a value display (`valueDisplayVisible`). Every tick is drawn; labels are drawn every k-th tick,
+  with the smallest k that keeps the free space between them, in both modes (#60). The first and last labels are
+  always drawn, unless they would overlap each other (an arc of about 360°): then the last one is left out.
 - **Input**: mouse drag (the value follows the pointer's angle), mouse wheel, and the keys arrows, PageUp/PageDown,
   Home/End.
 - **Rendering**: the knob has a serrated grip of 32 teeth; ticks and scale are cached, so a rotation redraws only the

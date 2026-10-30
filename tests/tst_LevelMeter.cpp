@@ -7,6 +7,7 @@
 
 #include "FontTestUtils.h"
 #include "HatchTestUtils.h"
+#include "LabelInkTestUtils.h"
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -229,31 +230,6 @@ std::vector<QPoint> textInk(LevelMeter &m)
     const QImage a = grabMeter(m);
     m.setTextColor(QColor(255, 0, 0));
     return differing(a, grabMeter(m));
-}
-
-// Device-pixel ink box of a text drawn alone in the given font
-QRect inkBoxAlone(const QString &text, const QFont &font, qreal dpr)
-{
-    const QFontMetricsF fm(font);
-    const QSizeF logical(fm.horizontalAdvance(text) + 40.0, fm.height() + 40.0);
-    QImage img((logical * dpr).toSize(), QImage::Format_ARGB32);
-    img.setDevicePixelRatio(dpr);
-    img.fill(Qt::black);
-    {
-        QPainter p(&img);
-        p.setFont(font);
-        p.setPen(Qt::white);
-        p.drawText(QPointF(20.0, 20.0 + fm.ascent()), text);
-    }
-    QRect box;
-    for (int y = 0; y < img.height(); ++y) {
-        for (int x = 0; x < img.width(); ++x) {
-            if (img.pixel(x, y) != qRgb(0, 0, 0)) {
-                box |= QRect(x, y, 1, 1);
-            }
-        }
-    }
-    return box;
 }
 
 // Free device pixels between a box and a pixel along the axis that separates them
@@ -772,7 +748,7 @@ ScaleScan scanScale(LevelMeter &m, double minimum, double maximum, const QString
     scan.threshold = (scan.minGap - 1.0) * scan.dpr;
     const std::vector<double> ticks = internal::levelMeterTicks(minimum, maximum, unit);
     for (double t : ticks) {
-        scan.largest = scan.largest.expandedTo(inkBoxAlone(internal::levelMeterTickText(t, minimum, maximum, unit), scaleFont, scan.dpr).size());
+        scan.largest = scan.largest.expandedTo(LabelInk::inkBoxAlone(internal::levelMeterTickText(t, minimum, maximum, unit), scaleFont, scan.dpr).size());
     }
     scan.labels = clusters(scan.labelInk, scan.threshold);
     // Pixel centres of the outermost tick ink; the end ticks of the ladder may lie inside the range

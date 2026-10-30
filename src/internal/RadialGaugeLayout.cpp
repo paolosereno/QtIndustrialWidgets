@@ -25,6 +25,27 @@ RadialScaleGeometry radialScaleGeometry(double side)
     return g;
 }
 
+KnobScaleGeometry knobScaleGeometry(double width, double height)
+{
+    const double side = std::min(width, height * 0.82);
+    KnobScaleGeometry g;
+    g.centerX = width * 0.5;
+    g.centerY = side * 0.5 + 4.0;
+    g.radius = side * 0.5 - 4.0;
+    g.scaleRadius = g.radius * 0.92;
+    g.labelRadius = g.scaleRadius + g.radius * 0.12;
+    g.labelFontPx = std::clamp(static_cast<int>(g.radius * 0.12), 7, 11);
+    return g;
+}
+
+LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h)
+{
+    constexpr double degrees = 3.14159265358979323846 / 180.0;
+    const double rad = (angle - 90.0) * degrees;
+    return {geometry.centerX + geometry.labelRadius * std::cos(rad) - w * 0.5,
+            geometry.centerY + geometry.labelRadius * std::sin(rad) - h * 0.5, w, h};
+}
+
 double layoutRectGap(const LayoutRect &a, const LayoutRect &b)
 {
     const double gapX = std::max(b.x - a.right(), a.x - b.right());
