@@ -40,7 +40,15 @@ Circular gauge for speed, pressure, temperature and similar values (`qiw::Radial
 - **Thresholds**: `warningThreshold` and `errorThreshold`, shown as coloured arc bands (`thresholdBandsVisible`);
   `warningExceeded(bool)` and `errorExceeded(bool)` report crossings.
 - **Digital display**: optional (`digitalDisplayVisible`), with `precision` and `unit`; it is sized and placed clear
-  of the scale labels.
+  of the scale labels and never covers the scale. The value is drawn at 7 pt or more, never cut nor shortened. The
+  value has precedence over the labels (#43), the first and last ones included: a label the display would cut is not
+  drawn. Without room the unit goes first, then the number; `---` and the triangle are always shown, so only a valid
+  readout may disappear (#60).
+- **Minimum size** (#60): `minimumSizeHint()` depends on the configuration. It is computed from the widget font, the
+  range, the precision, the major ticks, the angles, the unit and the visibility of the display, and it changes with
+  them. From that size up, the state indicator is drawn at 7 pt or more clear of the scale, and the first and last
+  labels are drawn (on a span where they lie on each other, the first one). It is never below 90 × 90 and never above
+  `sizeHint()`; the widest scales may not keep both ends even there.
 - **Rendering**: the static scale is cached in a pixmap and rebuilt on geometry or appearance changes; a value change
   redraws the needle and the display.
 - **Value state** (#151): `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid` (the
