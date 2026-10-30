@@ -58,6 +58,8 @@ private Q_SLOTS:
     void scaleLabelMinGap();
     void scaleLabelsReadable_data();
     void scaleLabelsReadable();
+    void verticalEndLabelsCentredOnTicks_data();
+    void verticalEndLabelsCentredOnTicks();
     void nanHidesLiquidAndShowsHatch_data();
     void nanHidesLiquidAndShowsHatch();
     void hatchVisibleAtSmallSizes_data();
@@ -741,6 +743,85 @@ void tst_LinearGauge::scaleLabelsReadable()
     if (expectedLabels >= 0) {
         QCOMPARE(labels.size(), expectedLabels);
     }
+}
+
+void tst_LinearGauge::verticalEndLabelsCentredOnTicks_data()
+{
+    QTest::addColumn<bool>("thermometer");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<QSize>("size");
+    QTest::addColumn<bool>("display");
+
+    // The vertical rows of #37, and the same gauges without the digital display
+    for (bool display : {true, false}) {
+        const char *suffix = display ? "display" : "no display";
+        QTest::addRow("0-100 at 100x280, %s", suffix) << false << 100.0 << 0 << QSize(100, 280) << display;
+        QTest::addRow("0-100 at 100x400, %s", suffix) << false << 100.0 << 0 << QSize(100, 400) << display;
+        QTest::addRow("0-100 at 102x166, %s", suffix) << false << 100.0 << 0 << QSize(102, 166) << display;
+        QTest::addRow("thermometer 0-120 at 103x166, %s", suffix) << true << 120.0 << 1 << QSize(103, 166) << display;
+        QTest::addRow("thermometer 0-120 at 100x280, %s", suffix) << true << 120.0 << 1 << QSize(100, 280) << display;
+    }
+}
+
+// #37: the digits of the end labels sit on their ticks like those of the interior labels. The
+// offset of a label from its tick is compared with those of the interior labels, not with zero,
+// since the ink is not centred on the line box (and differs without fonts); one device pixel
+// allows for the rounding of the text position.
+void tst_LinearGauge::verticalEndLabelsCentredOnTicks()
+{
+    QFETCH(bool, thermometer);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(QSize, size);
+    QFETCH(bool, display);
+
+    LinearGauge gauge;
+    gauge.setThermometerMode(thermometer);
+    gauge.setRange(0.0, maximum);
+    gauge.setValue(maximum * 0.5);
+    gauge.setPrecision(precision);
+    gauge.setDigitalDisplayVisible(display);
+    gauge.setMinorTicks(0);
+    gauge.setTextColor(QColor::fromRgb(kLabelColor));
+    gauge.setScaleColor(QColor::fromRgb(kTickColor));
+    gauge.resize(size);
+    const QImage img = gauge.grab().toImage();
+    const double devicePixel = 1.0 / img.devicePixelRatio();
+
+    QVector<Run> labels = groupIntoLabels(runsAlong(img, Qt::Vertical, -1.0, isLabelPixel), 1.0);
+    QVector<Run> ticks = runsAlong(img, Qt::Vertical, 0.0, isTickPixel);
+    QCOMPARE(ticks.size(), gauge.majorTicks() + 1);
+    QVERIFY2(labels.size() >= 3, qPrintable(QStringLiteral("%1 labels").arg(labels.size())));
+
+    // Offset of a label from a tick, in pixels towards the top
+    auto offsetFrom = [](const Run &tick, const Run &label) {
+        return (tick.start + tick.end) * 0.5 - (label.start + label.end) * 0.5;
+    };
+    auto offset = [&](const Run &label) {
+        double best = std::numeric_limits<double>::infinity();
+        for (const Run &t : ticks) {
+            if (std::abs(offsetFrom(t, label)) < std::abs(best)) {
+                best = offsetFrom(t, label);
+            }
+        }
+        return best;
+    };
+    double lowest = std::numeric_limits<double>::infinity();
+    double highest = -std::numeric_limits<double>::infinity();
+    for (int i = 1; i + 1 < labels.size(); ++i) {
+        lowest = std::min(lowest, offset(labels[i]));
+        highest = std::max(highest, offset(labels[i]));
+    }
+    const double top = offsetFrom(ticks.first(), labels.first());
+    const double bottom = offsetFrom(ticks.last(), labels.last());
+    qInfo("interior %.2f .. %.2f px, top %.2f px, bottom %.2f px", lowest, highest, top, bottom);
+    QVERIFY2(top >= lowest - devicePixel && top <= highest + devicePixel,
+             qPrintable(QStringLiteral("top label %1 px from its tick, interior labels %2 .. %3 px")
+                            .arg(top, 0, 'f', 2).arg(lowest, 0, 'f', 2).arg(highest, 0, 'f', 2)));
+    QVERIFY2(bottom >= lowest - devicePixel && bottom <= highest + devicePixel,
+             qPrintable(QStringLiteral("bottom label %1 px from its tick, interior labels %2 .. %3 px")
+                            .arg(bottom, 0, 'f', 2).arg(lowest, 0, 'f', 2).arg(highest, 0, 'f', 2)));
 }
 
 // #51: the scale labels (horizontal, digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),
