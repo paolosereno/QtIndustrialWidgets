@@ -130,6 +130,7 @@ private Q_SLOTS:
     void compactPodStaysClearOfLabels();
     void podLeavesOutUnitThenNumber();
     void hiddenLabelsAreThoseThePodCuts();
+    void endTicksKeepTheirMargin();
     void indicatorNeverLeftOut();
     void podHeightHoldsValue();
     void nonFiniteInputGivesEmptyPod();
@@ -394,6 +395,26 @@ void tst_RadialGaugeLayout::hiddenLabelsAreThoseThePodCuts()
     }
     QVERIFY(!out.hiddenLabels.empty());
     QCOMPARE(out.hiddenLabels.back(), 0 + static_cast<int>(in.labelRects.size()) - 2); // the far label stays
+}
+
+// #60: past the end of the arc, a box is clear of the end tick from the label margin on, and not closer. Boxes
+// with their upper corner beside the tick, on the side of the gap of a 270-degree scale
+void tst_RadialGaugeLayout::endTicksKeepTheirMargin()
+{
+    PodLayoutInput in = dial300(8.0, 8.0);
+    in.scaleInnerRadius = 100.0;
+    in.scaleStartAngle = -135.0;
+    in.scaleSpanAngle = 270.0;
+    const double m = podLabelMargin(in.radius);
+    const double radial = in.scaleInnerRadius + m;
+    auto boxReaches = [&](double distance) {
+        const double angle = (135.0 + distance / radial * 180.0 / 3.14159265358979323846) * 3.14159265358979323846 / 180.0;
+        const double half = radial * std::sin(angle);
+        const double top = in.centerY - radial * std::cos(angle);
+        return podReachesScale(in, half, top, top + 10.0);
+    };
+    QVERIFY(boxReaches(0.8 * m));
+    QVERIFY(!boxReaches(1.2 * m));
 }
 
 // #60: with no room at all the state indicator is still placed, and the result says it reaches the scale
