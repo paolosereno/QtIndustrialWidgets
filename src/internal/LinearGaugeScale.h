@@ -38,10 +38,9 @@ struct ScaleLabelLayout {
 double scaleLabelMinGap(double fontHeight);
 
 /**
- * \brief Chooses which major labels a LinearGauge scale draws, and where.
+ * \brief Chooses which major labels a horizontal LinearGauge scale draws, and where.
  *
- * \a extents holds the size of every major label along the scale (width for a horizontal
- * gauge, height for a vertical one), one per major tick: majorTicks + 1 values. Label i is
+ * \a extents holds the width of every major label, one per major tick: majorTicks + 1 values. Label i is
  * centred on tick s_i = scaleLength * i / majorTicks, except that label 0 is pushed to start
  * at or after 0 and the last label to end at or before \a scaleLength, so that both stay
  * inside the scale. Interior labels stay centred.
@@ -53,6 +52,42 @@ double scaleLabelMinGap(double fontHeight);
  * nothing is drawn. Non-finite inputs are treated as 0.
  */
 ScaleLabelLayout layoutScaleLabels(const std::vector<double> &extents, double scaleLength, double minGap);
+
+/**
+ * \struct VerticalLabelMetrics
+ * \brief Size of one vertical-scale label: its line box and the ink around the centre of that box.
+ */
+struct VerticalLabelMetrics {
+    double extent{0.0};    ///< Height of the line box
+    double inkAbove{0.0};  ///< Distance from the centre of the line box to the top of the ink
+    double inkBelow{0.0};  ///< Distance from the centre of the line box to the bottom of the ink
+};
+
+/// Metrics of a label in a line of the given height and ascent, whose ink lies between \a inkTop
+/// and \a inkBottom from the baseline (negative above it).
+VerticalLabelMetrics verticalLabelMetrics(double lineHeight, double ascent, double inkTop, double inkBottom);
+
+/**
+ * \struct VerticalScaleRoom
+ * \brief Space the ink of the end labels of a vertical scale may use past the end ticks.
+ */
+struct VerticalScaleRoom {
+    double above{0.0}; ///< Above the top tick: up to 2 px from the display, or up to the widget top
+    double below{0.0}; ///< Below the bottom tick: up to the widget bottom
+};
+
+/// Room past the end ticks of a vertical LinearGauge.
+VerticalScaleRoom linearGaugeVerticalRoom(double width, double height, bool thermometer, bool displayVisible);
+
+/**
+ * \brief Chooses which major labels a vertical LinearGauge scale draws, and where (#37).
+ *
+ * Every label is centred on its tick, also the end ones, whose ink so passes the end of the scale
+ * by half its height. An end label moves towards the scale only if its ink would leave \a room,
+ * and only as far as needed. The step is chosen as in layoutScaleLabels(), on the line boxes.
+ */
+ScaleLabelLayout layoutVerticalScaleLabels(const std::vector<VerticalLabelMetrics> &labels, double scaleLength,
+                                           double minGap, const VerticalScaleRoom &room);
 
 /// Label pixel size derived from the gauge geometry, before the size rule (#31): the height times
 /// 0.04 (vertical) or 0.12 (horizontal), clamped to [8, 12] px.
@@ -69,6 +104,11 @@ int linearGaugeBaseLabelPixelSize(bool vertical, double height);
 int chooseLabelPixelSize(int preferredPx, int minimumPx, double scaleLength,
                          const std::function<std::vector<double>(int)> &extentsAt,
                          const std::function<double(int)> &minGapAt);
+
+/// Same rule on a vertical scale: \a metricsAt gives the labels of a size for layoutVerticalScaleLabels().
+int chooseVerticalLabelPixelSize(int preferredPx, int minimumPx, double scaleLength, const VerticalScaleRoom &room,
+                                 const std::function<std::vector<VerticalLabelMetrics>(int)> &metricsAt,
+                                 const std::function<double(int)> &minGapAt);
 
 /// Length of the LinearGauge scale (the tube, along its axis): the widget size less the padding at
 /// each end (16 px; the bulb of a thermometer at the minimum end; 36 px above a vertical tube or
