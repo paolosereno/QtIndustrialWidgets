@@ -177,6 +177,18 @@ public:
     [[nodiscard]] QColor textColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
+    /**
+     * \brief Returns the smallest size at which the state indicators fit in the readout pod.
+     *
+     * With the digital display on, this is the smallest size, never below the floor of the widget without a
+     * readout, at which "---" and the Overrange / Underrange triangle fit in the pod at 7 pt. It is computed from the
+     * metrics of the widget font, so it changes with the font.
+     *
+     * At this size the state indicator is always visible; the number appears only if there is room, and how much
+     * room it needs depends on the font and on the length of the text (range, precision, input). When the readout does
+     * not fit, the unit is left out first, then the number; "---" and the triangle stay, and only a valid readout may
+     * disappear entirely.
+     */
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:

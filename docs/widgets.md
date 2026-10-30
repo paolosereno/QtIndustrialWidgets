@@ -220,8 +220,9 @@ Bargraph of curved segments on an arc (`qiw::CircularBargraph`).
   7 pt or more and never cut nor shortened; what does not fit in the pod is left out, the unit first, then the
   number (#167). `---` and the triangle are always shown, so only a valid readout may disappear.
   `minimumSizeHint()` is the smallest size at which `---` and the triangle fit in the pod at 7 pt, computed from the
-  widget font (50 × 50 with DejaVu Sans, 56 × 56 with no fonts installed, never less than 50 × 50), or 50 × 50 when
-  the display is hidden.
+  widget font. At that size the state indicator is always visible and the number appears only if there is room: the
+  room depends on the font and on the length of the text (range, precision, input). A larger widget is needed to
+  show the whole readout.
 - **Value state**: `valueState()` reports `Valid`, `Underrange`, `Overrange` or `Invalid`. Out-of-range inputs
   (including ±Inf) are shown at the range bound with the end segment blinking; the readout follows the common rule
   above (`▲ 120.0`, `>100.0` for +Inf). A NaN input is shown as `Invalid` (all segments unlit, readout `---`).
