@@ -13,6 +13,7 @@
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
+#include <QtWidgets/QVBoxLayout>
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,7 @@
 #include "ReadoutTestUtils.h"
 #include "TextInkTestUtils.h"
 #include "internal/LinearGaugeScale.h"
+#include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/ValueClassification.h"
 
@@ -150,6 +152,122 @@ QRect displayBox(RadialGauge &gauge)
     return boundingBox(differingPixels(without, renderGauge(gauge)));
 }
 
+// Number of scale pixels (those that change with the scale and zone colours while the display is hidden)
+// that the display covers
+int scalePixelsCovered(RadialGauge &gauge)
+{
+    auto colours = [](RadialGauge &g, const std::array<QColor, 4> &c) {
+        g.setScaleColor(c[0]);
+        g.setNormalColor(c[1]);
+        g.setWarningColor(c[2]);
+        g.setErrorColor(c[3]);
+    };
+    const std::array<QColor, 4> first{QColor(1, 200, 255), QColor(200, 1, 255), QColor(255, 200, 1), QColor(1, 255, 200)};
+    const std::array<QColor, 4> second{QColor(255, 120, 0), QColor(0, 255, 120), QColor(120, 0, 255), QColor(255, 0, 120)};
+
+    gauge.setDigitalDisplayVisible(false);
+    colours(gauge, first);
+    const QImage hiddenFirst = renderGauge(gauge);
+    colours(gauge, second);
+    const QVector<QPoint> scale = differingPixels(hiddenFirst, renderGauge(gauge));
+    if (scale.size() <= 100) {
+        return -1; // no scale found: the check would prove nothing
+    }
+
+    gauge.setDigitalDisplayVisible(true);
+    colours(gauge, first);
+    const QImage shownFirst = renderGauge(gauge);
+    colours(gauge, second);
+    const QImage shownSecond = renderGauge(gauge);
+    int covered = 0;
+    for (const QPoint &p : scale) {
+        covered += shownFirst.pixel(p) == shownSecond.pixel(p) ? 1 : 0;
+    }
+    return covered;
+}
+
+// The readout alone, in readoutColor: thresholds above the range, no bands, and a needle that hides nothing
+void isolateReadout(RadialGauge &gauge)
+{
+    const double top = gauge.maximum() + 2.0 * (gauge.maximum() - gauge.minimum());
+    gauge.setThresholdBandsVisible(false);
+    gauge.setWarningThreshold(top);
+    gauge.setErrorThreshold(top * 2.0 + 1.0);
+    gauge.setNeedleColor(QColor(0, 0, 0, 0));
+}
+
+// Device-pixel ink of the readout of \a input (isolateReadout() first)
+QVector<QPoint> readoutInkOf(RadialGauge &gauge, double input)
+{
+    gauge.setValue(input);
+    gauge.setReadoutColor(QColor(255, 0, 255));
+    const QImage first = renderGauge(gauge);
+    gauge.setReadoutColor(QColor(255, 255, 0));
+    return differingPixels(first, renderGauge(gauge));
+}
+
+// Device-pixel box of the pod alone, its rim included: display box without the unit above it
+QRect podBox(RadialGauge &gauge)
+{
+    const QRect display = displayBox(gauge);
+    gauge.setBezelColor(QColor(200, 30, 30));
+    const QImage first = renderGauge(gauge);
+    gauge.setBezelColor(QColor(30, 200, 30));
+    return boundingBox(differingPixels(first, renderGauge(gauge))).intersected(display);
+}
+
+// Device-pixel ink of the scale labels, with the render it comes from. Same state and same text colour for
+// all the renders to compare: what differs on these pixels has been covered
+struct LabelInkRender {
+    QImage image;
+    QVector<QPoint> ink;
+};
+
+LabelInkRender labelInk(RadialGauge &gauge)
+{
+    gauge.setTextColor(QColor(255, 255, 0));
+    const QImage other = renderGauge(gauge);
+    gauge.setTextColor(QColor(255, 0, 255));
+    LabelInkRender out;
+    out.image = renderGauge(gauge);
+    out.ink = differingPixels(out.image, other);
+    return out;
+}
+
+// Device-pixel box of the scale label of \a value on the gauge at its size
+QRect labelBox(const RadialGauge &gauge, double value)
+{
+    const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(std::min(gauge.width(), gauge.height()));
+    QFont font = gauge.font();
+    font.setPixelSize(geo.labelFontPx);
+    font.setBold(true);
+    const QRectF text = QFontMetricsF(font).boundingRect(internal::scaleLabelText(value, gauge.precision()));
+    const double frac = (value - gauge.minimum()) / (gauge.maximum() - gauge.minimum());
+    const double angle = (gauge.startAngle() + frac * gauge.spanAngle() - 90.0) * M_PI / 180.0;
+    const double x = gauge.width() * 0.5 + geo.labelRadius * std::cos(angle) - text.width() * 0.5;
+    const double y = gauge.height() * 0.5 + geo.labelRadius * std::sin(angle) - text.height() * 0.5;
+    const double dpr = gauge.devicePixelRatioF();
+    return QRectF((x - 1.0) * dpr, (y - 1.0) * dpr, (text.width() + 2.0) * dpr, (text.height() + 2.0) * dpr).toAlignedRect();
+}
+
+struct KeptInk {
+    int total{0};
+    int kept{0};
+};
+
+// How much of the ink of a label, rendered with the display hidden, is unchanged with the display shown
+KeptInk keptInk(const LabelInkRender &hidden, const LabelInkRender &shown, const QRect &box)
+{
+    KeptInk out;
+    for (const QPoint &p : hidden.ink) {
+        if (box.contains(p)) {
+            ++out.total;
+            out.kept += hidden.image.pixel(p) == shown.image.pixel(p) ? 1 : 0;
+        }
+    }
+    return out;
+}
+
 // The readout of an out-of-range input holds one more ink group than the same text read as a valid value:
 // a triangle with one flat side and the other narrowing to the apex. With \a font set on both gauges
 // when given
@@ -231,6 +349,16 @@ private Q_SLOTS:
     void digitalDisplayIgnoresUndrawnLabels();
     void digitalDisplayNeverCoversScale_data();
     void digitalDisplayNeverCoversScale();
+    void minimumSizeKeepsIndicatorAndEnds_data();
+    void minimumSizeKeepsIndicatorAndEnds();
+    void minimumSizeHintLimits();
+    void minimumSizeHintFollowsConfiguration_data();
+    void minimumSizeHintFollowsConfiguration();
+    void displayNeverCutsALabel_data();
+    void displayNeverCutsALabel();
+    void valueFontNeverBelow7pt();
+    void outOfRangeReadoutNeverBelow7pt();
+    void minimumSizeHintMakesRoomForAWideFont();
     void nanHidesNeedleAndShowsDashes();
     void nanEmitsValueChangedOnce();
     void outOfRangeReadoutShowsTheTrueValue();
@@ -497,6 +625,32 @@ void tst_RadialGauge::valueTextInsideDigitalDisplay()
 
     const QRect pod = boundingBox(differingPixels(noDisplay, podOnly));
     const QVector<QPoint> valuePixels = differingPixels(podOnly, podAndValue);
+
+    // #60: the number needs its width at 7 pt within the chord of the scale at the bottom of a pod as high as
+    // the text, at its preferred place. Without that room it is left out and the state indicator stays
+    const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(side);
+    QFont valueFont = gauge.font();
+    valueFont.setBold(true);
+    valueFont.setPixelSize(std::max(internal::minimumReadoutPixelSize(gauge.logicalDpiY()), geo.labelFontPx));
+    const QFontMetricsF valueMetrics(valueFont);
+    const double scaleInner = geo.majorTickInner - internal::podLabelMargin(geo.radius);
+    const double podBottom = geo.radius * 0.28 + valueMetrics.height();
+    const double room = 2.0 * std::sqrt(std::max(0.0, scaleInner * scaleInner - podBottom * podBottom));
+    const double needed = std::max(valueMetrics.horizontalAdvance(internal::formatFixed(0.0, precision)),
+                                   valueMetrics.horizontalAdvance(internal::formatFixed(maximum, precision)))
+                          + 2.0 * std::max(3.0, geo.radius * 0.04);
+    if (needed > room) {
+        QVERIFY2(valuePixels.isEmpty(), qPrintable(QStringLiteral("%1 px of a number with no room (%2 px needed, %3 px free)")
+                                                       .arg(valuePixels.size()).arg(needed).arg(room)));
+        isolateReadout(gauge);
+        for (double input : {std::numeric_limits<double>::quiet_NaN(), maximum * 2.0, -maximum}) {
+            const QVector<QPoint> ink = readoutInkOf(gauge, input);
+            QVERIFY2(ink.size() >= 3, qPrintable(QStringLiteral("no state indicator for input %1").arg(input)));
+            QVERIFY2(pod.contains(boundingBox(ink)), qPrintable(QStringLiteral("indicator for input %1 leaves the display").arg(input)));
+        }
+        return;
+    }
+
     QVERIFY2(valuePixels.size() > 20, qPrintable(QStringLiteral("only %1 value pixels").arg(valuePixels.size())));
     const QRect value = boundingBox(valuePixels);
 
@@ -742,9 +896,9 @@ void tst_RadialGauge::digitalDisplayNeverCoversScale_data()
 
     struct Range { const char *name; double min; double max; };
     const Range ranges[] = {{"-100000-100000", -100000.0, 100000.0}, {"0-10000000", 0.0, 10000000.0},
-                            {"0-100", 0.0, 100.0}, {"-1000-1000", -1000.0, 1000.0}};
+                            {"0-100", 0.0, 100.0}, {"-1000-1000", -1000.0, 1000.0}, {"0-100000", 0.0, 100000.0}};
     struct Arc { double start; double span; };
-    for (const Arc arc : {Arc{0.0, 360.0}, Arc{-180.0, 360.0}, Arc{-135.0, 270.0}, Arc{-120.0, 240.0}}) {
+    for (const Arc arc : {Arc{0.0, 360.0}, Arc{-180.0, 360.0}, Arc{-150.0, 300.0}, Arc{-135.0, 270.0}, Arc{-120.0, 240.0}}) {
         for (int side : {90, 100, 120, 160, 200, 300}) {
             for (const Range &r : ranges) {
                 for (const char *unit : {"", "RPM"}) {
@@ -768,15 +922,6 @@ void tst_RadialGauge::digitalDisplayNeverCoversScale()
     QFETCH(double, spanAngle);
     QFETCH(QString, unit);
 
-    auto colours = [](RadialGauge &g, const std::array<QColor, 4> &c) {
-        g.setScaleColor(c[0]);
-        g.setNormalColor(c[1]);
-        g.setWarningColor(c[2]);
-        g.setErrorColor(c[3]);
-    };
-    const std::array<QColor, 4> first{QColor(1, 200, 255), QColor(200, 1, 255), QColor(255, 200, 1), QColor(1, 255, 200)};
-    const std::array<QColor, 4> second{QColor(255, 120, 0), QColor(0, 255, 120), QColor(120, 0, 255), QColor(255, 0, 120)};
-
     RadialGauge gauge;
     configure(gauge, GaugeConfig{side, minimum, maximum, 0, startAngle, spanAngle});
     gauge.setUnit(unit);
@@ -784,23 +929,277 @@ void tst_RadialGauge::digitalDisplayNeverCoversScale()
     gauge.setWarningThreshold(minimum + 0.6 * (maximum - minimum));
     gauge.setErrorThreshold(minimum + 0.8 * (maximum - minimum));
 
-    gauge.setDigitalDisplayVisible(false);
-    colours(gauge, first);
-    const QImage hiddenFirst = renderGauge(gauge);
-    colours(gauge, second);
-    const QVector<QPoint> scale = differingPixels(hiddenFirst, renderGauge(gauge));
-    QVERIFY(scale.size() > 100);
+    const int covered = scalePixelsCovered(gauge);
+    QVERIFY2(covered == 0, qPrintable(QStringLiteral("%1 scale pixels covered").arg(covered)));
+}
 
-    gauge.setDigitalDisplayVisible(true);
-    colours(gauge, first);
-    const QImage shownFirst = renderGauge(gauge);
-    colours(gauge, second);
-    const QImage shownSecond = renderGauge(gauge);
-    int covered = 0;
-    for (const QPoint &p : scale) {
-        covered += shownFirst.pixel(p) == shownSecond.pixel(p) ? 1 : 0;
+namespace {
+
+struct ScaleRange {
+    const char *name;
+    double minimum;
+    double maximum;
+    int precision;
+};
+const ScaleRange kScaleRanges[] = {{"0-100.0", 0.0, 100.0, 1},          {"0-100", 0.0, 100.0, 0},
+                                   {"0-250.0", 0.0, 250.0, 1},          {"0-8000", 0.0, 8000.0, 0},
+                                   {"-1000-1000", -1000.0, 1000.0, 0},  {"0-100000", 0.0, 100000.0, 0},
+                                   {"-100000-100000", -100000.0, 100000.0, 0}, {"0-10000000", 0.0, 10000000.0, 0}};
+struct ScaleArc {
+    double start;
+    double span;
+};
+const ScaleArc kScaleArcs[] = {{-135.0, 270.0}, {-120.0, 240.0}, {0.0, 360.0}};
+
+void addScaleColumns()
+{
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<double>("startAngle");
+    QTest::addColumn<double>("spanAngle");
+    QTest::addColumn<QString>("unit");
+}
+
+void addScaleRows()
+{
+    for (const ScaleArc arc : kScaleArcs) {
+        for (const ScaleRange &r : kScaleRanges) {
+            for (const char *unit : {"", "RPM"}) {
+                QTest::addRow("%g+%g, %s %s", arc.start, arc.span, r.name, unit)
+                    << r.minimum << r.maximum << r.precision << arc.start << arc.span << QString::fromLatin1(unit);
+            }
+        }
     }
-    QVERIFY2(covered == 0, qPrintable(QStringLiteral("%1 of %2 scale pixels covered").arg(covered).arg(scale.size())));
+}
+
+} // namespace
+
+void tst_RadialGauge::minimumSizeKeepsIndicatorAndEnds_data()
+{
+    addScaleColumns();
+    addScaleRows();
+}
+
+// #60(a): from minimumSizeHint() up, Invalid, Underrange and Overrange show their indicator inside the pod,
+// the display covers no scale pixel, and the first and last labels are whole. The last label is left out only
+// on a span where it lies on the first one. When even sizeHint() cannot keep both ends the result is
+// sizeHint() (documented): the indicator and the scale are still checked.
+void tst_RadialGauge::minimumSizeKeepsIndicatorAndEnds()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, startAngle);
+    QFETCH(double, spanAngle);
+    QFETCH(QString, unit);
+
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{300, minimum, maximum, precision, startAngle, spanAngle});
+    gauge.setUnit(unit);
+    const int hint = gauge.minimumSizeHint().width();
+    QCOMPARE(gauge.minimumSizeHint().height(), hint);
+    const int ceiling = gauge.sizeHint().width();
+    const bool endsRequired = hint < ceiling;
+    const double range = maximum - minimum;
+
+    for (int side : {hint, hint + 1, hint + 2, hint + 5, hint + 10, hint + 20, hint + 40, ceiling, 300, 400}) {
+        if (side < hint) {
+            continue;
+        }
+        const QString where = QStringLiteral("side %1, hint %2: ").arg(side).arg(hint);
+        gauge.resize(side, side);
+        gauge.setValue(minimum);
+        gauge.setWarningThreshold(minimum + 0.6 * range);
+        gauge.setErrorThreshold(minimum + 0.8 * range);
+        gauge.setThresholdBandsVisible(true);
+        const int covered = scalePixelsCovered(gauge);
+        QVERIFY2(covered == 0, qPrintable(where + QStringLiteral("%1 scale pixels covered").arg(covered)));
+
+        isolateReadout(gauge);
+        for (double input : {std::numeric_limits<double>::quiet_NaN(), maximum + range, minimum - range}) {
+            const QString state = where + QStringLiteral("input %1: ").arg(input);
+            const QVector<QPoint> ink = readoutInkOf(gauge, input);
+            QVERIFY2(ink.size() >= 3, qPrintable(state + QStringLiteral("no state indicator")));
+            const QRect pod = podBox(gauge);
+            const QRect box = boundingBox(ink);
+            QVERIFY2(pod.contains(box),
+                     qPrintable(state + QStringLiteral("readout %1,%2 %3x%4 outside the pod %5,%6 %7x%8")
+                                    .arg(box.x()).arg(box.y()).arg(box.width()).arg(box.height())
+                                    .arg(pod.x()).arg(pod.y()).arg(pod.width()).arg(pod.height())));
+        }
+
+        if (!endsRequired) {
+            continue;
+        }
+        gauge.setValue(std::numeric_limits<double>::quiet_NaN());
+        gauge.setDigitalDisplayVisible(false);
+        const LabelInkRender hidden = labelInk(gauge);
+        gauge.setDigitalDisplayVisible(true);
+        const LabelInkRender shown = labelInk(gauge);
+        const KeptInk first = keptInk(hidden, shown, labelBox(gauge, minimum));
+        QVERIFY2(first.total > 0 && first.kept == first.total,
+                 qPrintable(where + QStringLiteral("first label: %1 of %2 pixels").arg(first.kept).arg(first.total)));
+        if (spanAngle < 360.0) {
+            const KeptInk last = keptInk(hidden, shown, labelBox(gauge, maximum));
+            QVERIFY2(last.total > 0 && last.kept == last.total,
+                     qPrintable(where + QStringLiteral("last label: %1 of %2 pixels").arg(last.kept).arg(last.total)));
+        }
+    }
+}
+
+// #60(a): the limits of minimumSizeHint(): not below the former fixed 90 x 90, not above sizeHint()
+void tst_RadialGauge::minimumSizeHintLimits()
+{
+    for (const ScaleArc arc : kScaleArcs) {
+        for (double maximum : {1.0, 100.0, 1e7, 1e15, 1e30}) {
+            for (int precision : {0, 6}) {
+                RadialGauge gauge;
+                gauge.setRange(0.0, maximum);
+                gauge.setPrecision(precision);
+                gauge.setStartAngle(arc.start);
+                gauge.setSpanAngle(arc.span);
+                gauge.setUnit(QStringLiteral("kWh/m3"));
+                const int hint = gauge.minimumSizeHint().width();
+                QVERIFY2(hint >= 90 && hint <= gauge.sizeHint().width(),
+                         qPrintable(QStringLiteral("span %1, 0-%2, precision %3: %4").arg(arc.span).arg(maximum).arg(precision).arg(hint)));
+            }
+        }
+    }
+    // Both ends of a 270-degree scale have to fit around the display; on a full turn the first one is enough
+    RadialGauge wide;
+    configure(wide, GaugeConfig{300, 0.0, 100000.0, 0, -135.0, 270.0});
+    wide.setUnit(QStringLiteral("RPM"));
+    RadialGauge turn;
+    configure(turn, GaugeConfig{300, 0.0, 100000.0, 0, 0.0, 360.0});
+    turn.setUnit(QStringLiteral("RPM"));
+    QVERIFY2(wide.minimumSizeHint().width() > turn.minimumSizeHint().width(),
+             qPrintable(QStringLiteral("270 degrees: %1, 360 degrees: %2")
+                            .arg(wide.minimumSizeHint().width()).arg(turn.minimumSizeHint().width())));
+    QVERIFY(turn.minimumSizeHint().width() < turn.sizeHint().width());
+}
+
+void tst_RadialGauge::minimumSizeHintFollowsConfiguration_data()
+{
+    using Change = std::function<void(RadialGauge &)>;
+    QTest::addColumn<Change>("change");
+    QTest::addColumn<bool>("hintChanges");
+
+    QTest::addRow("range") << Change([](RadialGauge &g) { g.setRange(0.0, 10000000.0); }) << true;
+    QTest::addRow("maximum") << Change([](RadialGauge &g) { g.setMaximum(10000000.0); }) << true;
+    QTest::addRow("precision") << Change([](RadialGauge &g) { g.setPrecision(6); }) << true;
+    QTest::addRow("unit") << Change([](RadialGauge &g) { g.setUnit(QStringLiteral("kWh/m3 per hour")); }) << true;
+    QTest::addRow("start angle") << Change([](RadialGauge &g) { g.setStartAngle(-90.0); }) << true;
+    QTest::addRow("span angle") << Change([](RadialGauge &g) { g.setSpanAngle(240.0); }) << true;
+    QTest::addRow("major ticks") << Change([](RadialGauge &g) { g.setMajorTicks(4); }) << false;
+    QTest::addRow("display hidden") << Change([](RadialGauge &g) { g.setDigitalDisplayVisible(false); }) << true;
+    QTest::addRow("font") << Change([](RadialGauge &g) { g.setFont(FontTest::otherFont(g.font())); }) << false;
+}
+
+// #60(a): minimumSizeHint() is that of a new gauge with the same configuration after every setter it depends
+// on, and the layout that holds the gauge sees it without being invalidated by hand (updateGeometry()).
+void tst_RadialGauge::minimumSizeHintFollowsConfiguration()
+{
+    using Change = std::function<void(RadialGauge &)>;
+    QFETCH(Change, change);
+    QFETCH(bool, hintChanges);
+
+    QWidget parent;
+    auto *layout = new QVBoxLayout(&parent);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto *gauge = new RadialGauge(&parent);
+    gauge->setRange(0.0, 100.0);
+    layout->addWidget(gauge);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+
+    const int before = gauge->minimumSizeHint().width();
+    QCOMPARE(layout->minimumSize().width(), before);
+
+    change(*gauge);
+    const int after = gauge->minimumSizeHint().width();
+
+    RadialGauge fresh;
+    fresh.setRange(0.0, 100.0);
+    change(fresh);
+    QCOMPARE(after, fresh.minimumSizeHint().width());
+    if (hintChanges) {
+        QVERIFY2(after != before, qPrintable(QStringLiteral("still %1").arg(after)));
+    }
+    QCOMPARE(layout->minimumSize().width(), after);
+}
+
+void tst_RadialGauge::displayNeverCutsALabel_data()
+{
+    QTest::addColumn<int>("side");
+    addScaleColumns();
+    for (int side : {90, 100, 120, 160, 200, 300}) {
+        for (const ScaleArc arc : kScaleArcs) {
+            for (const ScaleRange &r : kScaleRanges) {
+                for (const char *unit : {"", "RPM"}) {
+                    QTest::addRow("%d px, %g+%g, %s %s", side, arc.start, arc.span, r.name, unit)
+                        << side << r.minimum << r.maximum << r.precision << arc.start << arc.span << QString::fromLatin1(unit);
+                }
+            }
+        }
+    }
+}
+
+// #43, #60(a): the value has precedence over the labels, but a label is never cut: with the display shown each
+// one is either whole or not drawn at all, at every size, also below minimumSizeHint()
+void tst_RadialGauge::displayNeverCutsALabel()
+{
+    QFETCH(int, side);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, startAngle);
+    QFETCH(double, spanAngle);
+    QFETCH(QString, unit);
+
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{side, minimum, maximum, precision, startAngle, spanAngle});
+    gauge.setUnit(unit);
+    isolateReadout(gauge);
+    gauge.setValue(minimum + 0.5 * (maximum - minimum));
+
+    gauge.setDigitalDisplayVisible(false);
+    const LabelInkRender hidden = labelInk(gauge);
+    gauge.setDigitalDisplayVisible(true);
+    const LabelInkRender shown = labelInk(gauge);
+    const int ticks = gauge.majorTicks();
+    for (int i = 0; i <= ticks; ++i) {
+        const double value = minimum + (maximum - minimum) * i / ticks;
+        const KeptInk ink = keptInk(hidden, shown, labelBox(gauge, value));
+        QVERIFY2(ink.kept == 0 || ink.kept == ink.total,
+                 qPrintable(QStringLiteral("label %1 cut: %2 of %3 pixels").arg(value).arg(ink.kept).arg(ink.total)));
+    }
+}
+
+// #60(a): the value is never below 7 pt: wherever it is drawn, its digits are as high as at 7 pt
+void tst_RadialGauge::valueFontNeverBelow7pt()
+{
+    int checked = 0;
+    for (int side : {90, 100, 110, 120, 140, 160}) {
+        for (double maximum : {100.0, 8000.0, 100000.0}) {
+            RadialGauge gauge;
+            configure(gauge, GaugeConfig{side, 0.0, maximum, 0, -135.0, 270.0});
+            gauge.setUnit(QString());
+            const QRect ink = valueInkBox(gauge);
+            if (ink.isEmpty()) {
+                continue; // no room: left out, never smaller (see minimumSizeKeepsIndicatorAndEnds)
+            }
+            ++checked;
+            QFont font = gauge.font();
+            font.setPixelSize(internal::minimumReadoutPixelSize(gauge.logicalDpiY()));
+            font.setBold(true);
+            const QRect reference = LabelInk::inkBoxAlone(internal::formatFixed(maximum, 0), font, gauge.devicePixelRatioF());
+            // The height of the ink can vary by 1 device px with the vertical sub-pixel position of the text
+            QVERIFY2(ink.height() >= reference.height() - 1,
+                     qPrintable(QStringLiteral("%1 px, 0-%2: ink %3 px high, %4 at 7 pt").arg(side).arg(maximum).arg(ink.height()).arg(reference.height())));
+        }
+    }
+    QVERIFY(checked >= 6);
 }
 
 // #50: the digital display is laid out against the drawn labels only. On a 360-degree arc from
@@ -839,6 +1238,53 @@ void tst_RadialGauge::digitalDisplayIgnoresUndrawnLabels()
              qPrintable(QStringLiteral("value ink %1x%2 at (%3, %4) with 10 ticks, %5x%6 at (%7, %8) with 5")
                             .arg(tenValue.width()).arg(tenValue.height()).arg(tenValue.x()).arg(tenValue.y())
                             .arg(fiveValue.width()).arg(fiveValue.height()).arg(fiveValue.x()).arg(fiveValue.y())));
+}
+
+// #60(a): an out-of-range readout that does not fit is left out, the triangle staying, rather than drawn smaller:
+// what remains is never lower than the triangle at 7 pt
+void tst_RadialGauge::outOfRangeReadoutNeverBelow7pt()
+{
+    for (int side : {90, 100, 120, 160, 200}) {
+        for (double maximum : {100.0, 8000.0, 100000.0}) {
+            for (double factor : {1.5, 1000.0, 1.0e6}) {
+                RadialGauge gauge;
+                configure(gauge, GaugeConfig{side, 0.0, maximum, 0, -135.0, 270.0});
+                gauge.setUnit(QString());
+                isolateReadout(gauge);
+                const QRect ink = boundingBox(readoutInkOf(gauge, maximum * factor));
+                QFont font = gauge.font();
+                font.setPixelSize(internal::minimumReadoutPixelSize(gauge.logicalDpiY()));
+                font.setBold(true);
+                const double triangle = QFontMetricsF(font).capHeight() * 0.9 * gauge.devicePixelRatioF();
+                QVERIFY2(ink.height() >= std::floor(triangle) - 1,
+                         qPrintable(QStringLiteral("%1 px, input %2: ink %3 px high, the triangle at 7 pt %4")
+                                        .arg(side).arg(maximum * factor).arg(ink.height()).arg(triangle)));
+            }
+        }
+    }
+}
+
+// #60(a): minimumSizeHint() makes room for the state indicator: with a font so wide that "---" does not fit at
+// 90 px, the indicator stays clear of the scale at the size it returns
+void tst_RadialGauge::minimumSizeHintMakesRoomForAWideFont()
+{
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{300, 0.0, 100.0, 0, 0.0, 360.0});
+    gauge.setUnit(QString());
+    QFont wide = gauge.font();
+    wide.setStretch(400);
+    gauge.setFont(wide);
+
+    const int hint = gauge.minimumSizeHint().width();
+    QVERIFY2(hint > 90 && hint < gauge.sizeHint().width(), qPrintable(QStringLiteral("hint %1").arg(hint)));
+    gauge.resize(hint, hint);
+    gauge.setWarningThreshold(60.0);
+    gauge.setErrorThreshold(80.0);
+    gauge.setValue(0.0);
+    const int covered = scalePixelsCovered(gauge);
+    QVERIFY2(covered == 0, qPrintable(QStringLiteral("%1 scale pixels covered at %2 px").arg(covered).arg(hint)));
+    isolateReadout(gauge);
+    QVERIFY(readoutInkOf(gauge, std::numeric_limits<double>::quiet_NaN()).size() >= 3);
 }
 
 // #51: the scale labels (digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),

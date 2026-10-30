@@ -126,6 +126,11 @@ private Q_SLOTS:
     void unitBandChecked();
     void podLoweredBelowBlockingLabel();
     void valueHasPrecedenceOverLabels();
+    void minimumReadoutIs7pt();
+    void compactPodStaysClearOfLabels();
+    void podLeavesOutUnitThenNumber();
+    void hiddenLabelsAreThoseThePodCuts();
+    void indicatorNeverLeftOut();
     void podHeightHoldsValue();
     void nonFiniteInputGivesEmptyPod();
     void fontFitPicksLargestFittingSize();
@@ -303,6 +308,107 @@ void tst_RadialGaugeLayout::valueHasPrecedenceOverLabels()
     QCOMPARE(out.pod.w, 0.6 * 11 * 12 + 2.0 * 6.0);
     QCOMPARE(out.pod.x + out.pod.w * 0.5, 150.0);
     QVERIFY(out.pod.h > 0.0);
+}
+
+// #60: 7 pt rounded up to a pixel size, at any logical DPI
+void tst_RadialGaugeLayout::minimumReadoutIs7pt()
+{
+    QCOMPARE(minimumReadoutPixelSize(96.0), 10);
+    QCOMPARE(minimumReadoutPixelSize(72.0), 7);
+    QCOMPARE(minimumReadoutPixelSize(144.0), 14);
+    QCOMPARE(minimumReadoutPixelSize(std::numeric_limits<double>::quiet_NaN()), 10);
+    QCOMPARE(minimumReadoutPixelSize(0.0), 10);
+}
+
+// A dial of a scale that leaves \a inner px around the centre, with the value of \a characters and the given unit
+static PodLayoutInput narrowDial(double inner, int characters, double unitWidth)
+{
+    PodLayoutInput in = dial300(8.0, 8.0);
+    in.labelRects.clear();
+    in.valueWidth = widthOf(characters);
+    in.unitWidth = unitWidth;
+    in.scaleInnerRadius = inner;
+    in.scaleStartAngle = 0.0;
+    in.scaleSpanAngle = 360.0;
+    in.indicatorWidth = 0.6 * 11 * 3;
+    return in;
+}
+
+// #60: a value too wide for the regular pod but not for a compact one, between two labels that leave a
+// narrow slot: the pod is compact, at the minimum font at least, and no label is hidden
+void tst_RadialGaugeLayout::compactPodStaysClearOfLabels()
+{
+    PodLayoutInput in = narrowDial(120.0, 12, 0.0);
+    const PodLayout regular = layoutDigitalPod(in);
+    QVERIFY(regular.showValue);
+
+    // Labels at the ends of the row of the preferred pod, outside the width of the compact value
+    const double half = 0.6 * 11 * 12 * 0.5 + 6.0;
+    const double y = 150.0 + 146.0 * 0.28 + 5.0;
+    in.labelRects = {{150.0 - half - 40.0, y, 30.0, 12.0}, {150.0 + half + 10.0, y, 30.0, 12.0}};
+    const PodLayout out = layoutDigitalPod(in);
+    QVERIFY(out.showValue);
+    QVERIFY(out.clearOfLabels);
+    QVERIFY(out.hiddenLabels.empty());
+    QVERIFY(out.valueFontPx >= in.minimumFontPx);
+    QVERIFY(clearOf(out.pod, in.labelRects, podLabelMargin(in.radius) - 1e-9));
+}
+
+// #60: as the room shrinks, the unit goes first, then the number; the font never goes below the minimum
+void tst_RadialGaugeLayout::podLeavesOutUnitThenNumber()
+{
+    int previous = 3;
+    bool sawNoUnit = false;
+    bool sawNoNumber = false;
+    for (double inner = 140.0; inner >= 50.0; inner -= 1.0) {
+        const PodLayout out = layoutDigitalPod(narrowDial(inner, 20, 170.0));
+        QVERIFY(out.valueFontPx >= 11);
+        const int level = out.showValue ? (out.showUnit ? 2 : 1) : 0;
+        QVERIFY2(level <= previous, qPrintable(QStringLiteral("inner %1: level %2 after %3").arg(inner).arg(level).arg(previous)));
+        if (!out.showValue) {
+            QVERIFY(!out.showUnit); // never a unit without its number
+        }
+        sawNoUnit = sawNoUnit || level == 1;
+        sawNoNumber = sawNoNumber || level == 0;
+        previous = level;
+    }
+    QVERIFY(sawNoUnit);
+    QVERIFY(sawNoNumber);
+}
+
+// #43, #60: the labels listed are those the pod or the unit band would touch within the margin, no others
+void tst_RadialGaugeLayout::hiddenLabelsAreThoseThePodCuts()
+{
+    PodLayoutInput in = dial300(150.0, 150.0); // labels that leave no room anywhere
+    in.valueWidth = widthOf(12);
+    in.indicatorWidth = 0.6 * 11 * 3;
+    in.labelRects.push_back({20.0, 20.0, 30.0, 12.0}); // far from the pod
+    const PodLayout out = layoutDigitalPod(in);
+    QVERIFY(!out.clearOfLabels);
+    const double m = podLabelMargin(in.radius);
+    for (size_t i = 0; i < in.labelRects.size(); ++i) {
+        const LayoutRect box = expanded(in.labelRects[i], m);
+        const bool touched = box.intersects(out.pod) || (out.showUnit && in.unitWidth > 0.0 && box.intersects(out.unit));
+        const bool hidden = std::find(out.hiddenLabels.begin(), out.hiddenLabels.end(), static_cast<int>(i)) != out.hiddenLabels.end();
+        QCOMPARE(hidden, touched);
+    }
+    QVERIFY(!out.hiddenLabels.empty());
+    QCOMPARE(out.hiddenLabels.back(), 0 + static_cast<int>(in.labelRects.size()) - 2); // the far label stays
+}
+
+// #60: with no room at all the state indicator is still placed, and the result says it reaches the scale
+void tst_RadialGaugeLayout::indicatorNeverLeftOut()
+{
+    const PodLayout tight = layoutDigitalPod(narrowDial(5.0, 20, 40.0));
+    QVERIFY(!tight.showValue);
+    QVERIFY(!tight.showUnit);
+    QVERIFY(!tight.clearOfScale);
+    QVERIFY(tight.pod.w > 0.6 * 11 * 3);
+    QVERIFY(tight.pod.h > 0.0);
+
+    const PodLayout roomy = layoutDigitalPod(narrowDial(60.0, 20, 40.0));
+    QVERIFY(!roomy.showValue);
+    QVERIFY(roomy.clearOfScale);
 }
 
 void tst_RadialGaugeLayout::podHeightHoldsValue()
