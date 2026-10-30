@@ -35,6 +35,12 @@ constexpr int kBlinkHalfPeriodMs = 250; // ~2 Hz out-of-range blink
 constexpr double kMinimumValuePt = 7.0;
 constexpr int kMinimumSide = 50; // floor of minimumSizeHint()
 
+// Logical px kept between the measured ink box and the pod rim. It covers the difference between the font metrics
+// and the rasterised ink: measured up to 0.7 px past the rim without a margin, worst case Qt 6.2.4 at DPR 1, 260 px,
+// "10000.00" (farthest ink at 75.5 px, pod radius 74.8 px), and up to 0.3 px on macOS. The cause is not determined:
+// it does not reproduce on the local Linux build
+constexpr double kPodMargin = 1.0;
+
 // Pod well radius for a widget of side \a side, as in paintEvent()
 double podRadiusFor(double side)
 {
@@ -86,7 +92,7 @@ LineGeometry lineGeometry(const QFontMetricsF &fm, const ReadoutLine &line)
     return g;
 }
 
-// True when the ink of \a line lies inside the circle of radius \a r around the pod centre
+// True when the ink of \a line lies inside the circle of radius \a r around the pod centre, kPodMargin from its rim
 bool lineFits(const QFontMetricsF &fm, const ReadoutLine &line, double r)
 {
     const LineGeometry g = lineGeometry(fm, line);
@@ -99,7 +105,7 @@ bool lineFits(const QFontMetricsF &fm, const ReadoutLine &line, double r)
     }
     for (const QRectF &b : boxes) {
         for (const QPointF &p : {b.topLeft(), b.topRight(), b.bottomLeft(), b.bottomRight()}) {
-            if (std::hypot(p.x(), p.y()) > r) {
+            if (std::hypot(p.x(), p.y()) > r - kPodMargin) {
                 return false;
             }
         }
