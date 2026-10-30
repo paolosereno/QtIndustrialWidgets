@@ -1475,6 +1475,18 @@ void tst_CircularBargraph::minimumSizeHintFitsTheStateIndicators()
     const int side = b.minimumSizeHint().width();
     QVERIFY2(side > visible.width(), qPrintable(QStringLiteral("minimumSizeHint() %1 with the spaced font, %2 without")
                                                     .arg(side).arg(visible.width())));
+    // The hint keeps "---" 1 px inside the rim: the ink can pass the metrics by a fraction of a pixel on some platforms
+    const QFontMetricsF fm(sevenPointValueFont(b), &b);
+    const QString dashes = QStringLiteral("---");
+    const QRectF box = fm.tightBoundingRect(dashes).translated(-fm.horizontalAdvance(dashes) * 0.5,
+                                                               fm.ascent() - fm.height() * 0.5);
+    double farthest = 0.0;
+    for (const QPointF &p : {box.topLeft(), box.topRight(), box.bottomLeft(), box.bottomRight()}) {
+        farthest = std::max(farthest, std::hypot(p.x(), p.y()));
+    }
+    const double podRadius = (side / 2.0 - 4.0) * 0.66 * 0.90;
+    QVERIFY2(farthest <= podRadius - 1.0, qPrintable(QStringLiteral("\"---\" reaches %1 px at %2 px, pod radius %3 px")
+                                                         .arg(farthest).arg(side).arg(podRadius)));
     for (const double v : {std::numeric_limits<double>::quiet_NaN(), 150.0, -50.0}) {
         b.setValue(v);
         b.resize(side, side);
