@@ -15,6 +15,7 @@
 #include <QtGui/QPixmap>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -228,6 +229,8 @@ private Q_SLOTS:
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
     void digitalDisplayIgnoresUndrawnLabels();
+    void digitalDisplayNeverCoversScale_data();
+    void digitalDisplayNeverCoversScale();
     void nanHidesNeedleAndShowsDashes();
     void nanEmitsValueChangedOnce();
     void outOfRangeReadoutShowsTheTrueValue();
@@ -726,6 +729,78 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap()
                                 .arg(i).arg(nearest.width()).arg(nearest.height()).arg(nearest.x()).arg(nearest.y())
                                 .arg(best).arg(p.x()).arg(p.y()).arg(owner)));
     }
+}
+
+void tst_RadialGauge::digitalDisplayNeverCoversScale_data()
+{
+    QTest::addColumn<int>("side");
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<double>("startAngle");
+    QTest::addColumn<double>("spanAngle");
+    QTest::addColumn<QString>("unit");
+
+    struct Range { const char *name; double min; double max; };
+    const Range ranges[] = {{"-100000-100000", -100000.0, 100000.0}, {"0-10000000", 0.0, 10000000.0},
+                            {"0-100", 0.0, 100.0}, {"-1000-1000", -1000.0, 1000.0}};
+    struct Arc { double start; double span; };
+    for (const Arc arc : {Arc{0.0, 360.0}, Arc{-180.0, 360.0}, Arc{-135.0, 270.0}, Arc{-120.0, 240.0}}) {
+        for (int side : {90, 100, 120, 160, 200, 300}) {
+            for (const Range &r : ranges) {
+                for (const char *unit : {"", "RPM"}) {
+                    QTest::addRow("%g+%g, %d px, %s %s", arc.start, arc.span, side, r.name, unit)
+                        << side << r.min << r.max << arc.start << arc.span << QString::fromLatin1(unit);
+                }
+            }
+        }
+    }
+}
+
+// #60(a): the pod and the unit never cover the threshold band or a tick. The scale pixels are those
+// that change with the scale and zone colours while the display is hidden; with the display
+// shown they must all still change.
+void tst_RadialGauge::digitalDisplayNeverCoversScale()
+{
+    QFETCH(int, side);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(double, startAngle);
+    QFETCH(double, spanAngle);
+    QFETCH(QString, unit);
+
+    auto colours = [](RadialGauge &g, const std::array<QColor, 4> &c) {
+        g.setScaleColor(c[0]);
+        g.setNormalColor(c[1]);
+        g.setWarningColor(c[2]);
+        g.setErrorColor(c[3]);
+    };
+    const std::array<QColor, 4> first{QColor(1, 200, 255), QColor(200, 1, 255), QColor(255, 200, 1), QColor(1, 255, 200)};
+    const std::array<QColor, 4> second{QColor(255, 120, 0), QColor(0, 255, 120), QColor(120, 0, 255), QColor(255, 0, 120)};
+
+    RadialGauge gauge;
+    configure(gauge, GaugeConfig{side, minimum, maximum, 0, startAngle, spanAngle});
+    gauge.setUnit(unit);
+    gauge.setValue(minimum);
+    gauge.setWarningThreshold(minimum + 0.6 * (maximum - minimum));
+    gauge.setErrorThreshold(minimum + 0.8 * (maximum - minimum));
+
+    gauge.setDigitalDisplayVisible(false);
+    colours(gauge, first);
+    const QImage hiddenFirst = renderGauge(gauge);
+    colours(gauge, second);
+    const QVector<QPoint> scale = differingPixels(hiddenFirst, renderGauge(gauge));
+    QVERIFY(scale.size() > 100);
+
+    gauge.setDigitalDisplayVisible(true);
+    colours(gauge, first);
+    const QImage shownFirst = renderGauge(gauge);
+    colours(gauge, second);
+    const QImage shownSecond = renderGauge(gauge);
+    int covered = 0;
+    for (const QPoint &p : scale) {
+        covered += shownFirst.pixel(p) == shownSecond.pixel(p) ? 1 : 0;
+    }
+    QVERIFY2(covered == 0, qPrintable(QStringLiteral("%1 of %2 scale pixels covered").arg(covered).arg(scale.size())));
 }
 
 // #50: the digital display is laid out against the drawn labels only. On a 360-degree arc from
