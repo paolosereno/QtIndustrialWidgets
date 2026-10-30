@@ -524,9 +524,12 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             auto metricsAt = [&](int px) {
                 const QFontMetricsF m(labelFontAt(px));
                 std::vector<internal::VerticalLabelMetrics> labels;
-                for (const QString &t : labelTexts) {
-                    const QRectF ink = m.tightBoundingRect(t);
-                    labels.push_back(internal::verticalLabelMetrics(m.height(), m.ascent(), ink.top(), ink.bottom()));
+                for (int i = 0; i < labelTexts.size(); ++i) {
+                    // Only the end labels can move, so only they need their ink measured
+                    const bool end = i == 0 || i == labelTexts.size() - 1;
+                    const internal::TextInk ink = end ? internal::measureTextInk(labelTexts.at(i), labelFontAt(px), devicePixelRatioF())
+                                                      : internal::TextInk{};
+                    labels.push_back(internal::verticalLabelMetrics(m.height(), m.ascent(), ink.top, ink.bottom));
                 }
                 return labels;
             };
@@ -553,11 +556,12 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             const internal::ScaleLabelLayout layout = internal::layoutVerticalScaleLabels(
                 metricsAt(fontSize), d_ptr->m_tubeRect.height(), internal::scaleLabelMinGap(fm.height()), room);
             painter.setPen(d_ptr->m_textColor);
+            const double dpr = devicePixelRatioF();
             for (const internal::ScaleLabelSlot &slot : layout.labels) {
-                QRectF drawR(labelX, d_ptr->m_tubeRect.bottom() - slot.end, w - labelX - 4.0, slot.end - slot.start);
-                // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS); the
-                // rectangle only positions the label
-                painter.drawText(drawR, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextDontClip, texts.at(slot.index));
+                // The baseline on a device pixel, as measureTextInk() draws it: the ink is where the layout expects it
+                const double centre = d_ptr->m_tubeRect.bottom() - (slot.start + slot.end) * 0.5;
+                const double baseline = std::round((centre + fm.ascent() - fm.height() * 0.5) * dpr) / dpr;
+                painter.drawText(QPointF(labelX, baseline), texts.at(slot.index));
             }
         }
 

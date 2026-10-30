@@ -17,8 +17,11 @@ namespace {
 // Vertical gauge: top of the tube with and without the digital display
 constexpr double kVerticalTopWithDisplay = 36.0;
 constexpr double kVerticalTopWithoutDisplay = 16.0;
-// Free space kept between a scale label and the digital display (#37)
-constexpr double kDisplayClearance = 1.0;
+// Free space kept between the ink of a scale label and the digital display (#37). The ink is
+// measured on a raster (measureTextInk()): on macOS it rose 1.0 px above tightBoundingRect()
+// (font twice as large, 100x400 and thermometer 100x280, DPR 1, Qt 6, CI of PR #172), which
+// made it touch the display with a clearance of 1 px; the cause is not determined
+constexpr double kDisplayClearance = 2.0;
 
 double finiteOrZero(double v)
 {

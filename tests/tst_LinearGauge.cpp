@@ -272,9 +272,11 @@ VerticalLabels verticalLabels(const LinearGauge &gauge, double maximum, int prec
     auto metricsAt = [&](int px) {
         const QFontMetricsF m(fontAt(px));
         std::vector<internal::VerticalLabelMetrics> labels;
-        for (const QString &t : texts) {
-            const QRectF ink = m.tightBoundingRect(t);
-            labels.push_back(internal::verticalLabelMetrics(m.height(), m.ascent(), ink.top(), ink.bottom()));
+        for (int i = 0; i < texts.size(); ++i) {
+            const bool end = i == 0 || i == texts.size() - 1;
+            const internal::TextInk ink = end ? internal::measureTextInk(texts.at(i), fontAt(px), gauge.devicePixelRatioF())
+                                              : internal::TextInk{};
+            labels.push_back(internal::verticalLabelMetrics(m.height(), m.ascent(), ink.top, ink.bottom));
         }
         return labels;
     };
@@ -778,8 +780,9 @@ void tst_LinearGauge::scaleLabelsReadable()
                                                      .arg(gap, 0, 'f', 1).arg(minGap, 0, 'f', 1).arg(describe())));
     }
     // (c) first and last labels drawn. Horizontal: inside the scale (between the end ticks), the
-    // last one whole. Vertical (#37): past the end ticks by at most half the digit height (1 px for
-    // anti-aliasing), inside the widget
+    // last one whole. Vertical (#37): past the end ticks by at most half the digit height, inside
+    // the widget (1 px for anti-aliasing). The ticks are shifted by the offset of the interior
+    // labels: on a platform without fonts the box glyphs lie above the middle of the line
     const double scaleMin = (ticks.first().start + ticks.first().end) * 0.5;
     const double scaleMax = (ticks.last().start + ticks.last().end) * 0.5;
     const Run &first = labels.first();
@@ -790,10 +793,21 @@ void tst_LinearGauge::scaleLabelsReadable()
         QVERIFY2(last.end <= scaleMax + 1.0 && last.end >= scaleMax - ink.last().maxLength - 1.0,
                  qPrintable(QStringLiteral("last label %1-%2, scale ends at %3").arg(last.start).arg(last.end).arg(scaleMax)));
     } else {
-        QVERIFY2(first.end <= scaleMin + ink.first().maxLength * 0.5 + 1.0 && first.end <= size.height(),
-                 qPrintable(QStringLiteral("bottom label %1-%2, scale bottom at %3").arg(first.start).arg(first.end).arg(scaleMin)));
-        QVERIFY2(last.start >= scaleMax - ink.last().maxLength * 0.5 - 1.0 && last.start >= 0.0,
-                 qPrintable(QStringLiteral("top label %1-%2, scale top at %3").arg(last.start).arg(last.end).arg(scaleMax)));
+        QVERIFY(labels.size() >= 3);
+        double interior = 0.0;
+        for (int i = 1; i + 1 < labels.size(); ++i) {
+            interior += offsetFromNearestTick(labels[i], ticks);
+        }
+        interior /= labels.size() - 2;
+        const VerticalLabels metrics = verticalLabels(gauge, maximum, precision);
+        const internal::VerticalLabelMetrics &bottomDigits = metrics.metrics.front();
+        const internal::VerticalLabelMetrics &topDigits = metrics.metrics.back();
+        const double bottomLimit = scaleMin - interior + (bottomDigits.inkAbove + bottomDigits.inkBelow) * 0.5 + 1.0;
+        const double topLimit = scaleMax - interior - (topDigits.inkAbove + topDigits.inkBelow) * 0.5 - 1.0;
+        QVERIFY2(first.end <= bottomLimit && first.end <= size.height(),
+                 qPrintable(QStringLiteral("bottom label %1-%2, limit %3, scale bottom at %4").arg(first.start).arg(first.end).arg(bottomLimit).arg(scaleMin)));
+        QVERIFY2(last.start >= topLimit && last.start >= 0.0,
+                 qPrintable(QStringLiteral("top label %1-%2, limit %3, scale top at %4").arg(last.start).arg(last.end).arg(topLimit).arg(scaleMax)));
     }
     // whole: at least the reference pixel length of the label, 0.5 px for anti-aliasing
     QVERIFY2(last.end - last.start >= ink.last().minLength - 0.5,
@@ -888,11 +902,11 @@ void tst_LinearGauge::verticalEndLabelsCentredOnTicks()
                             .arg(bottom, 0, 'f', 2).arg(lowest, 0, 'f', 2).arg(highest, 0, 'f', 2)));
 }
 
-// #37: the room past the end ticks: 1 px from the display (whose bottom is at 30 px), or up to the widget edge
+// #37: the room past the end ticks: 2 px from the display (whose bottom is at 30 px), or up to the widget edge
 void tst_LinearGauge::verticalScaleRoom()
 {
     const internal::VerticalScaleRoom display = internal::linearGaugeVerticalRoom(100.0, 280.0, false, true);
-    QCOMPARE(display.above, 5.0);
+    QCOMPARE(display.above, 4.0);
     QCOMPARE(display.below, 16.0);
     const internal::VerticalScaleRoom noDisplay = internal::linearGaugeVerticalRoom(100.0, 280.0, false, false);
     QCOMPARE(noDisplay.above, 16.0);
@@ -951,7 +965,7 @@ void tst_LinearGauge::verticalEndLabelStopsAtTheDisplay_data()
 }
 
 // #37: with a font twice as large a centred top label would reach the display. Its ink stops clear
-// of the display border, and the label moves only as far as the layout asks for
+// of the display border, and the label moves only as far as its ink needs, plus the 2 px clearance
 void tst_LinearGauge::verticalEndLabelStopsAtTheDisplay()
 {
     QFETCH(bool, thermometer);
@@ -966,42 +980,54 @@ void tst_LinearGauge::verticalEndLabelStopsAtTheDisplay()
     gauge.setTextColor(QColor::fromRgb(kLabelColor));
     gauge.setScaleColor(QColor::fromRgb(kTickColor));
     gauge.resize(size);
-    const QImage img = gauge.grab().toImage();
-    const double devicePixel = 1.0 / img.devicePixelRatio();
+    // All the ink, also the faintest rows: the pixels that change with textColor
+    const QImage magenta = gauge.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    gauge.setTextColor(Qt::yellow);
+    const QImage yellow = gauge.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    QImage ink(magenta.size(), QImage::Format_ARGB32);
+    ink.setDevicePixelRatio(magenta.devicePixelRatio());
+    ink.fill(Qt::black);
+    for (int y = 0; y < ink.height(); ++y) {
+        for (int x = 0; x < ink.width(); ++x) {
+            if (magenta.pixel(x, y) != yellow.pixel(x, y)) {
+                ink.setPixel(x, y, kLabelColor);
+            }
+        }
+    }
 
     const VerticalLabels expected = verticalLabels(gauge, 100.0, 0);
-    const internal::VerticalLabelMetrics &topInk = expected.metrics.back();
-    QVERIFY2(topInk.inkAbove > expected.room.above,
+    const internal::VerticalLabelMetrics &topMetrics = expected.metrics.back();
+    QVERIFY2(topMetrics.inkAbove > expected.room.above,
              qPrintable(QStringLiteral("%1 px of ink above the centre, %2 px of room: the guard is not exercised")
-                            .arg(topInk.inkAbove).arg(expected.room.above)));
+                            .arg(topMetrics.inkAbove).arg(expected.room.above)));
     const internal::ScaleLabelSlot &topSlot = expected.layout.labels.back();
-    QCOMPARE((topSlot.start + topSlot.end) * 0.5, expected.scaleLength + expected.room.above - topInk.inkAbove);
+    QCOMPARE((topSlot.start + topSlot.end) * 0.5, expected.scaleLength + expected.room.above - topMetrics.inkAbove);
 
     const internal::GaugeRect pod = internal::linearGaugeDisplayRect(true, size.width(), size.height());
     const double border = pod.y + pod.h + 0.5;
-    const QVector<Run> labels = groupIntoLabels(runsAlong(img, Qt::Vertical, -1.0, isLabelPixel), 1.0);
+    const QVector<Run> labels = groupIntoLabels(runsAlong(ink, Qt::Vertical, -1.0, isLabelPixel), 1.0);
     QVERIFY(!labels.isEmpty());
     qInfo("label ink from %.2f px, display border at %.2f px", labels.first().start, border);
     QVERIFY2(labels.first().start >= border,
              qPrintable(QStringLiteral("top label ink at %1 px, display border at %2 px").arg(labels.first().start).arg(border)));
 
-    // Only as far as needed: the offset of the label from its tick is that of the interior labels
-    // plus the shift the layout asks for
-    const QVector<Run> ticks = runsAlong(img, Qt::Vertical, 0.0, isTickPixel);
+    // Only as far as needed: the shift of the label from its place on the tick, measured against
+    // the interior labels, is at most what its ink needs to clear the border, plus 2 px
+    const QVector<Run> ticks = runsAlong(magenta, Qt::Vertical, 0.0, isTickPixel);
     QCOMPARE(ticks.size(), gauge.majorTicks() + 1);
     QVERIFY(labels.size() >= 3);
-    double lowest = std::numeric_limits<double>::infinity();
-    double highest = -std::numeric_limits<double>::infinity();
+    double interior = 0.0;
     for (int i = 1; i + 1 < labels.size(); ++i) {
-        const double offset = offsetFromNearestTick(labels[i], ticks);
-        lowest = std::min(lowest, offset);
-        highest = std::max(highest, offset);
+        interior += offsetFromNearestTick(labels[i], ticks);
     }
-    const double moved = expected.scaleLength - (topSlot.start + topSlot.end) * 0.5;
-    const double top = offsetFromTick(ticks.first(), labels.first()) + moved;
-    QVERIFY2(top >= lowest - devicePixel && top <= highest + devicePixel,
-             qPrintable(QStringLiteral("top label %1 px from its tick once moved by %2 px, interior labels %3 .. %4 px")
-                            .arg(top, 0, 'f', 2).arg(moved, 0, 'f', 2).arg(lowest, 0, 'f', 2).arg(highest, 0, 'f', 2)));
+    interior /= labels.size() - 2;
+    const Run &topInk = labels.first();
+    const double centredTop = (ticks.first().start + ticks.first().end) * 0.5 - interior - (topInk.end - topInk.start) * 0.5;
+    const double shift = interior - offsetFromTick(ticks.first(), topInk);
+    const double needed = std::max(0.0, border - centredTop);
+    qInfo("top label moved %.2f px, its ink needs %.2f px", shift, needed);
+    QVERIFY2(shift <= needed + 2.0,
+             qPrintable(QStringLiteral("top label moved %1 px, its ink needs %2 px").arg(shift, 0, 'f', 2).arg(needed, 0, 'f', 2)));
 }
 
 // #51: the scale labels (horizontal, digital display hidden) are drawn into the static cache with the widget font (family, style, spacing),

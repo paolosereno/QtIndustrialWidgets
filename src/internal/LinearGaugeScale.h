@@ -72,7 +72,7 @@ VerticalLabelMetrics verticalLabelMetrics(double lineHeight, double ascent, doub
  * \brief Space the ink of the end labels of a vertical scale may use past the end ticks.
  */
 struct VerticalScaleRoom {
-    double above{0.0}; ///< Above the top tick: up to 1 px from the display, or up to the widget top
+    double above{0.0}; ///< Above the top tick: up to 2 px from the display, or up to the widget top
     double below{0.0}; ///< Below the bottom tick: up to the widget bottom
 };
 

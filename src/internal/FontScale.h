@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QtCore/QString>
 #include <QtGui/QFont>
 
 namespace QtIndustrialWidgets {
@@ -33,6 +34,21 @@ int scalePixelSize(int px, double scale);
 
 /// A geometry-derived point size scaled by fontScale().
 double scalePointSize(double pt, double scale);
+
+/// Ink of a text, in logical pixels from its baseline (negative above it).
+struct TextInk {
+    double top{0.0};
+    double bottom{0.0};
+};
+
+/**
+ * \brief Vertical extent of the pixels a text really draws at a device pixel ratio.
+ *
+ * Measured on a raster, since the font metrics do not tell: tightBoundingRect() goes up to 1 px past
+ * the ink with DejaVu Sans, falls 1.0 px short of it on macOS (#37, cause not determined), and
+ * without installed fonts is much larger than the box glyphs. A text without ink gives 0, 0.
+ */
+TextInk measureTextInk(const QString &text, const QFont &font, double dpr);
 
 } // namespace internal
 } // namespace QtIndustrialWidgets
