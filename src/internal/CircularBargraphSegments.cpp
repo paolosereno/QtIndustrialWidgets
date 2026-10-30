@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "internal/CircularBargraphSegments.h"
-#include "internal/NumberFormat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -113,21 +112,6 @@ std::vector<SegmentState> computeSegmentStates(const SegmentInput &in)
         states[static_cast<size_t>(blinkIndex)] = in.blinkOn ? SegmentState::Lit : SegmentState::Off;
     }
     return states;
-}
-
-QString formatReadout(InputState state, double value, double minimum, double maximum, int precision)
-{
-    switch (state) {
-    case InputState::Invalid:
-        return QStringLiteral("---");
-    case InputState::Overrange:
-        return QLatin1Char('>') + formatFixed(maximum, precision);
-    case InputState::Underrange:
-        return QLatin1Char('<') + formatFixed(minimum, precision);
-    case InputState::Valid:
-        break;
-    }
-    return formatFixed(value, precision);
 }
 
 } // namespace internal

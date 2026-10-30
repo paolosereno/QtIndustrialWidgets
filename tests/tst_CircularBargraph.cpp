@@ -9,9 +9,13 @@
 
 #include <memory>
 #include "internal/CircularBargraphSegments.h"
+#include <QtCore/QHash>
+#include <QtGui/QFontMetricsF>
 #include <QtGui/QImage>
+#include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -220,6 +224,210 @@ bool untouchedOutside(const QImage &img, const QRectF &inside)
     return true;
 }
 
+
+// #167: the readout ink (value, state indicator and unit): the pixels that change when textColor() goes from
+// transparent to pure magenta. The two renders are taken without running the event loop, so a blinking end
+// segment cannot change between them
+QVector<QPoint> readoutInk(CircularBargraph &b)
+{
+    b.setTextColor(QColor(255, 0, 255, 0));
+    const QImage without = b.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    b.setTextColor(QColor(255, 0, 255));
+    const QImage with = b.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    QVector<QPoint> ink;
+    for (int y = 0; y < with.height(); ++y) {
+        for (int x = 0; x < with.width(); ++x) {
+            if (with.pixel(x, y) != without.pixel(x, y)) {
+                ink.push_back(QPoint(x, y));
+            }
+        }
+    }
+    return ink;
+}
+
+// As in CircularBargraph::paintEvent(): the pod well is a circle of 0.9 x the inner radius of the segments, which
+// start at 0.66 x the radius; ink inside it covers no segment
+struct Pod {
+    QPointF centre; // device px
+    double radius;  // device px
+};
+
+Pod podOf(CircularBargraph &b)
+{
+    const qreal dpr = b.grab().devicePixelRatio();
+    const double radius = std::min(b.width(), b.height()) / 2.0 - 4.0;
+    return {QPointF(b.width() * 0.5 * dpr, b.height() * 0.5 * dpr), radius * 0.66 * 0.90 * dpr};
+}
+
+// Empty when every ink pixel lies inside the pod
+QString inkOutsidePod(const QVector<QPoint> &ink, const Pod &pod)
+{
+    int outside = 0;
+    double farthest = 0.0;
+    for (const QPoint &p : ink) {
+        const double r = std::hypot(p.x() + 0.5 - pod.centre.x(), p.y() + 0.5 - pod.centre.y());
+        farthest = std::max(farthest, r);
+        outside += r > pod.radius ? 1 : 0;
+    }
+    if (outside == 0) {
+        return {};
+    }
+    return QStringLiteral("%1 of %2 readout pixels outside the pod (radius %3 px), the farthest at %4 px")
+        .arg(outside).arg(ink.size()).arg(pod.radius, 0, 'f', 1).arg(farthest, 0, 'f', 1);
+}
+
+// The sizes from the smallest supported one, minimumSizeHint() (from the widget font), up
+void addReadoutRows(bool stateOnly)
+{
+    const int minimum = CircularBargraph().minimumSizeHint().width();
+    QVector<int> sides;
+    for (const int side : {minimum, minimum + 1, minimum + 2, minimum + 4, minimum + 6, 60, 80, 120, 260, 400}) {
+        if (side >= minimum && !sides.contains(side)) {
+            sides.push_back(side);
+        }
+    }
+    QTest::addColumn<int>("side");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<double>("value");
+    QTest::addColumn<QString>("unit");
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    struct Case {
+        const char *name;
+        double maximum;
+        int precision;
+        double value;
+    };
+    const Case states[] = {{"invalid", 100.0, 1, std::numeric_limits<double>::quiet_NaN()},
+                           {"overrange", 100.0, 1, 120.0},
+                           {"overrange +inf", 100.0, 1, inf},
+                           {"underrange", 100.0, 1, -10.0},
+                           {"underrange -inf", 100.0, 1, -inf},
+                           {"overrange wide", 10000.0, 2, 12000.0}};
+    const Case valid[] = {{"valid", 100.0, 1, 50.0}, {"valid wide", 10000.0, 2, 10000.0}};
+    for (const int side : sides) {
+        // A long unit does not fit in the smaller pods and is left out there
+        for (const QString &unit : {QString(), QStringLiteral("%"), QStringLiteral("rpm x1000")}) {
+            const char *u = unit.isEmpty() ? "no unit" : (unit.size() == 1 ? "unit" : "long unit");
+            for (const Case &c : states) {
+                QTest::addRow("%d px, %s, %s", side, u, c.name) << side << c.maximum << c.precision << c.value << unit;
+            }
+            if (!stateOnly) {
+                for (const Case &c : valid) {
+                    QTest::addRow("%d px, %s, %s", side, u, c.name) << side << c.maximum << c.precision << c.value << unit;
+                }
+            }
+        }
+    }
+}
+
+void prepareReadout(CircularBargraph &b, int side, double maximum, int precision, double value, const QString &unit)
+{
+    b.setRange(0.0, maximum);
+    b.setPrecision(precision);
+    b.setUnit(unit);
+    b.setValue(value);
+    b.resize(side, side);
+}
+
+// The ink rows split at their largest vertical gap (more than one row): the value line above, the unit below
+struct Bands {
+    QRect value;
+    QRect unit;
+};
+Bands splitBands(const QVector<QPoint> &ink)
+{
+    QVector<int> rows;
+    for (const QPoint &p : ink) {
+        rows.push_back(p.y());
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    int split = rows.last() + 1;
+    int gap = 1;
+    for (int i = 1; i < rows.size(); ++i) {
+        if (rows[i] - rows[i - 1] > gap) {
+            gap = rows[i] - rows[i - 1];
+            split = rows[i];
+        }
+    }
+    Bands bands;
+    for (const QPoint &p : ink) {
+        QRect &box = p.y() < split ? bands.value : bands.unit;
+        box |= QRect(p, QSize(1, 1));
+    }
+    return bands;
+}
+
+// The value font of the readout at 7 pt, the floor (#167)
+QFont sevenPointValueFont(const QWidget &w)
+{
+    QFont f = w.font();
+    f.setBold(true);
+    f.setPointSizeF(7.0);
+    return f;
+}
+
+// The ink box, in device px, of a readout line drawn at 7 pt: the triangle (when \a triangle; 0.9 x the cap height,
+// 0.35 of it before the text, as the gauges draw it) and \a text. It is drawn as the widget draws it: same dpi and
+// device pixel ratio as \a w, on an opaque background (so with the same antialiasing, subpixel at DPR 1), and the
+// smallest width and height over all the sub-pixel positions are returned: the edges of a shape cover one column
+// more or less depending on where it falls (in x and in y together: a faint bottom row hides faint side columns), and
+// the raster engine places shapes and glyphs at 1/64 px, so the 64 x 64 offsets give the exact minimum. The
+// reference the readout is measured against, without any slack
+QSize sevenPointLineInk(const QString &text, bool triangle, const QWidget &w, qreal dpr)
+{
+    static QHash<QString, QSize> cache; // one font and one device pixel ratio per test run
+    const QString key = (triangle ? QStringLiteral("^") : QStringLiteral("_")) + text;
+    if (cache.contains(key)) {
+        return cache.value(key);
+    }
+    const QFont font = sevenPointValueFont(w);
+    const QFontMetricsF fm(font, &w);
+    const double triW = triangle ? fm.capHeight() * 0.9 : 0.0;
+    const double gap = (triangle && !text.isEmpty()) ? triW * 0.35 : 0.0;
+    const QColor background(28, 32, 40);
+    QSize smallest(std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    const QSize area(static_cast<int>(std::ceil(triW + gap + fm.horizontalAdvance(text) + 8.0)),
+                     static_cast<int>(std::ceil(fm.height() + 8.0))); // logical px
+    for (int step = 0; step < 64 * 64; ++step) {
+        const QPointF offset((step % 64) / 64.0 / dpr, (step / 64) / 64.0 / dpr); // logical px
+        QImage img(area * dpr, QImage::Format_RGB32);
+        img.setDevicePixelRatio(dpr);
+        img.setDotsPerMeterX(qRound(w.logicalDpiX() / 0.0254));
+        img.setDotsPerMeterY(qRound(w.logicalDpiY() / 0.0254));
+        img.fill(background);
+        {
+            QPainter p(&img);
+            p.setRenderHint(QPainter::Antialiasing);
+            const QPointF origin = QPointF(4.0, 4.0 + fm.ascent()) + offset; // left end, baseline
+            if (triangle) {
+                const double midY = origin.y() - fm.capHeight() * 0.5;
+                QPolygonF tri;
+                tri << QPointF(origin.x(), midY + triW * 0.5) << QPointF(origin.x() + triW, midY + triW * 0.5)
+                    << QPointF(origin.x() + triW * 0.5, midY - triW * 0.5);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(255, 0, 255));
+                p.drawPolygon(tri);
+            }
+            p.setFont(font);
+            p.setPen(QColor(255, 0, 255));
+            p.drawText(origin + QPointF(triW + gap, 0.0), text);
+        }
+        QRect box;
+        for (int y = 0; y < img.height(); ++y) {
+            const auto *row = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+            for (int x = 0; x < img.width(); ++x) {
+                if (row[x] != background.rgb()) {
+                    box |= QRect(x, y, 1, 1);
+                }
+            }
+        }
+        smallest = smallest.boundedTo(box.size());
+    }
+    cache.insert(key, smallest);
+    return smallest;
+}
 } // namespace
 
 class tst_CircularBargraph : public QObject
@@ -261,6 +469,16 @@ private Q_SLOTS:
     void thresholdsOrderIndependent();
     void pixelColorAtSegmentCenters_data();
     void pixelColorAtSegmentCenters();
+    void stateIndicatorInsideThePod_data();
+    void stateIndicatorInsideThePod();
+    void readoutNeverCoversTheSegments_data();
+    void readoutNeverCoversTheSegments();
+    void readoutNeverBelowSevenPoints_data();
+    void readoutNeverBelowSevenPoints();
+    void minimumSizeHintFitsTheStateIndicators();
+    void outOfRangeReadoutShowsTheInput();
+    void podDrawnAtEverySize_data();
+    void podDrawnAtEverySize();
 };
 
 void tst_CircularBargraph::defaultValues()
@@ -947,17 +1165,17 @@ void tst_CircularBargraph::readoutText()
 {
     using IS = internal::InputState;
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    QCOMPARE(internal::formatReadout(IS::Valid, 42.31, 0.0, 100.0, 1), QStringLiteral("42.3"));
-    QCOMPARE(internal::formatReadout(IS::Valid, 7.0, 0.0, 100.0, 0), QStringLiteral("7"));
-    QCOMPARE(internal::formatReadout(IS::Overrange, 100.0, 0.0, 100.0, 1), QStringLiteral(">100.0"));
-    QCOMPARE(internal::formatReadout(IS::Underrange, -20.0, -20.0, 80.0, 2), QStringLiteral("<-20.00"));
-    QCOMPARE(internal::formatReadout(IS::Invalid, nan, 0.0, 100.0, 1), QStringLiteral("---"));
+    // #167: the readout text is the gauges' one (the ▲ / ▼ mark is a polygon, drawn apart): the true input when
+    // out of range, the bound with '>' / '<' only for ±Inf
+    const double inf = std::numeric_limits<double>::infinity();
+    QCOMPARE(internal::gaugeReadoutText(IS::Overrange, 120.0, 0.0, 100.0, 1), QStringLiteral("120.0"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Underrange, -25.0, -20.0, 80.0, 2), QStringLiteral("-25.00"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Overrange, inf, 0.0, 100.0, 1), QStringLiteral(">100.0"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Underrange, -inf, -20.0, 80.0, 2), QStringLiteral("<-20.00"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Invalid, nan, 0.0, 100.0, 1), QStringLiteral("---"));
     // #46: no negative zero in the readout, also for the out-of-range forms
-    QCOMPARE(internal::formatReadout(IS::Valid, -0.04, -1.0, 1.0, 1), QStringLiteral("0.0"));
-    QCOMPARE(internal::formatReadout(IS::Valid, -0.3, -1.0, 1.0, 0), QStringLiteral("0"));
-    QCOMPARE(internal::formatReadout(IS::Valid, -0.05, -1.0, 1.0, 1), QStringLiteral("-0.1"));
-    QCOMPARE(internal::formatReadout(IS::Underrange, -2.0, -0.04, 1.0, 1), QStringLiteral("<0.0"));
-    QCOMPARE(internal::formatReadout(IS::Overrange, 2.0, -1.0, -0.04, 1), QStringLiteral(">0.0"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Underrange, -inf, -0.04, 1.0, 1), QStringLiteral("<0.0"));
+    QCOMPARE(internal::gaugeReadoutText(IS::Overrange, inf, -1.0, -0.04, 1), QStringLiteral(">0.0"));
 
     QCOMPARE(internal::classifyInput(nan, 0.0, 100.0), IS::Invalid);
     QCOMPARE(internal::classifyInput(100.0, 0.0, 100.0), IS::Valid);
@@ -1143,6 +1361,182 @@ void tst_CircularBargraph::textSizeIgnoresWidgetFontSize()
     const int grown = FontTest::textGlyphHeight(*large);
     QVERIFY2(base > 0, "no text drawn in textColor");
     QVERIFY2(grown == base, qPrintable(QStringLiteral("tallest glyph %1 px with the default font, %2 px with a font twice as large").arg(base).arg(grown)));
+}
+
+void tst_CircularBargraph::stateIndicatorInsideThePod_data()
+{
+    addReadoutRows(true);
+}
+
+// #167: Invalid ("---"), Overrange and Underrange (the triangle) always show their indicator, inside the pod
+// well, at every size from the smallest supported one up: the segments alone do not tell an invalid input from a
+// valid one at the minimum
+void tst_CircularBargraph::stateIndicatorInsideThePod()
+{
+    QFETCH(int, side);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, value);
+    QFETCH(QString, unit);
+    CircularBargraph b;
+    prepareReadout(b, side, maximum, precision, value, unit);
+    const QVector<QPoint> ink = readoutInk(b);
+    QVERIFY2(!ink.isEmpty(), "no state indicator drawn");
+    const QString outside = inkOutsidePod(ink, podOf(b));
+    QVERIFY2(outside.isEmpty(), qPrintable(outside));
+}
+
+void tst_CircularBargraph::readoutNeverCoversTheSegments_data()
+{
+    addReadoutRows(false);
+}
+
+// #167: in every state and at every size from the smallest supported one up, no readout pixel lies outside the
+// pod well (only a valid value may be left out entirely)
+void tst_CircularBargraph::readoutNeverCoversTheSegments()
+{
+    QFETCH(int, side);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, value);
+    QFETCH(QString, unit);
+    CircularBargraph b;
+    prepareReadout(b, side, maximum, precision, value, unit);
+    const QString outside = inkOutsidePod(readoutInk(b), podOf(b));
+    QVERIFY2(outside.isEmpty(), qPrintable(outside));
+}
+
+void tst_CircularBargraph::readoutNeverBelowSevenPoints_data()
+{
+    addReadoutRows(false);
+}
+
+// #167: the value line is never drawn below 7 pt nor cut: when the number is shown, its line (triangle included) is
+// at least as wide as the whole text at 7 pt, so a smaller font, a truncated value or fewer decimals fail. When
+// the number is left out (out of range, little room) the triangle alone is still at least the 7 pt one, 0.9 x the
+// cap height wide. Invalid always shows the whole "---". The 7 pt references are the same lines drawn at 7 pt
+// (sevenPointLineInk())
+void tst_CircularBargraph::readoutNeverBelowSevenPoints()
+{
+    QFETCH(int, side);
+    QFETCH(double, maximum);
+    QFETCH(int, precision);
+    QFETCH(double, value);
+    QFETCH(QString, unit);
+    CircularBargraph b;
+    prepareReadout(b, side, maximum, precision, value, unit);
+    const QVector<QPoint> ink = readoutInk(b);
+    const auto state = b.valueState();
+    if (ink.isEmpty()) {
+        QVERIFY2(state == CircularBargraph::ValueState::Valid, "only a valid readout may be left out");
+        return;
+    }
+    const qreal dpr = b.grab().devicePixelRatio();
+    const bool outOfRange =
+        state == CircularBargraph::ValueState::Overrange || state == CircularBargraph::ValueState::Underrange;
+    const QString text = state == CircularBargraph::ValueState::Invalid
+        ? QStringLiteral("---")
+        : (std::isinf(value) ? (value > 0 ? QLatin1Char('>') + QString::number(maximum, 'f', precision)
+                                          : QLatin1Char('<') + QString::number(0.0, 'f', precision))
+                             : QString::number(value, 'f', precision));
+    const QSize full = sevenPointLineInk(text, outOfRange, b, dpr);
+    const QRect line = splitBands(ink).value;
+    if (line.width() >= full.width()) {
+        return; // the whole value line, at 7 pt or more
+    }
+    QVERIFY2(outOfRange, qPrintable(QStringLiteral("value line %1 px wide, \"%2\" at 7 pt is %3 px wide")
+                                        .arg(line.width()).arg(text).arg(full.width())));
+    // The number is left out: the triangle alone, not smaller than at 7 pt and narrower than the whole line
+    const QSize tri = sevenPointLineInk(QString(), true, b, dpr);
+    QVERIFY2(line.width() >= tri.width() && line.height() >= tri.height() && line.width() < full.width(),
+             qPrintable(QStringLiteral("value line %1 x %2 px: neither the whole line at 7 pt (%3 px wide) nor the "
+                                       "7 pt triangle (%4 x %5 px)")
+                            .arg(line.width()).arg(line.height()).arg(full.width()).arg(tri.width())
+                            .arg(tri.height())));
+}
+
+// #167: minimumSizeHint() is the smallest size at which "---" and the triangle fit in the pod at 7 pt, from the
+// widget font (as #44 does for IndustrialSwitch), never below the 50 x 50 of the widget without a readout
+void tst_CircularBargraph::minimumSizeHintFitsTheStateIndicators()
+{
+    CircularBargraph b;
+    const QSize visible = b.minimumSizeHint();
+    QVERIFY(visible.width() >= 50);
+    QCOMPARE(visible.height(), visible.width());
+    b.setDigitalDisplayVisible(false);
+    QCOMPARE(b.minimumSizeHint(), QSize(50, 50));
+    b.setDigitalDisplayVisible(true);
+    QCOMPARE(b.minimumSizeHint(), visible);
+
+    // A wider font needs a larger widget: "---" with 6 px between the dashes
+    QFont spaced = b.font();
+    spaced.setLetterSpacing(QFont::AbsoluteSpacing, 6.0);
+    b.setFont(spaced);
+    const int side = b.minimumSizeHint().width();
+    QVERIFY2(side > visible.width(), qPrintable(QStringLiteral("minimumSizeHint() %1 with the spaced font, %2 without")
+                                                    .arg(side).arg(visible.width())));
+    // The hint keeps "---" 1 px inside the rim: the ink can pass the metrics by a fraction of a pixel on some platforms
+    const QFontMetricsF fm(sevenPointValueFont(b), &b);
+    const QString dashes = QStringLiteral("---");
+    const QRectF box = fm.tightBoundingRect(dashes).translated(-fm.horizontalAdvance(dashes) * 0.5,
+                                                               fm.ascent() - fm.height() * 0.5);
+    double farthest = 0.0;
+    for (const QPointF &p : {box.topLeft(), box.topRight(), box.bottomLeft(), box.bottomRight()}) {
+        farthest = std::max(farthest, std::hypot(p.x(), p.y()));
+    }
+    const double podRadius = (side / 2.0 - 4.0) * 0.66 * 0.90;
+    QVERIFY2(farthest <= podRadius - 1.0, qPrintable(QStringLiteral("\"---\" reaches %1 px at %2 px, pod radius %3 px")
+                                                         .arg(farthest).arg(side).arg(podRadius)));
+    for (const double v : {std::numeric_limits<double>::quiet_NaN(), 150.0, -50.0}) {
+        b.setValue(v);
+        b.resize(side, side);
+        const QVector<QPoint> ink = readoutInk(b);
+        QVERIFY2(!ink.isEmpty(), qPrintable(QStringLiteral("no state indicator at %1 px, value %2").arg(side).arg(v)));
+        const QString outside = inkOutsidePod(ink, podOf(b));
+        QVERIFY2(outside.isEmpty(), qPrintable(outside));
+    }
+}
+
+// #167: out of range the readout shows the input itself, as in the gauges, not the bound: two inputs above the
+// range (or two below it) read differently, and +Inf ('>' + maximum) differs from a finite input. The inputs differ
+// in length, so that the readouts differ also without fonts, where every glyph is the same box
+void tst_CircularBargraph::outOfRangeReadoutShowsTheInput()
+{
+    const auto inkOf = [](double v) {
+        CircularBargraph b;
+        prepareReadout(b, 200, 100.0, 1, v, QString());
+        return readoutInk(b);
+    };
+    QVERIFY2(inkOf(120.0) != inkOf(1200.0), "Overrange 120 and 1200 give the same readout");
+    QVERIFY2(inkOf(-10.0) != inkOf(-300.0), "Underrange -10 and -300 give the same readout");
+    QVERIFY2(inkOf(120.0) != inkOf(std::numeric_limits<double>::infinity()), "Overrange 120 and +Inf read the same");
+}
+
+void tst_CircularBargraph::podDrawnAtEverySize_data()
+{
+    QTest::addColumn<int>("side");
+    for (const int side : {50, 51, 52, 53, 54, 55, 56, 58, 60, 80, 200}) {
+        QTest::addRow("%d px", side) << side;
+    }
+}
+
+// #167: the pod well is drawn whenever the digital display is on, also below minimumSizeHint() (before, pod and
+// readout were left out below 54 x 54). A point of the pod, between the readout and its rim, has the pod colour,
+// which is not there with the display off
+void tst_CircularBargraph::podDrawnAtEverySize()
+{
+    QFETCH(int, side);
+    CircularBargraph b;
+    b.setValue(std::numeric_limits<double>::quiet_NaN()); // "---", the smallest readout
+    b.resize(side, side);
+    const Pod pod = podOf(b);
+    const QPoint probe = (pod.centre + QPointF(0.0, pod.radius * 0.8)).toPoint();
+    const QColor podColor = b.dialColor().darker(130);
+    const QImage on = b.grab().toImage().convertToFormat(QImage::Format_RGB32);
+    b.setDigitalDisplayVisible(false);
+    const QImage off = b.grab().toImage().convertToFormat(QImage::Format_RGB32);
+    QCOMPARE(QColor(on.pixel(probe)).name(), podColor.name());
+    QVERIFY2(off.pixel(probe) != on.pixel(probe), "the probe has the pod colour also without the pod");
 }
 
 QTEST_MAIN(tst_CircularBargraph)
