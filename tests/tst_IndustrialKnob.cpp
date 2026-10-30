@@ -6,14 +6,58 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
 #include "FontTestUtils.h"
+#include "LabelInkTestUtils.h"
+#include "internal/LinearGaugeScale.h"
+#include "internal/NumberFormat.h"
+#include "internal/RadialGaugeLayout.h"
 
 #include <memory>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <set>
+#include <vector>
 
 using namespace QtIndustrialWidgets;
+
+namespace {
+
+// The label texts, boxes and selection the widget computes for its configuration
+struct ScaleLabels {
+    QFont font;
+    std::vector<QString> texts;
+    std::vector<internal::LayoutRect> boxes;
+    internal::RadialScaleLabels selection;
+    double minGap{0.0};
+};
+
+ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
+{
+    const internal::KnobScaleGeometry geometry = internal::knobScaleGeometry(knob.width(), knob.height());
+    ScaleLabels out;
+    out.font = knob.font();
+    out.font.setPixelSize(geometry.labelFontPx);
+    out.font.setBold(true);
+    const QFontMetricsF fm(out.font);
+    const bool discrete = knob.mode() == IndustrialKnob::KnobMode::Discrete;
+    const int ticks = std::max(1, discrete ? knob.discreteSteps() - 1 : knob.majorTicks());
+    for (int i = 0; i <= ticks; ++i) {
+        const double frac = static_cast<double>(i) / ticks;
+        const double value = knob.minimum() + frac * (knob.maximum() - knob.minimum());
+        const QString text = discrete ? QString::number(i + 1) : internal::scaleLabelText(value, knob.precision());
+        const QRectF rect = fm.boundingRect(text);
+        out.texts.push_back(text);
+        out.boxes.push_back(internal::knobLabelBox(geometry, knob.startAngle() + frac * knob.spanAngle(),
+                                                   rect.width(), rect.height()));
+    }
+    out.minGap = internal::scaleLabelMinGap(fm.height());
+    out.selection = internal::layoutRadialScaleLabels(out.boxes, out.minGap);
+    return out;
+}
+
+} // namespace
 
 class tst_IndustrialKnob : public QObject
 {
@@ -31,6 +75,8 @@ private Q_SLOTS:
     void renderOffscreen();
     void extremeResizeNoCrash();
     void nanAndInfinityResilience();
+    void scaleLabelsKeepMinimumGap_data();
+    void scaleLabelsKeepMinimumGap();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -239,6 +285,113 @@ void tst_IndustrialKnob::textSizeIgnoresWidgetFontSize()
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
+void tst_IndustrialKnob::scaleLabelsKeepMinimumGap_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("discreteSteps"); // 0: continuous mode
+
+    // The configurations measured for #60, default 270-degree arc
+    struct Range { const char *name; double min; double max; };
+    const Range ranges[] = {{"0-100000", 0.0, 100000.0}, {"0-10000000", 0.0, 10000000.0}, {"0-100", 0.0, 100.0},
+                            {"-1000-1000", -1000.0, 1000.0}, {"0-8000", 0.0, 8000.0}};
+    const QSize sizes[] = {{80, 90}, {100, 120}, {160, 180}, {220, 240}, {300, 340}};
+    for (const QSize &size : sizes) {
+        for (const Range &r : ranges) {
+            QTest::addRow("%dx%d, %s", size.width(), size.height(), r.name)
+                << size.width() << size.height() << r.min << r.max << 0;
+        }
+        for (int steps : {5, 11, 21, 41}) {
+            QTest::addRow("%dx%d, %d discrete steps", size.width(), size.height(), steps)
+                << size.width() << size.height() << 0.0 << 100.0 << steps;
+        }
+    }
+}
+
+// #60(b): the labels the selection of #50 chooses, and no others, are drawn, and each keeps the
+// minimum gap. Label pixels are those that change with textColor while the value display is
+// hidden. They are grouped into clusters as in tst_RadialGauge::scaleLabelsKeepMinimumGap(): two
+// labels closer than the minimum merge into one cluster, larger than any label drawn alone.
+// Without fonts every glyph is a box far from its neighbours, hence a cluster of its own: all the
+// ink must then lie inside the selected labels, and every selected label must have ink.
+void tst_IndustrialKnob::scaleLabelsKeepMinimumGap()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, discreteSteps);
+
+    IndustrialKnob knob;
+    knob.setRange(minimum, maximum);
+    if (discreteSteps > 0) {
+        knob.setMode(IndustrialKnob::KnobMode::Discrete);
+        knob.setDiscreteSteps(discreteSteps);
+    }
+    knob.setValueDisplayVisible(false);
+    knob.setValue(minimum);
+    knob.resize(width, height);
+    knob.setTextColor(Qt::white);
+    const QImage white = FontTest::render(knob);
+    knob.setTextColor(Qt::red);
+    const QImage red = FontTest::render(knob);
+    const qreal dpr = knob.grab().devicePixelRatio();
+
+    const ScaleLabels labels = scaleLabelsOf(knob);
+    const int last = static_cast<int>(labels.boxes.size()) - 1;
+    QVERIFY2(std::find(labels.selection.drawn.begin(), labels.selection.drawn.end(), 0) != labels.selection.drawn.end(),
+             "the first label is not selected");
+    QVERIFY2(std::find(labels.selection.drawn.begin(), labels.selection.drawn.end(), last) != labels.selection.drawn.end(),
+             "the last label is not selected");
+
+    QVector<QPoint> ink;
+    for (int y = 0; y < white.height(); ++y) {
+        for (int x = 0; x < white.width(); ++x) {
+            if (white.pixel(x, y) != red.pixel(x, y)) {
+                ink.append(QPoint(x, y));
+            }
+        }
+    }
+    const double threshold = (labels.minGap - 1.0) * dpr;
+    const QVector<QRect> clusters = LabelInk::inkClusters(ink, threshold);
+
+    QSize largest;
+    for (int i : labels.selection.drawn) {
+        largest = largest.expandedTo(LabelInk::inkBoxAlone(labels.texts[static_cast<size_t>(i)], labels.font, dpr).size());
+    }
+    const int tolerance = static_cast<int>(std::ceil(dpr));
+
+    // 1 px logical allowed for glyphs that exceed the font bounding rectangle the layout uses
+    auto holds = [&](int label, const QRect &c) {
+        const internal::LayoutRect &b = labels.boxes[static_cast<size_t>(label)];
+        const QPointF centre = QRectF(c).center() / dpr;
+        return centre.x() >= b.x - 1.0 && centre.x() <= b.right() + 1.0 && centre.y() >= b.y - 1.0 && centre.y() <= b.bottom() + 1.0;
+    };
+    std::set<int> drawn;
+    for (const QRect &c : clusters) {
+        QVERIFY2(c.width() <= largest.width() + tolerance && c.height() <= largest.height() + tolerance,
+                 qPrintable(QStringLiteral("label ink %1x%2 at (%3, %4) is larger than the largest label alone %5x%6: "
+                                           "labels closer than %7 device px (minimum gap %8 px, DPR %9)")
+                                .arg(c.width()).arg(c.height()).arg(c.x()).arg(c.y())
+                                .arg(largest.width()).arg(largest.height()).arg(threshold).arg(labels.minGap).arg(dpr)));
+        bool inSelectedLabel = false;
+        for (int i : labels.selection.drawn) {
+            if (holds(i, c)) {
+                drawn.insert(i);
+                inSelectedLabel = true;
+            }
+        }
+        QVERIFY2(inSelectedLabel, qPrintable(QStringLiteral("ink %1x%2 at (%3, %4) outside every selected label (step %5)")
+                                                 .arg(c.width()).arg(c.height()).arg(c.x()).arg(c.y()).arg(labels.selection.step)));
+    }
+    for (int i : labels.selection.drawn) {
+        QVERIFY2(drawn.count(i) == 1, qPrintable(QStringLiteral("label %1 (\"%2\") is selected but not drawn")
+                                                     .arg(i).arg(labels.texts[static_cast<size_t>(i)])));
+    }
+}
+
 #include "tst_IndustrialKnob.moc"
 
 

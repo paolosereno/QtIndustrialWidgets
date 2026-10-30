@@ -43,6 +43,22 @@ struct RadialScaleGeometry {
 /// Scale geometry of a dial of the given side (the smaller widget dimension).
 RadialScaleGeometry radialScaleGeometry(double side);
 
+/// Geometry of the IndustrialKnob scale, shared by the widget and its tests.
+struct KnobScaleGeometry {
+    double centerX{0.0};     ///< Dial centre
+    double centerY{0.0};
+    double radius{0.0};      ///< Dial radius: side / 2 - 4, with side = min(w, 0.82 h)
+    double scaleRadius{0.0}; ///< Outer end of every tick
+    double labelRadius{0.0}; ///< Distance of the scale label centres from the dial centre
+    int labelFontPx{7};      ///< Pixel size of the (bold) scale label font
+};
+
+/// Scale geometry of a knob of the given widget size.
+KnobScaleGeometry knobScaleGeometry(double width, double height);
+
+/// Box of a w x h scale label of a knob, centred at the label radius, at \a angle degrees (0 = 12 o'clock, clockwise).
+LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h);
+
 /**
  * \brief Free space between two rectangles along the axis that separates them.
  *

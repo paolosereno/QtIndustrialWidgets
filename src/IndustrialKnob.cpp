@@ -4,7 +4,9 @@
 
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
+#include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
+#include "internal/RadialGaugeLayout.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -17,6 +19,7 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace QtIndustrialWidgets {
 
@@ -454,9 +457,9 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
     const double w = targetSize.width();
     const double h = targetSize.height();
-    const double side = std::min(w, h * 0.82);
-    const QPointF center(w * 0.5, side * 0.5 + 4.0);
-    const double radius = (side * 0.5) - 4.0;
+    const internal::KnobScaleGeometry scale = internal::knobScaleGeometry(w, h);
+    const QPointF center(scale.centerX, scale.centerY);
+    const double radius = scale.radius;
 
     if (radius <= 10.0) {
         d_ptr->m_cacheDirty = false;
@@ -464,10 +467,9 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     }
 
     // Outer Scale Radius and Track Trough
-    const double scaleRadius = radius * 0.92;
+    const double scaleRadius = scale.scaleRadius;
     const double tickLen = radius * 0.12;
     const double minorTickLen = tickLen * 0.55;
-    const double labelRadius = scaleRadius + radius * 0.12;
 
     int totalTicks = (d_ptr->m_mode == KnobMode::Discrete) ? (d_ptr->m_discreteSteps - 1) : d_ptr->m_majorTicks;
     totalTicks = std::max(1, totalTicks);
@@ -494,13 +496,27 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     }
 
     // Draw Major Ticks and Aligned Numeric Labels
-    int fontSize = std::clamp(static_cast<int>(radius * 0.12), 7, 11);
     QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
-    font.setPixelSize(fontSize);
+    font.setPixelSize(scale.labelFontPx);
     font.setBold(true);
     painter.setFont(font);
 
     QPen majorPen(d_ptr->m_scaleColor, 1.6, Qt::SolidLine, Qt::RoundCap);
+
+    // #60: every tick is drawn, but only the labels that keep the minimum gap (selection of #50)
+    const QFontMetricsF fm(font);
+    std::vector<QString> labelTexts;
+    std::vector<internal::LayoutRect> labelBoxes;
+    for (int i = 0; i <= totalTicks; ++i) {
+        const double frac = static_cast<double>(i) / totalTicks;
+        const double val = d_ptr->m_minimum + frac * valRange;
+        labelTexts.push_back(d_ptr->m_mode == KnobMode::Discrete ? QString::number(i + 1)
+                                                                 : internal::scaleLabelText(val, d_ptr->m_precision));
+        const QRectF textRect = fm.boundingRect(labelTexts.back());
+        labelBoxes.push_back(internal::knobLabelBox(scale, valueToAngle(val), textRect.width(), textRect.height()));
+    }
+    const internal::RadialScaleLabels labels =
+        internal::layoutRadialScaleLabels(labelBoxes, internal::scaleLabelMinGap(fm.height()));
 
     for (int i = 0; i <= totalTicks; ++i) {
         double frac = static_cast<double>(i) / totalTicks;
@@ -515,26 +531,16 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
         QPointF p1(center.x() + (scaleRadius - tickLen) * cosR, center.y() + (scaleRadius - tickLen) * sinR);
         QPointF p2(center.x() + scaleRadius * cosR, center.y() + scaleRadius * sinR);
         painter.drawLine(p1, p2);
+    }
 
-        // Numeric Label
-        QString labelStr;
-        if (d_ptr->m_mode == KnobMode::Discrete) {
-            labelStr = QString::number(i + 1);
-        } else {
-            labelStr = internal::scaleLabelText(val, d_ptr->m_precision);
-        }
-
-        QFontMetricsF fm(font);
-        QRectF textRect = fm.boundingRect(labelStr);
-        QPointF textCenter(center.x() + labelRadius * cosR, center.y() + labelRadius * sinR);
-        QRectF drawRect(textCenter.x() - textRect.width() * 0.5,
-                       textCenter.y() - textRect.height() * 0.5,
-                       textRect.width(), textRect.height());
-
-        painter.setPen(d_ptr->m_textColor);
+    // Numeric Labels
+    painter.setPen(d_ptr->m_textColor);
+    for (int i : labels.drawn) {
+        const internal::LayoutRect &box = labelBoxes[static_cast<size_t>(i)];
         // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
         // the rectangle only positions the label
-        painter.drawText(drawRect, Qt::AlignCenter | Qt::TextDontClip, labelStr);
+        painter.drawText(QRectF(box.x, box.y, box.w, box.h), Qt::AlignCenter | Qt::TextDontClip,
+                         labelTexts[static_cast<size_t>(i)]);
     }
 
     // Static Digital Pod at bottom (if enabled)
