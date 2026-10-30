@@ -667,29 +667,119 @@ void tst_RadialGauge::valueTextInsideDigitalDisplay()
                                                    .arg(margin).arg(dpr)));
 }
 
-// #43 (review of PR #48): between the preferred pod place and the place below the labels, the
-// one giving the larger value font is used. At 200 px with 0-100000 the value "100000" fits at the
-// full font only below the end labels; the reference is the same gauge with a 180-degree arc, whose
-// end labels are level with the centre and leave the preferred place free. The two ink heights
-// may differ by 1 device px with the vertical sub-pixel position of the text.
+// The input of layoutDigitalPod() for a gauge at its size, as the widget builds it
+internal::PodLayoutInput podInputOf(const RadialGauge &gauge)
+{
+    const internal::RadialScaleGeometry geo = internal::radialScaleGeometry(std::min(gauge.width(), gauge.height()));
+    QFont labelFont = gauge.font();
+    labelFont.setPixelSize(geo.labelFontPx);
+    labelFont.setBold(true);
+    const QFontMetricsF fm(labelFont);
+
+    std::vector<internal::LayoutRect> boxes;
+    const int ticks = gauge.majorTicks();
+    const double range = gauge.maximum() - gauge.minimum();
+    for (int i = 0; i <= ticks; ++i) {
+        const double frac = static_cast<double>(i) / ticks;
+        const double rad = (gauge.startAngle() + frac * gauge.spanAngle() - 90.0) * M_PI / 180.0;
+        const QRectF text = fm.boundingRect(internal::scaleLabelText(gauge.minimum() + frac * range, gauge.precision()));
+        boxes.push_back({gauge.width() * 0.5 + geo.labelRadius * std::cos(rad) - text.width() * 0.5,
+                         gauge.height() * 0.5 + geo.labelRadius * std::sin(rad) - text.height() * 0.5, text.width(), text.height()});
+    }
+
+    internal::PodLayoutInput in;
+    in.centerX = gauge.width() * 0.5;
+    in.centerY = gauge.height() * 0.5;
+    in.radius = geo.radius;
+    for (int i : internal::layoutRadialScaleLabels(boxes, internal::scaleLabelMinGap(fm.height())).drawn) {
+        in.labelRects.push_back(boxes[static_cast<size_t>(i)]);
+    }
+    in.padding = std::max(3.0, geo.radius * 0.04);
+    in.minimumFontPx = std::max(internal::minimumReadoutPixelSize(gauge.logicalDpiY()), geo.labelFontPx);
+    in.preferredFontPx = std::max(in.minimumFontPx, static_cast<int>(geo.radius * 0.15));
+    const QStringList texts{internal::formatFixed(gauge.minimum(), gauge.precision()),
+                            internal::formatFixed(gauge.maximum(), gauge.precision())};
+    QFont valueFont = gauge.font();
+    valueFont.setBold(true);
+    in.valueWidth = [=](int px) mutable {
+        valueFont.setPixelSize(px);
+        const QFontMetricsF metrics(valueFont);
+        return std::max(metrics.horizontalAdvance(texts[0]), metrics.horizontalAdvance(texts[1]));
+    };
+    in.valueHeight = [=](int px) mutable {
+        valueFont.setPixelSize(px);
+        return QFontMetricsF(valueFont).height();
+    };
+    in.scaleInnerRadius = geo.majorTickInner - internal::podLabelMargin(geo.radius);
+    in.scaleStartAngle = gauge.startAngle();
+    in.scaleSpanAngle = gauge.spanAngle();
+    return in;
+}
+
+// True if a pod as high as the text, at \a px, has a place (preferred, or below the labels) where it touches
+// neither the scale nor a label: the only reason left to draw the value smaller would be a defect
+bool podHasRoomAt(const internal::PodLayoutInput &in, int px)
+{
+    const double m = internal::podLabelMargin(in.radius);
+    const double half = in.valueWidth(px) * 0.5 + in.padding;
+    const double height = in.valueHeight(px);
+    const double preferredTop = in.centerY + in.radius * 0.28;
+    double lowest = preferredTop;
+    for (const internal::LayoutRect &label : in.labelRects) {
+        if (label.bottom() > in.centerY && label.x < in.centerX + in.radius * 0.34 && label.right() > in.centerX - in.radius * 0.34) {
+            lowest = std::max(lowest, label.bottom() + m);
+        }
+    }
+    for (double top : {preferredTop, lowest}) {
+        const internal::LayoutRect pod{in.centerX - half, top, 2.0 * half, height};
+        const bool onLabel = std::any_of(in.labelRects.begin(), in.labelRects.end(), [&](const internal::LayoutRect &label) {
+            return internal::LayoutRect{label.x - m, label.y - m, label.w + 2.0 * m, label.h + 2.0 * m}.intersects(pod);
+        });
+        const double inner = in.radius * 0.95 - m;
+        const double farthest = std::hypot(half, std::max(top, pod.bottom()) - in.centerY);
+        if (!onLabel && farthest < inner && !internal::podReachesScale(in, half, top, pod.bottom())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// #43 (review of PR #48): between the preferred pod place and the place below the labels, the one giving the
+// larger value font is used. The reference is the same gauge with a 180-degree arc, whose end labels are level
+// with the centre and leave the preferred place free. The value is as large as on the reference wherever the
+// pod has room at that font without touching the scale (#60: the scale has precedence): this is computed from
+// the geometry, and a gauge without that room says nothing here. The ink box of the same text may differ by
+// 1 device px with the sub-pixel position of the text.
 void tst_RadialGauge::valueFontNotReducedWhenLoweringAvoidsIt()
 {
-    RadialGauge gauge;
-    configure(gauge, GaugeConfig{200, 0.0, 100000.0, 0, -135.0, 270.0});
-    gauge.setUnit(QString());
-    const QRect ink = valueInkBox(gauge);
+    int checked = 0;
+    for (int side : {160, 180, 200, 220, 240, 260, 300}) {
+        for (double maximum : {8000.0, 100000.0, 1000000.0}) {
+            RadialGauge gauge;
+            configure(gauge, GaugeConfig{side, 0.0, maximum, 0, -135.0, 270.0});
+            gauge.setUnit(QString());
+            RadialGauge reference;
+            configure(reference, GaugeConfig{side, 0.0, maximum, 0, -90.0, 180.0});
+            reference.setUnit(QString());
 
-    RadialGauge reference;
-    configure(reference, GaugeConfig{200, 0.0, 100000.0, 0, -90.0, 180.0});
-    reference.setUnit(QString());
-    const QRect referenceInk = valueInkBox(reference);
-
-    QVERIFY(!ink.isEmpty());
-    QVERIFY(!referenceInk.isEmpty());
-    QVERIFY2(ink.height() >= referenceInk.height() - 1,
-             qPrintable(QStringLiteral("value ink %1x%2 device px, reference (full font) %3x%4 (DPR %5)")
-                            .arg(ink.width()).arg(ink.height()).arg(referenceInk.width()).arg(referenceInk.height())
-                            .arg(gauge.grab().devicePixelRatio())));
+            const int referencePx = internal::layoutDigitalPod(podInputOf(reference)).valueFontPx;
+            if (!podHasRoomAt(podInputOf(gauge), referencePx)) {
+                qInfo("%d px, 0-%g: no room at %d px, value ink %dx%d device px, reference %dx%d", side, maximum, referencePx,
+                      valueInkBox(gauge).width(), valueInkBox(gauge).height(), valueInkBox(reference).width(), valueInkBox(reference).height());
+                continue;
+            }
+            ++checked;
+            const QRect ink = valueInkBox(gauge);
+            const QRect referenceInk = valueInkBox(reference);
+            QVERIFY(!referenceInk.isEmpty());
+            QVERIFY2(ink.height() >= referenceInk.height() - 1 && ink.width() >= referenceInk.width() - 1,
+                     qPrintable(QStringLiteral("%1 px, 0-%2: value ink %3x%4 device px, reference (full font) %5x%6 (DPR %7)")
+                                    .arg(side).arg(maximum).arg(ink.width()).arg(ink.height())
+                                    .arg(referenceInk.width()).arg(referenceInk.height()).arg(gauge.grab().devicePixelRatio())));
+        }
+    }
+    qInfo("%d of 21 gauges have room at the font of their reference", checked);
+    QVERIFY(checked >= 3);
 }
 
 void tst_RadialGauge::valueReadoutHasNoNegativeZero_data()

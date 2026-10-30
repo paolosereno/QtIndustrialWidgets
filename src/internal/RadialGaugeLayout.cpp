@@ -173,7 +173,9 @@ bool boxReachesArc(double half, double top, double bottom, double R, double star
     return false;
 }
 
-bool reachesScale(const PodLayoutInput &in, double half, double y0, double y1)
+} // namespace
+
+bool podReachesScale(const PodLayoutInput &in, double half, double y0, double y1)
 {
     const double R = in.scaleInnerRadius;
     if (R <= 0.0) {
@@ -189,6 +191,8 @@ bool reachesScale(const PodLayoutInput &in, double half, double y0, double y1)
     return boxReachesArc(half, top, bottom, R, in.scaleStartAngle, in.scaleSpanAngle)
            || boxReachesArc(half, top, bottom, tickStart, in.scaleStartAngle - past, in.scaleSpanAngle + 2.0 * past);
 }
+
+namespace {
 
 // Half-width available to a box centred on cx between y0 and y1: limited by the preferred
 // half-width, by the inner dial, by the scale and, with avoidLabels, by every label that overlaps
@@ -219,14 +223,14 @@ double availableHalfWidth(const PodLayoutInput &in, double y0, double y1, double
         }
     }
     half = std::max(0.0, half);
-    if (reachesScale(in, half, y0, y1)) {
-        if (reachesScale(in, 0.0, y0, y1)) {
+    if (podReachesScale(in, half, y0, y1)) {
+        if (podReachesScale(in, 0.0, y0, y1)) {
             return 0.0;
         }
         double fits = 0.0;
         for (int i = 0; i < 16; ++i) { // the larger the box, the more of it reaches the scale
             const double middle = (fits + half) * 0.5;
-            (reachesScale(in, middle, y0, y1) ? half : fits) = middle;
+            (podReachesScale(in, middle, y0, y1) ? half : fits) = middle;
         }
         half = fits;
     }

@@ -187,6 +187,7 @@ public:
      * Below this size nothing overlaps, and what has no room is left out: the labels the pod would cut,
      * then the unit, then the number. The state indicator is never left out. The value has precedence over the
      * labels, the first and last included (#43): below this size a number can take the place of an end label.
+     * Without an indicator to show, a valid value with no room leaves the pod empty.
      */
     [[nodiscard]] QSize minimumSizeHint() const override;
 

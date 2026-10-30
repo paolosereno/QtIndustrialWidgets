@@ -124,6 +124,10 @@ int minimumReadoutPixelSize(double logicalDpi);
 /// Free space kept between the pod (or the unit) and a scale label: max(2 px, 0.02 r).
 double podLabelMargin(double radius);
 
+/// True when the box of half width \a half between \a y0 and \a y1, centred on the dial, reaches the scale: the
+/// ticks and the threshold band, or the ticks at the ends of the arc.
+bool podReachesScale(const PodLayoutInput &in, double half, double y0, double y1);
+
 /**
  * \brief Places the RadialGauge digital display pod clear of the scale labels and picks the value font.
  *

@@ -43,7 +43,7 @@ Circular gauge for speed, pressure, temperature and similar values (`qiw::Radial
   of the scale labels and never covers the scale. The value is drawn at 7 pt or more, never cut nor shortened. The
   value has precedence over the labels (#43), the first and last ones included: a label the display would cut is not
   drawn. Without room the unit goes first, then the number; `---` and the triangle are always shown, so only a valid
-  readout may disappear (#60).
+  readout may disappear (#60): below `minimumSizeHint()`, a valid value with no room leaves the pod empty.
 - **Minimum size** (#60): `minimumSizeHint()` depends on the configuration. It is computed from the widget font, the
   range, the precision, the major ticks, the angles, the unit and the visibility of the display, and it changes with
   them. From that size up, the state indicator is drawn at 7 pt or more clear of the scale, and the first and last
