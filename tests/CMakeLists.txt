@@ -132,7 +132,29 @@ set_target_properties(tst_RadialGaugeLayout PROPERTIES
 add_dpr_tests(tst_RadialGaugeLayout)
 add_industrial_widget_test(tst_SevenSegmentDisplay)
 add_industrial_widget_test(tst_LedIndicator)
-add_industrial_widget_test(tst_IndustrialKnob)
+add_executable(tst_IndustrialKnob
+    tst_IndustrialKnob.cpp
+    $<TARGET_OBJECTS:LinearGaugeScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:NumberFormat>
+)
+target_link_libraries(tst_IndustrialKnob
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_IndustrialKnob
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_IndustrialKnob PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_IndustrialKnob)
 add_executable(tst_StripChart
     tst_StripChart.cpp
     $<TARGET_OBJECTS:M4Decimator>

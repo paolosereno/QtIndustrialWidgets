@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
 #include "internal/NumberFormat.h"
+#include "internal/RadialGaugeLayout.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -454,9 +455,9 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
     const double w = targetSize.width();
     const double h = targetSize.height();
-    const double side = std::min(w, h * 0.82);
-    const QPointF center(w * 0.5, side * 0.5 + 4.0);
-    const double radius = (side * 0.5) - 4.0;
+    const internal::KnobScaleGeometry scale = internal::knobScaleGeometry(w, h);
+    const QPointF center(scale.centerX, scale.centerY);
+    const double radius = scale.radius;
 
     if (radius <= 10.0) {
         d_ptr->m_cacheDirty = false;
@@ -464,10 +465,9 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     }
 
     // Outer Scale Radius and Track Trough
-    const double scaleRadius = radius * 0.92;
+    const double scaleRadius = scale.scaleRadius;
     const double tickLen = radius * 0.12;
     const double minorTickLen = tickLen * 0.55;
-    const double labelRadius = scaleRadius + radius * 0.12;
 
     int totalTicks = (d_ptr->m_mode == KnobMode::Discrete) ? (d_ptr->m_discreteSteps - 1) : d_ptr->m_majorTicks;
     totalTicks = std::max(1, totalTicks);
@@ -494,9 +494,8 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     }
 
     // Draw Major Ticks and Aligned Numeric Labels
-    int fontSize = std::clamp(static_cast<int>(radius * 0.12), 7, 11);
     QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
-    font.setPixelSize(fontSize);
+    font.setPixelSize(scale.labelFontPx);
     font.setBold(true);
     painter.setFont(font);
 
@@ -526,10 +525,8 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
         QFontMetricsF fm(font);
         QRectF textRect = fm.boundingRect(labelStr);
-        QPointF textCenter(center.x() + labelRadius * cosR, center.y() + labelRadius * sinR);
-        QRectF drawRect(textCenter.x() - textRect.width() * 0.5,
-                       textCenter.y() - textRect.height() * 0.5,
-                       textRect.width(), textRect.height());
+        const internal::LayoutRect box = internal::knobLabelBox(scale, angle, textRect.width(), textRect.height());
+        QRectF drawRect(box.x, box.y, box.w, box.h);
 
         painter.setPen(d_ptr->m_textColor);
         // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
