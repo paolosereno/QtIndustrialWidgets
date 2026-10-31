@@ -115,7 +115,7 @@ private:
     QSlider *m_fuelSlider{nullptr};
     QSlider *m_hydraulicSlider{nullptr};
 
-    // Alarm Annunciator Matrix (ISA-18.1)
+    // Alarm Annunciator Matrix
     QtIndustrialWidgets::AnnunciatorPanel *m_annunciatorPanel{nullptr};
     QLabel *m_annunciatorHornLabel{nullptr};
     QLabel *m_annunciatorStatusLabel{nullptr};

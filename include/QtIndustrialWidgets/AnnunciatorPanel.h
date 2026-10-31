@@ -19,7 +19,7 @@ class AnnunciatorPanelPrivate;
 
 /**
  * \class AnnunciatorPanel
- * \brief Alarm annunciator grid following the ISA-18.1 sequences A and M.
+ * \brief Alarm annunciator grid with automatic-reset and manual-reset sequences.
  *
  * AnnunciatorPanel draws an alarm annunciator light panel, as used in control rooms.
  *
@@ -75,7 +75,7 @@ public:
     };
     Q_ENUM(Severity)
 
-    /** \brief Operational state of an individual alarm window according to ISA-18.1. */
+    /** \brief Operational state of an individual alarm window. */
     enum class AlarmState {
         Normal,         ///< Inactive, unlit or faint glow
         Unacknowledged, ///< Active alarm, fast flashing with horn sound
@@ -86,8 +86,8 @@ public:
 
     /** \brief Operating alarm sequence logic standard. */
     enum class AnnunciatorSequence {
-        SequenceA_AutomaticReset, ///< ISA-18.1 Sequence A (Auto reset upon condition clearing)
-        SequenceM_ManualReset     ///< ISA-18.1 Sequence M (Requires operator manual reset)
+        SequenceA_AutomaticReset, ///< Automatic reset: an acknowledged tile returns to Normal when the condition clears
+        SequenceM_ManualReset     ///< Manual reset: an acknowledged tile goes to Ringback when the condition clears, until reset()
     };
     Q_ENUM(AnnunciatorSequence)
 
@@ -134,7 +134,7 @@ public:
     [[nodiscard]] QString tileText(int index) const;
     /** \brief Returns the severity category for a given tile index. */
     [[nodiscard]] Severity tileSeverity(int index) const;
-    /** \brief Returns the current ISA-18.1 state for a given tile index. */
+    /** \brief Returns the current state for a given tile index. */
     [[nodiscard]] AlarmState tileState(int index) const;
     /** \brief Returns true if the underlying sensor contact is currently in alarm. */
     [[nodiscard]] bool isAlarmActive(int index) const;

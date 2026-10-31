@@ -34,7 +34,7 @@ applications.
 | [`StripChart`](docs/widgets.md#stripchart)<br>Three channels over 10 s with a NaN dropout | <img src="docs/images/strip-chart-channels.png" alt="StripChart" width="640"> |
 | [`IndustrialSwitch`](docs/widgets.md#industrialswitch)<br>Toggle lever under a safety guard | <img src="docs/images/industrial-switch-guarded-toggle.png" alt="IndustrialSwitch" width="180"> |
 | [`LevelMeter`](docs/widgets.md#levelmeter)<br>Stereo dB meter with held peaks | <img src="docs/images/level-meter-stereo-db.png" alt="LevelMeter" width="170"> |
-| [`AnnunciatorPanel`](docs/widgets.md#annunciatorpanel)<br>ISA-18.1 tiles: acknowledged, unacknowledged and advisory alarms | <img src="docs/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640"> |
+| [`AnnunciatorPanel`](docs/widgets.md#annunciatorpanel)<br>Alarm tiles: acknowledged, unacknowledged and advisory | <img src="docs/images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640"> |
 | [`Compass`](docs/widgets.md#compass)<br>Heading-up card, heading 047° with heading bug | <img src="docs/images/compass-heading-up.png" alt="Compass" width="300"> |
 | [`CircularBargraph`](docs/widgets.md#circularbargraph)<br>24 segments with peak hold | <img src="docs/images/circular-bargraph-valid.png" alt="CircularBargraph" width="260"> |
 | [`AnalysisChart`](docs/widgets.md#analysischart)<br>Recorded data at two rates, a NaN dropout and a recording gap | <img src="docs/images/analysis-chart-review.png" alt="AnalysisChart" width="640"> |
