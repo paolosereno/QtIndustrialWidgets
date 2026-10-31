@@ -68,8 +68,14 @@ TextInkBox measureCenteredTextInk(const QString &text, const QFont &font, double
         p.setRenderHint(QPainter::TextAntialiasing, true);
         p.setFont(font);
         p.setPen(Qt::white);
-        p.drawText(QRectF(center.x() - width * 0.5, center.y() - height * 0.5, width, height),
-                   Qt::AlignCenter | Qt::TextDontClip, text);
+        // Qt keeps text positions in 1/64 px, so the same device pixel can be reached from just before or after it.
+        // Where the glyphs are antialiased shapes (the boxes drawn with no fonts installed, at a fractional DPR) that
+        // spills a trace of ink on the next pixel: the measure is the union of the positions a label can get
+        const QRectF rect(center.x() - width * 0.5, center.y() - height * 0.5, width, height);
+        constexpr double step = 1.0 / 64.0;
+        for (const QPointF &shift : {QPointF(0.0, 0.0), QPointF(-step, -step), QPointF(step, -step), QPointF(-step, step), QPointF(step, step)}) {
+            p.drawText(rect.translated(shift), Qt::AlignCenter | Qt::TextDontClip, text);
+        }
     }
     int left = img.width();
     int right = -1;

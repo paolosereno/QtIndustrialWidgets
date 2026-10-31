@@ -13,6 +13,7 @@
 #include "internal/RadialGaugeLayout.h"
 
 #include <memory>
+#include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
 #include <QtWidgets/QVBoxLayout>
@@ -210,6 +211,7 @@ private Q_SLOTS:
     void dialFollowsTheDrawnLabels_data();
     void dialFollowsTheDrawnLabels();
     void precisionChangesTheLabelsDrawn();
+    void labelInkStaysInsideItsMeasure();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -885,6 +887,54 @@ void tst_IndustrialKnob::precisionChangesTheLabelsDrawn()
     QVERIFY(QTest::qWaitForWindowExposed(&fresh));
     QVERIFY(FontTest::render(fresh) != before);
     QCOMPARE(FontTest::render(knob), FontTest::render(fresh));
+}
+
+// #170: wherever a label falls on the dial, its pixels stay inside the ink measured once for its text and font size,
+// on a pixmap as the static scale. Every pixel with any ink counts, with the rectangle centred on a device pixel
+void tst_IndustrialKnob::labelInkStaysInsideItsMeasure()
+{
+    IndustrialKnob knob;
+    const qreal dpr = knob.devicePixelRatioF();
+    for (int pixelSize : {7, 9, 11}) {
+        QFont font = knob.font();
+        font.setPixelSize(pixelSize);
+        font.setBold(true);
+        const QFontMetricsF fm(font);
+        for (const QString &text : {QStringLiteral("0"), QStringLiteral("100"), QStringLiteral("8000"), QStringLiteral("-1000"), QStringLiteral("100000")}) {
+            const QRectF rect = fm.boundingRect(text);
+            const internal::TextInkBox ink = internal::measureCenteredTextInk(text, font, rect.width(), rect.height(), dpr);
+            for (int i = 0; i < 60; ++i) {
+                const double x = std::round((60.0 + i * 1.37) * dpr) / dpr;
+                const double y = std::round((40.0 + i * 0.83) * dpr) / dpr;
+                QPixmap pixmap(QSize(220, 160) * dpr);
+                pixmap.setDevicePixelRatio(dpr);
+                pixmap.fill(Qt::transparent);
+                {
+                    QPainter painter(&pixmap);
+                    painter.setRenderHint(QPainter::Antialiasing, true);
+                    painter.setRenderHint(QPainter::TextAntialiasing, true);
+                    painter.setFont(font);
+                    painter.setPen(Qt::white);
+                    painter.drawText(QRectF(x - rect.width() * 0.5, y - rect.height() * 0.5, rect.width(), rect.height()),
+                                     Qt::AlignCenter | Qt::TextDontClip, text);
+                }
+                const QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+                QRect drawn;
+                for (int py = 0; py < image.height(); ++py) {
+                    const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(py));
+                    for (int px = 0; px < image.width(); ++px) {
+                        if (qAlpha(line[px]) != 0) {
+                            drawn |= QRect(px, py, 1, 1);
+                        }
+                    }
+                }
+                const double slack = 1e-6;
+                QVERIFY2(drawn.left() / dpr - x >= ink.left - slack && (drawn.right() + 1) / dpr - x <= ink.right + slack
+                             && drawn.top() / dpr - y >= ink.top - slack && (drawn.bottom() + 1) / dpr - y <= ink.bottom + slack,
+                         qPrintable(QStringLiteral("%1 at %2 px, centre %3, %4").arg(text).arg(pixelSize).arg(x).arg(y)));
+            }
+        }
+    }
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
