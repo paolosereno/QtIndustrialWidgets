@@ -166,6 +166,12 @@ protected:
         if (metric == PdmDevicePixelRatioScaled) {
             return static_cast<int>(fakeDpr * devicePixelRatioFScale());
         }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        // From Qt 6.8 a DPR other than 1 and 2 is read from these two, not from the scaled one
+        if (metric == PdmDevicePixelRatioF_EncodedA || metric == PdmDevicePixelRatioF_EncodedB) {
+            return encodeMetricF(metric, fakeDpr);
+        }
+#endif
         return IndustrialKnob::metric(metric);
     }
 };
@@ -995,6 +1001,7 @@ void tst_IndustrialKnob::dprChangeOfAVisibleKnob()
         LayoutRequests requests;
         parent.installEventFilter(&requests);
         knob->fakeDpr = target;
+        QCOMPARE(knob->devicePixelRatioF(), target);
         knob->repaint();
         QCoreApplication::sendPostedEvents(&parent, QEvent::LayoutRequest);
         QVERIFY2(requests.count > 0, qPrintable(QStringLiteral("0-%1: no layout request").arg(maximum)));
