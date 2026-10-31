@@ -53,11 +53,32 @@ struct KnobScaleGeometry {
     int labelFontPx{7};      ///< Pixel size of the (bold) scale label font
 };
 
-/// Scale geometry of a knob of the given widget size.
+/// Scale geometry of a knob of the given widget size, at the full radius.
 KnobScaleGeometry knobScaleGeometry(double width, double height);
+
+/// Ink of the labels a knob draws at a geometry, after the selection of layoutRadialScaleLabels().
+using KnobDrawnLabels = std::function<std::vector<LayoutRect>(const KnobScaleGeometry &)>;
+
+inline constexpr double kKnobEdgeMargin = 1.0;         ///< Free space between the ink of a label and the widget edge
+inline constexpr double kKnobMinimumRadiusRatio = 0.5; ///< Smallest dial, as a fraction of the full radius
+
+/// True if every box keeps kKnobEdgeMargin from the edge of a widget of that size.
+bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height);
+
+/**
+ * \brief Scale geometry of a knob whose drawn labels stay inside the widget (#170).
+ *
+ * The largest radius, from the full one down to half of it, at which every box of \a drawnLabels keeps
+ * kKnobEdgeMargin from the widget edge. The centre does not move. At the smallest radius labels can still
+ * reach the edge: minimumSizeHint() keeps the widget above that.
+ */
+KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels);
 
 /// Box of a w x h scale label of a knob, centred at the label radius, at \a angle degrees (0 = 12 o'clock, clockwise).
 LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h);
+
+/// The same box with its centre on a device pixel, where measureCenteredTextInk() measures the ink of a label.
+LayoutRect labelBoxOnDevicePixel(const LayoutRect &box, double dpr);
 
 /**
  * \brief Free space between two rectangles along the axis that separates them.

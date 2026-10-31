@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
+#include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
@@ -19,6 +20,8 @@
 #include <QtCore/QtMath>
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <utility>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -54,7 +57,190 @@ public:
 
     bool m_isDragging{false};
     QPointF m_lastMousePos;
+    // Pointer during a drag, in degrees from the start of the scale. Not wrapped: out of [0, span] it has gone
+    // past an end, and the value stays there
+    double m_dragAngle{0.0};
+    int m_minimumWidth{0};   // minimumSizeHint().width(), computed when asked for; 0: to compute
+    double m_minimumWidthDpr{0.0};
+    // #170: ink of each label text at each font size, measured on a raster. Kept across resizes and changes of the
+    // scale and never measured by a repaint of the same scale: dropped when the font or the DPR changes
+    mutable std::map<std::pair<QString, int>, internal::TextInkBox> m_labelInk;
+    mutable double m_labelInkDpr{0.0};
+
+    // Scale at the current configuration: the same for the static scale, the paint and the mouse (#170)
+    struct ScaleLayout {
+        internal::KnobScaleGeometry geometry;
+        QFont font;
+        std::vector<QString> texts;
+        std::vector<internal::LayoutRect> boxes;
+        std::vector<internal::LayoutRect> ink; // Where each label really draws, for the edge of the widget
+        internal::RadialScaleLabels labels;
+    };
+    ScaleLayout m_scale;
+    QSize m_scaleSize;   // Size m_scale was computed for
+    double m_scaleDpr{0.0};
+    bool m_scaleValid{false};
+
+    static constexpr int kMinimumWidth = 80; // minimumSizeHint() never goes below 80 x 90
+    static constexpr size_t kMaximumLabelInks = 1024; // A range that keeps changing must not grow m_labelInk for ever
+
+    // Height at a width, in the proportions of the floor and of sizeHint()
+    static constexpr int minimumHeightOf(int width) { return (width * 9 + 7) / 8; }
+
+    double angleOf(double value) const;
+    double valueAtScaleAngle(double angle) const;
+    int tickCount() const;
+    // Texts, boxes and selection of the labels at a geometry
+    ScaleLayout labelsAt(const internal::KnobScaleGeometry &geometry, const QFont &widgetFont, double dpr) const;
+    static std::vector<internal::LayoutRect> drawnInk(const ScaleLayout &layout);
+    // The geometry the labels of this configuration need at a size
+    internal::KnobScaleGeometry fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr) const;
+    const ScaleLayout &scaleFor(const QSize &size, const QFont &widgetFont, double dpr);
+    bool widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr) const;
+    int computeMinimumWidth(int ceiling, const QFont &widgetFont, double dpr) const;
+    // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
+    double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr);
+
+    // After a setter minimumSizeHint() depends on (#170)
+    void minimumSizeChanged(QWidget *widget)
+    {
+        m_minimumWidth = 0;
+        widget->updateGeometry();
+    }
 };
+
+double IndustrialKnobPrivate::angleOf(double value) const
+{
+    if (m_maximum <= m_minimum) return m_startAngle;
+    double factor = (value - m_minimum) / (m_maximum - m_minimum);
+    factor = std::clamp(factor, 0.0, 1.0);
+    return m_startAngle + factor * m_spanAngle;
+}
+
+double IndustrialKnobPrivate::valueAtScaleAngle(double angle) const
+{
+    const double factor = std::clamp(angle / m_spanAngle, 0.0, 1.0);
+    return m_minimum + factor * (m_maximum - m_minimum);
+}
+
+int IndustrialKnobPrivate::tickCount() const
+{
+    return std::max(1, m_mode == IndustrialKnob::KnobMode::Discrete ? m_discreteSteps - 1 : m_majorTicks);
+}
+
+IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const internal::KnobScaleGeometry &geometry,
+                                                                   const QFont &widgetFont, double dpr) const
+{
+    if (m_labelInkDpr != dpr || m_labelInk.size() > kMaximumLabelInks) {
+        m_labelInk.clear();
+        m_labelInkDpr = dpr;
+    }
+
+    ScaleLayout out;
+    out.geometry = geometry;
+    out.font = widgetFont; // #51: the widget font, not the application font of the pixmap painter
+    out.font.setPixelSize(geometry.labelFontPx);
+    out.font.setBold(true);
+
+    // #60: every tick is drawn, but only the labels that keep the minimum gap (selection of #50)
+    const QFontMetricsF fm(out.font);
+    const int ticks = tickCount();
+    for (int i = 0; i <= ticks; ++i) {
+        const double frac = static_cast<double>(i) / ticks;
+        const double val = m_minimum + frac * (m_maximum - m_minimum);
+        out.texts.push_back(m_mode == IndustrialKnob::KnobMode::Discrete ? QString::number(i + 1)
+                                                                         : internal::scaleLabelText(val, m_precision));
+        const QString &text = out.texts.back();
+        const QRectF textRect = fm.boundingRect(text);
+        const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
+            internal::knobLabelBox(geometry, angleOf(val), textRect.width(), textRect.height()), dpr);
+        out.boxes.push_back(box);
+
+        // The glyphs can leave the rectangle of the metrics (CoreText on macOS, see #31 / #35): the edge of the
+        // widget is checked against the pixels. From the box to the ink, only the box moves with the radius
+        const std::pair<QString, int> key(text, geometry.labelFontPx);
+        auto ink = m_labelInk.find(key);
+        if (ink == m_labelInk.end()) {
+            ink = m_labelInk.emplace(key, internal::measureCenteredTextInk(text, out.font, box.w, box.h, dpr)).first;
+        }
+        const double centerX = box.x + box.w * 0.5;
+        const double centerY = box.y + box.h * 0.5;
+        out.ink.push_back({centerX + ink->second.left, centerY + ink->second.top, ink->second.right - ink->second.left,
+                           ink->second.bottom - ink->second.top});
+    }
+    out.labels = internal::layoutRadialScaleLabels(out.boxes, internal::scaleLabelMinGap(fm.height()));
+    return out;
+}
+
+std::vector<internal::LayoutRect> IndustrialKnobPrivate::drawnInk(const ScaleLayout &layout)
+{
+    std::vector<internal::LayoutRect> drawn;
+    for (int i : layout.labels.drawn) {
+        drawn.push_back(layout.ink[static_cast<size_t>(i)]);
+    }
+    return drawn;
+}
+
+internal::KnobScaleGeometry IndustrialKnobPrivate::fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr) const
+{
+    return internal::knobScaleGeometry(size.width(), size.height(), [&](const internal::KnobScaleGeometry &g) {
+        return drawnInk(labelsAt(g, widgetFont, dpr));
+    });
+}
+
+const IndustrialKnobPrivate::ScaleLayout &IndustrialKnobPrivate::scaleFor(const QSize &size, const QFont &widgetFont, double dpr)
+{
+    if (!m_scaleValid || m_scaleSize != size || m_scaleDpr != dpr) {
+        m_scale = labelsAt(fittedGeometry(size, widgetFont, dpr), widgetFont, dpr);
+        m_scaleSize = size;
+        m_scaleDpr = dpr;
+        m_scaleValid = true;
+    }
+    return m_scale;
+}
+
+bool IndustrialKnobPrivate::widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr) const
+{
+    const int height = minimumHeightOf(width);
+    const ScaleLayout layout = labelsAt(fittedGeometry(QSize(width, height), widgetFont, dpr), widgetFont, dpr);
+    const std::vector<int> &drawn = layout.labels.drawn;
+    auto shown = [&](int label) { return std::find(drawn.begin(), drawn.end(), label) != drawn.end(); };
+    return shown(0) && (!lastLabelRequired || shown(tickCount())) && internal::knobLabelsInside(drawnInk(layout), width, height);
+}
+
+int IndustrialKnobPrivate::computeMinimumWidth(int ceiling, const QFont &widgetFont, double dpr) const
+{
+    // Ends that lie on each other at the preferred size never both fit (#60, part b): the first one is drawn
+    const ScaleLayout preferred = labelsAt(fittedGeometry(QSize(ceiling, minimumHeightOf(ceiling)), widgetFont, dpr), widgetFont, dpr);
+    const std::vector<int> &drawn = preferred.labels.drawn;
+    const bool lastLabelRequired = std::find(drawn.begin(), drawn.end(), tickCount()) != drawn.end();
+
+    // From the top, since a larger size is not always better: the labels grow in steps. The whole
+    // range from the result up keeps them, and the ceiling is returned even if it does not
+    if (!widthKeepsScaleEnds(ceiling, lastLabelRequired, widgetFont, dpr)) {
+        return ceiling;
+    }
+    int width = ceiling;
+    while (width > kMinimumWidth && widthKeepsScaleEnds(width - 1, lastLabelRequired, widgetFont, dpr)) {
+        --width;
+    }
+    return width;
+}
+
+double IndustrialKnobPrivate::scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr)
+{
+    const internal::KnobScaleGeometry &scale = scaleFor(size, widgetFont, dpr).geometry;
+    double dx = pos.x() - scale.centerX;
+    double dy = pos.y() - scale.centerY;
+
+    // Standard polar coordinates where 0° is 12 o'clock, clockwise positive
+    double rad = std::atan2(dx, -dy);
+    double deg = rad * 180.0 / M_PI;
+
+    double relativeAngle = std::fmod(deg - m_startAngle, 360.0);
+    if (relativeAngle < 0.0) relativeAngle += 360.0;
+    return relativeAngle;
+}
 
 IndustrialKnob::IndustrialKnob(QWidget *parent)
     : QWidget(parent)
@@ -95,7 +281,12 @@ QSize IndustrialKnob::sizeHint() const
 
 QSize IndustrialKnob::minimumSizeHint() const
 {
-    return QSize(80, 90);
+    const double dpr = devicePixelRatioF();
+    if (d_ptr->m_minimumWidth == 0 || d_ptr->m_minimumWidthDpr != dpr) {
+        d_ptr->m_minimumWidth = d_ptr->computeMinimumWidth(sizeHint().width(), font(), dpr);
+        d_ptr->m_minimumWidthDpr = dpr;
+    }
+    return QSize(d_ptr->m_minimumWidth, IndustrialKnobPrivate::minimumHeightOf(d_ptr->m_minimumWidth));
 }
 
 void IndustrialKnob::setValue(double val)
@@ -143,6 +334,7 @@ void IndustrialKnob::setRange(double min, double max)
     d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
 
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
     Q_EMIT valueChanged(d_ptr->m_value);
     update();
@@ -159,6 +351,8 @@ void IndustrialKnob::setPrecision(int precision)
 {
     if (d_ptr->m_precision == precision) return;
     d_ptr->m_precision = std::max(0, precision);
+    invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -177,6 +371,7 @@ void IndustrialKnob::setStartAngle(double angle)
     if (!std::isfinite(angle) || qFuzzyCompare(d_ptr->m_startAngle, angle)) return;
     d_ptr->m_startAngle = angle;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -186,6 +381,7 @@ void IndustrialKnob::setSpanAngle(double span)
     if (!std::isfinite(span) || span <= 0.0 || qFuzzyCompare(d_ptr->m_spanAngle, span)) return;
     d_ptr->m_spanAngle = span;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -195,6 +391,7 @@ void IndustrialKnob::setMajorTicks(int count)
     if (d_ptr->m_majorTicks == count || count < 1) return;
     d_ptr->m_majorTicks = count;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     Q_EMIT appearanceChanged();
     update();
 }
@@ -213,6 +410,7 @@ void IndustrialKnob::setMode(KnobMode mode)
     if (d_ptr->m_mode == mode) return;
     d_ptr->m_mode = mode;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     setValue(d_ptr->m_value); // Re-clamp if discrete
     Q_EMIT modeChanged(d_ptr->m_mode);
     Q_EMIT appearanceChanged();
@@ -225,6 +423,7 @@ void IndustrialKnob::setDiscreteSteps(int steps)
     if (d_ptr->m_discreteSteps == s) return;
     d_ptr->m_discreteSteps = s;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this);
     if (d_ptr->m_mode == KnobMode::Discrete) {
         setValue(d_ptr->m_value);
     }
@@ -294,6 +493,7 @@ void IndustrialKnob::setTextColor(const QColor &color)
 void IndustrialKnob::invalidateCache()
 {
     d_ptr->m_cacheDirty = true;
+    d_ptr->m_scaleValid = false;
 }
 
 void IndustrialKnob::resizeEvent(QResizeEvent *event)
@@ -309,15 +509,16 @@ void IndustrialKnob::changeEvent(QEvent *event)
         invalidateCache();
         update();
     }
+    if (event->type() == QEvent::FontChange) {
+        d_ptr->m_labelInk.clear();
+        d_ptr->minimumSizeChanged(this);
+    }
     QWidget::changeEvent(event);
 }
 
 double IndustrialKnob::valueToAngle(double val) const
 {
-    if (d_ptr->m_maximum <= d_ptr->m_minimum) return d_ptr->m_startAngle;
-    double factor = (val - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
-    factor = std::clamp(factor, 0.0, 1.0);
-    return d_ptr->m_startAngle + factor * d_ptr->m_spanAngle;
+    return d_ptr->angleOf(val);
 }
 
 double IndustrialKnob::angleToValue(double angle) const
@@ -334,45 +535,31 @@ double IndustrialKnob::angleToValue(double angle) const
 
 void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
 {
-    const double w = width();
-    const double h = height();
-    const double side = std::min(w, h * 0.85);
-    const QPointF center(w * 0.5, side * 0.5 + 4.0);
-
-    double dx = pos.x() - center.x();
-    double dy = pos.y() - center.y();
-
-    // Standard polar coordinates where 0° is 12 o'clock, clockwise positive
-    double rad = std::atan2(dx, -dy);
-    double deg = rad * 180.0 / M_PI;
-
-    // Convert into our [startAngle, startAngle + spanAngle] range
-    double relativeAngle = deg - d_ptr->m_startAngle;
-    while (relativeAngle < -180.0) relativeAngle += 360.0;
-    while (relativeAngle > 180.0) relativeAngle -= 360.0;
-
-    if (relativeAngle < 0.0) {
-        // Closer to start or beyond?
-        if (relativeAngle < -d_ptr->m_spanAngle * 0.5) {
-            setValue(d_ptr->m_maximum);
-        } else {
-            setValue(d_ptr->m_minimum);
-        }
-    } else if (relativeAngle > d_ptr->m_spanAngle) {
-        setValue(d_ptr->m_maximum);
-    } else {
-        double factor = relativeAngle / d_ptr->m_spanAngle;
-        double newVal = d_ptr->m_minimum + factor * (d_ptr->m_maximum - d_ptr->m_minimum);
-        setValue(newVal);
+    // #175: the shorter way round from the last point, so a jump over the gap between the ends is seen as one. Past
+    // an end the value stays there until the pointer comes back on that end, the way it came or after a full turn
+    const double span = d_ptr->m_spanAngle;
+    const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF());
+    double dragAngle = d_ptr->m_dragAngle + std::remainder(angle - d_ptr->m_dragAngle, 360.0);
+    if (dragAngle >= span + 360.0) {
+        dragAngle -= 360.0;
+    } else if (dragAngle <= -360.0) {
+        dragAngle += 360.0;
     }
+    d_ptr->m_dragAngle = dragAngle;
+    setValue(d_ptr->valueAtScaleAngle(dragAngle));
 }
 
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        d_ptr->m_isDragging = true;
-        d_ptr->m_lastMousePos = event->position();
-        updateValueFromPoint(event->position());
+        // #175: a press in the gap between the ends of the scale selects nothing and starts no drag
+        const double angle = d_ptr->scaleAngleAt(event->position(), size(), font(), devicePixelRatioF());
+        if (angle <= d_ptr->m_spanAngle) {
+            d_ptr->m_isDragging = true;
+            d_ptr->m_lastMousePos = event->position();
+            d_ptr->m_dragAngle = angle;
+            setValue(d_ptr->valueAtScaleAngle(angle));
+        }
         event->accept();
         return;
     }
@@ -457,7 +644,8 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
     const double w = targetSize.width();
     const double h = targetSize.height();
-    const internal::KnobScaleGeometry scale = internal::knobScaleGeometry(w, h);
+    const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(targetSize, font(), dpr);
+    const internal::KnobScaleGeometry &scale = layout.geometry;
     const QPointF center(scale.centerX, scale.centerY);
     const double radius = scale.radius;
 
@@ -471,8 +659,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     const double tickLen = radius * 0.12;
     const double minorTickLen = tickLen * 0.55;
 
-    int totalTicks = (d_ptr->m_mode == KnobMode::Discrete) ? (d_ptr->m_discreteSteps - 1) : d_ptr->m_majorTicks;
-    totalTicks = std::max(1, totalTicks);
+    const int totalTicks = d_ptr->tickCount();
     int totalMinor = (d_ptr->m_mode == KnobMode::Discrete) ? 0 : d_ptr->m_minorTicks;
     int totalDivisions = totalTicks * (totalMinor + 1);
     double valRange = d_ptr->m_maximum - d_ptr->m_minimum;
@@ -496,27 +683,9 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     }
 
     // Draw Major Ticks and Aligned Numeric Labels
-    QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
-    font.setPixelSize(scale.labelFontPx);
-    font.setBold(true);
-    painter.setFont(font);
+    painter.setFont(layout.font);
 
     QPen majorPen(d_ptr->m_scaleColor, 1.6, Qt::SolidLine, Qt::RoundCap);
-
-    // #60: every tick is drawn, but only the labels that keep the minimum gap (selection of #50)
-    const QFontMetricsF fm(font);
-    std::vector<QString> labelTexts;
-    std::vector<internal::LayoutRect> labelBoxes;
-    for (int i = 0; i <= totalTicks; ++i) {
-        const double frac = static_cast<double>(i) / totalTicks;
-        const double val = d_ptr->m_minimum + frac * valRange;
-        labelTexts.push_back(d_ptr->m_mode == KnobMode::Discrete ? QString::number(i + 1)
-                                                                 : internal::scaleLabelText(val, d_ptr->m_precision));
-        const QRectF textRect = fm.boundingRect(labelTexts.back());
-        labelBoxes.push_back(internal::knobLabelBox(scale, valueToAngle(val), textRect.width(), textRect.height()));
-    }
-    const internal::RadialScaleLabels labels =
-        internal::layoutRadialScaleLabels(labelBoxes, internal::scaleLabelMinGap(fm.height()));
 
     for (int i = 0; i <= totalTicks; ++i) {
         double frac = static_cast<double>(i) / totalTicks;
@@ -535,12 +704,12 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
     // Numeric Labels
     painter.setPen(d_ptr->m_textColor);
-    for (int i : labels.drawn) {
-        const internal::LayoutRect &box = labelBoxes[static_cast<size_t>(i)];
+    for (int i : layout.labels.drawn) {
+        const internal::LayoutRect &box = layout.boxes[static_cast<size_t>(i)];
         // TextDontClip: the glyphs can exceed boundingRect() (CoreText on macOS, see #31 / #35);
         // the rectangle only positions the label
         painter.drawText(QRectF(box.x, box.y, box.w, box.h), Qt::AlignCenter | Qt::TextDontClip,
-                         labelTexts[static_cast<size_t>(i)]);
+                         layout.texts[static_cast<size_t>(i)]);
     }
 
     // Static Digital Pod at bottom (if enabled)
@@ -559,6 +728,13 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
 void IndustrialKnob::paintEvent(QPaintEvent *)
 {
+    // #170: a window moved to a monitor of another DPR is repainted. The scale and the ink follow by themselves, but a
+    // layout keeps the old minimum until it is told. Here, since a DPR can change on the same screen and has no event
+    // of its own before Qt 6.6. Once: the minimum is computed again only when asked for
+    if (d_ptr->m_minimumWidth != 0 && d_ptr->m_minimumWidthDpr != devicePixelRatioF()) {
+        d_ptr->minimumSizeChanged(this);
+    }
+
     if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
         renderStaticScale(size());
     }
@@ -573,9 +749,9 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
 
     const double w = width();
     const double h = height();
-    const double side = std::min(w, h * 0.82);
-    const QPointF center(w * 0.5, side * 0.5 + 4.0);
-    const double radius = (side * 0.5) - 4.0;
+    const internal::KnobScaleGeometry &scale = d_ptr->scaleFor(size(), font(), devicePixelRatioF()).geometry;
+    const QPointF center(scale.centerX, scale.centerY);
+    const double radius = scale.radius;
     const double knobRadius = radius * 0.65;
 
     if (knobRadius <= 5.0) return;

@@ -50,5 +50,21 @@ struct TextInk {
  */
 TextInk measureTextInk(const QString &text, const QFont &font, double dpr);
 
+/// Ink of a text around the centre of its rectangle, in logical pixels (negative to the left of it and above it).
+struct TextInkBox {
+    double left{0.0};
+    double top{0.0};
+    double right{0.0};
+    double bottom{0.0};
+};
+
+/**
+ * \brief Pixels a text really draws in a width x height rectangle with Qt::AlignCenter, centred on a device pixel.
+ *
+ * In both directions, for the same reason as measureTextInk(), and at the antialiasing of a label. With the rectangle
+ * on a device pixel the text is drawn as measured. A text without ink gives an empty box at the centre.
+ */
+TextInkBox measureCenteredTextInk(const QString &text, const QFont &font, double width, double height, double dpr);
+
 } // namespace internal
 } // namespace QtIndustrialWidgets

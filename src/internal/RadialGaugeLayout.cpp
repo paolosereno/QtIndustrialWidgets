@@ -29,17 +29,56 @@ RadialScaleGeometry radialScaleGeometry(double side)
     return g;
 }
 
-KnobScaleGeometry knobScaleGeometry(double width, double height)
+namespace {
+
+KnobScaleGeometry knobGeometryOfRadius(double centerX, double centerY, double radius)
 {
-    const double side = std::min(width, height * 0.82);
     KnobScaleGeometry g;
-    g.centerX = width * 0.5;
-    g.centerY = side * 0.5 + 4.0;
-    g.radius = side * 0.5 - 4.0;
+    g.centerX = centerX;
+    g.centerY = centerY;
+    g.radius = radius;
     g.scaleRadius = g.radius * 0.92;
     g.labelRadius = g.scaleRadius + g.radius * 0.12;
     g.labelFontPx = std::clamp(static_cast<int>(g.radius * 0.12), 7, 11);
     return g;
+}
+
+} // namespace
+
+KnobScaleGeometry knobScaleGeometry(double width, double height)
+{
+    const double side = std::min(width, height * 0.82);
+    return knobGeometryOfRadius(width * 0.5, side * 0.5 + 4.0, side * 0.5 - 4.0);
+}
+
+bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height)
+{
+    return std::all_of(boxes.begin(), boxes.end(), [&](const LayoutRect &box) {
+        return box.x >= kKnobEdgeMargin && box.y >= kKnobEdgeMargin && box.right() <= width - kKnobEdgeMargin
+               && box.bottom() <= height - kKnobEdgeMargin;
+    });
+}
+
+KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels)
+{
+    const KnobScaleGeometry full = knobScaleGeometry(width, height);
+    if (!drawnLabels) {
+        return full;
+    }
+    if (knobLabelsInside(drawnLabels(full), width, height)) {
+        return full;
+    }
+    // From the top: the font and the labels drawn change in steps with the radius. On multiples of 0.5 px, not on
+    // steps from the full radius: the room for the end labels can be narrower than a step, and two heights of the
+    // same width would then give different labels
+    const double smallest = full.radius * kKnobMinimumRadiusRatio;
+    for (double radius = std::floor(full.radius * 2.0) * 0.5; radius >= smallest; radius -= 0.5) {
+        const KnobScaleGeometry g = knobGeometryOfRadius(full.centerX, full.centerY, radius);
+        if (knobLabelsInside(drawnLabels(g), width, height)) {
+            return g;
+        }
+    }
+    return knobGeometryOfRadius(full.centerX, full.centerY, smallest);
 }
 
 LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h)
@@ -48,6 +87,13 @@ LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double 
     const double rad = (angle - 90.0) * degrees;
     return {geometry.centerX + geometry.labelRadius * std::cos(rad) - w * 0.5,
             geometry.centerY + geometry.labelRadius * std::sin(rad) - h * 0.5, w, h};
+}
+
+LayoutRect labelBoxOnDevicePixel(const LayoutRect &box, double dpr)
+{
+    const double centerX = std::round((box.x + box.w * 0.5) * dpr) / dpr;
+    const double centerY = std::round((box.y + box.h * 0.5) * dpr) / dpr;
+    return {centerX - box.w * 0.5, centerY - box.h * 0.5, box.w, box.h};
 }
 
 int minimumReadoutPixelSize(double logicalDpi)
