@@ -462,39 +462,7 @@ void tst_IndustrialKnob::scaleLabelsStayInsideTheWidget()
     for (const QPoint &p : ink) {
         onEdge += (p.x() == 0 || p.y() == 0 || p.x() == first.width() - 1 || p.y() == first.height() - 1) ? 1 : 0;
     }
-    // DIAGNOSTIC of the macOS failure, not to be kept
-    QString detail;
-    if (onEdge > 0) {
-        const ScaleLabels labels = scaleLabelsOf(knob);
-        const qreal dpr = knob.devicePixelRatioF();
-        for (int i : labels.selection.drawn) {
-            const internal::LayoutRect &box = labels.boxes[static_cast<size_t>(i)];
-            QImage image(QSize(400, 80) * dpr, QImage::Format_ARGB32_Premultiplied);
-            image.setDevicePixelRatio(dpr);
-            image.fill(Qt::black);
-            QPainter painter(&image);
-            painter.setRenderHint(QPainter::TextAntialiasing, true);
-            painter.setRenderHint(QPainter::Antialiasing, true);
-            painter.setFont(labels.font);
-            painter.setPen(Qt::white);
-            const QRectF at(100.0 + (box.x - std::floor(box.x)), 30.0 + (box.y - std::floor(box.y)), box.w, box.h);
-            painter.drawText(at, Qt::AlignCenter | Qt::TextDontClip, labels.texts[static_cast<size_t>(i)]);
-            painter.end();
-            QRect inkBox;
-            for (int y = 0; y < image.height(); ++y) {
-                for (int x = 0; x < image.width(); ++x) {
-                    if (qRed(image.pixel(x, y)) > 0) {
-                        inkBox |= QRect(x, y, 1, 1);
-                    }
-                }
-            }
-            detail += QStringLiteral(" [%1: box %2..%3 x %4..%5 ink out L %6 R %7 T %8 B %9]")
-                          .arg(labels.texts[static_cast<size_t>(i)]).arg(box.x).arg(box.right()).arg(box.y).arg(box.bottom())
-                          .arg(at.left() - inkBox.left() / dpr).arg((inkBox.right() + 1) / dpr - at.right())
-                          .arg(at.top() - inkBox.top() / dpr).arg((inkBox.bottom() + 1) / dpr - at.bottom());
-        }
-    }
-    QVERIFY2(onEdge == 0, qPrintable(QStringLiteral("%1 pixels of label ink on the edge of the widget, DPR %2:%3").arg(onEdge).arg(knob.devicePixelRatioF()).arg(detail)));
+    QVERIFY2(onEdge == 0, qPrintable(QStringLiteral("%1 pixels of label ink on the edge of the widget").arg(onEdge)));
 }
 
 void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue_data()
