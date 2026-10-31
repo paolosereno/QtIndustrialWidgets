@@ -51,7 +51,7 @@ include(FetchContent)
 FetchContent_Declare(
     QtIndustrialWidgets
     GIT_REPOSITORY https://github.com/paolosereno/QtIndustrialWidgets.git
-    GIT_TAG        v2.5.1
+    GIT_TAG        v2.6.0
 )
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_DESIGNER_PLUGIN OFF CACHE BOOL "" FORCE)
