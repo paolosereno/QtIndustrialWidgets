@@ -943,7 +943,7 @@ void MainWindow::setupUi()
     tabWidget->addTab(bargraphTab, QStringLiteral("Circular Bargraph"));
 
     // ------------------------------------------------------------------------
-    // TAB 4: Alarm Annunciator Matrix (ANSI/ISA-18.1)
+    // TAB 4: Alarm Annunciator Matrix
     // ------------------------------------------------------------------------
     auto *annunciatorTab = new QWidget(tabWidget);
     auto *annLayout = new QVBoxLayout(annunciatorTab);
@@ -957,7 +957,7 @@ void MainWindow::setupUi()
     annHeaderLayout->setContentsMargins(14, 10, 14, 10);
     annHeaderLayout->setSpacing(16);
 
-    auto *annTitleLbl = new QLabel(QStringLiteral("<b>Alarm Annunciator Window Matrix (ISA-18.1 Sequences A & M)</b>"), annHeaderBox);
+    auto *annTitleLbl = new QLabel(QStringLiteral("<b>Alarm Annunciator Window Matrix</b>"), annHeaderBox);
     annTitleLbl->setStyleSheet(QStringLiteral("font-size: 13px;"));
 
     m_annunciatorHornLabel = new QLabel(QStringLiteral("HORN: SILENT"), annHeaderBox);
@@ -1009,8 +1009,8 @@ void MainWindow::setupUi()
     auto *annControlsRow = new QHBoxLayout();
     annControlsRow->setSpacing(14);
 
-    // Operator Pushbuttons (ISA-18.1 Sequences A & M)
-    auto *operatorBox = new QGroupBox(QStringLiteral("Operator Pushbuttons (ISA-18.1 Sequences A && M)"), annunciatorTab);
+    // Operator Pushbuttons
+    auto *operatorBox = new QGroupBox(QStringLiteral("Operator Pushbuttons"), annunciatorTab);
     auto *operatorLayout = new QHBoxLayout(operatorBox);
     operatorLayout->setSpacing(12);
     operatorLayout->setContentsMargins(14, 16, 14, 14);

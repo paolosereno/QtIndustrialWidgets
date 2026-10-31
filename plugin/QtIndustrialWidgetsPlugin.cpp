@@ -875,12 +875,12 @@ QString AnnunciatorPanelPlugin::name() const
 
 QString AnnunciatorPanelPlugin::toolTip() const
 {
-    return QStringLiteral("ANSI/ISA-18.1 industrial alarm annunciator window matrix");
+    return QStringLiteral("Industrial alarm annunciator window matrix");
 }
 
 QString AnnunciatorPanelPlugin::whatsThis() const
 {
-    return QStringLiteral("A matrix of backlit alarm indicator windows with standard ISA-18.1 sequence logic and engraved legends.");
+    return QStringLiteral("A matrix of backlit alarm indicator windows with automatic-reset and manual-reset sequences and engraved legends.");
 }
 
 QString AnnunciatorPanelPlugin::domXml() const

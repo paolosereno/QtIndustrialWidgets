@@ -196,7 +196,7 @@ Multi-channel level meter (`qiw::LevelMeter`).
 
 <img src="images/annunciator-panel-alarms.png" alt="AnnunciatorPanel" width="640">
 
-Alarm annunciator grid following the ISA-18.1 sequences A and M (`qiw::AnnunciatorPanel`).
+Alarm annunciator grid with automatic-reset and manual-reset sequences (`qiw::AnnunciatorPanel`).
 - **Grid**: `rows` × `columns` tiles, each with a text and a severity (`Severity::Critical`, `Warning` or `Advisory`).
 - **Sequences**: `SequenceA_AutomaticReset` and `SequenceM_ManualReset`, with the states `Normal`, `Unacknowledged`
   (fast flash), `Acknowledged` (steady) and `Ringback` (slow flash).
