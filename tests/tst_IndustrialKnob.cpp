@@ -150,6 +150,26 @@ DrawnDial drawnDialOf(IndustrialKnob &knob)
     return dial;
 }
 
+// A knob on a screen of another DPR: moving a window to another monitor, with no second monitor in the test
+class FakeDprKnob : public IndustrialKnob
+{
+public:
+    using IndustrialKnob::IndustrialKnob;
+    double fakeDpr{1.0};
+
+protected:
+    int metric(PaintDeviceMetric metric) const override
+    {
+        if (metric == PdmDevicePixelRatio) {
+            return static_cast<int>(std::ceil(fakeDpr));
+        }
+        if (metric == PdmDevicePixelRatioScaled) {
+            return static_cast<int>(fakeDpr * devicePixelRatioFScale());
+        }
+        return IndustrialKnob::metric(metric);
+    }
+};
+
 struct LayoutRequests : QObject {
     int count{0};
     bool eventFilter(QObject *, QEvent *event) override
@@ -212,6 +232,8 @@ private Q_SLOTS:
     void dialFollowsTheDrawnLabels();
     void precisionChangesTheLabelsDrawn();
     void labelInkStaysInsideItsMeasure();
+    void dprChangeOfAVisibleKnob_data();
+    void dprChangeOfAVisibleKnob();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -936,6 +958,80 @@ void tst_IndustrialKnob::labelInkStaysInsideItsMeasure()
             }
         }
     }
+}
+
+void tst_IndustrialKnob::dprChangeOfAVisibleKnob_data()
+{
+    QTest::addColumn<double>("target");
+    for (double target : {1.25, 1.5, 2.0}) {
+        QTest::addRow("to DPR %g", target) << target;
+    }
+}
+
+// #170: a window moved to a monitor of another DPR is repainted. From that repaint the scale and the ink follow the new
+// DPR, as in a new knob, and the layout that holds the knob gets the new minimum, once, without being told by hand
+void tst_IndustrialKnob::dprChangeOfAVisibleKnob()
+{
+    QFETCH(double, target);
+
+    int differs = 0;
+    for (double maximum : {1e7, 1e8, 1e9, 1e10, 1e11, 1e12}) {
+        QWidget parent;
+        auto *layout = new QVBoxLayout(&parent);
+        layout->setContentsMargins(0, 0, 0, 0);
+        auto *knob = new FakeDprKnob(&parent);
+        knob->setFocusPolicy(Qt::NoFocus); // The last window shown takes the focus, and its knob draws the focus ring
+        knob->setRange(0.0, maximum);
+        layout->addWidget(knob);
+        parent.resize(200, 220);
+        parent.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&parent));
+
+        const QSize before = knob->minimumSizeHint();
+        QCOMPARE(layout->minimumSize().width(), before.width());
+        knob->repaint();
+        QCoreApplication::sendPostedEvents(&parent, QEvent::LayoutRequest);
+
+        LayoutRequests requests;
+        parent.installEventFilter(&requests);
+        knob->fakeDpr = target;
+        knob->repaint();
+        QCoreApplication::sendPostedEvents(&parent, QEvent::LayoutRequest);
+        QVERIFY2(requests.count > 0, qPrintable(QStringLiteral("0-%1: no layout request").arg(maximum)));
+
+        // The same parent and size, at the new DPR from the start
+        QWidget freshParent;
+        auto *freshLayout = new QVBoxLayout(&freshParent);
+        freshLayout->setContentsMargins(0, 0, 0, 0);
+        auto *fresh = new FakeDprKnob(&freshParent);
+        fresh->fakeDpr = target;
+        fresh->setFocusPolicy(Qt::NoFocus);
+        fresh->setRange(0.0, maximum);
+        freshLayout->addWidget(fresh);
+        freshParent.resize(parent.size());
+        freshParent.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&freshParent));
+        QCOMPARE(fresh->size(), knob->size());
+
+        QCOMPARE(knob->minimumSizeHint(), fresh->minimumSizeHint());
+        QCOMPARE(layout->minimumSize().width(), fresh->minimumSizeHint().width());
+        differs += fresh->minimumSizeHint() != before ? 1 : 0;
+        const QImage drawn = FontTest::render(*knob);
+        const QImage expected = FontTest::render(*fresh);
+        QVERIFY2(FontTest::differingPixelCount(drawn, expected) == 0,
+                 qPrintable(QStringLiteral("0-%1: %2 pixels differ, %3 x %4 and %5 x %6")
+                                .arg(maximum).arg(FontTest::differingPixelCount(drawn, expected))
+                                .arg(drawn.width()).arg(drawn.height()).arg(expected.width()).arg(expected.height())));
+
+        // Once: the next repaints at this DPR do not disturb the layout
+        requests.count = 0;
+        knob->repaint();
+        knob->repaint();
+        QCoreApplication::sendPostedEvents(&parent, QEvent::LayoutRequest);
+        QCOMPARE(requests.count, 0);
+        parent.removeEventFilter(&requests);
+    }
+    QVERIFY2(differs > 0, "the minimum is the same at both DPRs for every range");
 }
 
 QTEST_MAIN(tst_IndustrialKnob)

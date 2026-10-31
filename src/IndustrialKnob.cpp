@@ -728,6 +728,13 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
 void IndustrialKnob::paintEvent(QPaintEvent *)
 {
+    // #170: a window moved to a monitor of another DPR is repainted. The scale and the ink follow by themselves, but a
+    // layout keeps the old minimum until it is told. Here, since a DPR can change on the same screen and has no event
+    // of its own before Qt 6.6. Once: the minimum is computed again only when asked for
+    if (d_ptr->m_minimumWidth != 0 && d_ptr->m_minimumWidthDpr != devicePixelRatioF()) {
+        d_ptr->minimumSizeChanged(this);
+    }
+
     if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (QSizeF(size()) * devicePixelRatioF()).toSize()) {
         renderStaticScale(size());
     }
