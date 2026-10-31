@@ -54,6 +54,9 @@ public:
 
     bool m_isDragging{false};
     QPointF m_lastMousePos;
+    // Pointer during a drag, in degrees from the start of the scale. Not wrapped: out of [0, span] it has gone
+    // past an end, and the value stays there
+    double m_dragAngle{0.0};
 
     // Scale at the current configuration: the same for the static scale, the paint and the mouse (#170)
     struct ScaleLayout {
@@ -68,10 +71,13 @@ public:
     bool m_scaleValid{false};
 
     double angleOf(double value) const;
+    double valueAtScaleAngle(double angle) const;
     int tickCount() const;
     // Texts, boxes and selection of the labels at a geometry
     ScaleLayout labelsAt(const internal::KnobScaleGeometry &geometry, const QFont &widgetFont) const;
     const ScaleLayout &scaleFor(const QSize &size, const QFont &widgetFont);
+    // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
+    double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont);
 };
 
 double IndustrialKnobPrivate::angleOf(double value) const
@@ -80,6 +86,12 @@ double IndustrialKnobPrivate::angleOf(double value) const
     double factor = (value - m_minimum) / (m_maximum - m_minimum);
     factor = std::clamp(factor, 0.0, 1.0);
     return m_startAngle + factor * m_spanAngle;
+}
+
+double IndustrialKnobPrivate::valueAtScaleAngle(double angle) const
+{
+    const double factor = std::clamp(angle / m_spanAngle, 0.0, 1.0);
+    return m_minimum + factor * (m_maximum - m_minimum);
 }
 
 int IndustrialKnobPrivate::tickCount() const
@@ -128,6 +140,21 @@ const IndustrialKnobPrivate::ScaleLayout &IndustrialKnobPrivate::scaleFor(const 
         m_scaleValid = true;
     }
     return m_scale;
+}
+
+double IndustrialKnobPrivate::scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont)
+{
+    const internal::KnobScaleGeometry &scale = scaleFor(size, widgetFont).geometry;
+    double dx = pos.x() - scale.centerX;
+    double dy = pos.y() - scale.centerY;
+
+    // Standard polar coordinates where 0° is 12 o'clock, clockwise positive
+    double rad = std::atan2(dx, -dy);
+    double deg = rad * 180.0 / M_PI;
+
+    double relativeAngle = std::fmod(deg - m_startAngle, 360.0);
+    if (relativeAngle < 0.0) relativeAngle += 360.0;
+    return relativeAngle;
 }
 
 IndustrialKnob::IndustrialKnob(QWidget *parent)
@@ -406,36 +433,31 @@ double IndustrialKnob::angleToValue(double angle) const
 
 void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
 {
-    // #170: around the dial as it is drawn
-    const internal::KnobScaleGeometry &scale = d_ptr->scaleFor(size(), font()).geometry;
-    double dx = pos.x() - scale.centerX;
-    double dy = pos.y() - scale.centerY;
-
-    // Standard polar coordinates where 0° is 12 o'clock, clockwise positive
-    double rad = std::atan2(dx, -dy);
-    double deg = rad * 180.0 / M_PI;
-
-    // #170: clockwise from the start of the scale, in [0, 360): the whole dial, not only the half after the start
-    double relativeAngle = std::fmod(deg - d_ptr->m_startAngle, 360.0);
-    if (relativeAngle < 0.0) relativeAngle += 360.0;
-
-    if (relativeAngle > d_ptr->m_spanAngle) {
-        // In the gap between the ends of the scale: the nearest one
-        const bool nearerEnd = relativeAngle - d_ptr->m_spanAngle < (360.0 - d_ptr->m_spanAngle) * 0.5;
-        setValue(nearerEnd ? d_ptr->m_maximum : d_ptr->m_minimum);
-    } else {
-        double factor = relativeAngle / d_ptr->m_spanAngle;
-        double newVal = d_ptr->m_minimum + factor * (d_ptr->m_maximum - d_ptr->m_minimum);
-        setValue(newVal);
+    // #175: the shorter way round from the last point, so a jump over the gap between the ends is seen as one. Past
+    // an end the value stays there until the pointer comes back on that end, the way it came or after a full turn
+    const double span = d_ptr->m_spanAngle;
+    const double angle = d_ptr->scaleAngleAt(pos, size(), font());
+    double dragAngle = d_ptr->m_dragAngle + std::remainder(angle - d_ptr->m_dragAngle, 360.0);
+    if (dragAngle >= span + 360.0) {
+        dragAngle -= 360.0;
+    } else if (dragAngle <= -360.0) {
+        dragAngle += 360.0;
     }
+    d_ptr->m_dragAngle = dragAngle;
+    setValue(d_ptr->valueAtScaleAngle(dragAngle));
 }
 
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        d_ptr->m_isDragging = true;
-        d_ptr->m_lastMousePos = event->position();
-        updateValueFromPoint(event->position());
+        // #175: a press in the gap between the ends of the scale selects nothing and starts no drag
+        const double angle = d_ptr->scaleAngleAt(event->position(), size(), font());
+        if (angle <= d_ptr->m_spanAngle) {
+            d_ptr->m_isDragging = true;
+            d_ptr->m_lastMousePos = event->position();
+            d_ptr->m_dragAngle = angle;
+            setValue(d_ptr->valueAtScaleAngle(angle));
+        }
         event->accept();
         return;
     }

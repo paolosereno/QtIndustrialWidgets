@@ -119,6 +119,21 @@ DrawnDial drawnDialOf(IndustrialKnob &knob)
     return dial;
 }
 
+// The point of the dial at \a angle degrees (0 = 12 o'clock, clockwise)
+QPointF dialPoint(const DrawnDial &dial, double angle)
+{
+    const double rad = angle * M_PI / 180.0;
+    return QPointF(dial.center.x() + dial.radius * std::sin(rad), dial.center.y() - dial.radius * std::cos(rad));
+}
+
+void sendMouse(IndustrialKnob &knob, QEvent::Type type, const QPointF &point)
+{
+    const Qt::MouseButton button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+    const Qt::MouseButtons buttons = type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton;
+    QMouseEvent event(type, point, knob.mapToGlobal(point), button, buttons, Qt::NoModifier);
+    QCoreApplication::sendEvent(&knob, &event);
+}
+
 } // namespace
 
 class tst_IndustrialKnob : public QObject
@@ -143,7 +158,9 @@ private Q_SLOTS:
     void scaleLabelsStayInsideTheWidget();
     void clickOnTheDrawnDialSelectsItsValue_data();
     void clickOnTheDrawnDialSelectsItsValue();
-    void clickInTheGapSelectsTheNearestEnd();
+    void clickInTheGapChangesNothing();
+    void dragIntoTheGapStopsAtTheNearestEnd();
+    void dragPastTheMaximumDoesNotReachZero();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -450,28 +467,112 @@ void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue()
     }
 }
 
-// #170: below the dial, between the two ends of the 270 degrees scale
-void tst_IndustrialKnob::clickInTheGapSelectsTheNearestEnd()
+// #175: a press below the dial, between the two ends of the 270 degrees scale, changes nothing and starts no drag
+void tst_IndustrialKnob::clickInTheGapChangesNothing()
 {
     IndustrialKnob knob;
     knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
     knob.resize(220, 240);
     knob.show();
     QVERIFY(QTest::qWaitForWindowExposed(&knob));
-
     const DrawnDial dial = drawnDialOf(knob);
     QVERIFY(dial.radius > 20.0);
-    auto clickAt = [&](double angle) {
-        const double rad = angle * M_PI / 180.0;
-        const QPointF point(dial.center.x() + dial.radius * std::sin(rad), dial.center.y() - dial.radius * std::cos(rad));
-        knob.setValue(50.0);
-        QTest::mouseClick(&knob, Qt::LeftButton, Qt::NoModifier, point.toPoint());
-        return knob.value();
-    };
-    QCOMPARE(clickAt(150.0), 100.0);
-    QCOMPARE(clickAt(170.0), 100.0);
-    QCOMPARE(clickAt(190.0), 0.0);
-    QCOMPARE(clickAt(210.0), 0.0);
+
+    knob.setValue(50.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    for (double angle : {137.0, 150.0, 170.0, 190.0, 210.0, 223.0}) {
+        sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, angle));
+        QCOMPARE(knob.value(), 50.0);
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 120.0));
+        QCOMPARE(knob.value(), 50.0);
+        sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 120.0));
+        QCOMPARE(knob.value(), 50.0);
+    }
+    QCOMPARE(changed.count(), 0);
+
+    // The press that follows, on the scale, still works
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    QVERIFY(std::abs(knob.value() - 50.0) < 1.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    QVERIFY2(std::abs(knob.value() - 83.3) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+}
+
+// #175: from either end, on both sides of the middle of the gap, the value stays at the end the drag reached
+void tst_IndustrialKnob::dragIntoTheGapStopsAtTheNearestEnd()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 120.0));
+    QVERIFY(knob.value() > 90.0);
+    for (double angle : {137.0, 150.0, 170.0, 190.0, 210.0, 223.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+        QVERIFY2(knob.value() == 100.0, qPrintable(QStringLiteral("angle %1: %2").arg(angle).arg(knob.value())));
+    }
+    // Back on the scale the way it came, the value follows the pointer again
+    for (double angle : {170.0, 137.0, 120.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+    }
+    QVERIFY2(std::abs(knob.value() - 94.4) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 120.0));
+
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, -120.0));
+    QVERIFY(knob.value() < 10.0);
+    for (double angle : {-137.0, -150.0, -170.0, 170.0, 150.0, 137.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+        QVERIFY2(knob.value() == 0.0, qPrintable(QStringLiteral("angle %1: %2").arg(angle).arg(knob.value())));
+    }
+    for (double angle : {170.0, -150.0, -120.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+    }
+    QVERIFY2(std::abs(knob.value() - 5.6) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, -120.0));
+}
+
+// #175: past the maximum, across the gap and on along the scale, the value stays at the maximum. In steps or with a
+// single jump over the gap, as a fast mouse does. It moves again only when the pointer is back on the end it holds
+void tst_IndustrialKnob::dragPastTheMaximumDoesNotReachZero()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 130.0));
+    const double start = knob.value();
+    QVERIFY(start > 95.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    // In one jump over the gap
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, -120.0));
+    QCOMPARE(knob.value(), 100.0);
+    // On along the scale, then along the whole of it and back on the maximum
+    for (double angle : {-90.0, -45.0, 0.0, 45.0, 90.0, 130.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+        QVERIFY2(knob.value() == 100.0, qPrintable(QStringLiteral("angle %1: %2").arg(angle).arg(knob.value())));
+    }
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 134.0));
+    QCOMPARE(knob.value(), 100.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 136.0));
+    QCOMPARE(knob.value(), 100.0);
+    // One full turn: the pointer is on the maximum again and the way back along the scale moves the value
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    QVERIFY2(std::abs(knob.value() - 83.3) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    for (const QList<QVariant> &signal : changed) {
+        QVERIFY2(signal.at(0).toDouble() > 80.0, qPrintable(signal.at(0).toString()));
+    }
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
