@@ -115,6 +115,7 @@ QImage renderKnob(IndustrialKnob &knob)
 struct DrawnDial {
     QPointF center;
     double radius{0.0};
+    double grip{0.0}; // Half of the extent of what is drawn in knobColor
 };
 
 DrawnDial drawnDialOf(IndustrialKnob &knob)
@@ -135,11 +136,21 @@ DrawnDial drawnDialOf(IndustrialKnob &knob)
 
     DrawnDial dial;
     dial.center = QPointF(box.x() + box.width() * 0.5, box.y() + box.height() * 0.5) / dpr;
+    dial.grip = std::max(box.width(), box.height()) * 0.5 / dpr;
     for (const QPoint &p : scale) {
         dial.radius = std::max(dial.radius, std::hypot((p.x() + 0.5) / dpr - dial.center.x(), (p.y() + 0.5) / dpr - dial.center.y()));
     }
     return dial;
 }
+
+struct LayoutRequests : QObject {
+    int count{0};
+    bool eventFilter(QObject *, QEvent *event) override
+    {
+        count += event->type() == QEvent::LayoutRequest ? 1 : 0;
+        return false;
+    }
+};
 
 // The point of the dial at \a angle degrees (0 = 12 o'clock, clockwise)
 QPointF dialPoint(const DrawnDial &dial, double angle)
@@ -187,6 +198,7 @@ private Q_SLOTS:
     void minimumSizeKeepsTheEnds_data();
     void minimumSizeKeepsTheEnds();
     void minimumSizeHintMakesRoomForAWideFont();
+    void minimumSizeHintMakesRoomForALabelAtTheTop();
     void minimumSizeHintFollowsConfiguration_data();
     void minimumSizeHintFollowsConfiguration();
     void dialFollowsTheDrawnLabels_data();
@@ -708,6 +720,34 @@ void tst_IndustrialKnob::minimumSizeHintMakesRoomForAWideFont()
     QVERIFY2(checked > 0, "no stretched font gives a size between the floor and the ceiling");
 }
 
+// #170: a label too wide for 80 x 90 raises minimumSizeHint() also where the ends are not the limit: on a full turn the
+// only label drawn is the first one, at the top, and the dial cannot help
+void tst_IndustrialKnob::minimumSizeHintMakesRoomForALabelAtTheTop()
+{
+    int checked = 0;
+    for (int stretch : {100, 150, 200, 300}) {
+        IndustrialKnob knob;
+        knob.setRange(-9e18, 9e18);
+        knob.setStartAngle(0.0);
+        knob.setSpanAngle(360.0);
+        QFont wide = knob.font();
+        wide.setStretch(stretch);
+        knob.setFont(wide);
+
+        const int hint = knob.minimumSizeHint().width();
+        const auto inside = [&](int width) {
+            const int height = (width * 9 + 7) / 8;
+            return internal::knobLabelsInside(drawnBoxes(scaleLabelsAt(knob, drawnGeometryOf(knob, width, height))), width, height);
+        };
+        if (hint <= 80 || hint >= 160) {
+            continue;
+        }
+        ++checked;
+        QVERIFY2(inside(hint) && !inside(hint - 1), qPrintable(QStringLiteral("stretch %1 at %2").arg(stretch).arg(hint)));
+    }
+    QVERIFY2(checked > 0, "no stretched font gives a size between the floor and the ceiling");
+}
+
 void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration_data()
 {
     using Change = std::function<void(IndustrialKnob &)>;
@@ -731,7 +771,7 @@ void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration_data()
         QFont wide = k.font();
         wide.setStretch(200);
         k.setFont(wide);
-    }) << false;
+    }) << false; // Without fonts no property of the font changes the metrics at a pixel size
 }
 
 // #170: minimumSizeHint() is that of a new knob with the same configuration after every setter it depends on, and the
@@ -755,7 +795,14 @@ void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration()
     const int before = knob->minimumSizeHint().width();
     QCOMPARE(layout->minimumSize().width(), before);
 
+    // Also where the value stays the same: a setter that does not call updateGeometry() posts no request
+    QCoreApplication::sendPostedEvents(&parent, QEvent::LayoutRequest);
+    LayoutRequests requests;
+    parent.installEventFilter(&requests);
     change(*knob);
+    QCoreApplication::sendPostedEvents(&parent, QEvent::LayoutRequest);
+    parent.removeEventFilter(&requests);
+    QVERIFY(requests.count > 0);
     const int after = knob->minimumSizeHint().width();
 
     IndustrialKnob fresh;
@@ -800,15 +847,21 @@ void tst_IndustrialKnob::dialFollowsTheDrawnLabels()
     const DrawnDial dial = drawnDialOf(knob);
     QVERIFY2(std::abs(dial.radius - (expected.scaleRadius + 0.8)) <= 1.5,
              qPrintable(QStringLiteral("scale drawn at %1, expected %2 + 0.8").arg(dial.radius).arg(expected.scaleRadius)));
+    // The grip is drawn on every paint, not with the static scale: 0.65 of the radius, plus half of its 1.2 px pen
+    QVERIFY2(std::abs(dial.grip - (expected.radius * 0.65 + 0.6)) <= 1.0,
+             qPrintable(QStringLiteral("grip drawn at %1, expected %2 + 0.6").arg(dial.grip).arg(expected.radius * 0.65)));
 }
 
-// #170: the labels and the radius depend on the precision, so the static scale has to follow it
+// #170: the labels and the radius depend on the precision, so the static scale has to follow it. On a knob that is
+// shown: grab() sends a hidden widget a resize event, which drops the cache anyway
 void tst_IndustrialKnob::precisionChangesTheLabelsDrawn()
 {
     IndustrialKnob knob;
     knob.setRange(0.0, 1.0);
     knob.setValueDisplayVisible(false);
     knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
     const QImage before = FontTest::render(knob);
     knob.setPrecision(2);
 
@@ -817,6 +870,8 @@ void tst_IndustrialKnob::precisionChangesTheLabelsDrawn()
     fresh.setValueDisplayVisible(false);
     fresh.setPrecision(2);
     fresh.resize(220, 240);
+    fresh.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&fresh));
     QVERIFY(FontTest::render(fresh) != before);
     QCOMPARE(FontTest::render(knob), FontTest::render(fresh));
 }

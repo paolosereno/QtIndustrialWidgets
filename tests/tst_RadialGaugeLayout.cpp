@@ -599,6 +599,14 @@ void tst_RadialGaugeLayout::knobGeometryFollowsTheDrawnLabels()
     QCOMPARE(shrunk.labelRadius, shrunk.radius * 1.04);
     QCOMPARE(shrunk.labelFontPx, 9);
 
+    // On multiples of 0.5 px, whatever the full radius: heights that give the same box give the same radius
+    for (double height : {110.0, 113.0, 117.0, 119.0}) {
+        const KnobScaleGeometry g = knobScaleGeometry(100.0, height, boxWith(20.0));
+        QCOMPARE(g.radius, knobScaleGeometry(100.0, 110.0, boxWith(20.0)).radius);
+        QVERIFY2(g.radius < knobScaleGeometry(100.0, height).radius, qPrintable(QString::number(g.radius)));
+        QCOMPARE(std::floor(g.radius * 2.0), g.radius * 2.0);
+    }
+
     // Boxes that never fit: half of the full radius and no further
     const KnobScaleGeometry smallest = knobScaleGeometry(220.0, 240.0, boxWith(500.0));
     QCOMPARE(smallest.radius, full.radius * 0.5);
