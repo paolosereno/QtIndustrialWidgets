@@ -124,8 +124,14 @@ Rotary knob (`qiw::IndustrialKnob`).
   (`trackVisible`) and a value display (`valueDisplayVisible`). Every tick is drawn; labels are drawn every k-th tick,
   with the smallest k that keeps the free space between them, in both modes (#60). The first and last labels are
   always drawn, unless they would overlap each other (an arc of about 360°): then the last one is left out.
-- **Input**: mouse drag (the value follows the pointer's angle), mouse wheel, and the keys arrows, PageUp/PageDown,
-  Home/End.
+- **Size** (#170): the dial is as large as the labels drawn allow: long labels make it smaller, down to half of the
+  full radius, with the centre fixed, so that they stay inside the widget. `minimumSizeHint()` is computed from the
+  font and the configuration, between 80 × 90 and `sizeHint()`: from that size up the labels drawn are inside the
+  widget and the first and last ones are drawn, with the same exception.
+- **Input**: mouse drag (the value follows the pointer's angle around the dial as it is drawn), mouse wheel, and the
+  keys arrows, PageUp/PageDown, Home/End. A press in the gap between the ends of the scale changes nothing and starts
+  no drag. During a drag started on the scale the value stops at the end it reaches and never jumps to the other one:
+  it moves again when the pointer is back on that end (#175).
 - **Rendering**: the knob has a serrated grip of 32 teeth; ticks and scale are cached, so a rotation redraws only the
   moving parts.
 - **Non-finite input** (#151): the knob is an input control and has no value state. `setValue()` ignores NaN (the knob
