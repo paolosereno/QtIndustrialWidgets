@@ -15,8 +15,8 @@ authors:
     family-names: Sereno
     email: pablitos1024@gmail.com
     orcid: "https://orcid.org/0009-0003-2537-5191"
-version: 2.5.1
-date-released: "2026-10-25"
+version: 2.6.0
+date-released: "2026-10-31"
 license: MIT
 repository-code: "https://github.com/paolosereno/QtIndustrialWidgets"
 url: "https://paolosereno.github.io/QtIndustrialWidgets/"
