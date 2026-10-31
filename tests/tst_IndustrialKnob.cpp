@@ -14,10 +14,13 @@
 #include <memory>
 #include <QtGui/QPixmap>
 
+#include <QtWidgets/QVBoxLayout>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <set>
+#include <functional>
 #include <vector>
 
 using namespace QtIndustrialWidgets;
@@ -57,16 +60,35 @@ ScaleLabels scaleLabelsAt(const IndustrialKnob &knob, const internal::KnobScaleG
     return out;
 }
 
+std::vector<internal::LayoutRect> drawnBoxes(const ScaleLabels &labels)
+{
+    std::vector<internal::LayoutRect> drawn;
+    for (int i : labels.selection.drawn) {
+        drawn.push_back(labels.boxes[static_cast<size_t>(i)]);
+    }
+    return drawn;
+}
+
+internal::KnobScaleGeometry drawnGeometryOf(const IndustrialKnob &knob, int width, int height)
+{
+    return internal::knobScaleGeometry(width, height, [&](const internal::KnobScaleGeometry &g) {
+        return drawnBoxes(scaleLabelsAt(knob, g));
+    });
+}
+
 ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
 {
-    return scaleLabelsAt(knob, internal::knobScaleGeometry(knob.width(), knob.height(), [&](const internal::KnobScaleGeometry &g) {
-        const ScaleLabels at = scaleLabelsAt(knob, g);
-        std::vector<internal::LayoutRect> drawn;
-        for (int i : at.selection.drawn) {
-            drawn.push_back(at.boxes[static_cast<size_t>(i)]);
-        }
-        return drawn;
-    }));
+    return scaleLabelsAt(knob, drawnGeometryOf(knob, knob.width(), knob.height()));
+}
+
+// The labels of a knob of that size keep the margin from the edge, and the first and last ones are drawn
+bool sizeKeepsTheEnds(const IndustrialKnob &knob, int width, int height)
+{
+    const ScaleLabels labels = scaleLabelsAt(knob, drawnGeometryOf(knob, width, height));
+    const std::vector<int> &drawn = labels.selection.drawn;
+    const int last = static_cast<int>(labels.boxes.size()) - 1;
+    return std::find(drawn.begin(), drawn.end(), 0) != drawn.end() && std::find(drawn.begin(), drawn.end(), last) != drawn.end()
+           && internal::knobLabelsInside(drawnBoxes(labels), width, height);
 }
 
 // Device pixels that differ between two renders of the same size
@@ -161,6 +183,15 @@ private Q_SLOTS:
     void clickInTheGapChangesNothing();
     void dragIntoTheGapStopsAtTheNearestEnd();
     void dragPastTheMaximumDoesNotReachZero();
+    void minimumSizeHintLimits();
+    void minimumSizeKeepsTheEnds_data();
+    void minimumSizeKeepsTheEnds();
+    void minimumSizeHintMakesRoomForAWideFont();
+    void minimumSizeHintFollowsConfiguration_data();
+    void minimumSizeHintFollowsConfiguration();
+    void dialFollowsTheDrawnLabels_data();
+    void dialFollowsTheDrawnLabels();
+    void precisionChangesTheLabelsDrawn();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -573,6 +604,221 @@ void tst_IndustrialKnob::dragPastTheMaximumDoesNotReachZero()
     for (const QList<QVariant> &signal : changed) {
         QVERIFY2(signal.at(0).toDouble() > 80.0, qPrintable(signal.at(0).toString()));
     }
+
+    // The same past the minimum, the other way round
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, -130.0));
+    QVERIFY(knob.value() < 5.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 120.0));
+    QCOMPARE(knob.value(), 0.0);
+    for (double angle : {90.0, 45.0, 0.0, -45.0, -90.0, -130.0, -134.0, -136.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+        QVERIFY2(knob.value() == 0.0, qPrintable(QStringLiteral("angle %1: %2").arg(angle).arg(knob.value())));
+    }
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, -90.0));
+    QVERIFY2(std::abs(knob.value() - 16.7) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, -90.0));
+}
+
+// #170: the limits of minimumSizeHint(): not below the former fixed 80 x 90, not above sizeHint()
+void tst_IndustrialKnob::minimumSizeHintLimits()
+{
+    IndustrialKnob knob;
+    QCOMPARE(knob.minimumSizeHint(), QSize(80, 90));
+    QCOMPARE(knob.sizeHint(), QSize(160, 180));
+    for (double span : {180.0, 270.0, 360.0}) {
+        for (double maximum : {1.0, 100.0, 1e7, 1e15, 1e30}) {
+            for (int precision : {0, 6}) {
+                IndustrialKnob other;
+                other.setRange(0.0, maximum);
+                other.setPrecision(precision);
+                other.setSpanAngle(span);
+                const QSize hint = other.minimumSizeHint();
+                QVERIFY2(hint.width() >= 80 && hint.width() <= 160 && hint.height() == (hint.width() * 9 + 7) / 8,
+                         qPrintable(QStringLiteral("span %1, 0-%2, precision %3: %4 x %5")
+                                        .arg(span).arg(maximum).arg(precision).arg(hint.width()).arg(hint.height())));
+            }
+        }
+    }
+    // On a full turn the first and last labels lie on each other, at every size: the first one is enough
+    IndustrialKnob turn;
+    turn.setSpanAngle(360.0);
+    QCOMPARE(turn.minimumSizeHint(), QSize(80, 90));
+}
+
+void tst_IndustrialKnob::minimumSizeKeepsTheEnds_data()
+{
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("discreteSteps"); // 0: continuous mode
+    struct Range { const char *name; double min; double max; };
+    for (const Range &r : {Range{"0-100", 0.0, 100.0}, Range{"0-8000", 0.0, 8000.0}, Range{"-1000-1000", -1000.0, 1000.0},
+                           Range{"0-100000", 0.0, 100000.0}, Range{"0-1000000", 0.0, 1000000.0},
+                           Range{"0-10000000", 0.0, 10000000.0}}) {
+        QTest::addRow("%s", r.name) << r.min << r.max << 0;
+    }
+    for (int steps : {5, 12, 41}) {
+        QTest::addRow("%d discrete steps", steps) << 0.0 << 100.0 << steps;
+    }
+}
+
+// #170: from minimumSizeHint() up the labels stay inside and the first and last ones are drawn, also where one
+// side only grows
+void tst_IndustrialKnob::minimumSizeKeepsTheEnds()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, discreteSteps);
+
+    IndustrialKnob knob;
+    knob.setRange(minimum, maximum);
+    if (discreteSteps > 0) {
+        knob.setMode(IndustrialKnob::KnobMode::Discrete);
+        knob.setDiscreteSteps(discreteSteps);
+    }
+    const QSize hint = knob.minimumSizeHint();
+    for (const QSize &extra : {QSize(0, 0), QSize(1, 0), QSize(0, 1), QSize(5, 5), QSize(20, 0), QSize(0, 20), QSize(20, 23),
+                               QSize(40, 45), QSize(80, 90), QSize(200, 0), QSize(0, 200)}) {
+        const QSize size = hint + extra;
+        QVERIFY2(sizeKeepsTheEnds(knob, size.width(), size.height()),
+                 qPrintable(QStringLiteral("%1 x %2, minimum %3 x %4").arg(size.width()).arg(size.height()).arg(hint.width()).arg(hint.height())));
+    }
+}
+
+// #170: a font too wide for 80 x 90 raises minimumSizeHint() to the smallest size that keeps the labels, and no further
+void tst_IndustrialKnob::minimumSizeHintMakesRoomForAWideFont()
+{
+    int checked = 0;
+    for (int stretch : {150, 200, 250, 300, 400}) {
+        IndustrialKnob knob;
+        knob.setRange(0.0, 1000000.0);
+        QFont wide = knob.font();
+        wide.setStretch(stretch);
+        knob.setFont(wide);
+
+        const int hint = knob.minimumSizeHint().width();
+        // Where the ends do not fit even at the ceiling only the first one is required
+        if (hint <= 80 || hint >= 160 || !sizeKeepsTheEnds(knob, 160, 180)) {
+            continue;
+        }
+        ++checked;
+        QVERIFY2(sizeKeepsTheEnds(knob, hint, (hint * 9 + 7) / 8), qPrintable(QStringLiteral("stretch %1 at %2").arg(stretch).arg(hint)));
+        QVERIFY2(!sizeKeepsTheEnds(knob, hint - 1, ((hint - 1) * 9 + 7) / 8),
+                 qPrintable(QStringLiteral("stretch %1: %2 is enough, the minimum is %3").arg(stretch).arg(hint - 1).arg(hint)));
+    }
+    QVERIFY2(checked > 0, "no stretched font gives a size between the floor and the ceiling");
+}
+
+void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration_data()
+{
+    using Change = std::function<void(IndustrialKnob &)>;
+    QTest::addColumn<Change>("prepare");
+    QTest::addColumn<Change>("change");
+    QTest::addColumn<bool>("hintChanges");
+
+    const Change nothing = [](IndustrialKnob &) {};
+    const Change longRange = [](IndustrialKnob &k) { k.setRange(0.0, 1e12); };
+    QTest::addRow("range") << nothing << Change([](IndustrialKnob &k) { k.setRange(0.0, 1e12); }) << true;
+    QTest::addRow("maximum") << nothing << Change([](IndustrialKnob &k) { k.setMaximum(1e12); }) << true;
+    QTest::addRow("precision") << Change([](IndustrialKnob &k) { k.setRange(0.0, 123456789.5); })
+                               << Change([](IndustrialKnob &k) { k.setPrecision(1); }) << true;
+    QTest::addRow("mode") << longRange << Change([](IndustrialKnob &k) { k.setMode(IndustrialKnob::KnobMode::Discrete); }) << true;
+    QTest::addRow("span angle") << longRange << Change([](IndustrialKnob &k) { k.setSpanAngle(360.0); }) << true;
+    QTest::addRow("start angle") << longRange << Change([](IndustrialKnob &k) { k.setStartAngle(-90.0); }) << false;
+    QTest::addRow("major ticks") << longRange << Change([](IndustrialKnob &k) { k.setMajorTicks(4); }) << false;
+    QTest::addRow("discrete steps") << Change([](IndustrialKnob &k) { k.setMode(IndustrialKnob::KnobMode::Discrete); })
+                                    << Change([](IndustrialKnob &k) { k.setDiscreteSteps(100); }) << false;
+    QTest::addRow("font") << longRange << Change([](IndustrialKnob &k) {
+        QFont wide = k.font();
+        wide.setStretch(200);
+        k.setFont(wide);
+    }) << false;
+}
+
+// #170: minimumSizeHint() is that of a new knob with the same configuration after every setter it depends on, and the
+// layout that holds the knob sees it without being invalidated by hand (updateGeometry())
+void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration()
+{
+    using Change = std::function<void(IndustrialKnob &)>;
+    QFETCH(Change, prepare);
+    QFETCH(Change, change);
+    QFETCH(bool, hintChanges);
+
+    QWidget parent;
+    auto *layout = new QVBoxLayout(&parent);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto *knob = new IndustrialKnob(&parent);
+    prepare(*knob);
+    layout->addWidget(knob);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+
+    const int before = knob->minimumSizeHint().width();
+    QCOMPARE(layout->minimumSize().width(), before);
+
+    change(*knob);
+    const int after = knob->minimumSizeHint().width();
+
+    IndustrialKnob fresh;
+    prepare(fresh);
+    change(fresh);
+    QCOMPARE(after, fresh.minimumSizeHint().width());
+    if (hintChanges) {
+        QVERIFY2(after != before, qPrintable(QStringLiteral("still %1").arg(after)));
+    }
+    QCOMPARE(layout->minimumSize().width(), after);
+}
+
+void tst_IndustrialKnob::dialFollowsTheDrawnLabels_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<double>("maximum");
+    QTest::addRow("160x180, 0-10000000") << 160 << 180 << 10000000.0;
+    QTest::addRow("220x240, 0-10000000") << 220 << 240 << 10000000.0;
+    QTest::addRow("300x330, 0-10000000") << 300 << 330 << 10000000.0;
+    QTest::addRow("160x180, 0-1000000") << 160 << 180 << 1000000.0;
+    QTest::addRow("300x330, 0-100000") << 300 << 330 << 100000.0;
+}
+
+// #170: the dial is drawn at the largest radius at which the labels selected at that radius, and not the ones left
+// out, stay inside. Taken from the pixels of the scale: the ticks end 0.8 px past the scale radius (round cap of the
+// 1.6 px pen), and 1.5 px covers the rounding to a pixel and of the centre measured, as in the clicks above
+void tst_IndustrialKnob::dialFollowsTheDrawnLabels()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(double, maximum);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, maximum);
+    knob.resize(width, height);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+
+    const internal::KnobScaleGeometry expected = drawnGeometryOf(knob, width, height);
+    QVERIFY(expected.radius < internal::knobScaleGeometry(width, height).radius);
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY2(std::abs(dial.radius - (expected.scaleRadius + 0.8)) <= 1.5,
+             qPrintable(QStringLiteral("scale drawn at %1, expected %2 + 0.8").arg(dial.radius).arg(expected.scaleRadius)));
+}
+
+// #170: the labels and the radius depend on the precision, so the static scale has to follow it
+void tst_IndustrialKnob::precisionChangesTheLabelsDrawn()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 1.0);
+    knob.setValueDisplayVisible(false);
+    knob.resize(220, 240);
+    const QImage before = FontTest::render(knob);
+    knob.setPrecision(2);
+
+    IndustrialKnob fresh;
+    fresh.setRange(0.0, 1.0);
+    fresh.setValueDisplayVisible(false);
+    fresh.setPrecision(2);
+    fresh.resize(220, 240);
+    QVERIFY(FontTest::render(fresh) != before);
+    QCOMPARE(FontTest::render(knob), FontTest::render(fresh));
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
@@ -632,10 +878,13 @@ void tst_IndustrialKnob::scaleLabelsKeepMinimumGap()
 
     const ScaleLabels labels = scaleLabelsOf(knob);
     const int last = static_cast<int>(labels.boxes.size()) - 1;
-    QVERIFY2(std::find(labels.selection.drawn.begin(), labels.selection.drawn.end(), 0) != labels.selection.drawn.end(),
-             "the first label is not selected");
-    QVERIFY2(std::find(labels.selection.drawn.begin(), labels.selection.drawn.end(), last) != labels.selection.drawn.end(),
-             "the last label is not selected");
+    // #170: both ends of the scale from minimumSizeHint() up
+    if (width >= knob.minimumSizeHint().width() && height >= knob.minimumSizeHint().height()) {
+        QVERIFY2(std::find(labels.selection.drawn.begin(), labels.selection.drawn.end(), 0) != labels.selection.drawn.end(),
+                 "the first label is not selected");
+        QVERIFY2(std::find(labels.selection.drawn.begin(), labels.selection.drawn.end(), last) != labels.selection.drawn.end(),
+                 "the last label is not selected");
+    }
 
     QVector<QPoint> ink;
     for (int y = 0; y < white.height(); ++y) {

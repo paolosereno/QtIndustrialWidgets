@@ -62,6 +62,9 @@ using KnobDrawnLabels = std::function<std::vector<LayoutRect>(const KnobScaleGeo
 inline constexpr double kKnobEdgeMargin = 1.0;         ///< Free space between a label box and the widget edge
 inline constexpr double kKnobMinimumRadiusRatio = 0.5; ///< Smallest dial, as a fraction of the full radius
 
+/// True if every box keeps kKnobEdgeMargin from the edge of a widget of that size.
+bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height);
+
 /**
  * \brief Scale geometry of a knob whose drawn labels stay inside the widget (#170).
  *

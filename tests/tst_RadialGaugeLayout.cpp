@@ -140,6 +140,8 @@ private Q_SLOTS:
     void scaleLabelsKeepMinimumGap_data();
     void scaleLabelsKeepMinimumGap();
     void knobScaleGeometry();
+    void knobGeometryFollowsTheDrawnLabels();
+    void knobLabelsInside();
     void knobLabelsKeepMinimumGap_data();
     void knobLabelsKeepMinimumGap();
     void primeMajorTicksKeepOnlyEndLabels();
@@ -565,6 +567,57 @@ void tst_RadialGaugeLayout::knobScaleGeometry()
     const LayoutRect right = knobLabelBox(g, 90.0, 20.0, 10.0);
     QCOMPARE(right.x + 10.0, 110.0 + 98.176);
     QCOMPARE(right.y + 5.0, 102.4);
+}
+
+// #170: the largest radius, in steps of 0.5 px, at which the boxes it is given are inside the widget
+void tst_RadialGaugeLayout::knobGeometryFollowsTheDrawnLabels()
+{
+    using QtIndustrialWidgets::internal::knobScaleGeometry;
+    const KnobScaleGeometry full = knobScaleGeometry(220.0, 240.0);
+    auto boxWith = [](double extra) {
+        return [extra](const KnobScaleGeometry &g) {
+            return std::vector<LayoutRect>{knobLabelBox(g, 90.0, 2.0 * extra, 10.0)};
+        };
+    };
+
+    // No labels, no function, labels that fit: the full radius
+    for (const KnobScaleGeometry &g : {knobScaleGeometry(220.0, 240.0, {}),
+                                       knobScaleGeometry(220.0, 240.0, [](const KnobScaleGeometry &) {
+                                           return std::vector<LayoutRect>{};
+                                       }),
+                                       knobScaleGeometry(220.0, 240.0, boxWith(5.0))}) {
+        QCOMPARE(g.radius, full.radius);
+    }
+
+    // labelRadius + 30 <= 110 - 1, and labelRadius is 1.04 of the radius
+    const KnobScaleGeometry shrunk = knobScaleGeometry(220.0, 240.0, boxWith(30.0));
+    const double largest = 79.0 / 1.04;
+    QVERIFY2(shrunk.radius <= largest && shrunk.radius > largest - 0.5, qPrintable(QString::number(shrunk.radius)));
+    QCOMPARE(shrunk.centerX, full.centerX);
+    QCOMPARE(shrunk.centerY, full.centerY);
+    QCOMPARE(shrunk.scaleRadius, shrunk.radius * 0.92);
+    QCOMPARE(shrunk.labelRadius, shrunk.radius * 1.04);
+    QCOMPARE(shrunk.labelFontPx, 9);
+
+    // Boxes that never fit: half of the full radius and no further
+    const KnobScaleGeometry smallest = knobScaleGeometry(220.0, 240.0, boxWith(500.0));
+    QCOMPARE(smallest.radius, full.radius * 0.5);
+}
+
+void tst_RadialGaugeLayout::knobLabelsInside()
+{
+    using QtIndustrialWidgets::internal::knobLabelsInside;
+    const auto inside = [](double x, double y) {
+        return knobLabelsInside({LayoutRect{x, y, 10.0, 10.0}}, 100.0, 50.0);
+    };
+    QVERIFY(knobLabelsInside({}, 100.0, 50.0));
+    QVERIFY(inside(1.0, 1.0));
+    QVERIFY(inside(89.0, 39.0));
+    QVERIFY(!inside(0.9, 1.0));
+    QVERIFY(!inside(1.0, 0.9));
+    QVERIFY(!inside(89.1, 39.0));
+    QVERIFY(!inside(89.0, 39.1));
+    QVERIFY(!knobLabelsInside({LayoutRect{10.0, 10.0, 10.0, 10.0}, LayoutRect{95.0, 10.0, 10.0, 10.0}}, 100.0, 50.0));
 }
 
 void tst_RadialGaugeLayout::knobLabelsKeepMinimumGap_data()

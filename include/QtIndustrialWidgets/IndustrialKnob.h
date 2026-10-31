@@ -121,6 +121,19 @@ public:
     [[nodiscard]] QColor textColor() const;
 
     [[nodiscard]] QSize sizeHint() const override;
+    /**
+     * \brief Returns the smallest supported size.
+     *
+     * It depends on the configuration: it is computed from the widget font, the range, the precision, the major
+     * ticks, the discrete steps, the mode and the start and span angles, and it changes with them (updateGeometry()
+     * is called). From this size up, the scale labels that are drawn stay inside the widget and the first and last
+     * ones are drawn, except that where they lie on each other even at sizeHint() only the first one is. It is never
+     * below 80 x 90 and never above sizeHint(): when the longest labels cannot keep both there, the result is
+     * sizeHint(), in the same proportions at every size.
+     *
+     * Below this size the labels that are drawn still keep their gap, but the last one can be left out or a label can
+     * reach the edge of the widget.
+     */
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:
