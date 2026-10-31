@@ -895,12 +895,13 @@ void tst_IndustrialKnob::labelInkStaysInsideItsMeasure()
 {
     IndustrialKnob knob;
     const qreal dpr = knob.devicePixelRatioF();
-    for (int pixelSize : {7, 9, 11}) {
+    for (int pixelSize : {7, 8, 9, 10, 11}) {
         QFont font = knob.font();
         font.setPixelSize(pixelSize);
         font.setBold(true);
         const QFontMetricsF fm(font);
-        for (const QString &text : {QStringLiteral("0"), QStringLiteral("100"), QStringLiteral("8000"), QStringLiteral("-1000"), QStringLiteral("100000")}) {
+        for (const QString &text : {QStringLiteral("0"), QStringLiteral("12"), QStringLiteral("20"), QStringLiteral("100"), QStringLiteral("8000"),
+                                    QStringLiteral("-1000"), QStringLiteral("100000")}) {
             const QRectF rect = fm.boundingRect(text);
             const internal::TextInkBox ink = internal::measureCenteredTextInk(text, font, rect.width(), rect.height(), dpr);
             for (int i = 0; i < 60; ++i) {
