@@ -1032,6 +1032,18 @@ void tst_IndustrialKnob::dprChangeOfAVisibleKnob()
         parent.removeEventFilter(&requests);
     }
     QVERIFY2(differs > 0, "the minimum is the same at both DPRs for every range");
+
+    // Asked for before the repaint, or on a knob that is not shown: the minimum of the DPR of that moment
+    for (double maximum : {1e7, 1e8, 1e9, 1e10, 1e11, 1e12}) {
+        FakeDprKnob knob;
+        knob.setRange(0.0, maximum);
+        QVERIFY(!knob.minimumSizeHint().isEmpty());
+        knob.fakeDpr = target;
+        FakeDprKnob fresh;
+        fresh.fakeDpr = target;
+        fresh.setRange(0.0, maximum);
+        QCOMPARE(knob.minimumSizeHint(), fresh.minimumSizeHint());
+    }
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
