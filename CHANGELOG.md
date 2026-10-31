@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.6.0` tag archive (the tagged commit still had the `v2.5.1` hash, since the hash can be computed only after the tag).
+
 ---
 
 ## [2.6.0] - 2026-10-31
