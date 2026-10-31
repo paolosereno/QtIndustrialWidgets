@@ -126,7 +126,8 @@ public:
      *
      * It depends on the configuration: it is computed from the widget font, the range, the precision, the major
      * ticks, the discrete steps, the mode and the start and span angles, and it changes with them (updateGeometry()
-     * is called). From this size up, the scale labels that are drawn stay inside the widget and the first and last
+     * is called). It also depends on the device pixel ratio, since the labels are measured on the pixels they draw.
+     * From this size up, the scale labels that are drawn stay inside the widget and the first and last
      * ones are drawn, except that where they lie on each other even at sizeHint() only the first one is. It is never
      * below 80 x 90 and never above sizeHint(): when the longest labels cannot keep both there, the result is
      * sizeHint(), in the same proportions at every size.

@@ -134,6 +134,7 @@ add_industrial_widget_test(tst_SevenSegmentDisplay)
 add_industrial_widget_test(tst_LedIndicator)
 add_executable(tst_IndustrialKnob
     tst_IndustrialKnob.cpp
+    $<TARGET_OBJECTS:FontScale>
     $<TARGET_OBJECTS:LinearGaugeScale>
     $<TARGET_OBJECTS:RadialGaugeLayout>
     $<TARGET_OBJECTS:NumberFormat>

@@ -50,6 +50,48 @@ TextInk measureTextInk(const QString &text, const QFont &font, double dpr)
     return {first / dpr - baseline, (last + 1) / dpr - baseline};
 }
 
+TextInkBox measureCenteredTextInk(const QString &text, const QFont &font, double width, double height, double dpr)
+{
+    const QFontMetricsF fm(font);
+    const double margin = 4.0 + fm.height();
+    const QSizeF logical(std::max(fm.horizontalAdvance(text), width) + 2.0 * margin, std::max(fm.height(), height) + 2.0 * margin);
+    QImage img((logical * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+    if (img.isNull()) {
+        return {};
+    }
+    img.setDevicePixelRatio(dpr);
+    img.fill(Qt::transparent);
+    const QPointF center(std::round(logical.width() * 0.5 * dpr) / dpr, std::round(logical.height() * 0.5 * dpr) / dpr);
+    {
+        QPainter p(&img);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.setFont(font);
+        p.setPen(Qt::white);
+        p.drawText(QRectF(center.x() - width * 0.5, center.y() - height * 0.5, width, height),
+                   Qt::AlignCenter | Qt::TextDontClip, text);
+    }
+    int left = img.width();
+    int right = -1;
+    int top = -1;
+    int bottom = -1;
+    for (int y = 0; y < img.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            if (qAlpha(line[x]) != 0) {
+                left = std::min(left, x);
+                right = std::max(right, x);
+                top = top < 0 ? y : top;
+                bottom = y;
+            }
+        }
+    }
+    if (top < 0) {
+        return {};
+    }
+    return {left / dpr - center.x(), top / dpr - center.y(), (right + 1) / dpr - center.x(), (bottom + 1) / dpr - center.y()};
+}
+
 double effectivePixelSize(const QFont &font)
 {
     const int resolved = QFontInfo(font).pixelSize();

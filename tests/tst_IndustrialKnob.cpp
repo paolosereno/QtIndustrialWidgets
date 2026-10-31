@@ -7,6 +7,7 @@
 
 #include "FontTestUtils.h"
 #include "LabelInkTestUtils.h"
+#include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
@@ -32,6 +33,7 @@ struct ScaleLabels {
     QFont font;
     std::vector<QString> texts;
     std::vector<internal::LayoutRect> boxes;
+    std::vector<internal::LayoutRect> ink;
     internal::RadialScaleLabels selection;
     double minGap{0.0};
 };
@@ -51,20 +53,24 @@ ScaleLabels scaleLabelsAt(const IndustrialKnob &knob, const internal::KnobScaleG
         const double value = knob.minimum() + frac * (knob.maximum() - knob.minimum());
         const QString text = discrete ? QString::number(i + 1) : internal::scaleLabelText(value, knob.precision());
         const QRectF rect = fm.boundingRect(text);
+        const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
+            internal::knobLabelBox(geometry, knob.startAngle() + frac * knob.spanAngle(), rect.width(), rect.height()),
+            knob.devicePixelRatioF());
+        const internal::TextInkBox ink = internal::measureCenteredTextInk(text, out.font, box.w, box.h, knob.devicePixelRatioF());
         out.texts.push_back(text);
-        out.boxes.push_back(internal::knobLabelBox(geometry, knob.startAngle() + frac * knob.spanAngle(),
-                                                   rect.width(), rect.height()));
+        out.boxes.push_back(box);
+        out.ink.push_back({box.x + box.w * 0.5 + ink.left, box.y + box.h * 0.5 + ink.top, ink.right - ink.left, ink.bottom - ink.top});
     }
     out.minGap = internal::scaleLabelMinGap(fm.height());
     out.selection = internal::layoutRadialScaleLabels(out.boxes, out.minGap);
     return out;
 }
 
-std::vector<internal::LayoutRect> drawnBoxes(const ScaleLabels &labels)
+std::vector<internal::LayoutRect> drawnInk(const ScaleLabels &labels)
 {
     std::vector<internal::LayoutRect> drawn;
     for (int i : labels.selection.drawn) {
-        drawn.push_back(labels.boxes[static_cast<size_t>(i)]);
+        drawn.push_back(labels.ink[static_cast<size_t>(i)]);
     }
     return drawn;
 }
@@ -72,7 +78,7 @@ std::vector<internal::LayoutRect> drawnBoxes(const ScaleLabels &labels)
 internal::KnobScaleGeometry drawnGeometryOf(const IndustrialKnob &knob, int width, int height)
 {
     return internal::knobScaleGeometry(width, height, [&](const internal::KnobScaleGeometry &g) {
-        return drawnBoxes(scaleLabelsAt(knob, g));
+        return drawnInk(scaleLabelsAt(knob, g));
     });
 }
 
@@ -88,7 +94,7 @@ bool sizeKeepsTheEnds(const IndustrialKnob &knob, int width, int height)
     const std::vector<int> &drawn = labels.selection.drawn;
     const int last = static_cast<int>(labels.boxes.size()) - 1;
     return std::find(drawn.begin(), drawn.end(), 0) != drawn.end() && std::find(drawn.begin(), drawn.end(), last) != drawn.end()
-           && internal::knobLabelsInside(drawnBoxes(labels), width, height);
+           && internal::knobLabelsInside(drawnInk(labels), width, height);
 }
 
 // Device pixels that differ between two renders of the same size
@@ -458,11 +464,13 @@ void tst_IndustrialKnob::scaleLabelsStayInsideTheWidget()
     knob.setTextColor(QColor(255, 255, 0));
     const QVector<QPoint> ink = differingPixels(first, renderKnob(knob));
     QVERIFY(ink.size() > 20);
+    // The margin of 1 logical px, counted on whole device pixels, as the ink is measured
+    const int margin = static_cast<int>(std::ceil(knob.devicePixelRatioF()));
     int onEdge = 0;
     for (const QPoint &p : ink) {
-        onEdge += (p.x() == 0 || p.y() == 0 || p.x() == first.width() - 1 || p.y() == first.height() - 1) ? 1 : 0;
+        onEdge += (p.x() < margin || p.y() < margin || p.x() >= first.width() - margin || p.y() >= first.height() - margin) ? 1 : 0;
     }
-    QVERIFY2(onEdge == 0, qPrintable(QStringLiteral("%1 pixels of label ink on the edge of the widget").arg(onEdge)));
+    QVERIFY2(onEdge == 0, qPrintable(QStringLiteral("%1 pixels of label ink in the margin of the widget").arg(onEdge)));
 }
 
 void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue_data()
@@ -700,24 +708,27 @@ void tst_IndustrialKnob::minimumSizeKeepsTheEnds()
 void tst_IndustrialKnob::minimumSizeHintMakesRoomForAWideFont()
 {
     int checked = 0;
-    for (int stretch : {150, 200, 250, 300, 400}) {
-        IndustrialKnob knob;
-        knob.setRange(0.0, 1000000.0);
-        QFont wide = knob.font();
-        wide.setStretch(stretch);
-        knob.setFont(wide);
+    for (double maximum : {1e6, 1e7, 1e9, 1e12}) {
+        for (int stretch : {100, 150, 200, 250, 300, 400}) {
+            IndustrialKnob knob;
+            knob.setRange(0.0, maximum);
+            QFont wide = knob.font();
+            wide.setStretch(stretch);
+            knob.setFont(wide);
 
-        const int hint = knob.minimumSizeHint().width();
-        // Where the ends do not fit even at the ceiling only the first one is required
-        if (hint <= 80 || hint >= 160 || !sizeKeepsTheEnds(knob, 160, 180)) {
-            continue;
+            const int hint = knob.minimumSizeHint().width();
+            // Where the ends do not fit even at the ceiling only the first one is required
+            if (hint <= 80 || hint >= 160 || !sizeKeepsTheEnds(knob, 160, 180)) {
+                continue;
+            }
+            ++checked;
+            QVERIFY2(sizeKeepsTheEnds(knob, hint, (hint * 9 + 7) / 8),
+                     qPrintable(QStringLiteral("0-%1, stretch %2 at %3").arg(maximum).arg(stretch).arg(hint)));
+            QVERIFY2(!sizeKeepsTheEnds(knob, hint - 1, ((hint - 1) * 9 + 7) / 8),
+                     qPrintable(QStringLiteral("0-%1, stretch %2: %3 is enough, the minimum is %4").arg(maximum).arg(stretch).arg(hint - 1).arg(hint)));
         }
-        ++checked;
-        QVERIFY2(sizeKeepsTheEnds(knob, hint, (hint * 9 + 7) / 8), qPrintable(QStringLiteral("stretch %1 at %2").arg(stretch).arg(hint)));
-        QVERIFY2(!sizeKeepsTheEnds(knob, hint - 1, ((hint - 1) * 9 + 7) / 8),
-                 qPrintable(QStringLiteral("stretch %1: %2 is enough, the minimum is %3").arg(stretch).arg(hint - 1).arg(hint)));
     }
-    QVERIFY2(checked > 0, "no stretched font gives a size between the floor and the ceiling");
+    QVERIFY2(checked > 0, "no font gives a size between the floor and the ceiling");
 }
 
 // #170: a label too wide for 80 x 90 raises minimumSizeHint() also where the ends are not the limit: on a full turn the
@@ -737,7 +748,7 @@ void tst_IndustrialKnob::minimumSizeHintMakesRoomForALabelAtTheTop()
         const int hint = knob.minimumSizeHint().width();
         const auto inside = [&](int width) {
             const int height = (width * 9 + 7) / 8;
-            return internal::knobLabelsInside(drawnBoxes(scaleLabelsAt(knob, drawnGeometryOf(knob, width, height))), width, height);
+            return internal::knobLabelsInside(drawnInk(scaleLabelsAt(knob, drawnGeometryOf(knob, width, height))), width, height);
         };
         if (hint <= 80 || hint >= 160) {
             continue;

@@ -89,6 +89,13 @@ LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double 
             geometry.centerY + geometry.labelRadius * std::sin(rad) - h * 0.5, w, h};
 }
 
+LayoutRect labelBoxOnDevicePixel(const LayoutRect &box, double dpr)
+{
+    const double centerX = std::round((box.x + box.w * 0.5) * dpr) / dpr;
+    const double centerY = std::round((box.y + box.h * 0.5) * dpr) / dpr;
+    return {centerX - box.w * 0.5, centerY - box.h * 0.5, box.w, box.h};
+}
+
 int minimumReadoutPixelSize(double logicalDpi)
 {
     const double dpi = std::isfinite(logicalDpi) && logicalDpi > 0.0 ? logicalDpi : 96.0;
