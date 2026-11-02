@@ -51,8 +51,8 @@ class TankDisplayTestAccess;
  * Limits: lowLowLimit() ≤ lowLimit() < highLimit() ≤ highHighLimit(), each disabled by NaN (the default). The
  * order applies only between the enabled limits; setLimits() and the single setters reject a change that breaks
  * it, or a limit of ±Inf, and change nothing: setLimits() returns false, a single setter (and so a property write)
- * emits a qWarning() that names the limit and the reason. limitState() is computed on the input (rawValue()), not on the
- * value shown, so +Inf gives \c HighHigh and -Inf \c LowLow when those limits are enabled:
+ * emits a qWarning() that names the limit and the reason. limitState() is computed on the input (rawValue()),
+ * not on the value shown, so +Inf gives \c HighHigh and -Inf \c LowLow when those limits are enabled:
  * - a high limit is entered when the input is >= the limit, and left when it is < limit − limitHysteresis();
  * - a low limit is entered when the input is <= the limit, and left when it is > limit + limitHysteresis();
  * - the most severe limit entered or not yet left is in force; \c Normal when none is;
@@ -194,7 +194,15 @@ public:
     /** \brief Returns the limit in force (see the class description); \c Unknown before the first setValue(). */
     [[nodiscard]] LimitState limitState() const;
 
-    /** \brief Returns the colour of the fill. Default QColor(52, 152, 219). */
+    /**
+     * \brief Returns the colour of the fill. Default QColor(52, 152, 219).
+     *
+     * Contrast: the library guarantees it only for the hatch of an invalid input, which it computes from the empty
+     * inside. This colour is drawn on the inside as given; whoever changes vesselColor() (and so the inside) or this
+     * colour must check its contrast against the inside (3:1 for graphical objects, WCAG 2.x 1.4.11). For example,
+     * with vesselColor() QColor(235, 235, 235) the inside is QColor(59, 59, 59), and the default limitColor()
+     * measures 2.93:1 against it.
+     */
     [[nodiscard]] QColor contentColor() const;
     /**
      * \brief Returns the colour of the vessel wall; the empty inside is a dark shade of it, and the hatch of an
@@ -210,7 +218,15 @@ public:
      * so this colour does not follow textColor(). Default QColor(240, 244, 248).
      */
     [[nodiscard]] QColor readoutColor() const;
-    /** \brief Returns the colour of the limit markers and lines. Default QColor(231, 76, 60). */
+    /**
+     * \brief Returns the colour of the limit markers and lines. Default QColor(231, 76, 60).
+     *
+     * Contrast: the library guarantees it only for the hatch of an invalid input, which it computes from the empty
+     * inside. This colour is drawn on the inside as given; whoever changes vesselColor() (and so the inside) or this
+     * colour must check its contrast against the inside (3:1 for graphical objects, WCAG 2.x 1.4.11). For example,
+     * with vesselColor() QColor(235, 235, 235) the inside is QColor(59, 59, 59), and the default limitColor()
+     * measures 2.93:1 against it.
+     */
     [[nodiscard]] QColor limitColor() const;
 
     /**
@@ -260,23 +276,23 @@ public Q_SLOTS:
     void setScaleVisible(bool visible);
 
     /**
-     * \brief Sets the low-low limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
-     * changes nothing and emits a qWarning() that names the limit and the reason.
+     * \brief Sets the low-low limit, as setLimits() with the other three unchanged. A value that setLimits()
+     * would reject changes nothing and emits a qWarning() that names the limit and the reason.
      */
     void setLowLowLimit(double limit);
     /**
-     * \brief Sets the low limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
-     * changes nothing and emits a qWarning() that names the limit and the reason.
+     * \brief Sets the low limit, as setLimits() with the other three unchanged. A value that setLimits()
+     * would reject changes nothing and emits a qWarning() that names the limit and the reason.
      */
     void setLowLimit(double limit);
     /**
-     * \brief Sets the high limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
-     * changes nothing and emits a qWarning() that names the limit and the reason.
+     * \brief Sets the high limit, as setLimits() with the other three unchanged. A value that setLimits()
+     * would reject changes nothing and emits a qWarning() that names the limit and the reason.
      */
     void setHighLimit(double limit);
     /**
-     * \brief Sets the high-high limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
-     * changes nothing and emits a qWarning() that names the limit and the reason.
+     * \brief Sets the high-high limit, as setLimits() with the other three unchanged. A value that setLimits()
+     * would reject changes nothing and emits a qWarning() that names the limit and the reason.
      */
     void setHighHighLimit(double limit);
     /**
@@ -285,7 +301,7 @@ public Q_SLOTS:
      */
     void setLimitHysteresis(double hysteresis);
 
-    /** \brief Sets the colour of the fill. */
+    /** \brief Sets the colour of the fill; its contrast with the inside is not checked (see contentColor()). */
     void setContentColor(const QColor &color);
     /** \brief Sets the colour of the vessel wall. */
     void setVesselColor(const QColor &color);
@@ -295,7 +311,10 @@ public Q_SLOTS:
     void setTextColor(const QColor &color);
     /** \brief Sets the colour of the readout text (#159). */
     void setReadoutColor(const QColor &color);
-    /** \brief Sets the colour of the limit markers and lines. */
+    /**
+     * \brief Sets the colour of the limit markers and lines; its contrast with the inside is not checked (see
+     * limitColor()).
+     */
     void setLimitColor(const QColor &color);
 
 Q_SIGNALS:

@@ -287,6 +287,10 @@ Level indicator for tanks and silos (`qiw::TankDisplay`, #152).
   hatch of an invalid input is derived from the inside, mixed toward white or black (whichever contrasts more) up to
   4.5:1 against it, so it keeps at least 3:1 (WCAG 2.x, graphical objects) for any `vesselColor`. The limit lines
   are aligned to device pixels, so they reach their colour at every device pixel ratio.
+- **Contrast is guaranteed only for the hatch**, which the library computes. `contentColor` and `limitColor` are
+  drawn on the inside as given: whoever changes `vesselColor` (and so the inside) or these colours must check
+  their contrast against the inside (3:1 for graphical objects). For example, with `vesselColor` (235, 235, 235)
+  the inside is (59, 59, 59), and the default `limitColor` measures 2.93:1 against it.
 
 ## AnalysisChart
 
