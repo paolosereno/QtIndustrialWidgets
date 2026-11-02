@@ -16,6 +16,7 @@
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/StripChart.h>
+#include <QtIndustrialWidgets/TankDisplay.h>
 
 
 #include <QtWidgets/QWidget>
@@ -259,6 +260,72 @@ QWidget *switchRocker(Theme)
     return s;
 }
 
+void styleTank(TankDisplay *t, Theme theme)
+{
+    if (!isDark(theme)) {
+        t->setTextColor(QColor(30, 39, 46));
+        t->setScaleColor(QColor(80, 90, 105));
+        t->setVesselColor(QColor(110, 122, 138));
+    }
+}
+
+QWidget *tankVerticalCylinder(Theme theme)
+{
+    auto *t = new TankDisplay;
+    t->setUnit(QStringLiteral("%"));
+    t->setLimits(5.0, 15.0, 85.0, 95.0);
+    t->setValue(62.4);
+    styleTank(t, theme);
+    return t;
+}
+
+QWidget *tankHorizontalCylinder(Theme theme)
+{
+    auto *t = new TankDisplay;
+    t->setShape(TankDisplay::TankShape::HorizontalCylinder);
+    t->setRange(0.0, 2.4); // the level in metres: the volume is not linear in the height of a lying cylinder
+    t->setPrecision(2);
+    t->setMajorTicks(4);
+    t->setUnit(QStringLiteral("m"));
+    t->setContentColor(QColor(230, 160, 40));
+    t->setValue(1.12);
+    styleTank(t, theme);
+    return t;
+}
+
+QWidget *tankLimits(Theme theme)
+{
+    auto *t = new TankDisplay;
+    t->setShape(TankDisplay::TankShape::Hopper);
+    t->setContent(TankDisplay::Content::Granular);
+    t->setContentColor(QColor(196, 164, 112));
+    t->setPrecision(0);
+    t->setLimits(5.0, 15.0, 80.0, 90.0);
+    t->setValue(93.0); // high-high limit in force: filled marker and "HH" tag
+    styleTank(t, theme);
+    return t;
+}
+
+QWidget *tankSphere(Theme theme)
+{
+    auto *t = new TankDisplay;
+    t->setShape(TankDisplay::TankShape::Sphere);
+    t->setContentColor(QColor(46, 204, 113));
+    t->setLimits(10.0, 25.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+    t->setValue(21.5); // low limit in force
+    styleTank(t, theme);
+    return t;
+}
+
+QWidget *tankInvalid(Theme theme)
+{
+    auto *t = new TankDisplay;
+    t->setLimits(5.0, 15.0, 85.0, 95.0);
+    t->setValue(std::numeric_limits<double>::quiet_NaN()); // sensor fault: empty, hatched vessel, "---"
+    styleTank(t, theme);
+    return t;
+}
+
 QWidget *levelMeterStereoDb(Theme)
 {
     auto *m = new LevelMeter;
@@ -492,6 +559,11 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("RadialGauge"), QStringLiteral("invalid"), QSize(300, 300), radialGaugeInvalid},
         {QStringLiteral("SevenSegmentDisplay"), QStringLiteral("value"), QSize(300, 110), sevenSegmentValue},
         {QStringLiteral("StripChart"), QStringLiteral("channels"), QSize(640, 300), stripChartChannels},
+        {QStringLiteral("TankDisplay"), QStringLiteral("vertical-cylinder"), QSize(160, 260), tankVerticalCylinder},
+        {QStringLiteral("TankDisplay"), QStringLiteral("horizontal-cylinder"), QSize(260, 200), tankHorizontalCylinder},
+        {QStringLiteral("TankDisplay"), QStringLiteral("limits"), QSize(160, 260), tankLimits},
+        {QStringLiteral("TankDisplay"), QStringLiteral("sphere"), QSize(220, 240), tankSphere},
+        {QStringLiteral("TankDisplay"), QStringLiteral("invalid"), QSize(160, 260), tankInvalid},
     };
     return all;
 }
