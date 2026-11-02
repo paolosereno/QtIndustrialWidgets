@@ -25,3 +25,4 @@
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
+#include <QtIndustrialWidgets/TankDisplay.h>
