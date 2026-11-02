@@ -8,6 +8,7 @@
 #include "FontTestUtils.h"
 #include "LabelInkTestUtils.h"
 #include "internal/FontScale.h"
+#include "internal/IndustrialKnobTestAccess.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
@@ -207,6 +208,7 @@ class tst_IndustrialKnob : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void repaintDoesNotMeasureTheLabelsAgain();
     void textSizeIgnoresWidgetFontSize();
     void fontChangeRefreshesCache();
     void labelsFollowWidgetFont();
@@ -1051,6 +1053,56 @@ void tst_IndustrialKnob::dprChangeOfAVisibleKnob()
         fresh.setRange(0.0, maximum);
         QCOMPARE(knob.minimumSizeHint(), fresh.minimumSizeHint());
     }
+}
+
+// #177: the ink of the labels is measured on a raster when the scale is built, and kept. A repaint, a colour or a value
+// measures nothing; a new font or a new DPR measures the labels again
+void tst_IndustrialKnob::repaintDoesNotMeasureTheLabelsAgain()
+{
+    using Access = internal::IndustrialKnobTestAccess;
+    FakeDprKnob knob;
+    knob.setFocusPolicy(Qt::NoFocus);
+    knob.setRange(0.0, 8000.0);
+    knob.resize(160, 180);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    knob.repaint();
+    const quint64 shown = Access::labelInkMeasureCount(knob);
+    QVERIFY2(shown > 0, "no label measured on the first paint");
+
+    for (int i = 0; i < 100; ++i) {
+        knob.repaint();
+    }
+    QCOMPARE(Access::labelInkMeasureCount(knob), shown);
+
+    const QColor colours[] = {Qt::red, Qt::green, Qt::blue};
+    for (const QColor &colour : colours) {
+        knob.setKnobColor(colour);
+        knob.setPointerColor(colour);
+        knob.setScaleColor(colour);
+        knob.setTrackColor(colour);
+        knob.setTextColor(colour);
+        knob.repaint();
+    }
+    for (int i = 0; i <= 80; ++i) {
+        knob.setValue(i * 100.0);
+        knob.repaint();
+    }
+    QCOMPARE(Access::labelInkMeasureCount(knob), shown);
+
+    knob.setFont(FontTest::otherFont(knob.font()));
+    knob.repaint();
+    const quint64 afterFont = Access::labelInkMeasureCount(knob);
+    QVERIFY2(afterFont > shown, "a new font did not measure the labels");
+    knob.repaint();
+    QCOMPARE(Access::labelInkMeasureCount(knob), afterFont);
+
+    knob.fakeDpr = knob.devicePixelRatioF() == 2.0 ? 1.5 : 2.0;
+    knob.repaint();
+    const quint64 afterDpr = Access::labelInkMeasureCount(knob);
+    QVERIFY2(afterDpr > afterFont, "a new DPR did not measure the labels");
+    knob.repaint();
+    QCOMPARE(Access::labelInkMeasureCount(knob), afterDpr);
 }
 
 QTEST_MAIN(tst_IndustrialKnob)

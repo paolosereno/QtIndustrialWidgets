@@ -14,6 +14,9 @@
 namespace QtIndustrialWidgets {
 
 class IndustrialKnobPrivate;
+namespace internal {
+class IndustrialKnobTestAccess;
+}
 
 /**
  * \class IndustrialKnob
@@ -210,6 +213,7 @@ private:
 
     std::unique_ptr<IndustrialKnobPrivate> d_ptr;
     Q_DECLARE_PRIVATE(IndustrialKnob)
+    friend class internal::IndustrialKnobTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

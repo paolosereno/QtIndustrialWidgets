@@ -80,6 +80,7 @@ IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const interna
         auto ink = m_labelInk.find(key);
         if (ink == m_labelInk.end()) {
             ink = m_labelInk.emplace(key, internal::measureCenteredTextInk(text, out.font, box.w, box.h, dpr)).first;
+                ++m_labelInkMeasures;
         }
         const double centerX = box.x + box.w * 0.5;
         const double centerY = box.y + box.h * 0.5;

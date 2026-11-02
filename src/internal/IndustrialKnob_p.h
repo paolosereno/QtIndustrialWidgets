@@ -69,6 +69,7 @@ public:
     // scale and never measured by a repaint of the same scale: dropped when the font or the DPR changes
     mutable std::map<std::pair<QString, int>, internal::TextInkBox> m_labelInk;
     mutable double m_labelInkDpr{0.0};
+    mutable quint64 m_labelInkMeasures{0}; // Calls of measureCenteredTextInk(), for IndustrialKnobTestAccess (#177)
 
     // Scale at the current configuration: the same for the static scale, the paint and the mouse (#170)
     struct ScaleLayout {
