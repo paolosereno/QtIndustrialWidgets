@@ -38,6 +38,7 @@ class tst_TankDisplay : public QObject
 
 private Q_SLOTS:
     void defaults();
+    void newDisplayIsDrawnWithoutAValue();
     void valueStateAndRawValue();
     void signalOrder();
     void acceptedLimitOrders_data();
@@ -55,6 +56,8 @@ private Q_SLOTS:
     void scaleLabelsAtTheirValues();
     void limitMarkers_data();
     void limitMarkers();
+    void everyActiveLimitStateIsVisible_data();
+    void everyActiveLimitStateIsVisible();
     void invalidVesselIsHatched_data();
     void invalidVesselIsHatched();
     void readoutStates();
@@ -148,6 +151,23 @@ int countIn(const QImage &img, const QRectF &logical, const std::function<bool(Q
         }
     }
     return n;
+}
+
+// Pixels drawn in a colour (white): those that change when only that colour becomes transparent
+QImage inkOf(TankDisplay &t, void (TankDisplay::*set)(const QColor &), const QColor &color)
+{
+    (t.*set)(QColor(color.red(), color.green(), color.blue(), 0));
+    const QImage without = render(t);
+    (t.*set)(color);
+    const QImage with = render(t);
+    QImage ink(with.size(), QImage::Format_ARGB32);
+    ink.setDevicePixelRatio(with.devicePixelRatio());
+    for (int y = 0; y < with.height(); ++y) {
+        for (int x = 0; x < with.width(); ++x) {
+            ink.setPixel(x, y, with.pixel(x, y) != without.pixel(x, y) ? qRgb(255, 255, 255) : qRgb(0, 0, 0));
+        }
+    }
+    return ink;
 }
 
 void addShapes()
@@ -266,21 +286,59 @@ void tst_TankDisplay::defaults()
     QCOMPARE(t.content(), TankDisplay::Content::Liquid);
     QCOMPARE(t.minimum(), 0.0);
     QCOMPARE(t.maximum(), 100.0);
-    QCOMPARE(t.value(), 0.0);
-    QCOMPARE(t.rawValue(), 0.0);
-    QCOMPARE(t.valueState(), ValueState::Valid);
+    // No value until the first setValue() (#152), unlike the gauges
+    QVERIFY(std::isnan(t.value()));
+    QVERIFY(std::isnan(t.rawValue()));
+    QCOMPARE(t.valueState(), ValueState::Invalid);
     QCOMPARE(t.precision(), 1);
     QCOMPARE(t.unit(), QStringLiteral("%"));
     QVERIFY(std::isnan(t.lowLowLimit()) && std::isnan(t.lowLimit()) && std::isnan(t.highLimit())
             && std::isnan(t.highHighLimit()));
     QCOMPARE(t.limitHysteresis(), 0.0);
-    QCOMPARE(t.limitState(), LimitState::Normal);
+    QCOMPARE(t.limitState(), LimitState::Unknown);
     QCOMPARE(t.readoutColor(), QColor(240, 244, 248));
-    QCOMPARE(t.property("limitState").value<LimitState>(), LimitState::Normal);
-    // Before the first input the initial value follows the range (#151)
+    QCOMPARE(t.property("limitState").value<LimitState>(), LimitState::Unknown);
+    // Neither the range nor the limits give a value
+    QSignalSpy valueSpy(&t, &TankDisplay::valueChanged);
+    QSignalSpy stateSpy(&t, &TankDisplay::valueStateChanged);
+    QSignalSpy limitSpy(&t, &TankDisplay::limitStateChanged);
     t.setRange(10.0, 50.0);
-    QCOMPARE(t.value(), 10.0);
+    QVERIFY(t.setLimits(15.0, 20.0, 40.0, 45.0));
+    QVERIFY(std::isnan(t.value()));
+    QCOMPARE(t.valueState(), ValueState::Invalid);
+    QCOMPARE(t.limitState(), LimitState::Unknown);
+    QVERIFY(valueSpy.isEmpty() && stateSpy.isEmpty() && limitSpy.isEmpty());
+    // A NaN input changes nothing
+    t.setValue(kNaN);
+    QVERIFY(valueSpy.isEmpty() && stateSpy.isEmpty() && limitSpy.isEmpty());
+    // The first input is evaluated afresh: here it is below the low-low limit
+    t.setValue(12.0);
+    QCOMPARE(t.value(), 12.0);
     QCOMPARE(t.valueState(), ValueState::Valid);
+    QCOMPARE(t.limitState(), LimitState::LowLow);
+    QCOMPARE(valueSpy.size(), 1);
+    QCOMPARE(stateSpy.size(), 1);
+    QCOMPARE(limitSpy.size(), 1);
+}
+
+// A new TankDisplay is drawn as one whose input is NaN: hatched, "---", no limit in force; not as an empty vessel
+void tst_TankDisplay::newDisplayIsDrawnWithoutAValue()
+{
+    TankDisplay fresh;
+    prepare(fresh);
+    QVERIFY(fresh.setLimits(5.0, 15.0, 85.0, 95.0));
+    TankDisplay nan;
+    prepare(nan);
+    QVERIFY(nan.setLimits(5.0, 15.0, 85.0, 95.0));
+    nan.setValue(2.0);
+    nan.setValue(kNaN);
+    TankDisplay zero;
+    prepare(zero);
+    QVERIFY(zero.setLimits(5.0, 15.0, 85.0, 95.0));
+    zero.setValue(0.0);
+    const QImage a = render(fresh);
+    QCOMPARE(a, render(nan));
+    QVERIFY(a != render(zero));
 }
 
 void tst_TankDisplay::valueStateAndRawValue()
@@ -415,18 +473,31 @@ void tst_TankDisplay::rejectedLimitOrders()
     QVERIFY(!t.setLimits(lowLow, low, high, highHigh));
     QVERIFY(unchanged());
 
-    // One limit out of order through its own setter, with the others in place
-    t.setLowLowLimit(3.0);  // above low
+    // One limit out of order through its own setter, with the others in place: a warning names the limit and why
+    QTest::ignoreMessage(QtWarningMsg, "TankDisplay::setLowLowLimit(3) rejected: lowLowLimit must be <= lowLimit (2); "
+                                       "the limits are unchanged");
+    t.setLowLowLimit(3.0);
     QVERIFY(unchanged());
-    t.setLowLimit(98.0);    // equal to high
+    QTest::ignoreMessage(QtWarningMsg, "TankDisplay::setLowLimit(98) rejected: lowLimit must be < highLimit (98); "
+                                       "the limits are unchanged");
+    t.setLowLimit(98.0);
     QVERIFY(unchanged());
-    t.setHighLimit(2.0);    // equal to low
+    QTest::ignoreMessage(QtWarningMsg, "TankDisplay::setHighLimit(2) rejected: highLimit must be > lowLimit (2); "
+                                       "the limits are unchanged");
+    t.setHighLimit(2.0);
     QVERIFY(unchanged());
-    t.setHighHighLimit(97.0); // below high
+    QTest::ignoreMessage(QtWarningMsg, "TankDisplay::setHighHighLimit(97) rejected: highHighLimit must be >= highLimit "
+                                       "(98); the limits are unchanged");
+    t.setHighHighLimit(97.0);
     QVERIFY(unchanged());
+    QTest::ignoreMessage(QtWarningMsg, "TankDisplay::setHighLimit(inf) rejected: a limit cannot be infinite; the limits "
+                                       "are unchanged");
     t.setHighLimit(kInf);
     QVERIFY(unchanged());
-    QVERIFY(t.setProperty("highLimit", 2.0)); // the property writes through the same setter
+    // The property writes through the same setter
+    QTest::ignoreMessage(QtWarningMsg, "TankDisplay::setHighLimit(2) rejected: highLimit must be > lowLimit (2); "
+                                       "the limits are unchanged");
+    QVERIFY(t.setProperty("highLimit", 2.0));
     QVERIFY(unchanged());
 }
 
@@ -746,21 +817,6 @@ void tst_TankDisplay::limitMarkers()
     };
     const double limits[4] = {10.0, 30.0, 60.0, 85.0};
     const char *const tags[4] = {"LL", "L", "H", "HH"};
-    // Pixels drawn in a colour: those that change when only that colour becomes transparent
-    const auto inkOf = [](TankDisplay &t, void (TankDisplay::*set)(const QColor &), const QColor &color) {
-        (t.*set)(QColor(color.red(), color.green(), color.blue(), 0));
-        const QImage without = render(t);
-        (t.*set)(color);
-        const QImage with = render(t);
-        QImage ink(with.size(), QImage::Format_ARGB32);
-        ink.setDevicePixelRatio(with.devicePixelRatio());
-        for (int y = 0; y < with.height(); ++y) {
-            for (int x = 0; x < with.width(); ++x) {
-                ink.setPixel(x, y, with.pixel(x, y) != without.pixel(x, y) ? qRgb(255, 255, 255) : qRgb(0, 0, 0));
-            }
-        }
-        return ink;
-    };
     const auto isInk = [](QRgb p) { return qRed(p) == 255; };
     for (const Case &c : {Case{50.0, -1}, Case{75.0, 2}, Case{95.0, 3}, Case{20.0, 1}, Case{5.0, 0}, Case{kNaN, -1}}) {
         TankDisplay t;
@@ -799,15 +855,85 @@ void tst_TankDisplay::limitMarkers()
         const int stray = countIn(limitInk, column, isInk) + countIn(textInk, column, isInk);
         QVERIFY2(stray == 0, qPrintable(QStringLiteral("input %1: %2 marker or tag pixels above the top limit").arg(c.input).arg(stray)));
     }
-    // A limit outside the range is evaluated but has no marker
+    // A limit outside the range that is not in force has no marker
     TankDisplay t;
     t.setShape(s);
     prepare(t, sizeFor(s));
-    QVERIFY(t.setLimits(kNaN, kNaN, kNaN, 250.0));
-    t.setValue(300.0);
-    QCOMPARE(t.limitState(), LimitState::HighHigh);
+    QVERIFY(t.setLimits(-20.0, kNaN, kNaN, 250.0));
+    t.setValue(50.0);
+    QCOMPARE(t.limitState(), LimitState::Normal);
     const QImage limitInk = inkOf(t, &TankDisplay::setLimitColor, kLimit);
     QCOMPARE(countIn(limitInk, QRectF(0.0, 0.0, t.width(), t.height()), isInk), 0);
+}
+
+void tst_TankDisplay::everyActiveLimitStateIsVisible_data()
+{
+    addShapes();
+}
+
+// Every limit state in force is drawn: the filled marker and its tag at the limit, or at the end of the scale with
+// the "beyond" sign past it when the limit lies outside the range. Limits inside, outside and both
+void tst_TankDisplay::everyActiveLimitStateIsVisible()
+{
+    QFETCH(int, shape);
+    const TankShape s = static_cast<TankShape>(shape);
+    struct Config {
+        const char *name;
+        double minimum, maximum;
+        std::array<double, 4> limits;
+        std::array<double, 4> inputs; // one in each limit state: LL, L, H, HH
+    };
+    const Config configs[] = {
+        {"inside", 0.0, 100.0, {{10.0, 30.0, 70.0, 90.0}}, {{5.0, 20.0, 80.0, 95.0}}},
+        {"outside", 20.0, 80.0, {{5.0, 10.0, 90.0, 95.0}}, {{3.0, 7.0, 92.0, 97.0}}},
+        // The limits inside far enough from the ends that their markers stay clear of the "beyond" signs
+        {"both", 0.0, 100.0, {{-10.0, 30.0, 70.0, 120.0}}, {{-20.0, 20.0, 80.0, 130.0}}},
+    };
+    const LimitState states[4] = {LimitState::LowLow, LimitState::Low, LimitState::High, LimitState::HighHigh};
+    const auto isInk = [](QRgb p) { return qRed(p) == 255; };
+    for (const Config &c : configs) {
+        for (int i = 0; i < 4; ++i) {
+            TankDisplay t;
+            t.setShape(s);
+            prepare(t, sizeFor(s));
+            t.setRange(c.minimum, c.maximum);
+            QVERIFY(t.setLimits(c.limits[0], c.limits[1], c.limits[2], c.limits[3]));
+            t.setValue(c.inputs[static_cast<size_t>(i)]);
+            QCOMPARE(t.limitState(), states[i]);
+            const QImage img = render(t);
+            const QImage limitInk = inkOf(t, &TankDisplay::setLimitColor, kLimit);
+            const QImage textInk = inkOf(t, &TankDisplay::setTextColor, kText);
+            const internal::TankLayout l = layoutOf(t);
+            const QRectF v = l.vessel;
+            const double limit = c.limits[static_cast<size_t>(i)];
+            const bool below = limit < c.minimum;
+            const bool above = limit > c.maximum;
+            const double y = below ? v.bottom() : above ? v.top() : v.bottom() - (limit - c.minimum) / (c.maximum - c.minimum) * v.height();
+            const QString where = QStringLiteral("%1, %2 (limit %3) at y %4")
+                                      .arg(QLatin1String(c.name), stateName(states[i])).arg(limit).arg(y);
+            const double tip = l.markerTipX;
+            const double size = internal::kTankMarkerSize;
+            const QRgb centroid = at(img, tip - size * 2.0 / 3.0, y);
+            QVERIFY2(near(centroid, kLimit, 40), qPrintable(where + QStringLiteral(": centroid ") + rgb(centroid)));
+            // The tag, centred on the marker: within half a label line of it (less than 10 px with these fonts)
+            const int tag = countIn(textInk, QRectF(0.0, y - 10.0, l.tagRight + 1.0, 20.0), isInk);
+            const int tagCore = countIn(textInk, QRectF(0.0, y - 3.0, l.tagRight + 1.0, 6.0), isInk);
+            QVERIFY2(tagCore > 0, qPrintable(where + QStringLiteral(": no tag")));
+            // The "beyond" sign: past the marker, away from the scale; on neither side for a limit inside
+            const double reach = size * 0.5 + internal::kTankBeyondGap;
+            const QRectF past(tip - size, y - reach - internal::kTankBeyondSign, size, internal::kTankBeyondSign);
+            const QRectF under(tip - size, y + reach, size, internal::kTankBeyondSign);
+            const int signAbove = countIn(limitInk, past, isInk);
+            const int signBelow = countIn(limitInk, under, isInk);
+            QVERIFY2((signAbove > 2) == above && (signBelow > 2) == below,
+                     qPrintable(where + QStringLiteral(": %1 sign pixels above, %2 below").arg(signAbove).arg(signBelow)));
+            // Inside the widget
+            QVERIFY2(past.top() >= 0.0 && under.bottom() <= t.height(), qPrintable(where));
+            // One tag only: the other limits outside the range are not drawn, those inside are not tagged
+            const int allTags = countIn(textInk, QRectF(0.0, 0.0, l.tagRight + 1.0, t.height()), isInk);
+            QCOMPARE(allTags, tag);
+        }
+    }
 }
 
 void tst_TankDisplay::invalidVesselIsHatched_data()
@@ -1090,7 +1216,14 @@ void tst_TankDisplay::minimumSizeHintFollowsTheConfiguration()
                                 .arg(before.height()).arg(after.width()).arg(after.height())));
         QVERIFY2(requests.count > 0, qPrintable(QStringLiteral("%1: the layout was not told").arg(QLatin1String(what))));
     };
-    check("limits enabled", [&] { QVERIFY(t->setLimits(10.0, 20.0, 80.0, 90.0)); }, true, false);
+    // The markers add the column of the tags, and taller ends when half a label line is less than the room of a
+    // marker at an end of the scale and of its "beyond" sign
+    QFont label = t->font();
+    label.setBold(true);
+    label.setPixelSize(std::max(internal::minimumReadoutPixelSize(t->logicalDpiY()), 10));
+    const bool endsGrow = QFontMetricsF(label).height() * 0.5
+        < internal::kTankMarkerSize * 0.5 + internal::kTankBeyondGap + internal::kTankBeyondSign;
+    check("limits enabled", [&] { QVERIFY(t->setLimits(10.0, 20.0, 80.0, 90.0)); }, true, endsGrow);
     check("wider labels", [&] { t->setRange(0.0, 100000.0); }, true, false);
     // Labels with decimals: precision 0 rounds them to whole numbers (scaleLabelText())
     t->setRange(0.0, 1.0);

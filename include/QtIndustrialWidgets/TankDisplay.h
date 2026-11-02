@@ -33,8 +33,10 @@ class TankDisplayTestAccess;
  * set the scale and unit() of the level.
  *
  * Value state (valueState(), #151): the last input is kept unclamped (rawValue()) and classified against the
- * range; a range change classifies it again. Before the first setValue() the display reports \c Valid and the
- * initial value 0 clamped to the range.
+ * range; a range change classifies it again. A new TankDisplay has no value: until the first setValue() rawValue()
+ * and value() are NaN, valueState() is \c Invalid (the vessel hatched, the readout "---") and limitState() is
+ * \c Unknown, so that a level never read is never shown as a level. This differs from the gauges, which start at
+ * their minimum as \c Valid.
  * - \c Valid: the fill and the readout show the value.
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the fill stops at the end of the
  *   scale and value() is the bound. The readout shows the input itself, or ">max" / "<min" for ±Inf, after a
@@ -48,7 +50,8 @@ class TankDisplayTestAccess;
  *
  * Limits: lowLowLimit() ≤ lowLimit() < highLimit() ≤ highHighLimit(), each disabled by NaN (the default). The
  * order applies only between the enabled limits; setLimits() and the single setters reject a change that breaks
- * it, or a limit of ±Inf, and change nothing. limitState() is computed on the input (rawValue()), not on the
+ * it, or a limit of ±Inf, and change nothing: setLimits() returns false, a single setter (and so a property write)
+ * emits a qWarning() that names the limit and the reason. limitState() is computed on the input (rawValue()), not on the
  * value shown, so +Inf gives \c HighHigh and -Inf \c LowLow when those limits are enabled:
  * - a high limit is entered when the input is >= the limit, and left when it is < limit − limitHysteresis();
  * - a low limit is entered when the input is <= the limit, and left when it is > limit + limitHysteresis();
@@ -57,7 +60,10 @@ class TankDisplayTestAccess;
  *
  * Each enabled limit inside the range has a marker on the left of the vessel and a dashed line across it. The
  * marker of the limit in force is filled and carries a text tag (\c HH, \c H, \c L, \c LL), so the state is
- * never told by colour alone. A limit outside the range has no marker; its state is evaluated all the same.
+ * never told by colour alone. A limit outside the range is evaluated all the same; it has no line and no marker,
+ * except while it is in force: then its filled and tagged marker stands at that end of the scale, with a small
+ * triangle past it pointing away from the scale, to show that the limit lies beyond it. Every limit state other
+ * than \c Normal and \c Unknown is therefore visible in the drawing.
  *
  * TankDisplay only shows the limits and reports their crossings (limitStateChanged()). Alarm handling
  * (acknowledgement, latching, sound) stays in the application.
@@ -124,7 +130,7 @@ public:
 
     /// The limit in force (see the class description).
     enum class LimitState {
-        Unknown,  ///< The input is NaN
+        Unknown,  ///< The input is NaN, or there was no input yet
         Normal,   ///< No limit in force
         Low,      ///< lowLimit() in force
         LowLow,   ///< lowLowLimit() in force
@@ -154,11 +160,10 @@ public:
      */
     [[nodiscard]] double value() const;
     /**
-     * \brief Returns the last input as it was given, unclamped (#151). Before the first setValue(), the initial
-     * value clamped to the range.
+     * \brief Returns the last input as it was given, unclamped (#151); NaN before the first setValue().
      */
     [[nodiscard]] double rawValue() const;
-    /** \brief Returns the state of the last input against the range (#151); \c Valid before the first setValue(). */
+    /** \brief Returns the state of the last input against the range (#151); \c Invalid before the first setValue(). */
     [[nodiscard]] QtIndustrialWidgets::ValueState valueState() const;
     /** \brief Returns the decimals of the readout and of the scale labels. Default 1. */
     [[nodiscard]] int precision() const;
@@ -183,7 +188,7 @@ public:
     [[nodiscard]] double highHighLimit() const;
     /** \brief Returns the hysteresis applied when leaving a limit, in the units of the value. Default 0. */
     [[nodiscard]] double limitHysteresis() const;
-    /** \brief Returns the limit in force (see the class description). */
+    /** \brief Returns the limit in force (see the class description); \c Unknown before the first setValue(). */
     [[nodiscard]] LimitState limitState() const;
 
     /** \brief Returns the colour of the fill. Default QColor(52, 152, 219). */
@@ -248,13 +253,25 @@ public Q_SLOTS:
     /** \brief Shows or hides the scale. The limit markers stay. */
     void setScaleVisible(bool visible);
 
-    /** \brief Sets the low-low limit, as setLimits() with the other three unchanged. */
+    /**
+     * \brief Sets the low-low limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
+     * changes nothing and emits a qWarning() that names the limit and the reason.
+     */
     void setLowLowLimit(double limit);
-    /** \brief Sets the low limit, as setLimits() with the other three unchanged. */
+    /**
+     * \brief Sets the low limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
+     * changes nothing and emits a qWarning() that names the limit and the reason.
+     */
     void setLowLimit(double limit);
-    /** \brief Sets the high limit, as setLimits() with the other three unchanged. */
+    /**
+     * \brief Sets the high limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
+     * changes nothing and emits a qWarning() that names the limit and the reason.
+     */
     void setHighLimit(double limit);
-    /** \brief Sets the high-high limit, as setLimits() with the other three unchanged. */
+    /**
+     * \brief Sets the high-high limit, as setLimits() with the other three unchanged. A value that setLimits() would reject
+     * changes nothing and emits a qWarning() that names the limit and the reason.
+     */
     void setHighHighLimit(double limit);
     /**
      * \brief Sets the hysteresis applied when leaving a limit. A negative or non-finite value is ignored. The

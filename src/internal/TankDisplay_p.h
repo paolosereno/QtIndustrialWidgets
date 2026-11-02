@@ -29,10 +29,10 @@ public:
     TankDisplay::Content m_content{TankDisplay::Content::Liquid};
     double m_minimum{0.0};
     double m_maximum{100.0};
-    double m_value{0.0};    // m_rawValue clamped to the range, NaN when Invalid
-    double m_rawValue{0.0}; // Last input, unclamped (#151)
-    bool m_hasInput{false}; // setValue() called: before it, m_rawValue is the initial value (#151)
-    ValueState m_valueState{ValueState::Valid};
+    // No value until the first setValue(): Invalid, unlike the gauges (#152)
+    double m_value{std::numeric_limits<double>::quiet_NaN()};    // m_rawValue clamped to the range, NaN when Invalid
+    double m_rawValue{std::numeric_limits<double>::quiet_NaN()}; // Last input, unclamped (#151)
+    ValueState m_valueState{ValueState::Invalid};
     int m_precision{1};
     QString m_unit{QStringLiteral("%")};
     int m_majorTicks{5};
@@ -43,7 +43,7 @@ public:
     std::array<double, 4> m_limits{{std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
                                     std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()}};
     double m_hysteresis{0.0};
-    TankDisplay::LimitState m_limitState{TankDisplay::LimitState::Normal};
+    TankDisplay::LimitState m_limitState{TankDisplay::LimitState::Unknown};
     QColor m_contentColor{QColor(52, 152, 219)};
     QColor m_vesselColor{QColor(120, 134, 150)};
     QColor m_scaleColor{QColor(200, 208, 218)};
@@ -65,6 +65,9 @@ public:
     Changes applyInput();
 
     [[nodiscard]] bool anyLimitEnabled() const;
+
+    // A single limit setter: a value that breaks the rules is rejected with a warning that names the limit and why
+    void setOneLimit(TankDisplay *q, int index, double limit);
 
     [[nodiscard]] QStringList majorLabelTexts() const;
 

@@ -43,23 +43,45 @@ bool sameLimit(double a, double b)
     return (std::isnan(a) && std::isnan(b)) || a == b;
 }
 
+const char *const kLimitNames[4] = {"lowLowLimit", "lowLimit", "highLimit", "highHighLimit"};
+
+// Why the limit \a k breaks the rules: ±Inf, or the order lowLow <= low < high <= highHigh with another enabled
+// limit. Empty when it does not
+QString limitProblem(const std::array<double, 4> &l, int k)
+{
+    const size_t uk = static_cast<size_t>(k);
+    if (std::isinf(l[uk])) {
+        return QStringLiteral("a limit cannot be infinite");
+    }
+    if (std::isnan(l[uk])) {
+        return {};
+    }
+    for (int j = 0; j < 4; ++j) {
+        const size_t uj = static_cast<size_t>(j);
+        if (j == k || std::isnan(l[uj]) || std::isinf(l[uj])) {
+            continue;
+        }
+        const int lo = std::min(j, k);
+        const int hi = std::max(j, k);
+        const bool acrossNormal = lo <= LowIndex && hi >= HighIndex;
+        const double a = l[static_cast<size_t>(lo)];
+        const double b = l[static_cast<size_t>(hi)];
+        if (acrossNormal ? !(a < b) : !(a <= b)) {
+            const char *op = k < j ? (acrossNormal ? "<" : "<=") : (acrossNormal ? ">" : ">=");
+            return QStringLiteral("%1 must be %2 %3 (%4)")
+                .arg(QLatin1String(kLimitNames[k]), QLatin1String(op), QLatin1String(kLimitNames[j]))
+                .arg(l[uj]);
+        }
+    }
+    return {};
+}
+
 // The enabled limits keep lowLow <= low < high <= highHigh, and none is ±Inf
 bool validLimits(const std::array<double, 4> &l)
 {
-    for (int i = 0; i < 4; ++i) {
-        if (std::isinf(l[i])) {
+    for (int k = 0; k < 4; ++k) {
+        if (!limitProblem(l, k).isEmpty()) {
             return false;
-        }
-    }
-    for (int i = 0; i < 4; ++i) {
-        for (int j = i + 1; j < 4; ++j) {
-            if (std::isnan(l[i]) || std::isnan(l[j])) {
-                continue;
-            }
-            const bool acrossNormal = i <= LowIndex && j >= HighIndex;
-            if (acrossNormal ? !(l[i] < l[j]) : !(l[i] <= l[j])) {
-                return false;
-            }
         }
     }
     return true;
@@ -122,6 +144,20 @@ int limitIndexInForce(TankDisplay::LimitState s)
 const char *const kLimitTags[4] = {"LL", "L", "H", "HH"};
 
 } // namespace
+
+void TankDisplayPrivate::setOneLimit(TankDisplay *q, int index, double limit)
+{
+    std::array<double, 4> limits = m_limits;
+    limits[static_cast<size_t>(index)] = limit;
+    const QString problem = limitProblem(limits, index);
+    if (!problem.isEmpty()) {
+        static const char *const setters[4] = {"setLowLowLimit", "setLowLimit", "setHighLimit", "setHighHighLimit"};
+        qWarning("TankDisplay::%s(%s) rejected: %s; the limits are unchanged", setters[index],
+                 qPrintable(QString::number(limit)), qPrintable(problem));
+        return;
+    }
+    q->setLimits(limits[0], limits[1], limits[2], limits[3]);
+}
 
 TankDisplayPrivate::Changes TankDisplayPrivate::applyInput()
 {
@@ -281,7 +317,6 @@ void TankDisplay::setValue(double value)
 {
     const bool sameInput = (std::isnan(value) && std::isnan(d_ptr->m_rawValue)) || value == d_ptr->m_rawValue;
     d_ptr->m_rawValue = value;
-    d_ptr->m_hasInput = true;
     const TankDisplayPrivate::Changes changes = d_ptr->applyInput();
     if (changes.value) {
         Q_EMIT valueChanged(d_ptr->m_value);
@@ -314,10 +349,6 @@ void TankDisplay::setRange(double min, double max)
     if (min == d_ptr->m_minimum && max == d_ptr->m_maximum) return;
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
-    // #151: before the first setValue() there is no input: the initial value follows the range
-    if (!d_ptr->m_hasInput) {
-        d_ptr->m_rawValue = std::clamp(d_ptr->m_rawValue, min, max);
-    }
     const TankDisplayPrivate::Changes changes = d_ptr->applyInput();
     updateGeometry(); // the width of the scale labels
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
@@ -415,26 +446,22 @@ bool TankDisplay::setLimits(double lowLow, double low, double high, double highH
 
 void TankDisplay::setLowLowLimit(double limit)
 {
-    const auto &l = d_ptr->m_limits;
-    setLimits(limit, l[LowIndex], l[HighIndex], l[HighHighIndex]);
+    d_ptr->setOneLimit(this, LowLowIndex, limit);
 }
 
 void TankDisplay::setLowLimit(double limit)
 {
-    const auto &l = d_ptr->m_limits;
-    setLimits(l[LowLowIndex], limit, l[HighIndex], l[HighHighIndex]);
+    d_ptr->setOneLimit(this, LowIndex, limit);
 }
 
 void TankDisplay::setHighLimit(double limit)
 {
-    const auto &l = d_ptr->m_limits;
-    setLimits(l[LowLowIndex], l[LowIndex], limit, l[HighHighIndex]);
+    d_ptr->setOneLimit(this, HighIndex, limit);
 }
 
 void TankDisplay::setHighHighLimit(double limit)
 {
-    const auto &l = d_ptr->m_limits;
-    setLimits(l[LowLowIndex], l[LowIndex], l[HighIndex], limit);
+    d_ptr->setOneLimit(this, HighHighIndex, limit);
 }
 
 void TankDisplay::setLimitHysteresis(double hysteresis)
@@ -545,28 +572,45 @@ void TankDisplay::paintEvent(QPaintEvent *)
     const QFontMetricsF lm(fonts.label);
 
     // 3. Limits inside the range: a dashed line across the vessel and a marker on its left; the marker of the
-    // limit in force filled and tagged, so that the state is not told by colour alone
+    // limit in force filled and tagged, so that the state is not told by colour alone. The limit in force outside
+    // the range: its filled and tagged marker at that end of the scale, with a "beyond" sign past it, pointing away
+    // from the scale
     const int inForce = limitIndexInForce(d_ptr->m_limitState);
     for (int i = 0; i < 4; ++i) {
         const double limit = d_ptr->m_limits[static_cast<size_t>(i)];
-        if (std::isnan(limit) || limit < d_ptr->m_minimum || limit > d_ptr->m_maximum) {
+        const bool below = limit < d_ptr->m_minimum;
+        const bool above = limit > d_ptr->m_maximum;
+        if (std::isnan(limit) || ((below || above) && i != inForce)) {
             continue;
         }
-        const double y = levelY(limit);
-        painter.save();
-        painter.setClipPath(outlinePath);
-        painter.setPen(QPen(d_ptr->m_limitColor, 1.0, Qt::DashLine));
-        painter.drawLine(QPointF(vessel.left(), y), QPointF(vessel.right(), y));
-        painter.restore();
-
+        const double y = below ? vessel.bottom() : above ? vessel.top() : levelY(limit);
         const double tip = layout.markerTipX;
-        const double half = internal::kTankMarkerSize * 0.5;
+        const double size = internal::kTankMarkerSize;
+        const double half = size * 0.5;
+        if (!below && !above) {
+            painter.save();
+            painter.setClipPath(outlinePath);
+            painter.setPen(QPen(d_ptr->m_limitColor, 1.0, Qt::DashLine));
+            painter.drawLine(QPointF(vessel.left(), y), QPointF(vessel.right(), y));
+            painter.restore();
+        }
+
         QPolygonF marker;
-        marker << QPointF(tip - internal::kTankMarkerSize, y - half) << QPointF(tip, y)
-               << QPointF(tip - internal::kTankMarkerSize, y + half);
+        marker << QPointF(tip - size, y - half) << QPointF(tip, y) << QPointF(tip - size, y + half);
         painter.setPen(QPen(d_ptr->m_limitColor, 1.2));
         painter.setBrush(i == inForce ? QBrush(d_ptr->m_limitColor) : QBrush(Qt::NoBrush));
         painter.drawPolygon(marker);
+        if (below || above) {
+            // A filled triangle past the marker, its tip away from the scale
+            const double dir = above ? -1.0 : 1.0;
+            const double cx = tip - half;
+            const double base = y + dir * (half + internal::kTankBeyondGap);
+            const double w = size * 0.375;
+            QPolygonF sign;
+            sign << QPointF(cx - w, base) << QPointF(cx + w, base) << QPointF(cx, base + dir * internal::kTankBeyondSign);
+            painter.setPen(Qt::NoPen);
+            painter.drawPolygon(sign);
+        }
         if (i == inForce) {
             painter.setFont(fonts.label);
             painter.setPen(d_ptr->m_textColor);

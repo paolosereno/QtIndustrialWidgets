@@ -205,7 +205,7 @@ void tst_TankDisplayLayout::columnsStayInsideFromTheMinimumUp_data()
     addOutlines();
 }
 
-// From minimumTankSize() up, the tags, the labels and the vessel stay inside the widget margin
+// From minimumTankSize() up, the tags, the labels, the "beyond" signs and the vessel stay inside the widget margin
 void tst_TankDisplayLayout::columnsStayInsideFromTheMinimumUp()
 {
     QFETCH(TankOutline, outline);
@@ -219,10 +219,12 @@ void tst_TankDisplayLayout::columnsStayInsideFromTheMinimumUp()
                 const double left = markers ? l.tagRight - in.text.tagWidth : l.vessel.left();
                 QVERIFY2(left >= kTankMargin - 1e-9, qPrintable(where));
                 QVERIFY2(l.labelX + in.text.labelWidth <= in.width - kTankMargin + 1e-9, qPrintable(where));
-                QVERIFY2(l.vessel.top() - in.text.labelHeight * 0.5 >= l.pod.bottom() + kTankPodGap - 1e-9,
-                         qPrintable(where));
-                QVERIFY2(l.vessel.bottom() + in.text.labelHeight * 0.5 <= in.height - kTankMargin + 1e-9,
-                         qPrintable(where));
+                // Half a label line past each end of the scale for the end labels and tags; with the markers, the
+                // room of a marker at an end and of its "beyond" sign (more than half a label line here)
+                const double sign = kTankMarkerSize * 0.5 + kTankBeyondGap + kTankBeyondSign;
+                const double room = markers ? std::max(in.text.labelHeight * 0.5, sign) : in.text.labelHeight * 0.5;
+                QVERIFY2(l.vessel.top() - room >= l.pod.bottom() + kTankPodGap - 1e-9, qPrintable(where));
+                QVERIFY2(l.vessel.bottom() + room <= in.height - kTankMargin + 1e-9, qPrintable(where));
                 QVERIFY2(l.vessel.width() >= kTankMinimumVesselWidth - 1e-9, qPrintable(where));
                 QVERIFY2(l.vessel.height() >= kTankMinimumVesselHeight - 1e-9, qPrintable(where));
             }

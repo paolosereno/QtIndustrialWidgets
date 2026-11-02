@@ -25,6 +25,8 @@ inline constexpr double kTankLabelGap = 3.0;        ///< Between the ticks and t
 inline constexpr double kTankMarkerSize = 8.0;      ///< Width and height of a limit marker
 inline constexpr double kTankMarkerGap = 2.0;       ///< Between a limit marker tip and the vessel
 inline constexpr double kTankTagGap = 3.0;          ///< Between a limit tag and its marker
+inline constexpr double kTankBeyondGap = 1.0;       ///< Between a marker at the end of the scale and its "beyond" sign
+inline constexpr double kTankBeyondSign = 4.0;      ///< Height of the "beyond" sign (its width is 3/4 of the marker)
 inline constexpr double kTankMinimumVesselWidth = 24.0;
 inline constexpr double kTankMinimumVesselHeight = 48.0;
 inline constexpr double kTankUprightRatio = 0.6;    ///< Largest width / height of a vertical cylinder or a hopper
@@ -66,8 +68,9 @@ struct TankLayout {
 /**
  * \brief Lays out a TankDisplay of the given size.
  *
- * From the top: the readout panel across the width, then the vessel between a room of half a label line above and
- * below it (the end labels and tags are centred on the ends of the scale). Across: the limit tags and markers, the
+ * From the top: the readout panel across the width, then the vessel between a room above and below it: half a
+ * label line (the end labels and tags are centred on the ends of the scale), and with the markers at least the
+ * room of a marker at an end of the scale and of its "beyond" sign (tankEndRoom()). Across: the limit tags and markers, the
  * vessel, the scale ticks and labels; the group is centred. The vessel takes the space left, within the aspect
  * ratio of its outline, centred vertically. A size below minimumTankSize() gives a smaller vessel; no value is ever
  * non-finite or negative.
@@ -76,6 +79,9 @@ TankLayout layoutTank(const TankLayoutInput &in);
 
 /// Smallest widget size at which every part of layoutTank() keeps its minimum size (rounded up to whole pixels).
 QSizeF minimumTankSize(const TankLayoutInput &in);
+
+/// Room above and below the vessel: see layoutTank().
+double tankEndRoom(const TankLayoutInput &in);
 
 /// y of a fraction (0 = minimum, 1 = maximum) of the scale: from the bottom of the vessel to its top.
 double tankLevelY(const QRectF &vessel, double fraction);

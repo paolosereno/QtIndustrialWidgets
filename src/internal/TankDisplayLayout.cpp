@@ -56,17 +56,23 @@ QSizeF vesselSize(TankOutline outline, double aw, double ah)
 
 } // namespace
 
+double tankEndRoom(const TankLayoutInput &in)
+{
+    const double halfLabel = finiteOr0(in.text.labelHeight) * 0.5;
+    return in.markersVisible ? std::max(halfLabel, kTankMarkerSize * 0.5 + kTankBeyondGap + kTankBeyondSign) : halfLabel;
+}
+
 TankLayout layoutTank(const TankLayoutInput &in)
 {
     const double w = finiteOr0(in.width);
     const double h = finiteOr0(in.height);
-    const double halfLabel = finiteOr0(in.text.labelHeight) * 0.5;
+    const double room = tankEndRoom(in);
     TankLayout out;
     if (in.displayVisible) {
         out.pod = QRectF(kTankMargin, kTankMargin, std::max(0.0, w - 2.0 * kTankMargin), finiteOr0(in.text.podHeight));
     }
-    const double top = topBand(in) + halfLabel;
-    const double bottom = std::max(top, h - kTankMargin - halfLabel);
+    const double top = topBand(in) + room;
+    const double bottom = std::max(top, h - kTankMargin - room);
     const double left = leftColumn(in);
     const double right = rightColumn(in);
     const QSizeF v = vesselSize(in.outline, w - 2.0 * kTankMargin - left - right, bottom - top);
@@ -101,7 +107,7 @@ QSizeF minimumTankSize(const TankLayoutInput &in)
     }
     const double width = std::max(2.0 * kTankMargin + leftColumn(in) + aw + rightColumn(in),
                                   in.displayVisible ? 2.0 * kTankMargin + finiteOr0(in.text.podMinWidth) : 0.0);
-    const double height = topBand(in) + labelHeight + ah + kTankMargin;
+    const double height = topBand(in) + 2.0 * tankEndRoom(in) + ah + kTankMargin;
     return QSizeF(std::ceil(width), std::ceil(height));
 }
 

@@ -261,19 +261,25 @@ Level indicator for tanks and silos (`qiw::TankDisplay`, #152).
   height there: pass the level (in % or in m) instead.
 - **Limits**: `lowLowLimit`, `lowLimit`, `highLimit`, `highHighLimit`, each disabled by NaN (the default). The enabled
   limits must keep `lowLow ≤ low < high ≤ highHigh`; `setLimits()` and the single setters reject a change that breaks
-  the order, or a limit of ±Inf, and change nothing (`setLimits()` returns `false`).
+  the order, or a limit of ±Inf, and change nothing: `setLimits()` returns `false`, a single setter (and a property
+  write) emits a `qWarning()` that names the limit and the reason.
 - **Limit state**: `limitState()` is `Unknown`, `Normal`, `Low`, `LowLow`, `High` or `HighHigh`, with
   `limitStateChanged()`. It is computed on the input, not on the value shown, so +Inf gives `HighHigh` when that
   limit is enabled. A high limit is entered at `input >= limit` and left below `limit − limitHysteresis`; a low limit
   is entered at `input <= limit` and left above `limit + limitHysteresis` (default hysteresis 0). A NaN input gives
-  `Unknown`, never `Normal`. The initial value (0 clamped to the range) is evaluated like an input.
+  `Unknown`, never `Normal`.
 - **Markers**: each enabled limit inside the range has a dashed line across the vessel and a triangle on its left;
   the triangle of the limit in force is filled and tagged `HH`, `H`, `L` or `LL`, so the state is not told by colour
-  alone. A limit outside the range has no marker. The widget only shows and reports the limits: acknowledgement and
-  latching stay in the application.
+  alone. A limit outside the range has no marker while it is not in force; in force, its filled and tagged triangle
+  stands at that end of the scale, with a small triangle past it pointing away from the scale (the limit lies beyond
+  it). So every limit state other than `Normal` and `Unknown` is visible. The widget only shows and reports the
+  limits: acknowledgement and latching stay in the application.
 - **Readout**: optional, above the vessel, on an opaque panel in `readoutColor()` (#159). The text is never below
   7 pt; without room the unit goes first, then the number, never the triangle or `---`. `minimumSizeHint()` is
   computed from the font, the logical DPI and the configuration (shape, scale labels, limit tags, readout).
+- **No value until the first `setValue()`**: unlike the gauges, which start at their minimum as `Valid`, a new
+  `TankDisplay` starts `Invalid` (`value()` and `rawValue()` NaN, the vessel hatched, the readout `---`) with
+  `limitState()` `Unknown`, so that a level that was never read is never shown as a level.
 - **Value state**: as the other gauges (#151). Out-of-range inputs and ±Inf fill to the end of the scale and the
   readout shows the input after a triangle; a NaN input empties the vessel, hatches it in `scaleColor()` and shows
   `---`.
