@@ -67,7 +67,7 @@ public:
     [[nodiscard]] bool anyLimitEnabled() const;
 
     // A single limit setter: a value that breaks the rules is rejected with a warning that names the limit and why
-    void setOneLimit(TankDisplay *q, int index, double limit);
+    void setOneLimit(TankDisplay *q, size_t index, double limit);
 
     [[nodiscard]] QStringList majorLabelTexts() const;
 

@@ -43,33 +43,35 @@ bool sameLimit(double a, double b)
     return (std::isnan(a) && std::isnan(b)) || a == b;
 }
 
-const char *const kLimitNames[4] = {"lowLowLimit", "lowLimit", "highLimit", "highHighLimit"};
+constexpr std::array<const char *, 4> kLimitNames{{"lowLowLimit", "lowLimit", "highLimit", "highHighLimit"}};
 
 // Why the limit \a k breaks the rules: ±Inf, or the order lowLow <= low < high <= highHigh with another enabled
 // limit. Empty when it does not
-QString limitProblem(const std::array<double, 4> &l, int k)
+QString limitProblem(const std::array<double, 4> &l, size_t k)
 {
-    const size_t uk = static_cast<size_t>(k);
+    if (k >= l.size()) {
+        return {};
+    }
+    const size_t uk = k;
     if (std::isinf(l[uk])) {
         return QStringLiteral("a limit cannot be infinite");
     }
     if (std::isnan(l[uk])) {
         return {};
     }
-    for (int j = 0; j < 4; ++j) {
-        const size_t uj = static_cast<size_t>(j);
-        if (j == k || std::isnan(l[uj]) || std::isinf(l[uj])) {
+    for (size_t uj = 0; uj < l.size(); ++uj) {
+        if (uj == uk || std::isnan(l[uj]) || std::isinf(l[uj])) {
             continue;
         }
-        const int lo = std::min(j, k);
-        const int hi = std::max(j, k);
-        const bool acrossNormal = lo <= LowIndex && hi >= HighIndex;
-        const double a = l[static_cast<size_t>(lo)];
-        const double b = l[static_cast<size_t>(hi)];
+        const size_t lo = std::min(uj, uk);
+        const size_t hi = std::max(uj, uk);
+        const bool acrossNormal = lo <= static_cast<size_t>(LowIndex) && hi >= static_cast<size_t>(HighIndex);
+        const double a = l[lo];
+        const double b = l[hi];
         if (acrossNormal ? !(a < b) : !(a <= b)) {
-            const char *op = k < j ? (acrossNormal ? "<" : "<=") : (acrossNormal ? ">" : ">=");
+            const char *op = uk < uj ? (acrossNormal ? "<" : "<=") : (acrossNormal ? ">" : ">=");
             return QStringLiteral("%1 must be %2 %3 (%4)")
-                .arg(QLatin1String(kLimitNames[k]), QLatin1String(op), QLatin1String(kLimitNames[j]))
+                .arg(QLatin1String(kLimitNames[uk]), QLatin1String(op), QLatin1String(kLimitNames[uj]))
                 .arg(l[uj]);
         }
     }
@@ -79,7 +81,7 @@ QString limitProblem(const std::array<double, 4> &l, int k)
 // The enabled limits keep lowLow <= low < high <= highHigh, and none is ±Inf
 bool validLimits(const std::array<double, 4> &l)
 {
-    for (int k = 0; k < 4; ++k) {
+    for (size_t k = 0; k < l.size(); ++k) {
         if (!limitProblem(l, k).isEmpty()) {
             return false;
         }
@@ -145,13 +147,16 @@ const char *const kLimitTags[4] = {"LL", "L", "H", "HH"};
 
 } // namespace
 
-void TankDisplayPrivate::setOneLimit(TankDisplay *q, int index, double limit)
+void TankDisplayPrivate::setOneLimit(TankDisplay *q, size_t index, double limit)
 {
+    static constexpr std::array<const char *, 4> setters{{"setLowLowLimit", "setLowLimit", "setHighLimit", "setHighHighLimit"}};
+    if (index >= setters.size()) {
+        return;
+    }
     std::array<double, 4> limits = m_limits;
-    limits[static_cast<size_t>(index)] = limit;
+    limits[index] = limit;
     const QString problem = limitProblem(limits, index);
     if (!problem.isEmpty()) {
-        static const char *const setters[4] = {"setLowLowLimit", "setLowLimit", "setHighLimit", "setHighHighLimit"};
         qWarning("TankDisplay::%s(%s) rejected: %s; the limits are unchanged", setters[index],
                  qPrintable(QString::number(limit)), qPrintable(problem));
         return;
