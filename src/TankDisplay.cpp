@@ -143,46 +143,6 @@ int limitIndexInForce(TankDisplay::LimitState s)
 
 const char *const kLimitTags[4] = {"LL", "L", "H", "HH"};
 
-// WCAG 2.x relative luminance and contrast ratio
-double channelLuminance(int c8)
-{
-    const double c = c8 / 255.0;
-    return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
-}
-
-double luminance(const QColor &c)
-{
-    return 0.2126 * channelLuminance(c.red()) + 0.7152 * channelLuminance(c.green()) + 0.0722 * channelLuminance(c.blue());
-}
-
-double contrastRatio(const QColor &a, const QColor &b)
-{
-    const double la = luminance(a);
-    const double lb = luminance(b);
-    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
-}
-
-// Colour of the hatch of an invalid input on the empty inside: the inside mixed toward white or black, whichever
-// contrasts more with it, until 4.5:1 against it. Either white or black is above 4.58:1 against any colour, so the
-// ratio is always reached; the margin over the 3:1 of graphical objects (WCAG 1.4.11) covers the antialiasing of
-// the thin lines
-QColor hatchColorOn(const QColor &inside)
-{
-    const QColor white(255, 255, 255);
-    const QColor black(0, 0, 0);
-    const QColor target = contrastRatio(inside, white) >= contrastRatio(inside, black) ? white : black;
-    QColor mixed = target;
-    for (int step = 1; step <= 20; ++step) {
-        const double t = step / 20.0;
-        const auto mix = [t](int a, int b) { return static_cast<int>(std::lround(a + (b - a) * t)); };
-        mixed = QColor(mix(inside.red(), target.red()), mix(inside.green(), target.green()), mix(inside.blue(), target.blue()));
-        if (contrastRatio(mixed, inside) >= 4.5) {
-            break;
-        }
-    }
-    return mixed;
-}
-
 } // namespace
 
 void TankDisplayPrivate::setOneLimit(TankDisplay *q, int index, double limit)
@@ -576,7 +536,7 @@ void TankDisplay::paintEvent(QPaintEvent *)
     painter.setBrush(inside);
     painter.drawPath(outlinePath);
     if (state == ValueState::Invalid) {
-        internal::drawInvalidHatch(painter, outlinePath, vessel.width(), hatchColorOn(inside));
+        internal::drawInvalidHatch(painter, outlinePath, vessel.width(), internal::tankHatchColor(inside));
     } else {
         const double surface = levelY(d_ptr->m_value);
         if (surface < vessel.bottom()) {

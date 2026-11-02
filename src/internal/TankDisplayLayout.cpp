@@ -4,6 +4,8 @@
 
 #include "internal/TankDisplayLayout.h"
 
+#include <QtGui/QColor>
+
 #include <algorithm>
 #include <cmath>
 
@@ -54,7 +56,43 @@ QSizeF vesselSize(TankOutline outline, double aw, double ah)
     return QSizeF(std::min(aw, kTankUprightRatio * ah), ah);
 }
 
+// WCAG 2.x relative luminance
+double channelLuminance(int c8)
+{
+    const double c = c8 / 255.0;
+    return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+}
+
+double luminance(const QColor &c)
+{
+    return 0.2126 * channelLuminance(c.red()) + 0.7152 * channelLuminance(c.green()) + 0.0722 * channelLuminance(c.blue());
+}
+
 } // namespace
+
+double tankContrastRatio(const QColor &a, const QColor &b)
+{
+    const double la = luminance(a);
+    const double lb = luminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+QColor tankHatchColor(const QColor &inside)
+{
+    const QColor white(255, 255, 255);
+    const QColor black(0, 0, 0);
+    const QColor target = tankContrastRatio(inside, white) >= tankContrastRatio(inside, black) ? white : black;
+    QColor mixed = target;
+    for (int step = 1; step <= 20; ++step) {
+        const double t = step / 20.0;
+        const auto mix = [t](int a, int b) { return static_cast<int>(std::lround(a + (b - a) * t)); };
+        mixed = QColor(mix(inside.red(), target.red()), mix(inside.green(), target.green()), mix(inside.blue(), target.blue()));
+        if (tankContrastRatio(mixed, inside) >= 4.5) {
+            break;
+        }
+    }
+    return mixed;
+}
 
 double tankEndRoom(const TankLayoutInput &in)
 {

@@ -8,6 +8,7 @@
 
 #include <QtCore/QRectF>
 #include <QtCore/QSizeF>
+#include <QtGui/QColor>
 #include <QtGui/QPainterPath>
 
 namespace QtIndustrialWidgets {
@@ -79,6 +80,17 @@ TankLayout layoutTank(const TankLayoutInput &in);
 
 /// Smallest widget size at which every part of layoutTank() keeps its minimum size (rounded up to whole pixels).
 QSizeF minimumTankSize(const TankLayoutInput &in);
+
+/// WCAG 2.x contrast ratio of two opaque colours.
+double tankContrastRatio(const QColor &a, const QColor &b);
+
+/**
+ * \brief Colour of the hatch of an invalid input drawn on the empty inside \a inside: the inside mixed toward white
+ * or black, whichever contrasts more with it, until 4.5:1 against it. White or black is above 4.58:1 against any
+ * colour, so the ratio is always reached; the margin over the 3:1 of graphical objects (WCAG 2.x, 1.4.11) covers the
+ * antialiasing of the thin hatch lines.
+ */
+QColor tankHatchColor(const QColor &inside);
 
 /// Room above and below the vessel: see layoutTank().
 double tankEndRoom(const TankLayoutInput &in);

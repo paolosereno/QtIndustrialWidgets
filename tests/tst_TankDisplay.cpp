@@ -56,6 +56,7 @@ private Q_SLOTS:
     void scaleLabelsAtTheirValues();
     void limitMarkers_data();
     void limitMarkers();
+    void limitLinesOnWholeDevicePixels();
     void everyActiveLimitStateIsVisible_data();
     void everyActiveLimitStateIsVisible();
     void invalidVesselIsHatched_data();
@@ -864,6 +865,49 @@ void tst_TankDisplay::limitMarkers()
     QCOMPARE(t.limitState(), LimitState::Normal);
     const QImage limitInk = inkOf(t, &TankDisplay::setLimitColor, kLimit);
     QCOMPARE(countIn(limitInk, QRectF(0.0, 0.0, t.width(), t.height()), isInk), 0);
+}
+
+// A limit line covers whole device rows: 1 logical px rounded to device pixels (at least 1), each row in the full
+// limit colour, with nothing spread on the rows next to it. Limits at many fractions of a pixel
+void tst_TankDisplay::limitLinesOnWholeDevicePixels()
+{
+    TankDisplay t;
+    prepare(t);
+    t.setValue(5.0);
+    for (int k = 0; k < 16; ++k) {
+        const double limit = 40.0 + k * 0.137;
+        QVERIFY(t.setLimits(kNaN, kNaN, limit, kNaN));
+        const QImage img = render(t);
+        const double dpr = img.devicePixelRatio();
+        const int rows = std::max(1, static_cast<int>(std::lround(dpr)));
+        const QRectF v = layoutOf(t).vessel;
+        const double y = v.bottom() - limit / 100.0 * v.height();
+        const int top = static_cast<int>(std::floor((y - 3.0) * dpr));
+        const int bottom = static_cast<int>(std::ceil((y + 3.0) * dpr));
+        int columns = 0;
+        int clean = 0;
+        for (int px = static_cast<int>((v.left() + v.width() * 0.3) * dpr); px < (v.left() + v.width() * 0.7) * dpr; ++px) {
+            int marked = 0;
+            int full = 0;
+            for (int py = top; py <= bottom; ++py) {
+                const QRgb p = img.pixel(px, py);
+                marked += near(p, kInterior) ? 0 : 1;
+                full += near(p, kLimit) ? 1 : 0;
+            }
+            if (marked == 0) {
+                continue; // a gap of the dashes
+            }
+            ++columns;
+            // Every column of the line on exactly its rows; only the ends of a dash may be partly covered
+            QVERIFY2(marked == rows,
+                     qPrintable(QStringLiteral("limit %1 at y %2, column %3: %4 rows marked, %5 expected")
+                                    .arg(limit).arg(y).arg(px).arg(marked).arg(rows)));
+            clean += full == rows ? 1 : 0;
+        }
+        QVERIFY2(columns > 10 && 2 * clean >= columns,
+                 qPrintable(QStringLiteral("limit %1 at y %2: %3 columns of line, %4 in the full limit colour")
+                                .arg(limit).arg(y).arg(columns).arg(clean)));
+    }
 }
 
 void tst_TankDisplay::everyActiveLimitStateIsVisible_data()

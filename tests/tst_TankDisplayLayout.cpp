@@ -30,6 +30,7 @@ private Q_SLOTS:
     void minimumGivesTheMinimumVessel_data();
     void minimumGivesTheMinimumVessel();
     void nonFiniteInputGivesFiniteGeometry();
+    void hatchColourContrastsWithAnyInside();
 };
 
 namespace {
@@ -283,6 +284,54 @@ void tst_TankDisplayLayout::nonFiniteInputGivesFiniteGeometry()
             QVERIFY(tankOutlinePath(outline, QRectF(bad, 0.0, 50.0, 80.0)).isEmpty() || std::isfinite(bad));
         }
     }
+}
+
+// The hatch colour of an invalid input reaches 4.5:1 against the empty inside, mixed toward the end (white or
+// black) that contrasts more with it and no further than needed (one step of 1/20 less is below 4.5:1), for insides
+// across the whole RGB cube
+void tst_TankDisplayLayout::hatchColourContrastsWithAnyInside()
+{
+    const auto ratio = [](const QColor &a, const QColor &b) {
+        const auto lin = [](int c8) {
+            const double c = c8 / 255.0;
+            return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+        };
+        const auto lum = [&](const QColor &c) {
+            return 0.2126 * lin(c.red()) + 0.7152 * lin(c.green()) + 0.0722 * lin(c.blue());
+        };
+        const double la = lum(a);
+        const double lb = lum(b);
+        return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+    };
+    int checked = 0;
+    for (int r = 0; r <= 255; r += 15) {
+        for (int g = 0; g <= 255; g += 15) {
+            for (int b = 0; b <= 255; b += 15) {
+                const QColor inside(r, g, b);
+                const QColor hatch = tankHatchColor(inside);
+                const QString where = QStringLiteral("inside rgb(%1, %2, %3), hatch rgb(%4, %5, %6)")
+                                          .arg(r).arg(g).arg(b).arg(hatch.red()).arg(hatch.green()).arg(hatch.blue());
+                QVERIFY2(ratio(hatch, inside) >= 4.5, qPrintable(where + QStringLiteral(": %1:1").arg(ratio(hatch, inside))));
+                QCOMPARE(tankContrastRatio(hatch, inside), ratio(hatch, inside));
+                const bool towardWhite = ratio(inside, Qt::white) >= ratio(inside, Qt::black);
+                const QColor end = towardWhite ? QColor(Qt::white) : QColor(Qt::black);
+                // One of the steps k/20 from the inside toward that end, and the step before it is below 4.5:1
+                const auto mixAt = [&](int k) {
+                    const double f = k / 20.0;
+                    const auto mix = [f](int from, int to) { return static_cast<int>(std::lround(from + (to - from) * f)); };
+                    return QColor(mix(r, end.red()), mix(g, end.green()), mix(b, end.blue()));
+                };
+                int k = 1;
+                while (k <= 20 && mixAt(k) != hatch) {
+                    ++k;
+                }
+                QVERIFY2(k <= 20, qPrintable(where + QStringLiteral(": not a step toward %1").arg(towardWhite ? "white" : "black")));
+                QVERIFY2(k == 1 || ratio(mixAt(k - 1), inside) < 4.5, qPrintable(where + QStringLiteral(": mixed further than needed")));
+                ++checked;
+            }
+        }
+    }
+    QCOMPARE(checked, 18 * 18 * 18);
 }
 
 QTEST_MAIN(tst_TankDisplayLayout)
