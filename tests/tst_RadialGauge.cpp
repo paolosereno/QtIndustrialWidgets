@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/RadialGauge.h>
 
 #include "FontTestUtils.h"
+#include "ScreenChangeTestUtils.h"
 #include "LabelInkTestUtils.h"
 
 #include <memory>
@@ -323,6 +324,8 @@ class tst_RadialGauge : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void screenChangeOfAVisibleRadialGauge_data();
+    void screenChangeOfAVisibleRadialGauge();
     void textSizeIgnoresWidgetFontSize();
     void fontChangeRefreshesCache();
     void labelsFollowWidgetFont();
@@ -1794,6 +1797,37 @@ void tst_RadialGauge::initialValueFollowsTheRange()
     QCOMPARE(explicitZero.valueState(), ValueState::Underrange);
     QCOMPARE(explicitZero.rawValue(), 0.0);
     QCOMPARE(explicitZero.value(), 10.0);
+}
+
+void tst_RadialGauge::screenChangeOfAVisibleRadialGauge_data()
+{
+    ScreenChange::addScreens();
+}
+
+// #177: a window moved to a screen of another DPR or logical DPI. From its next repaint the RadialGauge draws and
+// sizes itself as a new one on that screen, and the layout that holds it gets the new minimum, once
+void tst_RadialGauge::screenChangeOfAVisibleRadialGauge()
+{
+    QFETCH(double, dpr);
+    QFETCH(int, dpi);
+    const std::vector<std::pair<const char *, std::function<void(RadialGauge &)>>> configurations = {
+        {"default", [](RadialGauge &) {}},
+        {"0-8000 RPM", [](RadialGauge &g) { g.setRange(0.0, 8000.0); g.setUnit(QStringLiteral("RPM")); }},
+        {"0-100000 RPM", [](RadialGauge &g) { g.setRange(0.0, 100000.0); g.setUnit(QStringLiteral("RPM")); }},
+    };
+    int changed = 0;
+    for (const auto &configuration : configurations) {
+        bool minimumChanged = false;
+        ScreenChange::checkScreenChange<RadialGauge>(configuration.second, dpr, dpi, &minimumChanged);
+        if (QTest::currentTestFailed()) {
+            qWarning("configuration: %s", configuration.first);
+            return;
+        }
+        changed += minimumChanged ? 1 : 0;
+    }
+    if (dpi != 96) {
+        QVERIFY2(changed > 0, "the minimum is the same on both screens for every configuration");
+    }
 }
 
 QTEST_MAIN(tst_RadialGauge)

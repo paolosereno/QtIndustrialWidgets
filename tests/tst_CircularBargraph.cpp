@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 
 #include "FontTestUtils.h"
+#include "ScreenChangeTestUtils.h"
 
 #include <memory>
 #include "internal/CircularBargraphSegments.h"
@@ -435,6 +436,8 @@ class tst_CircularBargraph : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void screenChangeOfAVisibleCircularBargraph_data();
+    void screenChangeOfAVisibleCircularBargraph();
     void textSizeIgnoresWidgetFontSize();
     void defaultValues();
     void settersAndClamping();
@@ -1537,6 +1540,39 @@ void tst_CircularBargraph::podDrawnAtEverySize()
     const QImage off = b.grab().toImage().convertToFormat(QImage::Format_RGB32);
     QCOMPARE(QColor(on.pixel(probe)).name(), podColor.name());
     QVERIFY2(off.pixel(probe) != on.pixel(probe), "the probe has the pod colour also without the pod");
+}
+
+void tst_CircularBargraph::screenChangeOfAVisibleCircularBargraph_data()
+{
+    ScreenChange::addScreens();
+}
+
+// #177: a window moved to a screen of another DPR or logical DPI. From its next repaint the CircularBargraph draws and
+// sizes itself as a new one on that screen, and the layout that holds it gets the new minimum, once
+void tst_CircularBargraph::screenChangeOfAVisibleCircularBargraph()
+{
+    QFETCH(double, dpr);
+    QFETCH(int, dpi);
+    const std::vector<std::pair<const char *, std::function<void(CircularBargraph &)>>> configurations = {
+        {"default", [](CircularBargraph &) {}},
+        {"0-8000 RPM", [](CircularBargraph &b) { b.setRange(0.0, 8000.0); b.setUnit(QStringLiteral("RPM")); }},
+        {"invalid", [](CircularBargraph &b) { b.setValue(std::numeric_limits<double>::quiet_NaN()); }},
+        // Wider than the default font: its minimum leaves the floor of 50 x 50, so it depends on the screen
+        {"wide font", [](CircularBargraph &b) { b.setFont(FontTest::otherFont(b.font())); }},
+    };
+    int changed = 0;
+    for (const auto &configuration : configurations) {
+        bool minimumChanged = false;
+        ScreenChange::checkScreenChange<CircularBargraph>(configuration.second, dpr, dpi, &minimumChanged);
+        if (QTest::currentTestFailed()) {
+            qWarning("configuration: %s", configuration.first);
+            return;
+        }
+        changed += minimumChanged ? 1 : 0;
+    }
+    if (dpi != 96) {
+        QVERIFY2(changed > 0, "the minimum is the same on both screens for every configuration");
+    }
 }
 
 QTEST_MAIN(tst_CircularBargraph)
