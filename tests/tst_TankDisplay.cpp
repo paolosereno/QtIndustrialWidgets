@@ -941,7 +941,8 @@ void tst_TankDisplay::invalidVesselIsHatched_data()
     addShapes();
 }
 
-// #151: a NaN input leaves the vessel empty, hatched in the scale colour (pure green here)
+// #151: a NaN input leaves the vessel empty and hatched. The hatch colour is derived from the empty inside (its
+// contrast is measured in tst_ReadoutContrast): here its pixels are those far from the inside colour
 void tst_TankDisplay::invalidVesselIsHatched()
 {
     QFETCH(int, shape);
@@ -971,7 +972,17 @@ void tst_TankDisplay::invalidVesselIsHatched()
         }
     }
     QVERIFY(area.size() > 500);
-    const QString error = HatchTest::hatchError(img, area);
+    // The pixels far from the empty inside, painted pure green for HatchTest
+    const auto hatchMask = [](const QImage &from) {
+        QImage mask(from.size(), QImage::Format_ARGB32);
+        for (int y = 0; y < from.height(); ++y) {
+            for (int x = 0; x < from.width(); ++x) {
+                mask.setPixel(x, y, channelDistance(from.pixel(x, y), kInterior.rgb()) > 60 ? qRgb(0, 255, 0) : qRgb(0, 0, 0));
+            }
+        }
+        return mask;
+    };
+    const QString error = HatchTest::hatchError(hatchMask(img), area);
     QVERIFY2(error.isEmpty(), qPrintable(error));
     int content = 0;
     for (const QPoint &p : area) {
@@ -980,10 +991,14 @@ void tst_TankDisplay::invalidVesselIsHatched()
     QCOMPARE(content, 0);
     // A valid input: no hatch
     t.setValue(60.0);
-    const QImage valid = render(t);
+    const QImage valid = hatchMask(render(t));
     int hatch = 0;
     for (const QPoint &p : area) {
-        hatch += HatchTest::isHatchPixel(valid.pixel(p)) ? 1 : 0;
+        // The empty inside above the fill: no hatch there
+        const QPointF logical((p.x() + 0.5) / dpr, (p.y() + 0.5) / dpr);
+        if (logical.y() < v.bottom() - 0.62 * v.height()) {
+            hatch += HatchTest::isHatchPixel(valid.pixel(p)) ? 1 : 0;
+        }
     }
     QCOMPARE(hatch, 0);
 }

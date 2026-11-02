@@ -281,10 +281,12 @@ Level indicator for tanks and silos (`qiw::TankDisplay`, #152).
   `TankDisplay` starts `Invalid` (`value()` and `rawValue()` NaN, the vessel hatched, the readout `---`) with
   `limitState()` `Unknown`, so that a level that was never read is never shown as a level.
 - **Value state**: as the other gauges (#151). Out-of-range inputs and ±Inf fill to the end of the scale and the
-  readout shows the input after a triangle; a NaN input empties the vessel, hatches it in `scaleColor()` and shows
-  `---`.
-- **Colours**: `contentColor`, `vesselColor` (the wall; the empty inside is a dark shade of it), `scaleColor`,
-  `textColor`, `readoutColor`, `limitColor`. The content colour carries no meaning of its own.
+  readout shows the input after a triangle; a NaN input empties the vessel, hatches it and shows `---`.
+- **Colours**: `contentColor`, `vesselColor` (the wall; the empty inside is a dark shade of it in every theme),
+  `scaleColor`, `textColor`, `readoutColor`, `limitColor`. The content colour carries no meaning of its own. The
+  hatch of an invalid input is derived from the inside, mixed toward white or black (whichever contrasts more) up to
+  4.5:1 against it, so it keeps at least 3:1 (WCAG 2.x, graphical objects) for any `vesselColor`. The limit lines
+  are aligned to device pixels, so they reach their colour at every device pixel ratio.
 
 ## AnalysisChart
 

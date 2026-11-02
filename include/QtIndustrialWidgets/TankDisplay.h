@@ -41,7 +41,7 @@ class TankDisplayTestAccess;
  * - \c Overrange / \c Underrange (a finite input outside the range, or ±Inf): the fill stops at the end of the
  *   scale and value() is the bound. The readout shows the input itself, or ">max" / "<min" for ±Inf, after a
  *   triangle pointing up or down, painted as a shape so that the state is not told by colour alone.
- * - \c Invalid (NaN): the vessel is empty and hatched with diagonal lines in scaleColor(), the readout shows
+ * - \c Invalid (NaN): the vessel is empty and hatched with diagonal lines, the readout shows
  *   "---" and value() is NaN; the last valid value is never shown.
  *
  * The readout text is never below 7 pt: without room the unit goes first, then the number, never the triangle
@@ -68,7 +68,10 @@ class TankDisplayTestAccess;
  * TankDisplay only shows the limits and reports their crossings (limitStateChanged()). Alarm handling
  * (acknowledgement, latching, sound) stays in the application.
  *
- * Colours: the defaults suit a dark background. contentColor() has no meaning of its own: a liquid or a solid
+ * Colours: the defaults suit a dark background. The empty inside is a dark shade of vesselColor() in every theme.
+ * The hatch of an invalid input is derived from it: the inside mixed toward white or black, whichever contrasts
+ * more with it, up to 4.5:1 against it, so that the hatch keeps at least the 3:1 of graphical objects (WCAG 2.x,
+ * 1.4.11) once antialiased, for any vesselColor(). contentColor() has no meaning of its own: a liquid or a solid
  * is the same widget in any colour the application picks.
  *
  * \code
@@ -193,9 +196,12 @@ public:
 
     /** \brief Returns the colour of the fill. Default QColor(52, 152, 219). */
     [[nodiscard]] QColor contentColor() const;
-    /** \brief Returns the colour of the vessel wall; the empty inside is a dark shade of it. Default QColor(120, 134, 150). */
+    /**
+     * \brief Returns the colour of the vessel wall; the empty inside is a dark shade of it, and the hatch of an
+     * invalid input is derived from the inside. Default QColor(120, 134, 150).
+     */
     [[nodiscard]] QColor vesselColor() const;
-    /** \brief Returns the colour of the scale ticks and of the hatch of an invalid input. Default QColor(200, 208, 218). */
+    /** \brief Returns the colour of the scale ticks. Default QColor(200, 208, 218). */
     [[nodiscard]] QColor scaleColor() const;
     /** \brief Returns the colour of the scale labels and of the limit tags. Default QColor(240, 244, 248). */
     [[nodiscard]] QColor textColor() const;
@@ -283,7 +289,7 @@ public Q_SLOTS:
     void setContentColor(const QColor &color);
     /** \brief Sets the colour of the vessel wall. */
     void setVesselColor(const QColor &color);
-    /** \brief Sets the colour of the scale ticks and of the hatch of an invalid input. */
+    /** \brief Sets the colour of the scale ticks. */
     void setScaleColor(const QColor &color);
     /** \brief Sets the colour of the scale labels and of the limit tags. */
     void setTextColor(const QColor &color);

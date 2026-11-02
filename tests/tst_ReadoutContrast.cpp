@@ -4,7 +4,11 @@
 
 // #159: contrast of the digital readouts against their pod, with the default readout and zone colours, in the
 // dark and light styling of the gallery (examples/gallery/Showcases.cpp, MainWindow::applyTheme()), in every
-// value state. The target is the WCAG 2.x ratio for normal text, 4.5:1.
+// value state.
+//
+// Targets (WCAG 2.x): 4.5:1 for text (1.4.3, normal text: the readouts); 3:1 for graphical objects that carry
+// meaning (1.4.11: the fill, the limit lines and the hatch of an invalid input drawn on the empty inside of
+// TankDisplay, tankInterior()). Each is measured on the rendered pixels, with no tolerance.
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/CircularBargraph.h>
@@ -342,6 +346,8 @@ private Q_SLOTS:
     void circularBargraph();
     void tankDisplay_data();
     void tankDisplay();
+    void tankInterior_data();
+    void tankInterior();
     void readoutColorProperty();
     void readoutFollowsReadoutColorNotTextColor_data();
     void readoutFollowsReadoutColorNotTextColor();
@@ -448,6 +454,104 @@ void tst_ReadoutContrast::tankDisplay()
     const QImage img = renderOn(t, dark);
     checkReading(measureReadout(img, deviceRect(internal::TankDisplayTestAccess::lastLayout(t).pod, img.devicePixelRatio())),
                  scaledPixels(15, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::tankInterior_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<QColor>("vessel"); // set by the user over the theme; invalid: the theme's
+    // The hatch is derived from the inside and must keep 3:1 for any vesselColor(); the fill and the limit lines
+    // are in colours the user picks (contentColor(), limitColor()), checked with the defaults of the themes and
+    // a mid-grey vessel only
+    QTest::addColumn<bool>("hatchOnly");
+    QTest::newRow("dark") << true << QColor() << false;
+    QTest::newRow("light") << false << QColor() << false;
+    QTest::newRow("light, mid-grey vessel") << false << QColor(128, 128, 128) << false;
+    QTest::newRow("dark, mid-grey vessel") << true << QColor(128, 128, 128) << false;
+    QTest::newRow("light, near-white vessel") << false << QColor(235, 235, 235) << true;
+    QTest::newRow("dark, near-black vessel") << true << QColor(20, 20, 20) << true;
+    QTest::newRow("light, saturated yellow vessel") << false << QColor(255, 220, 0) << true;
+}
+
+// #152: the empty inside of TankDisplay is a dark shade of vesselColor() in every theme. What is drawn on it must
+// stand out in both stylings and with a vesselColor() set by the user: the fill, a limit line and the hatch of an
+// invalid input, at the ratio for graphical objects, 3:1 (each against the most frequent colour of the inside)
+void tst_ReadoutContrast::tankInterior()
+{
+    QFETCH(bool, dark);
+    QFETCH(QColor, vessel);
+    QFETCH(bool, hatchOnly);
+    constexpr double kGraphicsRatio = 3.0;
+    TankDisplay t;
+    t.setLimits(kNaN, kNaN, 70.0, kNaN);
+    t.setValue(40.0);
+    style(t, dark);
+    if (vessel.isValid()) {
+        t.setVesselColor(vessel);
+    }
+    t.resize(160, 260);
+    const auto mostFrequent = [](const QImage &img, const QRect &r) {
+        QHash<QRgb, int> count;
+        for (int y = r.top(); y <= r.bottom(); ++y) {
+            for (int x = r.left(); x <= r.right(); ++x) {
+                ++count[img.pixel(x, y)];
+            }
+        }
+        QRgb best = 0;
+        int most = -1;
+        for (auto it = count.cbegin(); it != count.cend(); ++it) {
+            if (it.value() > most) {
+                most = it.value();
+                best = it.key();
+            }
+        }
+        return best;
+    };
+    const auto mostContrasting = [](const QImage &img, const QRect &r, QRgb against) {
+        QRgb best = against;
+        for (int y = r.top(); y <= r.bottom(); ++y) {
+            for (int x = r.left(); x <= r.right(); ++x) {
+                if (contrast(img.pixel(x, y), against) > contrast(best, against)) {
+                    best = img.pixel(x, y);
+                }
+            }
+        }
+        return best;
+    };
+    const auto check = [&](const char *what, QRgb a, QRgb b) {
+        const double ratio = contrast(a, b);
+        QVERIFY2(ratio >= kGraphicsRatio,
+                 qPrintable(QStringLiteral("%1: %2 against the empty inside rgb(%3, %4, %5): %6:1 (target %7:1)")
+                                .arg(QLatin1String(what))
+                                .arg(QStringLiteral("rgb(%1, %2, %3)").arg(qRed(a)).arg(qGreen(a)).arg(qBlue(a)))
+                                .arg(qRed(b)).arg(qGreen(b)).arg(qBlue(b))
+                                .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
+    };
+    QImage img = renderOn(t, dark);
+    qreal dpr = img.devicePixelRatio();
+    const QRectF v = internal::TankDisplayTestAccess::lastLayout(t).vessel;
+    // The middle 40 % of the width, clear of the wall; heights as fractions of the scale from the bottom
+    const auto band = [&](double from, double to) {
+        return deviceRect(QRectF(v.left() + v.width() * 0.3, v.bottom() - to * v.height(), v.width() * 0.4,
+                                 (to - from) * v.height()), dpr);
+    };
+    const QRgb empty = mostFrequent(img, band(0.75, 0.85));
+    if (!hatchOnly) {
+        check("fill", mostFrequent(img, band(0.1, 0.3)), empty);
+    }
+    const double lineY = v.bottom() - 0.7 * v.height();
+    const QRectF line(v.left() + v.width() * 0.25, lineY - 1.5, v.width() * 0.5, 3.0);
+    if (!hatchOnly) {
+        check("limit line", mostContrasting(img, QRectF(line.topLeft() * dpr, line.size() * dpr).toAlignedRect(), empty),
+              empty);
+    }
+    t.setValue(kNaN);
+    img = renderOn(t, dark);
+    dpr = img.devicePixelRatio();
+    const QRect inside = band(0.2, 0.6); // below the limit line
+    const QRgb hatchedEmpty = mostFrequent(img, inside);
+    QCOMPARE(hatchedEmpty, empty);
+    check("hatch", mostContrasting(img, inside, hatchedEmpty), hatchedEmpty);
 }
 
 void tst_ReadoutContrast::compass_data()
