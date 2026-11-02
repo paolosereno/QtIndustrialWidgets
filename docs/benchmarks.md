@@ -5,11 +5,14 @@ SPDX-License-Identifier: MIT
 
 # StripChart Performance Benchmarks
 
-> `AnalysisChart` figures are in their own part at the end of this page:
-> [AnalysisChart Performance Benchmarks](#analysischart-performance-benchmarks).
+> `AnalysisChart` figures are in their own part of this page:
+> [AnalysisChart Performance Benchmarks](#analysischart-performance-benchmarks). The cost of `minimumSizeHint()` of
+> the gauges and the knob is in the last part, from a session of its own:
+> [minimumSizeHint() Benchmarks](#minimumsizehint-benchmarks).
 
-This page is the single source of performance figures for `QtIndustrialWidgets::StripChart` and
-`QtIndustrialWidgets::AnalysisChart`. The figures come from **one benchmark session** (2026-10-22, benchmark source
+This page is the single source of performance figures for `QtIndustrialWidgets::StripChart`,
+`QtIndustrialWidgets::AnalysisChart` and the computed `minimumSizeHint()`. The `StripChart` and `AnalysisChart` figures
+come from **one benchmark session** (2026-10-22, benchmark source
 commit `7d72487`, library 2.3.0 with the changes of #11–#16 and #73): **5 runs** of `bench_StripChart` and 5 runs of
 `bench_AnalysisChart`, alternated, on the machine described below, merged with `benchmarks/merge_runs.py`. Every run
 is published: each table shows the value of every run (`run 1 · run 2 · …`) and the range of the runs. README,
@@ -742,3 +745,378 @@ Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: analysis_v2_run1.md, 
 | Stored samples (8 B timestamp + 8 B value) | 610.4 MiB |
 | Pyramid | 81.1 MiB (2.13 B/sample, 13.3 % of the samples) |
 | Resident set growth across the 4 calls | run 1: 691.9 MiB; run 2: 691.9 MiB; run 3: 691.8 MiB; run 4: 691.9 MiB; run 5: 691.9 MiB |
+
+---
+
+# minimumSizeHint() Benchmarks
+
+`RadialGauge` (#60), `CircularBargraph` (#167) and `IndustrialKnob` (#170) compute `minimumSizeHint()` from the font
+and the configuration. This part measures what the first call costs: it runs on the GUI thread when a layout first asks
+for the minimum, and again after a setter that changes it. One session (2026-11-02, benchmark source commit
+`87a1ff4`, library 2.6.0 with the changes of #177): a selection of the worst case, then **5 runs** of
+`bench_MinimumSizeHint`, merged with `benchmarks/merge_runs.py`. Every run is published.
+
+## Targets
+
+Approved in #177 before the session, on the **median of the first call** of each case:
+
+| Case | Target | Reason |
+|---|---|---|
+| Default configuration | ≤ 2 ms per widget | 50 widgets add at most 100 ms to the start of a window |
+| Worst case | ≤ 16.7 ms | one frame at 60 Hz: the hint is computed on the GUI thread, also after a setter |
+
+**Worst case**: for each widget, the configuration with the largest cost over a fixed grid, defined before the session:
+ranges 0–1e2, 0–1e3, …, 0–1e12 and −1e12–1e12; precisions 0–3; 10 or 20 major ticks (knob and gauge; the bargraph
+has none). It was chosen once, with `--select` (median of 5 first calls per configuration), before the timing runs, and
+passed to every run.
+
+## Commands
+
+Build with `-DBUILD_BENCHMARKS=ON` as in [Commands](#commands), `cmake --build build --clean-first`, the full
+`ctest` passing (86 of 86). Then, in `build/session`:
+
+```bash
+export QT_QPA_PLATFORM=offscreen
+taskset -c 0-11 ../bin/bench_MinimumSizeHint --select > select.md
+W=$(grep "^BENCH_WORST=" select.md | sed "s/^BENCH_WORST='//;s/'$//")
+for r in 1 2 3 4 5; do
+  BENCH_ROUND=$r BENCH_WORST="$W" taskset -c 0-11 ../bin/bench_MinimumSizeHint > hint_run$r.md
+done
+python3 ../../benchmarks/merge_runs.py hint_run1.md hint_run2.md hint_run3.md hint_run4.md hint_run5.md > merged.md
+```
+
+`merged.md` is the table below, verbatim. `merge_runs.py` checks that every run found the same minimum size for every
+case; it did not stop.
+
+## Method
+
+- **A trial** creates a new widget for every case, applies the configuration, and times its first
+  `minimumSizeHint()` with `QElapsedTimer`. Creating the widget and applying the setters are not timed.
+- **Order:** the six cases are interleaved in every trial, and their order is reversed every other trial. Even rounds
+  (`BENCH_ROUND`) start with the reversed order. 5 warm-up trials, then 30 measured trials; min, median and p95
+  (nearest rank) of the 30.
+- **Setup:** DPR 1; the application font of the machine, DejaVu Sans 12 px.
+- **Bimodal timings:** as in [Run-to-run variation](#run-to-run-variation-bimodal-timings), the timings on this machine
+  are bimodal. Here the medians sit in the slow mode in every run: the minimum of a case is about half its median.
+  An exploratory run before the session, without `taskset` and without interleaving, gave medians close to these
+  minimums (knob 1.6 ms, gauge 2.0–2.4 ms by default). The targets are evaluated on the session medians, as approved.
+
+## Results
+
+<!-- bench_MinimumSizeHint results: begin -->
+
+Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: hint_run1.md, run 2: hint_run2.md, run 3: hint_run3.md, run 4: hint_run4.md, run 5: hint_run5.md).
+
+#### Environment
+
+| Item | Value |
+| --- | --- |
+| CPU | 13th Gen Intel(R) Core(TM) i5-13600KF (12 logical CPUs, x86_64) |
+| OS | Ubuntu 24.04.1 LTS |
+| Kernel | linux 6.18.54.1-microsoft-standard-WSL2 |
+| Compiler | GCC 13.3.0 |
+| Build | NDEBUG defined, __OPTIMIZE__ defined |
+| Qt | 6.4.2 (compiled against 6.4.2) |
+| QPA platform | offscreen |
+| Application font | DejaVu Sans, 12 px |
+| Library version | 2.6.0 |
+| Benchmark source commit | 87a1ff4ae97f938f650db8645ddc361e5e7f12c9 |
+| BENCH_WORST | 0,1000000000000,3,20;0,10000,1,20;0,10000000000,1,10 |
+
+#### First minimumSizeHint() of a new widget (targets on the median: default ≤ 2 ms, worst case ≤ 16.7 ms)
+
+| Case | Minimum size | Trials | min (ms), runs 1–5 | median (ms), runs 1–5 | median (ms), range | p95 (ms), runs 1–5 | p95 (ms), range | Target, runs 1–5 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| IndustrialKnob, default | 80 | 30 | 1.713 · 2.061 · 1.650 · 1.672 · 3.463 | 3.874 · 3.931 · 3.931 · 3.948 · 3.956 | 3.874–3.956 | 4.037 · 4.279 · 4.234 · 4.361 · 4.079 | 4.037–4.361 | FAIL · FAIL · FAIL · FAIL · FAIL |
+| IndustrialKnob, worst case: 0 to 1e+12, precision 3, 20 major ticks | 105 | 30 | 82.826 · 119.011 · 94.928 · 120.825 · 83.625 | 168.807 · 169.206 · 169.195 · 172.380 · 167.595 | 167.595–172.380 | 174.247 · 173.930 · 173.453 · 185.834 · 173.772 | 173.453–185.834 | FAIL · FAIL · FAIL · FAIL · FAIL |
+| RadialGauge, default | 98 | 30 | 1.914 · 2.006 · 1.919 · 2.901 · 1.926 | 4.768 · 4.790 · 4.743 · 4.823 · 4.759 | 4.743–4.823 | 5.095 · 5.303 · 4.995 · 5.830 · 5.199 | 4.995–5.830 | FAIL · FAIL · FAIL · FAIL · FAIL |
+| RadialGauge, worst case: 0 to 1e+04, precision 1, 20 major ticks | 90 | 30 | 4.478 · 4.595 · 4.593 · 8.185 · 4.482 | 11.392 · 11.422 · 11.360 · 11.473 · 11.228 | 11.228–11.473 | 12.358 · 14.443 · 12.218 · 13.305 · 11.939 | 11.939–14.443 | PASS · PASS · PASS · PASS · PASS |
+| CircularBargraph, default | 50 | 30 | 0.002 · 0.002 · 0.002 · 0.005 · 0.002 | 0.005 · 0.006 · 0.005 · 0.007 · 0.006 | 0.005–0.007 | 0.008 · 0.009 · 0.009 · 0.010 · 0.008 | 0.008–0.010 | PASS · PASS · PASS · PASS · PASS |
+| CircularBargraph, worst case: 0 to 1e+10, precision 1 | 50 | 30 | 0.002 · 0.002 · 0.002 · 0.005 · 0.002 | 0.005 · 0.005 · 0.005 · 0.005 · 0.005 | 0.005–0.005 | 0.006 · 0.005 · 0.008 · 0.006 · 0.005 | 0.005–0.008 | PASS · PASS · PASS · PASS · PASS |
+
+<!-- bench_MinimumSizeHint results: end -->
+
+### Worst-case selection
+
+##### IndustrialKnob: grid, median of 5 first calls
+
+| Configuration | Minimum size | median (ms) |
+|---|---|---|
+| 0 to 100, precision 0, 10 major ticks | 80 | 4.082 |
+| 0 to 100, precision 0, 20 major ticks | 80 | 8.182 |
+| 0 to 100, precision 1, 10 major ticks | 80 | 4.518 |
+| 0 to 100, precision 1, 20 major ticks | 80 | 8.613 |
+| 0 to 100, precision 2, 10 major ticks | 80 | 4.533 |
+| 0 to 100, precision 2, 20 major ticks | 80 | 8.802 |
+| 0 to 100, precision 3, 10 major ticks | 80 | 4.570 |
+| 0 to 100, precision 3, 20 major ticks | 80 | 8.608 |
+| 0 to 1e+03, precision 0, 10 major ticks | 80 | 7.694 |
+| 0 to 1e+03, precision 0, 20 major ticks | 80 | 14.636 |
+| 0 to 1e+03, precision 1, 10 major ticks | 80 | 6.649 |
+| 0 to 1e+03, precision 1, 20 major ticks | 80 | 8.330 |
+| 0 to 1e+03, precision 2, 10 major ticks | 80 | 8.710 |
+| 0 to 1e+03, precision 2, 20 major ticks | 80 | 16.230 |
+| 0 to 1e+03, precision 3, 10 major ticks | 80 | 8.887 |
+| 0 to 1e+03, precision 3, 20 major ticks | 80 | 16.515 |
+| 0 to 1e+04, precision 0, 10 major ticks | 80 | 21.274 |
+| 0 to 1e+04, precision 0, 20 major ticks | 80 | 40.156 |
+| 0 to 1e+04, precision 1, 10 major ticks | 80 | 22.251 |
+| 0 to 1e+04, precision 1, 20 major ticks | 80 | 16.858 |
+| 0 to 1e+04, precision 2, 10 major ticks | 80 | 17.214 |
+| 0 to 1e+04, precision 2, 20 major ticks | 80 | 42.248 |
+| 0 to 1e+04, precision 3, 10 major ticks | 80 | 22.639 |
+| 0 to 1e+04, precision 3, 20 major ticks | 80 | 42.748 |
+| 0 to 1e+05, precision 0, 10 major ticks | 80 | 28.737 |
+| 0 to 1e+05, precision 0, 20 major ticks | 80 | 33.420 |
+| 0 to 1e+05, precision 1, 10 major ticks | 80 | 31.672 |
+| 0 to 1e+05, precision 1, 20 major ticks | 80 | 60.964 |
+| 0 to 1e+05, precision 2, 10 major ticks | 80 | 31.474 |
+| 0 to 1e+05, precision 2, 20 major ticks | 80 | 38.410 |
+| 0 to 1e+05, precision 3, 10 major ticks | 80 | 31.380 |
+| 0 to 1e+05, precision 3, 20 major ticks | 80 | 27.359 |
+| 0 to 1e+06, precision 0, 10 major ticks | 80 | 39.277 |
+| 0 to 1e+06, precision 0, 20 major ticks | 80 | 52.840 |
+| 0 to 1e+06, precision 1, 10 major ticks | 80 | 17.904 |
+| 0 to 1e+06, precision 1, 20 major ticks | 80 | 88.936 |
+| 0 to 1e+06, precision 2, 10 major ticks | 80 | 41.276 |
+| 0 to 1e+06, precision 2, 20 major ticks | 80 | 55.999 |
+| 0 to 1e+06, precision 3, 10 major ticks | 80 | 40.749 |
+| 0 to 1e+06, precision 3, 20 major ticks | 80 | 89.498 |
+| 0 to 1e+07, precision 0, 10 major ticks | 80 | 18.226 |
+| 0 to 1e+07, precision 0, 20 major ticks | 80 | 95.958 |
+| 0 to 1e+07, precision 1, 10 major ticks | 80 | 44.240 |
+| 0 to 1e+07, precision 1, 20 major ticks | 80 | 93.322 |
+| 0 to 1e+07, precision 2, 10 major ticks | 80 | 44.140 |
+| 0 to 1e+07, precision 2, 20 major ticks | 80 | 72.535 |
+| 0 to 1e+07, precision 3, 10 major ticks | 80 | 44.661 |
+| 0 to 1e+07, precision 3, 20 major ticks | 80 | 101.138 |
+| 0 to 1e+08, precision 0, 10 major ticks | 80 | 27.628 |
+| 0 to 1e+08, precision 0, 20 major ticks | 80 | 122.333 |
+| 0 to 1e+08, precision 1, 10 major ticks | 80 | 46.842 |
+| 0 to 1e+08, precision 1, 20 major ticks | 80 | 131.587 |
+| 0 to 1e+08, precision 2, 10 major ticks | 80 | 44.319 |
+| 0 to 1e+08, precision 2, 20 major ticks | 80 | 132.577 |
+| 0 to 1e+08, precision 3, 10 major ticks | 80 | 34.657 |
+| 0 to 1e+08, precision 3, 20 major ticks | 80 | 130.765 |
+| 0 to 1e+09, precision 0, 10 major ticks | 82 | 38.191 |
+| 0 to 1e+09, precision 0, 20 major ticks | 82 | 140.262 |
+| 0 to 1e+09, precision 1, 10 major ticks | 82 | 54.914 |
+| 0 to 1e+09, precision 1, 20 major ticks | 82 | 151.343 |
+| 0 to 1e+09, precision 2, 10 major ticks | 82 | 56.123 |
+| 0 to 1e+09, precision 2, 20 major ticks | 82 | 146.011 |
+| 0 to 1e+09, precision 3, 10 major ticks | 82 | 55.590 |
+| 0 to 1e+09, precision 3, 20 major ticks | 82 | 140.889 |
+| 0 to 1e+10, precision 0, 10 major ticks | 90 | 51.672 |
+| 0 to 1e+10, precision 0, 20 major ticks | 90 | 119.310 |
+| 0 to 1e+10, precision 1, 10 major ticks | 90 | 54.305 |
+| 0 to 1e+10, precision 1, 20 major ticks | 90 | 142.327 |
+| 0 to 1e+10, precision 2, 10 major ticks | 90 | 53.110 |
+| 0 to 1e+10, precision 2, 20 major ticks | 90 | 147.054 |
+| 0 to 1e+10, precision 3, 10 major ticks | 90 | 53.257 |
+| 0 to 1e+10, precision 3, 20 major ticks | 90 | 151.108 |
+| 0 to 1e+11, precision 0, 10 major ticks | 97 | 48.612 |
+| 0 to 1e+11, precision 0, 20 major ticks | 97 | 72.247 |
+| 0 to 1e+11, precision 1, 10 major ticks | 97 | 20.214 |
+| 0 to 1e+11, precision 1, 20 major ticks | 97 | 71.146 |
+| 0 to 1e+11, precision 2, 10 major ticks | 97 | 22.429 |
+| 0 to 1e+11, precision 2, 20 major ticks | 97 | 113.906 |
+| 0 to 1e+11, precision 3, 10 major ticks | 97 | 51.342 |
+| 0 to 1e+11, precision 3, 20 major ticks | 97 | 141.511 |
+| 0 to 1e+12, precision 0, 10 major ticks | 105 | 27.384 |
+| 0 to 1e+12, precision 0, 20 major ticks | 105 | 100.979 |
+| 0 to 1e+12, precision 1, 10 major ticks | 105 | 23.010 |
+| 0 to 1e+12, precision 1, 20 major ticks | 105 | 110.099 |
+| 0 to 1e+12, precision 2, 10 major ticks | 105 | 22.960 |
+| 0 to 1e+12, precision 2, 20 major ticks | 105 | 71.241 |
+| 0 to 1e+12, precision 3, 10 major ticks | 105 | 35.009 |
+| 0 to 1e+12, precision 3, 20 major ticks | 105 | 173.232 |
+| -1e+12 to 1e+12, precision 0, 10 major ticks | 138 | 21.189 |
+| -1e+12 to 1e+12, precision 0, 20 major ticks | 156 | 23.888 |
+| -1e+12 to 1e+12, precision 1, 10 major ticks | 138 | 11.986 |
+| -1e+12 to 1e+12, precision 1, 20 major ticks | 156 | 25.166 |
+| -1e+12 to 1e+12, precision 2, 10 major ticks | 138 | 22.169 |
+| -1e+12 to 1e+12, precision 2, 20 major ticks | 156 | 25.368 |
+| -1e+12 to 1e+12, precision 3, 10 major ticks | 138 | 22.602 |
+| -1e+12 to 1e+12, precision 3, 20 major ticks | 156 | 25.260 |
+
+Worst case of IndustrialKnob: 0 to 1e+12, precision 3, 20 major ticks (173.232 ms).
+
+##### RadialGauge: grid, median of 5 first calls
+
+| Configuration | Minimum size | median (ms) |
+|---|---|---|
+| 0 to 100, precision 0, 10 major ticks | 90 | 4.564 |
+| 0 to 100, precision 0, 20 major ticks | 90 | 6.860 |
+| 0 to 100, precision 1, 10 major ticks | 98 | 4.743 |
+| 0 to 100, precision 1, 20 major ticks | 98 | 7.059 |
+| 0 to 100, precision 2, 10 major ticks | 90 | 5.666 |
+| 0 to 100, precision 2, 20 major ticks | 90 | 8.384 |
+| 0 to 100, precision 3, 10 major ticks | 90 | 8.395 |
+| 0 to 100, precision 3, 20 major ticks | 90 | 4.673 |
+| 0 to 1e+03, precision 0, 10 major ticks | 97 | 1.861 |
+| 0 to 1e+03, precision 0, 20 major ticks | 97 | 2.987 |
+| 0 to 1e+03, precision 1, 10 major ticks | 90 | 2.963 |
+| 0 to 1e+03, precision 1, 20 major ticks | 90 | 8.891 |
+| 0 to 1e+03, precision 2, 10 major ticks | 90 | 8.916 |
+| 0 to 1e+03, precision 2, 20 major ticks | 90 | 10.159 |
+| 0 to 1e+03, precision 3, 10 major ticks | 136 | 5.590 |
+| 0 to 1e+03, precision 3, 20 major ticks | 136 | 7.242 |
+| 0 to 1e+04, precision 0, 10 major ticks | 109 | 5.096 |
+| 0 to 1e+04, precision 0, 20 major ticks | 109 | 7.367 |
+| 0 to 1e+04, precision 1, 10 major ticks | 90 | 8.775 |
+| 0 to 1e+04, precision 1, 20 major ticks | 90 | 11.336 |
+| 0 to 1e+04, precision 2, 10 major ticks | 136 | 5.682 |
+| 0 to 1e+04, precision 2, 20 major ticks | 136 | 7.548 |
+| 0 to 1e+04, precision 3, 10 major ticks | 150 | 5.982 |
+| 0 to 1e+04, precision 3, 20 major ticks | 150 | 7.482 |
+| 0 to 1e+05, precision 0, 10 major ticks | 120 | 5.179 |
+| 0 to 1e+05, precision 0, 20 major ticks | 120 | 7.292 |
+| 0 to 1e+05, precision 1, 10 major ticks | 136 | 5.743 |
+| 0 to 1e+05, precision 1, 20 major ticks | 136 | 7.628 |
+| 0 to 1e+05, precision 2, 10 major ticks | 150 | 6.104 |
+| 0 to 1e+05, precision 2, 20 major ticks | 150 | 7.321 |
+| 0 to 1e+05, precision 3, 10 major ticks | 165 | 6.557 |
+| 0 to 1e+05, precision 3, 20 major ticks | 165 | 7.698 |
+| 0 to 1e+06, precision 0, 10 major ticks | 133 | 5.146 |
+| 0 to 1e+06, precision 0, 20 major ticks | 133 | 6.403 |
+| 0 to 1e+06, precision 1, 10 major ticks | 150 | 2.488 |
+| 0 to 1e+06, precision 1, 20 major ticks | 150 | 3.016 |
+| 0 to 1e+06, precision 2, 10 major ticks | 165 | 6.349 |
+| 0 to 1e+06, precision 2, 20 major ticks | 165 | 8.200 |
+| 0 to 1e+06, precision 3, 10 major ticks | 180 | 6.420 |
+| 0 to 1e+06, precision 3, 20 major ticks | 180 | 7.439 |
+| 0 to 1e+07, precision 0, 10 major ticks | 145 | 5.375 |
+| 0 to 1e+07, precision 0, 20 major ticks | 145 | 7.198 |
+| 0 to 1e+07, precision 1, 10 major ticks | 165 | 6.926 |
+| 0 to 1e+07, precision 1, 20 major ticks | 165 | 8.378 |
+| 0 to 1e+07, precision 2, 10 major ticks | 180 | 6.496 |
+| 0 to 1e+07, precision 2, 20 major ticks | 180 | 7.481 |
+| 0 to 1e+07, precision 3, 10 major ticks | 195 | 5.093 |
+| 0 to 1e+07, precision 3, 20 major ticks | 195 | 5.813 |
+| 0 to 1e+08, precision 0, 10 major ticks | 156 | 6.670 |
+| 0 to 1e+08, precision 0, 20 major ticks | 156 | 8.367 |
+| 0 to 1e+08, precision 1, 10 major ticks | 180 | 6.668 |
+| 0 to 1e+08, precision 1, 20 major ticks | 180 | 7.749 |
+| 0 to 1e+08, precision 2, 10 major ticks | 195 | 4.986 |
+| 0 to 1e+08, precision 2, 20 major ticks | 195 | 4.602 |
+| 0 to 1e+08, precision 3, 10 major ticks | 211 | 2.456 |
+| 0 to 1e+08, precision 3, 20 major ticks | 211 | 1.144 |
+| 0 to 1e+09, precision 0, 10 major ticks | 172 | 2.659 |
+| 0 to 1e+09, precision 0, 20 major ticks | 172 | 3.216 |
+| 0 to 1e+09, precision 1, 10 major ticks | 195 | 1.961 |
+| 0 to 1e+09, precision 1, 20 major ticks | 195 | 2.309 |
+| 0 to 1e+09, precision 2, 10 major ticks | 211 | 0.969 |
+| 0 to 1e+09, precision 2, 20 major ticks | 211 | 1.109 |
+| 0 to 1e+09, precision 3, 10 major ticks | 220 | 0.174 |
+| 0 to 1e+09, precision 3, 20 major ticks | 220 | 0.193 |
+| 0 to 1e+10, precision 0, 10 major ticks | 187 | 2.248 |
+| 0 to 1e+10, precision 0, 20 major ticks | 187 | 2.658 |
+| 0 to 1e+10, precision 1, 10 major ticks | 211 | 0.969 |
+| 0 to 1e+10, precision 1, 20 major ticks | 211 | 1.117 |
+| 0 to 1e+10, precision 2, 10 major ticks | 220 | 0.172 |
+| 0 to 1e+10, precision 2, 20 major ticks | 220 | 0.194 |
+| 0 to 1e+10, precision 3, 10 major ticks | 220 | 0.177 |
+| 0 to 1e+10, precision 3, 20 major ticks | 220 | 0.199 |
+| 0 to 1e+11, precision 0, 10 major ticks | 214 | 0.674 |
+| 0 to 1e+11, precision 0, 20 major ticks | 214 | 0.760 |
+| 0 to 1e+11, precision 1, 10 major ticks | 220 | 0.174 |
+| 0 to 1e+11, precision 1, 20 major ticks | 220 | 0.196 |
+| 0 to 1e+11, precision 2, 10 major ticks | 220 | 0.175 |
+| 0 to 1e+11, precision 2, 20 major ticks | 220 | 0.199 |
+| 0 to 1e+11, precision 3, 10 major ticks | 220 | 0.180 |
+| 0 to 1e+11, precision 3, 20 major ticks | 220 | 0.203 |
+| 0 to 1e+12, precision 0, 10 major ticks | 220 | 0.105 |
+| 0 to 1e+12, precision 0, 20 major ticks | 220 | 0.129 |
+| 0 to 1e+12, precision 1, 10 major ticks | 220 | 0.117 |
+| 0 to 1e+12, precision 1, 20 major ticks | 220 | 0.140 |
+| 0 to 1e+12, precision 2, 10 major ticks | 220 | 0.122 |
+| 0 to 1e+12, precision 2, 20 major ticks | 220 | 0.146 |
+| 0 to 1e+12, precision 3, 10 major ticks | 216 | 0.534 |
+| 0 to 1e+12, precision 3, 20 major ticks | 216 | 0.620 |
+| -1e+12 to 1e+12, precision 0, 10 major ticks | 220 | 0.132 |
+| -1e+12 to 1e+12, precision 0, 20 major ticks | 220 | 0.166 |
+| -1e+12 to 1e+12, precision 1, 10 major ticks | 220 | 0.143 |
+| -1e+12 to 1e+12, precision 1, 20 major ticks | 220 | 0.181 |
+| -1e+12 to 1e+12, precision 2, 10 major ticks | 216 | 0.627 |
+| -1e+12 to 1e+12, precision 2, 20 major ticks | 216 | 0.734 |
+| -1e+12 to 1e+12, precision 3, 10 major ticks | 216 | 0.617 |
+| -1e+12 to 1e+12, precision 3, 20 major ticks | 216 | 0.728 |
+
+Worst case of RadialGauge: 0 to 1e+04, precision 1, 20 major ticks (11.336 ms).
+
+##### CircularBargraph: grid, median of 5 first calls
+
+| Configuration | Minimum size | median (ms) |
+|---|---|---|
+| 0 to 100, precision 0 | 50 | 0.002 |
+| 0 to 100, precision 1 | 50 | 0.002 |
+| 0 to 100, precision 2 | 50 | 0.002 |
+| 0 to 100, precision 3 | 50 | 0.002 |
+| 0 to 1e+03, precision 0 | 50 | 0.002 |
+| 0 to 1e+03, precision 1 | 50 | 0.002 |
+| 0 to 1e+03, precision 2 | 50 | 0.002 |
+| 0 to 1e+03, precision 3 | 50 | 0.002 |
+| 0 to 1e+04, precision 0 | 50 | 0.002 |
+| 0 to 1e+04, precision 1 | 50 | 0.002 |
+| 0 to 1e+04, precision 2 | 50 | 0.002 |
+| 0 to 1e+04, precision 3 | 50 | 0.002 |
+| 0 to 1e+05, precision 0 | 50 | 0.002 |
+| 0 to 1e+05, precision 1 | 50 | 0.002 |
+| 0 to 1e+05, precision 2 | 50 | 0.002 |
+| 0 to 1e+05, precision 3 | 50 | 0.002 |
+| 0 to 1e+06, precision 0 | 50 | 0.002 |
+| 0 to 1e+06, precision 1 | 50 | 0.002 |
+| 0 to 1e+06, precision 2 | 50 | 0.002 |
+| 0 to 1e+06, precision 3 | 50 | 0.002 |
+| 0 to 1e+07, precision 0 | 50 | 0.002 |
+| 0 to 1e+07, precision 1 | 50 | 0.002 |
+| 0 to 1e+07, precision 2 | 50 | 0.002 |
+| 0 to 1e+07, precision 3 | 50 | 0.002 |
+| 0 to 1e+08, precision 0 | 50 | 0.002 |
+| 0 to 1e+08, precision 1 | 50 | 0.002 |
+| 0 to 1e+08, precision 2 | 50 | 0.002 |
+| 0 to 1e+08, precision 3 | 50 | 0.002 |
+| 0 to 1e+09, precision 0 | 50 | 0.002 |
+| 0 to 1e+09, precision 1 | 50 | 0.002 |
+| 0 to 1e+09, precision 2 | 50 | 0.002 |
+| 0 to 1e+09, precision 3 | 50 | 0.002 |
+| 0 to 1e+10, precision 0 | 50 | 0.002 |
+| 0 to 1e+10, precision 1 | 50 | 0.003 |
+| 0 to 1e+10, precision 2 | 50 | 0.002 |
+| 0 to 1e+10, precision 3 | 50 | 0.002 |
+| 0 to 1e+11, precision 0 | 50 | 0.002 |
+| 0 to 1e+11, precision 1 | 50 | 0.002 |
+| 0 to 1e+11, precision 2 | 50 | 0.002 |
+| 0 to 1e+11, precision 3 | 50 | 0.002 |
+| 0 to 1e+12, precision 0 | 50 | 0.002 |
+| 0 to 1e+12, precision 1 | 50 | 0.002 |
+| 0 to 1e+12, precision 2 | 50 | 0.002 |
+| 0 to 1e+12, precision 3 | 50 | 0.002 |
+| -1e+12 to 1e+12, precision 0 | 50 | 0.002 |
+| -1e+12 to 1e+12, precision 1 | 50 | 0.002 |
+| -1e+12 to 1e+12, precision 2 | 50 | 0.002 |
+| -1e+12 to 1e+12, precision 3 | 50 | 0.002 |
+
+Worst case of CircularBargraph: 0 to 1e+10, precision 1 (0.003 ms).
+
+## Cause of the misses (profile)
+
+Three of the six cases miss their target: `IndustrialKnob` by default and in its worst case, and `RadialGauge` by
+default. The profile comes from `valgrind --tool=callgrind` on four first calls of each case: instruction counts,
+inclusive, in the same build.
+
+- **`IndustrialKnob`, worst case (0–1e12, precision 3, 20 major ticks):**
+  - `computeMinimumWidth()` tries 57 widths per knob, and each width runs the radius search of `knobScaleGeometry()`.
+    Each step lays out every label again in `labelsAt()`.
+  - That is about 47,600 calls of `QFontMetricsF::boundingRect()` per knob, 71 % of the instructions; HarfBuzz text
+    shaping inside them is 37 %. Formatting the label texts (`scaleLabelText()`) is another 7.6 %.
+  - The ink measure on a raster (`measureCenteredTextInk()`) is cached per text and size, and does not appear among
+    the costs.
+- **`IndustrialKnob`, default:**
+  - `labelsAt()` is 88 % of the instructions; text shaping is 29 % and the ink measure 8 %.
+- **`RadialGauge`, default:**
+  - `scaleLayout()` is 90 % of the instructions, called by the side search of `sideKeepsScaleEnds()` (67 %).
+  - The digital display layout (`layoutDigitalPod()`) is 25 % and text shaping 33 %.
+
+In all three cases the same label texts are measured again at every step of a search. Their metrics depend only on
+the text and the font size, which takes a few values.
