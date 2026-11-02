@@ -12,8 +12,10 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
+#include <QtIndustrialWidgets/TankDisplay.h>
 
 #include "internal/LinearGaugeScale.h"
+#include "internal/TankDisplayTestAccess.h"
 
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -270,6 +272,15 @@ void style(LinearGauge &g, bool dark)
     }
 }
 
+void style(TankDisplay &t, bool dark)
+{
+    if (!dark) {
+        t.setTextColor(QColor(30, 39, 46));
+        t.setScaleColor(QColor(80, 90, 105));
+        t.setVesselColor(QColor(110, 122, 138));
+    }
+}
+
 void style(Compass &c, bool dark)
 {
     if (dark) {
@@ -329,6 +340,8 @@ private Q_SLOTS:
     void industrialKnob();
     void circularBargraph_data();
     void circularBargraph();
+    void tankDisplay_data();
+    void tankDisplay();
     void readoutColorProperty();
     void readoutFollowsReadoutColorNotTextColor_data();
     void readoutFollowsReadoutColorNotTextColor();
@@ -406,6 +419,34 @@ void tst_ReadoutContrast::linearGauge()
     const QImage img = renderOn(g, dark);
     const internal::GaugeRect r = internal::linearGaugeDisplayRect(vertical, size.width(), size.height());
     checkReading(measureReadout(img, deviceRect(QRectF(r.x, r.y, r.w, r.h), img.devicePixelRatio())),
+                 scaledPixels(15, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::tankDisplay_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<double>("value");
+    for (const bool dark : {true, false}) {
+        const char *theme = dark ? "dark" : "light";
+        QTest::addRow("%s valid", theme) << dark << 62.4;
+        QTest::addRow("%s invalid", theme) << dark << kNaN;
+        QTest::addRow("%s overrange", theme) << dark << 130.0;
+        QTest::addRow("%s underrange", theme) << dark << -10.0;
+    }
+}
+
+// #152: the readout of TankDisplay on its opaque panel, with a limit in force (it does not change the readout)
+void tst_ReadoutContrast::tankDisplay()
+{
+    QFETCH(bool, dark);
+    QFETCH(double, value);
+    TankDisplay t;
+    t.setLimits(5.0, 15.0, 85.0, 95.0);
+    t.setValue(value);
+    style(t, dark);
+    t.resize(160, 260);
+    const QImage img = renderOn(t, dark);
+    checkReading(measureReadout(img, deviceRect(internal::TankDisplayTestAccess::lastLayout(t).pod, img.devicePixelRatio())),
                  scaledPixels(15, img.devicePixelRatio()));
 }
 
@@ -554,12 +595,13 @@ int countIn(const QImage &img, const QRect &box, bool (*pred)(QRgb))
 }
 } // namespace
 
-// #159: the new property of the three widgets whose readout used textColor()
+// #159: the property of the widgets whose readout once used textColor(), and of TankDisplay (#152)
 void tst_ReadoutContrast::readoutColorProperty()
 {
     checkReadoutColorProperty<RadialGauge>(QColor(245, 246, 250));
     checkReadoutColorProperty<LinearGauge>(QColor(240, 244, 248));
     checkReadoutColorProperty<Compass>(QColor(225, 231, 236));
+    checkReadoutColorProperty<TankDisplay>(QColor(240, 244, 248));
 }
 
 void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor_data()
@@ -572,6 +614,9 @@ void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor_data()
     QTest::newRow("LinearGauge invalid") << QStringLiteral("LinearGauge") << kNaN;
     QTest::newRow("Compass valid") << QStringLiteral("Compass") << 47.0;
     QTest::newRow("Compass invalid") << QStringLiteral("Compass") << kNaN;
+    QTest::newRow("TankDisplay valid") << QStringLiteral("TankDisplay") << 47.0;
+    QTest::newRow("TankDisplay invalid") << QStringLiteral("TankDisplay") << kNaN;
+    QTest::newRow("TankDisplay overrange") << QStringLiteral("TankDisplay") << 130.0;
 }
 
 // #159: with textColor() pure green and readoutColor() magenta, the readout is magenta and has no green
@@ -611,6 +656,15 @@ void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor()
         img = renderOn(g, true);
         const internal::GaugeRect r = internal::linearGaugeDisplayRect(true, 120, 320);
         pod = deviceRect(QRectF(r.x, r.y, r.w, r.h), img.devicePixelRatio());
+    } else if (widget == QLatin1String("TankDisplay")) {
+        TankDisplay t;
+        t.setValue(value);
+        t.setTextColor(text);
+        t.setScaleColor(text);
+        t.setReadoutColor(readout);
+        t.resize(160, 260);
+        img = renderOn(t, true);
+        pod = deviceRect(internal::TankDisplayTestAccess::lastLayout(t).pod, img.devicePixelRatio());
     } else {
         Compass c;
         c.setHeading(value);

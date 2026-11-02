@@ -494,3 +494,47 @@ if(Python3_Interpreter_FOUND)
                 -s ${PROJECT_SOURCE_DIR}/benchmarks -p test_merge_runs.py -v)
     set_tests_properties(merge_runs PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 endif()
+add_executable(tst_TankDisplayLayout
+    tst_TankDisplayLayout.cpp
+    $<TARGET_OBJECTS:TankDisplayLayout>
+)
+target_link_libraries(tst_TankDisplayLayout
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
+)
+target_include_directories(tst_TankDisplayLayout
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_TankDisplayLayout PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_TankDisplayLayout)
+add_executable(tst_TankDisplay
+    tst_TankDisplay.cpp
+    $<TARGET_OBJECTS:TankDisplayLayout>
+    $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_TankDisplay
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_TankDisplay
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+# Test font loaded with QFontDatabase::addApplicationFont() (tests/fonts/README.md)
+target_compile_definitions(tst_TankDisplay PRIVATE QIW_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fonts")
+set_target_properties(tst_TankDisplay PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_TankDisplay)
