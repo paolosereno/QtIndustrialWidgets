@@ -245,6 +245,41 @@ Bargraph of curved segments on an arc (`qiw::CircularBargraph`).
   above (`▲ 120.0`, `>100.0` for +Inf). A NaN input is shown as `Invalid` (all segments unlit, readout `---`).
   `rawValue()` keeps the unclamped input.
 
+## TankDisplay
+
+<img src="images/tank-display-limits.png" alt="TankDisplay" width="160">
+
+Level indicator for tanks and silos (`qiw::TankDisplay`, #152).
+- **Vessel**: `shape` is `TankShape::VerticalCylinder`, `HorizontalCylinder`, `Hopper` (a cylinder with a conical
+  bottom) or `Sphere`; `content` is `Content::Liquid` (a flat fill) or `Content::Granular` (a fill with a grain
+  texture). The vessel keeps the proportions of its shape and is centred in the space left by the readout, the scale
+  and the limit tags.
+- **Scale and fill**: the scale runs from the bottom of the vessel (`minimum`) to its top (`maximum`), with
+  `majorTicks`, `minorTicks` and labels that keep a minimum gap. The fill height is linear in the value. The widget
+  converts nothing: it shows the value the application passes, on the scale the application sets. In a horizontal
+  cylinder or a sphere the volume is not linear in the height, so a volume scale would put the surface at the wrong
+  height there: pass the level (in % or in m) instead.
+- **Limits**: `lowLowLimit`, `lowLimit`, `highLimit`, `highHighLimit`, each disabled by NaN (the default). The enabled
+  limits must keep `lowLow ≤ low < high ≤ highHigh`; `setLimits()` and the single setters reject a change that breaks
+  the order, or a limit of ±Inf, and change nothing (`setLimits()` returns `false`).
+- **Limit state**: `limitState()` is `Unknown`, `Normal`, `Low`, `LowLow`, `High` or `HighHigh`, with
+  `limitStateChanged()`. It is computed on the input, not on the value shown, so +Inf gives `HighHigh` when that
+  limit is enabled. A high limit is entered at `input >= limit` and left below `limit − limitHysteresis`; a low limit
+  is entered at `input <= limit` and left above `limit + limitHysteresis` (default hysteresis 0). A NaN input gives
+  `Unknown`, never `Normal`. The initial value (0 clamped to the range) is evaluated like an input.
+- **Markers**: each enabled limit inside the range has a dashed line across the vessel and a triangle on its left;
+  the triangle of the limit in force is filled and tagged `HH`, `H`, `L` or `LL`, so the state is not told by colour
+  alone. A limit outside the range has no marker. The widget only shows and reports the limits: acknowledgement and
+  latching stay in the application.
+- **Readout**: optional, above the vessel, on an opaque panel in `readoutColor()` (#159). The text is never below
+  7 pt; without room the unit goes first, then the number, never the triangle or `---`. `minimumSizeHint()` is
+  computed from the font, the logical DPI and the configuration (shape, scale labels, limit tags, readout).
+- **Value state**: as the other gauges (#151). Out-of-range inputs and ±Inf fill to the end of the scale and the
+  readout shows the input after a triangle; a NaN input empties the vessel, hatches it in `scaleColor()` and shows
+  `---`.
+- **Colours**: `contentColor`, `vesselColor` (the wall; the empty inside is a dark shade of it), `scaleColor`,
+  `textColor`, `readoutColor`, `limitColor`. The content colour carries no meaning of its own.
+
 ## AnalysisChart
 
 <img src="images/analysis-chart-review.png" alt="AnalysisChart" width="640">
