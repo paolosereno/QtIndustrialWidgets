@@ -78,6 +78,20 @@ class MergeRunsTest(unittest.TestCase):
                          'run 1: min 121.85 ms, median 149.02 ms; run 2: min 118.20 ms, median 140.11 ms')
         self.assertEqual(row(out, 'Pyramid')[1], '81.1 MiB (2.13 B/sample, 13.3 % of the samples)')
 
+    def test_minimum_size_hint_two_runs(self):
+        code, out, err = merge('hint_run1.md', 'hint_run2.md')
+        self.assertEqual(code, 0, err)
+        self.assertIn('<!-- bench_MinimumSizeHint results: begin -->', out)
+        self.assertEqual(row(out, 'IndustrialKnob, default'),
+                         ['IndustrialKnob, default', '80', '30', '1.512 · 1.400', '1.640 · 2.100', '1.640–2.100',
+                          '2.900 · 3.000', '2.900–3.000', 'PASS · FAIL'])
+
+    def test_runs_with_another_minimum_size_are_rejected(self):
+        code, _, err = merge('hint_run1.md', 'hint_bad_size.md')
+        self.assertNotEqual(code, 0)
+        self.assertIn('Minimum size', err)
+        self.assertIn('did not measure the same work', err)
+
     def test_output_is_utf8_whatever_the_console_encoding(self):
         # A Windows console encodes stdout as cp1252, which has no '≤' and writes '–' as byte 0x96
         env = dict(os.environ, PYTHONIOENCODING='cp1252')

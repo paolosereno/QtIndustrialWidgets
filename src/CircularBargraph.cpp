@@ -236,6 +236,8 @@ public:
     double m_peakValue{0.0};
 
     bool m_digitalDisplayVisible{true};
+    // Logical DPI of the last minimumSizeHint() with the digital display on (0: none since the last updateGeometry())
+    mutable double m_minimumDpi{0.0};
     int m_precision{1};
     QString m_unit{QStringLiteral("%")};
 
@@ -416,6 +418,7 @@ QSize CircularBargraph::minimumSizeHint() const
     }
     // #167: the smallest side, not below 50, at which the state indicators ("---" and the triangle) fit in the
     // pod at 7 pt, from the metrics of the widget font
+    d_ptr->m_minimumDpi = logicalDpiY();
     const QFontMetricsF fm(valueFontAt(font(), kMinimumValuePt), this);
     const ReadoutLine dashes{QStringLiteral("---"), false, 0.0};
     const ReadoutLine triangle{QString(), true, 0.0};
@@ -685,6 +688,13 @@ void CircularBargraph::setTextColor(const QColor &color)
 
 void CircularBargraph::paintEvent(QPaintEvent *)
 {
+    // #177: a window moved to a screen of another logical DPI is repainted. The minimum depends on that DPI (the
+    // readout at 7 pt), so from this repaint the layout gets the new one, once
+    if (d_ptr->m_minimumDpi != 0.0 && d_ptr->m_minimumDpi != logicalDpiY()) {
+        d_ptr->m_minimumDpi = 0.0;
+        updateGeometry();
+    }
+
     if (width() <= 4 || height() <= 4) {
         return;
     }

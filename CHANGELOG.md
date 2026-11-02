@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.6.0` tag archive (the tagged commit still had the `v2.5.1` hash, since the hash can be computed only after the tag).
+- **`RadialGauge` and `CircularBargraph`: a change of logical DPI reaches the layout** (#177): their `minimumSizeHint()` depends on the logical DPI, since the state indicator is sized at 7 pt. When a visible widget moved to a screen of another logical DPI, the layout kept the old minimum (for example 98 × 98 instead of 122 × 122 for the default gauge from 96 to 144 dpi). The widget now calls `updateGeometry()` once, at the first repaint on the new screen, as `IndustrialKnob` does for the device pixel ratio (#170). The static scale of `RadialGauge` is also redrawn, since its labels and display are chosen at that DPI. A change of device pixel ratio alone did not affect these two widgets.
+
+### Performance
+- **`minimumSizeHint()` benchmark** (#177): `bench_MinimumSizeHint` measures the first `minimumSizeHint()` of `IndustrialKnob`, `RadialGauge` and `CircularBargraph`, in the default configuration and in a worst case chosen over a fixed grid, against two targets approved before the session. `benchmarks/merge_runs.py` accepts its runs. The session and its profile are in [docs/benchmarks.md](docs/benchmarks.md#minimumsizehint-benchmarks): `CircularBargraph` meets both targets, `RadialGauge` meets the worst-case target and misses the default one, `IndustrialKnob` misses both. The cause is the same label texts measured again at every step of the size search.
+
+### Tests
+- **`IndustrialKnob` label measures** (#177): a counter of the ink measures, read through `internal::IndustrialKnobTestAccess`, shows that repaints, colours and values measure nothing, and that a new font or device pixel ratio measures the labels again. The private state of the knob moved to `src/internal/IndustrialKnob_p.h` for this; `IndustrialKnob.h` only gains a `friend` declaration, as `StripChart.h`.
+- **Screen change of a visible `RadialGauge` and `CircularBargraph`** (#177), with the device pixel ratio and the logical DPI simulated through `metric()` (including the encoded metrics of Qt 6.8+): after one repaint, `minimumSizeHint()`, the minimum of the layout and the pixels are those of a new widget on that screen, and the layout is told once.
 
 ---
 

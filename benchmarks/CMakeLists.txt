@@ -44,3 +44,23 @@ set_target_properties(bench_AnalysisChart PROPERTIES
     AUTORCC OFF
     OUTPUT_NAME bench_AnalysisChart
 )
+
+add_executable(bench_MinimumSizeHint
+    bench_MinimumSizeHint.cpp
+)
+
+target_link_libraries(bench_MinimumSizeHint PRIVATE
+    QtIndustrialWidgets
+    Qt6::Widgets
+)
+
+target_include_directories(bench_MinimumSizeHint PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+set_target_properties(bench_MinimumSizeHint PROPERTIES
+    AUTOMOC ON
+    AUTOUIC OFF
+    AUTORCC OFF
+    OUTPUT_NAME bench_MinimumSizeHint
+)
