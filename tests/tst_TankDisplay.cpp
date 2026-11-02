@@ -52,6 +52,7 @@ private Q_SLOTS:
     void outlineAtItsGeometricPoints_data();
     void outlineAtItsGeometricPoints();
     void granularFillHasGrainsOnlyBelowTheSurface();
+    void scaleLabelsAtTheirValues();
     void limitMarkers_data();
     void limitMarkers();
     void invalidVesselIsHatched_data();
@@ -653,28 +654,78 @@ void tst_TankDisplay::outlineAtItsGeometricPoints()
 
 void tst_TankDisplay::granularFillHasGrainsOnlyBelowTheSurface()
 {
+    // Grains on a 4 px grid: four surfaces about 1 px apart put a row of grains at every distance below them
+    for (double level : {50.0, 50.6, 51.2, 51.8}) {
+        TankDisplay t;
+        prepare(t);
+        t.setContent(TankDisplay::Content::Granular);
+        t.setValue(level);
+        const QImage img = render(t);
+        const QRectF v = layoutOf(t).vessel;
+        const double surface = v.bottom() - level / 100.0 * v.height();
+        const QString where = QStringLiteral("level %1, surface at y %2").arg(level).arg(surface);
+        // The middle half of the width, clear of the wall and of the dished heads (0.15 of the width deep)
+        const QRectF below(v.left() + v.width() * 0.25, surface + 3.0, v.width() * 0.5,
+                           v.bottom() - v.width() * 0.2 - surface - 3.0);
+        const QRectF above(v.left() + v.width() * 0.25, v.top() + v.width() * 0.2, v.width() * 0.5,
+                           surface - 1.0 - v.top() - v.width() * 0.2);
+        const int all = countIn(img, below, [](QRgb) { return true; });
+        const int dark = countIn(img, below, [](QRgb p) { return near(p, kContent.darker(145), 30); });
+        const int light = countIn(img, below, [](QRgb p) { return near(p, kContent.lighter(130), 30); });
+        const int plain = countIn(img, below, [](QRgb p) { return near(p, kContent); });
+        QVERIFY2(dark > all / 20 && light > 0 && plain > all / 4,
+                 qPrintable(where + QStringLiteral(": %1 pixels, %2 dark grains, %3 light, %4 plain content")
+                                        .arg(all).arg(dark).arg(light).arg(plain)));
+        // Above the surface (up to 1 px from it, clear of its antialiased edge) only the empty inside
+        const int aboveNotEmpty = countIn(img, above, [](QRgb p) { return !near(p, kInterior); });
+        QVERIFY2(aboveNotEmpty == 0, qPrintable(where + QStringLiteral(": %1 pixels above the surface").arg(aboveNotEmpty)));
+        // The liquid has no grains
+        t.setContent(TankDisplay::Content::Liquid);
+        const QImage liquid = render(t);
+        QCOMPARE(countIn(liquid, below, [](QRgb p) { return !near(p, kContent); }), 0);
+    }
+}
+
+// The scale labels at their values: the minimum at the bottom of the vessel, the maximum at its top. With a range of
+// 0 to 100000 the bottom label "0" is much narrower than the top one, "100000"
+void tst_TankDisplay::scaleLabelsAtTheirValues()
+{
     TankDisplay t;
-    prepare(t);
-    t.setContent(TankDisplay::Content::Granular);
-    t.setValue(50.0);
-    const QImage img = render(t);
-    const QRectF v = layoutOf(t).vessel;
-    const double surface = v.bottom() - 0.5 * v.height();
-    // The middle half of the width, clear of the wall and of the dished heads (0.15 of the width deep)
-    const QRectF below(v.left() + v.width() * 0.25, surface + 3.0, v.width() * 0.5, v.bottom() - v.width() * 0.2 - surface - 3.0);
-    const QRectF above(v.left() + v.width() * 0.25, v.top() + v.width() * 0.2, v.width() * 0.5, surface - 3.0 - v.top() - v.width() * 0.2);
-    const int all = countIn(img, below, [](QRgb) { return true; });
-    const int dark = countIn(img, below, [](QRgb p) { return near(p, kContent.darker(145), 30); });
-    const int light = countIn(img, below, [](QRgb p) { return near(p, kContent.lighter(130), 30); });
-    const int plain = countIn(img, below, [](QRgb p) { return near(p, kContent); });
-    QVERIFY2(dark > all / 20 && light > 0 && plain > all / 4,
-             qPrintable(QStringLiteral("%1 pixels: %2 dark grains, %3 light, %4 plain content").arg(all).arg(dark).arg(light).arg(plain)));
-    const int aboveNotEmpty = countIn(img, above, [](QRgb p) { return !near(p, kInterior); });
-    QCOMPARE(aboveNotEmpty, 0);
-    // The liquid has no grains
-    t.setContent(TankDisplay::Content::Liquid);
-    const QImage liquid = render(t);
-    QCOMPARE(countIn(liquid, below, [](QRgb p) { return !near(p, kContent); }), 0);
+    prepare(t, QSize(200, 300));
+    t.setRange(0.0, 100000.0);
+    t.setPrecision(0);
+    t.setTextColor(QColor(255, 255, 0, 0));
+    const QImage without = render(t);
+    t.setTextColor(kText);
+    const QImage with = render(t);
+    const internal::TankLayout l = layoutOf(t);
+    const double dpr = with.devicePixelRatio();
+    const QFontMetricsF lm([&] {
+        QFont f = t.font();
+        f.setBold(true);
+        f.setPixelSize(std::max(internal::minimumReadoutPixelSize(t.logicalDpiY()), 10));
+        return f;
+    }());
+    // Width of the label ink in a band of one line height around a height
+    const auto inkWidth = [&](double y) {
+        const QRect band = QRectF(QPointF(l.labelX - 1.0, y - lm.height() * 0.5) * dpr,
+                                  QSizeF(t.width() - l.labelX + 1.0, lm.height()) * dpr).toAlignedRect().intersected(with.rect());
+        int left = std::numeric_limits<int>::max();
+        int right = -1;
+        for (int py = band.top(); py <= band.bottom(); ++py) {
+            for (int px = band.left(); px <= band.right(); ++px) {
+                if (with.pixel(px, py) != without.pixel(px, py)) {
+                    left = std::min(left, px);
+                    right = std::max(right, px);
+                }
+            }
+        }
+        return right < 0 ? 0 : right - left + 1;
+    };
+    const int bottom = inkWidth(l.vessel.bottom());
+    const int top = inkWidth(l.vessel.top());
+    QVERIFY2(bottom > 0 && top > 3 * bottom,
+             qPrintable(QStringLiteral("label ink %1 px wide at the bottom (\"0\"), %2 px at the top (\"100000\")").arg(bottom).arg(top)));
 }
 
 void tst_TankDisplay::limitMarkers_data()
@@ -924,7 +975,9 @@ void tst_TankDisplay::readoutNeverBelowSevenPoints_data()
     QTest::addColumn<double>("input");
     QTest::addColumn<QString>("unit");
     for (int dw : {0, 3, 10, 25, 60}) {
-        for (double v : {42.5, 99999.9, 123456.7, -kInf, kInf, kNaN}) {
+        // Up to 1e15: out-of-range inputs long enough to bring the readout down to 7 pt, or to leave the number out,
+        // also with the system fonts
+        for (double v : {42.5, 99999.9, 123456.7, 1e9, 1e12, 1e15, -1e15, -kInf, kInf, kNaN}) {
             for (const char *unit : {"", "m³/h"}) {
                 QTest::newRow(qPrintable(QStringLiteral("+%1 px, %2 %3").arg(dw).arg(v).arg(QString::fromUtf8(unit))))
                     << dw << v << QString::fromUtf8(unit);
