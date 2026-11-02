@@ -7,7 +7,7 @@
 
 Usage: merge_runs.py run1.md run2.md [run3.md ...] > merged.md
 
-Every input is the stdout of one run of bench_StripChart or of bench_AnalysisChart (all runs of the
+Every input is the stdout of one run of bench_StripChart, bench_AnalysisChart or bench_MinimumSizeHint (all runs of the
 same benchmark, e.g. interleaved runs of one session). Every run is published:
 
 - each table keeps its identifying columns (channels, samples, signal, axis; or the case);
@@ -23,13 +23,13 @@ same benchmark, e.g. interleaved runs of one session). Every run is published:
 
 import sys
 
-BENCHMARKS = ('bench_StripChart', 'bench_AnalysisChart')
+BENCHMARKS = ('bench_StripChart', 'bench_AnalysisChart', 'bench_MinimumSizeHint')
 
 # Identifying columns of a row, by name
 KEY_COLUMNS = ('Channels', 'Samples / ch', 'Signal', 'X axis', 'Case', 'Item')
 # Columns that must be equal in every run (deterministic for a given benchmark source)
 EXACT_COLUMNS = ('Trace px', 'Trace px 100k', 'Trace px 4M', 'New samples / ch / frame', 'Work per trial', 'Trials',
-                 'Samples per channel in view', 'Decimated channels')
+                 'Samples per channel in view', 'Decimated channels', 'Minimum size')
 SEPARATOR = ' · '
 
 
@@ -46,7 +46,7 @@ def parse(path):
     text = open(path, encoding='utf-8').read()
     found = [b for b in BENCHMARKS if f'<!-- {b} results: begin -->' in text and f'<!-- {b} results: end -->' in text]
     if len(found) != 1:
-        fail(f'{path}: no bench_StripChart or bench_AnalysisChart results block')
+        fail(f'{path}: no results block of ' + ', '.join(BENCHMARKS))
     bench = found[0]
     body = text.split(f'<!-- {bench} results: begin -->', 1)[1].split(f'<!-- {bench} results: end -->', 1)[0]
     sections = []
