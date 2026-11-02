@@ -61,6 +61,7 @@ public:
     // High performance static scale cache
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
+    double m_cacheDpi{0.0}; // Logical DPI the static scale was drawn at: its texts are sized in points (#177)
 
     // Digital display geometry, computed with the static scale (see internal/RadialGaugeLayout.h)
     QRectF m_podRect;
@@ -589,6 +590,7 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
     }
 
     d_ptr->m_cachePixmap = QPixmap(pixmapSize);
+    d_ptr->m_cacheDpi = logicalDpiY();
     d_ptr->m_cachePixmap.setDevicePixelRatio(dpr);
     d_ptr->m_cachePixmap.fill(Qt::transparent);
 
@@ -765,7 +767,14 @@ void RadialGauge::renderStaticScale(const QSize &targetSize)
 
 void RadialGauge::paintEvent(QPaintEvent *)
 {
-    if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (size() * devicePixelRatioF())) {
+    // #177: a window moved to a screen of another logical DPI is repainted. The minimum depends on that DPI (the
+    // state indicator at 7 pt), so from this repaint the layout gets the new one, once
+    if (d_ptr->m_minimumSide != 0 && d_ptr->m_minimumSideDpi != logicalDpiY()) {
+        d_ptr->minimumSizeChanged(this);
+    }
+
+    if (d_ptr->m_cacheDirty || d_ptr->m_cachePixmap.size() != (size() * devicePixelRatioF())
+        || d_ptr->m_cacheDpi != logicalDpiY()) {
         renderStaticScale(size());
     }
 
