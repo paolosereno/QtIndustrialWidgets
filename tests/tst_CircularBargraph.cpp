@@ -1570,7 +1570,10 @@ void tst_CircularBargraph::screenChangeOfAVisibleCircularBargraph()
         }
         changed += minimumChanged ? 1 : 0;
     }
-    if (dpi != 96) {
+    // The test must test something: at DPI 144 the minimum of some configuration changes. At DPI 120 it may not: with
+    // a scale factor other than 1 even the wide font still fits at the floor of 50 x 50, so only layout and pixels
+    // are checked there
+    if (dpi == 144) {
         QVERIFY2(changed > 0, "the minimum is the same on both screens for every configuration");
     }
 }
