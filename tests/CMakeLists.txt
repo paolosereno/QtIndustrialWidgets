@@ -538,3 +538,21 @@ set_target_properties(tst_TankDisplay PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_TankDisplay)
+add_executable(tst_ValveIndicatorLayout
+    tst_ValveIndicatorLayout.cpp
+    $<TARGET_OBJECTS:ValveIndicatorLayout>
+)
+target_link_libraries(tst_ValveIndicatorLayout
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
+)
+target_include_directories(tst_ValveIndicatorLayout
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_ValveIndicatorLayout PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_ValveIndicatorLayout)
