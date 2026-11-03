@@ -17,6 +17,7 @@
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ValveIndicator.h>
 
 
 #include <QtWidgets/QWidget>
@@ -326,6 +327,52 @@ QWidget *tankInvalid(Theme theme)
     return t;
 }
 
+// ValveIndicator (#153): the texts and the marks on the panel follow the theme; the readout panel is dark in both
+ValveIndicator *valve(Theme theme, ValveIndicator::ValveType type, ValveIndicator::ValveStatus status)
+{
+    auto *v = new ValveIndicator;
+    v->setValveType(type);
+    v->setStatus(status);
+    v->setPipeStubsVisible(true);
+    if (!isDark(theme)) {
+        v->setTextColor(QColor(30, 39, 46));
+        v->setOutlineColor(QColor(80, 90, 105));
+    }
+    return v;
+}
+
+QWidget *valveUnknown(Theme theme)
+{
+    return valve(theme, ValveIndicator::ValveType::Gate, ValveIndicator::ValveStatus::Unknown);
+}
+
+QWidget *valveClosed(Theme theme)
+{
+    return valve(theme, ValveIndicator::ValveType::Gate, ValveIndicator::ValveStatus::Closed);
+}
+
+QWidget *valveOpen(Theme theme)
+{
+    return valve(theme, ValveIndicator::ValveType::Ball, ValveIndicator::ValveStatus::Open);
+}
+
+QWidget *valveTransit(Theme theme)
+{
+    return valve(theme, ValveIndicator::ValveType::Butterfly, ValveIndicator::ValveStatus::Transit);
+}
+
+QWidget *valveFault(Theme theme)
+{
+    return valve(theme, ValveIndicator::ValveType::Ball, ValveIndicator::ValveStatus::Fault);
+}
+
+QWidget *valveControl(Theme theme)
+{
+    ValveIndicator *v = valve(theme, ValveIndicator::ValveType::Control, ValveIndicator::ValveStatus::Open);
+    v->setOpening(42.0);
+    return v;
+}
+
 QWidget *levelMeterStereoDb(Theme)
 {
     auto *m = new LevelMeter;
@@ -564,6 +611,12 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("TankDisplay"), QStringLiteral("limits"), QSize(160, 260), tankLimits},
         {QStringLiteral("TankDisplay"), QStringLiteral("sphere"), QSize(220, 240), tankSphere},
         {QStringLiteral("TankDisplay"), QStringLiteral("invalid"), QSize(160, 260), tankInvalid},
+        {QStringLiteral("ValveIndicator"), QStringLiteral("unknown"), QSize(160, 130), valveUnknown},
+        {QStringLiteral("ValveIndicator"), QStringLiteral("closed"), QSize(160, 130), valveClosed},
+        {QStringLiteral("ValveIndicator"), QStringLiteral("open"), QSize(160, 130), valveOpen},
+        {QStringLiteral("ValveIndicator"), QStringLiteral("transit"), QSize(160, 130), valveTransit},
+        {QStringLiteral("ValveIndicator"), QStringLiteral("fault"), QSize(160, 130), valveFault},
+        {QStringLiteral("ValveIndicator"), QStringLiteral("control"), QSize(160, 210), valveControl},
     };
     return all;
 }
