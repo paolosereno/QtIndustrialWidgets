@@ -270,10 +270,11 @@ void ValveIndicator::paintEvent(QPaintEvent *)
         painter.setBrush(c);
         painter.drawPath(area);
     };
-    const QRectF bodyBox = body.boundingRect();
+    // The thickness of the body across the flow, in either orientation
+    const double bodyThickness = 2.0 * internal::kValveBodyHalfHeight * layout.scale;
     switch (d_ptr->m_status) {
     case ValveStatus::Unknown:
-        internal::drawInvalidHatch(painter, body, bodyBox.height(), d_ptr->m_unknownColor);
+        internal::drawInvalidHatch(painter, body, bodyThickness, d_ptr->m_unknownColor);
         outline(d_ptr->m_unknownColor, Qt::SolidLine);
         break;
     case ValveStatus::Closed:
@@ -290,12 +291,7 @@ void ValveIndicator::paintEvent(QPaintEvent *)
     case ValveStatus::Fault: {
         outline(d_ptr->m_faultColor, Qt::SolidLine);
         painter.setPen(QPen(d_ptr->m_faultColor, kCrossPen, Qt::SolidLine, Qt::FlatCap));
-        QPainterPath cross;
-        cross.moveTo(bodyBox.topLeft());
-        cross.lineTo(bodyBox.bottomRight());
-        cross.moveTo(bodyBox.bottomLeft());
-        cross.lineTo(bodyBox.topRight());
-        painter.drawPath(cross);
+        painter.drawPath(t.map(internal::valveFaultCrossPath()));
         break;
     }
     }

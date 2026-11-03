@@ -116,6 +116,17 @@ QPainterPath valveStubsPath()
     return stubs;
 }
 
+QPainterPath valveFaultCrossPath()
+{
+    const double h = kValveBodyHalfHeight;
+    QPainterPath cross;
+    cross.moveTo(-h, -h);
+    cross.lineTo(h, h);
+    cross.moveTo(-h, h);
+    cross.lineTo(h, -h);
+    return cross;
+}
+
 ValveLayout layoutValve(const ValveLayoutInput &in)
 {
     const double w = finiteOr0(in.width);

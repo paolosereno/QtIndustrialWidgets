@@ -174,6 +174,15 @@ void tst_ValveIndicatorLayout::marksAtTheirPoints()
     QVERIFY(domeOnly.contains(QPointF(0.0, -1.2)));
     QVERIFY(domeOnly.contains(QPointF(0.4, -1.15)));
     QVERIFY(!domeOnly.contains(QPointF(0.5, -1.6)));
+    // The fault cross: the diagonals of the square of side 1.2 on the centre, steeper than the sides of the body
+    // (slope 0.6), so that no point of it but the centre lies on the outline
+    const QPainterPath cross = valveFaultCrossPath();
+    QCOMPARE(cross.elementCount(), 4);
+    QCOMPARE(QPointF(cross.elementAt(0)), QPointF(-0.6, -0.6));
+    QCOMPARE(QPointF(cross.elementAt(1)), QPointF(0.6, 0.6));
+    QCOMPARE(QPointF(cross.elementAt(2)), QPointF(-0.6, 0.6));
+    QCOMPARE(QPointF(cross.elementAt(3)), QPointF(0.6, -0.6));
+    QVERIFY(valveSymbolExtent(ValveSymbol::Gate, false, false).contains(cross.boundingRect()));
     // Stubs: from ±1 out to ±1.5 on the axis
     const QPainterPath stubs = valveStubsPath();
     QCOMPARE(stubs.boundingRect(), QRectF(QPointF(-1.5, 0.0), QPointF(1.5, 0.0)));

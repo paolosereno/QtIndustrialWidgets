@@ -81,6 +81,11 @@ QPainterPath valveMarkPath(ValveSymbol symbol);
 /// The pipe stubs (unit coordinates, horizontal), stroked.
 QPainterPath valveStubsPath();
 
+/// The cross of a valve in fault (unit coordinates, horizontal), stroked: the diagonals of the square of side
+/// 2 · kValveBodyHalfHeight on the centre. Steeper than the sides of the triangles, so that it never lies on the
+/// outline of the body.
+QPainterPath valveFaultCrossPath();
+
 /**
  * \brief Lays out a ValveIndicator of the given size.
  *
