@@ -556,3 +556,29 @@ set_target_properties(tst_ValveIndicatorLayout PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_ValveIndicatorLayout)
+add_executable(tst_ValveIndicator
+    tst_ValveIndicator.cpp
+    $<TARGET_OBJECTS:ValveIndicatorLayout>
+    $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_ValveIndicator
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_ValveIndicator
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+# Test font loaded with QFontDatabase::addApplicationFont() (tests/fonts/README.md)
+target_compile_definitions(tst_ValveIndicator PRIVATE QIW_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fonts")
+set_target_properties(tst_ValveIndicator PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_ValveIndicator)
