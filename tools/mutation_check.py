@@ -24,6 +24,7 @@ SABOTAGES.json (paths relative to the repository root):
 
 The 8 configurations: QT_SCALE_FACTOR 1, 1.25, 1.5 and 2, each with the system fonts and with no font at all
 (nofont-env.sh next to this script, which fails if fc-list still sees a font). QT_QPA_PLATFORM=offscreen.
+The configurations and the way a test binary is run and counted come from run_configs.py, next to this script.
 The repository is the one of the current directory, so the script can also run on another worktree.
 
 For each sabotage, in order:
@@ -34,7 +35,8 @@ For each sabotage, in order:
   4. every test binary runs in the 8 configurations; the result is the number of FAIL! lines per configuration
      (a crash, a timeout or a missing "Totals:" counts 1000) and the names of the failing test functions;
   5. the sources are restored with git checkout HEAD -- <files>, also on an error or Ctrl+C.
-A baseline without edits runs first: if it fails anywhere, the results would mean nothing and the script stops.
+A baseline without edits runs first: if it does not pass in all 8 configurations as run_configs.py requires (no
+FAIL!, nothing skipped, no crash), the results would mean nothing and the script stops.
 At the end, git diff --exit-code on every touched file checks that the sources are back to HEAD.
 
 The files to sabotage must have no local change (it would be lost on the restore): commit or save it first.
@@ -46,17 +48,16 @@ missed in at least one configuration (or not compiled); 3 the sources differ fro
 """
 
 import argparse
-import concurrent.futures
 import json
-import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-SCALES = ("1", "1.25", "1.5", "2")
-CRASH = 1000
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from run_configs import LABELS, configurations, run_all  # noqa: E402  (next to this script)
+
 
 
 def fail(message):
@@ -66,40 +67,6 @@ def fail(message):
 
 def git(root, *args, check=True):
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=check)
-
-
-def no_font_config(directory):
-    """FONTCONFIG_FILE of an environment without fonts, from nofont-env.sh next to this script."""
-    script = Path(__file__).resolve().parent / "nofont-env.sh"
-    r = subprocess.run(["bash", "-c", 'source "$1" --dir "$2" > /dev/null && printf "%s" "$FONTCONFIG_FILE"', "_",
-                        str(script), str(directory)], capture_output=True, text=True)
-    if r.returncode != 0 or not r.stdout:
-        fail(f"{script} failed:\n{r.stderr.strip()}")
-    return r.stdout
-
-
-def run_tests(bin_dir, tests, scale, fontconfig, timeout):
-    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale)
-    env.pop("FONTCONFIG_FILE", None)
-    if fontconfig:
-        env["FONTCONFIG_FILE"] = fontconfig
-    fails, names = 0, set()
-    for test in tests:
-        try:
-            out = subprocess.run([str(bin_dir / test)], env=env, capture_output=True, text=True,
-                                 timeout=timeout).stdout
-        except subprocess.TimeoutExpired:
-            fails += CRASH
-            names.add(f"{test} timed out")
-            continue
-        for line in out.splitlines():
-            if line.startswith("FAIL!"):
-                fails += 1
-                names.add(line.split("::", 1)[1].split("(", 1)[0] if "::" in line else line)
-        if "Totals:" not in out:
-            fails += CRASH
-            names.add(f"{test} crashed")
-    return fails, names
 
 
 def apply_edits(root, sabotage):
@@ -137,7 +104,7 @@ def main():
     parser.add_argument("--require-detection", action="store_true",
                         help="exit 2 if a sabotage is missed in a configuration")
     parser.add_argument("--markdown", type=Path, help="also write the result table to this file")
-    parser.add_argument("--jobs", type=int, default=len(SCALES) * 2, help="configurations run in parallel")
+    parser.add_argument("--jobs", type=int, default=len(LABELS), help="configurations run in parallel")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds per test binary and configuration")
     args = parser.parse_args()
 
@@ -165,8 +132,12 @@ def main():
         apply_edits(root, s)
 
     nofont_dir = Path(tempfile.mkdtemp(prefix="qiw-mutation-nofonts."))
-    configs = [(scale, None) for scale in SCALES] + [(scale, no_font_config(nofont_dir)) for scale in SCALES]
-    labels = [f"fonts {s}" for s in SCALES] + [f"no fonts {s}" for s in SCALES]
+    try:
+        configs = configurations(nofont_dir)
+    except RuntimeError as e:
+        shutil.rmtree(nofont_dir, ignore_errors=True)
+        fail(f"no environment without fonts: {e}")
+    labels = list(LABELS)
 
     rows = []
     missed = False
@@ -182,8 +153,7 @@ def main():
                 tail = (build.stdout + build.stderr).strip().splitlines()[-15:]
                 print(f"{name}: BUILD FAILED\n  " + "\n  ".join(tail), flush=True)
                 return None
-            with concurrent.futures.ThreadPoolExecutor(max(1, args.jobs)) as pool:
-                return list(pool.map(lambda c: run_tests(bin_dir, tests, c[0], c[1], args.timeout), configs))
+            return run_all(bin_dir, tests, configs, args.jobs, args.timeout)
         finally:
             if contents:
                 git(root, "checkout", "HEAD", "--", *[str(p.relative_to(root)) for p in contents])
@@ -191,8 +161,8 @@ def main():
     try:
         baseline = run_one("baseline", {"name": "baseline", "edits": [], "tests": sorted(
             {t for s in sabotages for t in s.get("tests", default_tests)})})
-        if baseline is None or any(r[0] for r in baseline):
-            names = sorted(set().union(*[r[1] for r in baseline])) if baseline else []
+        if baseline is None or not all(r.ok() for r in baseline):
+            names = sorted(set().union(*[r.names for r in baseline])) if baseline else []
             fail("the baseline (no sabotage) fails: " + (", ".join(names) or "build failed"))
         print("baseline: " + " ".join("0" for _ in configs), flush=True)
         for s in sabotages:
@@ -201,8 +171,8 @@ def main():
                 rows.append((s["name"], None, "BUILD FAILED"))
                 missed = True
                 continue
-            counts = [r[0] for r in result]
-            names = ", ".join(sorted(set().union(*[r[1] for r in result])))
+            counts = [r.fails for r in result]
+            names = ", ".join(sorted(set().union(*[r.names for r in result])))
             missed = missed or any(c == 0 for c in counts)
             rows.append((s["name"], counts, names))
             print(f'{s["name"]}: {" ".join(str(c) for c in counts)}  | {names}', flush=True)
