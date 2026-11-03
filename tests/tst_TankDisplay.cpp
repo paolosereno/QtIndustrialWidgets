@@ -935,11 +935,13 @@ void tst_TankDisplay::everyActiveLimitStateIsVisible()
     };
     const LimitState states[4] = {LimitState::LowLow, LimitState::Low, LimitState::High, LimitState::HighHigh};
     const auto isInk = [](QRgb p) { return qRed(p) == 255; };
+    // Five heights: the markers at different fractions of a pixel (the outline of a marker must not count as a sign)
+    for (int extra = 0; extra < 5; ++extra)
     for (const Config &c : configs) {
         for (int i = 0; i < 4; ++i) {
             TankDisplay t;
             t.setShape(s);
-            prepare(t, sizeFor(s));
+            prepare(t, sizeFor(s) + QSize(0, extra));
             t.setRange(c.minimum, c.maximum);
             QVERIFY(t.setLimits(c.limits[0], c.limits[1], c.limits[2], c.limits[3]));
             t.setValue(c.inputs[static_cast<size_t>(i)]);
@@ -953,8 +955,8 @@ void tst_TankDisplay::everyActiveLimitStateIsVisible()
             const bool below = limit < c.minimum;
             const bool above = limit > c.maximum;
             const double y = below ? v.bottom() : above ? v.top() : v.bottom() - (limit - c.minimum) / (c.maximum - c.minimum) * v.height();
-            const QString where = QStringLiteral("%1, %2 (limit %3) at y %4")
-                                      .arg(QLatin1String(c.name), stateName(states[i])).arg(limit).arg(y);
+            const QString where = QStringLiteral("%1, %2 (limit %3) at y %4, height %5")
+                                      .arg(QLatin1String(c.name), stateName(states[i])).arg(limit).arg(y).arg(t.height());
             const double tip = l.markerTipX;
             const double size = internal::kTankMarkerSize;
             const QRgb centroid = at(img, tip - size * 2.0 / 3.0, y);
@@ -964,13 +966,38 @@ void tst_TankDisplay::everyActiveLimitStateIsVisible()
             const int tagCore = countIn(textInk, QRectF(0.0, y - 3.0, l.tagRight + 1.0, 6.0), isInk);
             QVERIFY2(tagCore > 0, qPrintable(where + QStringLiteral(": no tag")));
             // The "beyond" sign: past the marker, away from the scale; on neither side for a limit inside
-            const double reach = size * 0.5 + internal::kTankBeyondGap;
-            const QRectF past(tip - size, y - reach - internal::kTankBeyondSign, size, internal::kTankBeyondSign);
-            const QRectF under(tip - size, y + reach, size, internal::kTankBeyondSign);
-            const int signAbove = countIn(limitInk, past, isInk);
-            const int signBelow = countIn(limitInk, under, isInk);
-            QVERIFY2((signAbove > 2) == above && (signBelow > 2) == below,
+            // The vertical reach of the marker as drawn: half its height, plus its outline. The outline is a pen of
+            // kTankMarkerPen with bevel joins: at the corners of the base the outer edge of the slanted side ends
+            // (pen / 2) · cos(slope) past the corner, the slope of the side being atan(half / size)
+            const double half = size * 0.5;
+            const double markerReach = half + internal::kTankMarkerPen * 0.5 * size / std::hypot(size, half);
+            const double signEnd = half + internal::kTankBeyondGap + internal::kTankBeyondSign;
+            // The area of the sign: the device pixels of the marker column wholly outside the reach of the marker,
+            // up to one pixel past the end of the sign
+            const double dpr = img.devicePixelRatio();
+            const auto signInk = [&](double dir) {
+                int n = 0;
+                const int x0 = static_cast<int>(std::floor((tip - size) * dpr));
+                const int x1 = static_cast<int>(std::ceil(tip * dpr));
+                for (int py = 0; py < limitInk.height(); ++py) {
+                    // Distance from the marker centre of the near and far edges of this row, on the side of dir
+                    const double a = dir * ((py + (dir < 0 ? 1 : 0)) / dpr - y);
+                    const double b = dir * ((py + (dir < 0 ? 0 : 1)) / dpr - y);
+                    if (a < markerReach || b > signEnd + 1.0) {
+                        continue;
+                    }
+                    for (int px = std::max(0, x0); px < std::min(limitInk.width(), x1); ++px) {
+                        n += isInk(limitInk.pixel(px, py)) ? 1 : 0;
+                    }
+                }
+                return n;
+            };
+            const int signAbove = signInk(-1.0);
+            const int signBelow = signInk(1.0);
+            QVERIFY2((above ? signAbove > 2 : signAbove == 0) && (below ? signBelow > 2 : signBelow == 0),
                      qPrintable(where + QStringLiteral(": %1 sign pixels above, %2 below").arg(signAbove).arg(signBelow)));
+            const QRectF past(tip - size, y - signEnd, size, signEnd - half);
+            const QRectF under(tip - size, y + half, size, signEnd - half);
             // Inside the widget
             QVERIFY2(past.top() >= 0.0 && under.bottom() <= t.height(), qPrintable(where));
             // One tag only: the other limits outside the range are not drawn, those inside are not tagged

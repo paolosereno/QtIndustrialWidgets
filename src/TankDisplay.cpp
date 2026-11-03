@@ -612,7 +612,7 @@ void TankDisplay::paintEvent(QPaintEvent *)
 
         QPolygonF marker;
         marker << QPointF(tip - size, y - half) << QPointF(tip, y) << QPointF(tip - size, y + half);
-        painter.setPen(QPen(d_ptr->m_limitColor, 1.2));
+        painter.setPen(QPen(d_ptr->m_limitColor, internal::kTankMarkerPen, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin));
         painter.setBrush(i == inForce ? QBrush(d_ptr->m_limitColor) : QBrush(Qt::NoBrush));
         painter.drawPolygon(marker);
         if (below || above) {
