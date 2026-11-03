@@ -292,6 +292,45 @@ Level indicator for tanks and silos (`qiw::TankDisplay`, #152).
   their contrast against the inside (3:1 for graphical objects). For example, with `vesselColor` (235, 235, 235)
   the inside is (59, 59, 59), and the default `limitColor` measures 2.93:1 against it.
 
+## ValveIndicator
+
+<img src="images/valve-indicator-control.png" alt="ValveIndicator" width="160">
+
+Valve symbol that shows the status of a valve and, optionally, its opening (`qiw::ValveIndicator`, #153). An
+indicator only: it shows what the application tells it and sends no command.
+- **Symbol**: the symbols follow common P&ID practice. `valveType` is `ValveType::Gate` (two triangles tip to tip),
+  `Ball` (with a circle at the centre), `Butterfly` (with a line through the centre, the disc) or `Control` (with a
+  stem and a diaphragm actuator). `orientation` is `Qt::Horizontal` (flow from left to right, actuator on top) or
+  `Qt::Vertical` (flow from the top down, actuator on the right). `pipeStubsVisible` adds a short pipe on both
+  sides (off by default).
+- **Status**: `status` is told by the shape first, the colour second, so no status depends on colour (#167):
+  - `Unknown` (the default of a new widget): the body hatched with diagonal lines, and a `?` tag;
+  - `Closed`: the body filled;
+  - `Open`: the body outlined, empty;
+  - `Transit`: the upstream half of the body filled, and a dashed outline;
+  - `Fault`: a cross over the body, and a `FAULT` tag.
+- **Opening**: `opening` (0 to 100 %) is shown by an opening bar and a readout under the symbol. A control valve
+  always shows them; the other types show them when `openingVisible` is true (false by default). The input is
+  classified as for the gauges (#151): `rawOpening` keeps it, `openingState` is its `ValueState`. Out of range or
+  ±Inf, the bar stops at the bound and the readout shows the input after a triangle; NaN gives no bar and `---`. A
+  new `ValveIndicator` has no opening: it starts `Invalid` until the first `setOpening()`. The readout is on an
+  opaque panel in `readoutColor` (#159), never below 7 pt; without room the unit goes first, then the number, never
+  the triangle or `---`. `precision` sets its decimals (default 0).
+- **Status and opening are independent**: the widget never derives one from the other. It shows, for example, a
+  `Closed` status with a 40 % opening if it is told so; keeping them consistent is the application's job.
+- **Colours**: `openColor`, `closedColor`, `transitColor`, `faultColor` and `unknownColor` draw the body in each
+  status; `outlineColor` the stubs, the marks of the type and the opening bar; `textColor` the status tags;
+  `readoutColor` the readout. The default status colours are only a default choice: the conventions for open and
+  closed differ between sectors (green for open and red for closed in some, the reverse in others), so pick the
+  colours of the plant. The meaning is carried by the shape, never by the colour alone. The library checks the
+  contrast of the readout (4.5:1 against its panel) and of the status tags in the gallery styling
+  (`tests/tst_ReadoutContrast.cpp`); the status colours are drawn as given, so whoever changes them or the
+  background must check their contrast (3:1 for graphical objects). On white the default open, transit and unknown
+  colours are below 3:1 (2.10, 1.66 and 2.56:1); the light theme of the gallery uses the same hues, darker:
+  (36, 160, 89), (170, 138, 10) and (125, 145, 146).
+- **Size**: `minimumSizeHint()` is computed from the font, the logical DPI and the configuration (type,
+  orientation, stubs, opening), and follows a change of screen (#177). The status and the opening do not change it.
+
 ## AnalysisChart
 
 <img src="images/analysis-chart-review.png" alt="AnalysisChart" width="640">

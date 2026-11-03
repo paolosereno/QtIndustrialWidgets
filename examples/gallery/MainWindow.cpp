@@ -17,6 +17,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ValveIndicator.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -1634,6 +1635,89 @@ void MainWindow::setupUi()
 
     tabWidget->addTab(tanksTab, QStringLiteral("Tanks"));
 
+    // ------------------------------------------------------------------------
+    // Valves (ValveIndicator, #153)
+    // ------------------------------------------------------------------------
+    auto *valvesTab = new QWidget(tabWidget);
+    auto *valvesLayout = new QHBoxLayout(valvesTab);
+    valvesLayout->setContentsMargins(12, 12, 12, 12);
+    valvesLayout->setSpacing(12);
+
+    // Every type in every status: the shape tells the status, the colour only helps
+    auto *valveGridBox = new QGroupBox(QStringLiteral("Types and Statuses (ValveIndicator)"), valvesTab);
+    auto *valveGrid = new QGridLayout(valveGridBox);
+    valveGrid->setContentsMargins(14, 22, 14, 14);
+    valveGrid->setHorizontalSpacing(10);
+    valveGrid->setVerticalSpacing(6);
+    const auto typeEnum = QMetaEnum::fromType<ValveIndicator::ValveType>();
+    const auto statusEnum = QMetaEnum::fromType<ValveIndicator::ValveStatus>();
+    for (int c = 0; c < statusEnum.keyCount(); ++c) {
+        auto *header = new QLabel(QString::fromLatin1(statusEnum.key(c)), valveGridBox);
+        header->setAlignment(Qt::AlignCenter);
+        valveGrid->addWidget(header, 0, c + 1);
+    }
+    for (int r = 0; r < typeEnum.keyCount(); ++r) {
+        valveGrid->addWidget(new QLabel(QString::fromLatin1(typeEnum.key(r)), valveGridBox), r + 1, 0);
+        for (int c = 0; c < statusEnum.keyCount(); ++c) {
+            auto *v = new ValveIndicator(valveGridBox);
+            v->setValveType(static_cast<ValveIndicator::ValveType>(typeEnum.value(r)));
+            v->setStatus(static_cast<ValveIndicator::ValveStatus>(statusEnum.value(c)));
+            v->setPipeStubsVisible(true);
+            v->setOpening(42.0); // shown by the control valves only
+            valveGrid->addWidget(v, r + 1, c + 1);
+        }
+    }
+    for (int c = 1; c <= statusEnum.keyCount(); ++c) {
+        valveGrid->setColumnStretch(c, 1);
+    }
+    for (int r = 1; r <= typeEnum.keyCount(); ++r) {
+        valveGrid->setRowStretch(r, 1);
+    }
+    valvesLayout->addWidget(valveGridBox, 3);
+
+    // A vertical control valve, driven by the controls below it. Status and opening are independent: the
+    // application keeps them consistent (here, the status follows the commanded travel)
+    auto *controlBox = new QGroupBox(QStringLiteral("Control Valve"), valvesTab);
+    auto *controlLayout = new QGridLayout(controlBox);
+    controlLayout->setContentsMargins(14, 22, 14, 14);
+    auto *controlValve = new ValveIndicator(controlBox);
+    controlValve->setValveType(ValveIndicator::ValveType::Control);
+    controlValve->setOrientation(Qt::Vertical);
+    controlValve->setPipeStubsVisible(true);
+    controlValve->setPrecision(1);
+    auto *openingSlider = new QSlider(Qt::Horizontal, controlBox);
+    openingSlider->setRange(0, 1000);
+    auto *openingLabel = new QLabel(controlBox);
+    auto *statusCombo = new QComboBox(controlBox);
+    for (int c = 0; c < statusEnum.keyCount(); ++c) {
+        statusCombo->addItem(QString::fromLatin1(statusEnum.key(c)), statusEnum.value(c));
+    }
+    auto *signalLost = new QCheckBox(QStringLiteral("Position signal lost (NaN)"), controlBox);
+    controlLayout->addWidget(controlValve, 0, 0, 1, 3);
+    controlLayout->setRowStretch(0, 1);
+    controlLayout->addWidget(new QLabel(QStringLiteral("Opening:"), controlBox), 1, 0);
+    controlLayout->addWidget(openingSlider, 1, 1);
+    controlLayout->addWidget(openingLabel, 1, 2);
+    controlLayout->addWidget(new QLabel(QStringLiteral("Status:"), controlBox), 2, 0);
+    controlLayout->addWidget(statusCombo, 2, 1, 1, 2);
+    controlLayout->addWidget(signalLost, 3, 0, 1, 3);
+    valvesLayout->addWidget(controlBox, 1);
+
+    const auto applyOpening = [controlValve, openingSlider, openingLabel, signalLost] {
+        const double opening = openingSlider->value() / 10.0;
+        openingLabel->setText(QStringLiteral("%1 %").arg(opening, 0, 'f', 1));
+        controlValve->setOpening(signalLost->isChecked() ? std::numeric_limits<double>::quiet_NaN() : opening);
+    };
+    connect(openingSlider, &QSlider::valueChanged, this, applyOpening);
+    connect(signalLost, &QCheckBox::toggled, this, applyOpening);
+    connect(statusCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [controlValve, statusCombo] {
+        controlValve->setStatus(static_cast<ValveIndicator::ValveStatus>(statusCombo->currentData().toInt()));
+    });
+    openingSlider->setValue(625);
+    statusCombo->setCurrentIndex(statusCombo->findData(static_cast<int>(ValveIndicator::ValveStatus::Open)));
+
+    tabWidget->addTab(valvesTab, QStringLiteral("Valves"));
+
     rootLayout->addWidget(tabWidget);
 }
 
@@ -1927,6 +2011,15 @@ void MainWindow::applyTheme(bool dark)
         tank->setTextColor(dark ? QColor(240, 244, 248) : QColor(30, 39, 46));
         tank->setScaleColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
         tank->setVesselColor(dark ? QColor(120, 134, 150) : QColor(110, 122, 138));
+    }
+    // ValveIndicator (#153) as well: tags and marks on the panel; the readout panel is dark in both. On white the
+    // default open, transit and unknown colours are below 3:1: darker, with the same hues (tst_ReadoutContrast)
+    for (ValveIndicator *valve : findChildren<ValveIndicator *>()) {
+        valve->setTextColor(dark ? QColor(240, 244, 248) : QColor(30, 39, 46));
+        valve->setOutlineColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
+        valve->setOpenColor(dark ? QColor(46, 204, 113) : QColor(36, 160, 89));
+        valve->setTransitColor(dark ? QColor(241, 196, 15) : QColor(170, 138, 10));
+        valve->setUnknownColor(dark ? QColor(149, 165, 166) : QColor(125, 145, 146));
     }
     m_themeButton->setText(dark ? QStringLiteral("Light Theme")
                                 : QStringLiteral("Dark Theme"));
@@ -2281,7 +2374,8 @@ void MainWindow::prepareForExport()
 bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStringList *written, QString *error)
 {
     static const char *const names[] = {"dashboard", "manual-controls", "circular-bargraph",
-                                        "annunciator", "compass", "daq", "analysis-chart", "tanks"};
+                                        "annunciator", "compass", "daq", "analysis-chart", "tanks",
+                                        "valves"};
     if (m_tabWidget->count() != static_cast<int>(sizeof(names) / sizeof(names[0]))) {
         *error = QStringLiteral("gallery has %1 tabs, the export knows %2").arg(m_tabWidget->count())
                      .arg(sizeof(names) / sizeof(names[0]));

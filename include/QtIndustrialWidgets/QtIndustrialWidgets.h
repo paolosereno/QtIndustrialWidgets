@@ -26,3 +26,4 @@
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ValveIndicator.h>

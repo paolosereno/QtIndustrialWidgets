@@ -210,8 +210,8 @@ def check_files(site):
     # Same widgets, captions, images and GIT_TAG as the README
     expected = readme_widgets()
     actual = landing_widgets(landing_text)
-    if len(expected) != 13:
-        problems.append(f"README.md: {len(expected)} widget rows found, 13 expected")
+    if len(expected) != 14:
+        problems.append(f"README.md: {len(expected)} widget rows found, 14 expected")
     if actual != expected:
         missing = [w for w in expected if w not in actual]
         extra = [w for w in actual if w not in expected]

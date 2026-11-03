@@ -17,6 +17,7 @@
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ValveIndicator.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -1259,6 +1260,105 @@ QIcon TankDisplayPlugin::icon() const
 }
 
 // ============================================================================
+// ValveIndicatorPlugin
+// ============================================================================
+
+ValveIndicatorPlugin::ValveIndicatorPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void ValveIndicatorPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *ValveIndicatorPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::ValveIndicator(parent);
+}
+
+QString ValveIndicatorPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString ValveIndicatorPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/ValveIndicator.h");
+}
+
+QString ValveIndicatorPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::ValveIndicator");
+}
+
+QString ValveIndicatorPlugin::toolTip() const
+{
+    return QStringLiteral("Valve symbol showing the status and the opening of a valve");
+}
+
+QString ValveIndicatorPlugin::whatsThis() const
+{
+    return QStringLiteral("A gate, ball, butterfly or control valve symbol whose shape shows the status (unknown, "
+                          "closed, open, in transit, fault), with an optional opening bar and readout. An indicator "
+                          "only: it sends no command.");
+}
+
+QString ValveIndicatorPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::ValveIndicator\" name=\"valveIndicator\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>120</width>\n"
+        "   <height>120</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon ValveIndicatorPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Control valve: two triangles tip to tip, the left one filled (in transit), a stem and a dome
+    QPainterPath left;
+    left.moveTo(3, 15);
+    left.lineTo(16, 22);
+    left.lineTo(3, 29);
+    left.closeSubpath();
+    QPainterPath right;
+    right.moveTo(29, 15);
+    right.lineTo(16, 22);
+    right.lineTo(29, 29);
+    right.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(241, 196, 15));
+    p.drawPath(left);
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(241, 196, 15), 1.5));
+    p.drawPath(left);
+    p.drawPath(right);
+    p.setPen(QPen(QColor(120, 134, 150), 1.5));
+    p.drawLine(QPointF(16, 22), QPointF(16, 10));
+    QPainterPath dome;
+    dome.moveTo(9, 10);
+    dome.arcTo(QRectF(9, 3, 14, 14), 180, -180);
+    dome.closeSubpath();
+    p.drawPath(dome);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -1278,6 +1378,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new CompassPlugin(this));
     m_widgets.append(new CircularBargraphPlugin(this));
     m_widgets.append(new TankDisplayPlugin(this));
+    m_widgets.append(new ValveIndicatorPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const
