@@ -15,6 +15,8 @@
 
 #include "FontTestUtils.h"
 #include "HatchTestUtils.h"
+#include "PixelTestUtils.h"
+#include "ReadoutInkTestUtils.h"
 #include "ReadoutTestUtils.h"
 #include "ScreenChangeTestUtils.h"
 
@@ -143,24 +145,9 @@ QRgb atUnit(const QImage &img, const ValveIndicator &v, QPointF unit)
     return at(img, layoutOf(v).transform.map(unit));
 }
 
-QString rgb(QRgb p)
-{
-    return QStringLiteral("rgb(%1, %2, %3)").arg(qRed(p)).arg(qGreen(p)).arg(qBlue(p));
-}
-
-// Device pixels of \a img in a logical rectangle that match a predicate
-int countIn(const QImage &img, const QRectF &logical, const std::function<bool(QRgb)> &match)
-{
-    const double dpr = img.devicePixelRatio();
-    const QRect r = QRectF(logical.topLeft() * dpr, logical.size() * dpr).toAlignedRect().intersected(img.rect());
-    int n = 0;
-    for (int y = r.top(); y <= r.bottom(); ++y) {
-        for (int x = r.left(); x <= r.right(); ++x) {
-            n += match(img.pixel(x, y)) ? 1 : 0;
-        }
-    }
-    return n;
-}
+using PixelTest::boundsOf;
+using PixelTest::countIn;
+using PixelTest::rgb;
 
 // The pixels along a segment of the symbol (unit coordinates), one per device pixel of its length
 QVector<QRgb> alongUnit(const QImage &img, const ValveIndicator &v, QPointF from, QPointF to)
@@ -179,92 +166,18 @@ QVector<QRgb> alongUnit(const QImage &img, const ValveIndicator &v, QPointF from
 // Readout ink: the pixels that change when only the readout colour changes (#167)
 QVector<QPoint> readoutInk(ValveIndicator &v)
 {
-    v.setReadoutColor(QColor(255, 0, 255, 0));
-    const QImage without = render(v);
-    v.setReadoutColor(QColor(255, 0, 255));
-    const QImage with = render(v);
+    const QVector<QPoint> ink =
+        ReadoutInk::magentaInk(v, &ValveIndicator::setReadoutColor, [](ValveIndicator &w) { return render(w); });
     v.setReadoutColor(QColor(240, 244, 248));
-    QVector<QPoint> ink;
-    for (int y = 0; y < with.height(); ++y) {
-        for (int x = 0; x < with.width(); ++x) {
-            if (with.pixel(x, y) != without.pixel(x, y)) {
-                ink.push_back(QPoint(x, y));
-            }
-        }
-    }
     return ink;
 }
 
-QRect boundsOf(const QVector<QPoint> &points)
-{
-    QRect r;
-    for (const QPoint &p : points) {
-        r |= QRect(p, QSize(1, 1));
-    }
-    return r;
-}
-
-// Ink box of a readout line drawn at 7 pt as ValveIndicator draws it (bold widget font, greyscale antialiasing, on
-// the opaque panel colour, at the widget's DPI and DPR): the smallest box over the 64 x 64 sub-pixel positions of
-// the raster engine (no slack, an opaque background)
+// Ink box of a readout line drawn at 7 pt as ValveIndicator draws it, on the opaque panel colour (#167)
 QSize sevenPointLineInk(const QString &text, bool triangle, const QWidget &w, qreal dpr)
 {
-    static QHash<QString, QSize> cache;
-    const QString key = QStringLiteral("%1|%2|%3|%4|%5").arg(triangle).arg(text).arg(w.logicalDpiY()).arg(dpr)
-                            .arg(w.font().toString());
-    if (cache.contains(key)) {
-        return cache.value(key);
-    }
-    QFont font = w.font();
-    font.setBold(true);
-    font.setPixelSize(internal::minimumReadoutPixelSize(w.logicalDpiY()));
-    font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() | QFont::NoSubpixelAntialias));
-    const QFontMetricsF fm(font, &w);
-    const double triW = triangle ? fm.capHeight() * 0.9 : 0.0;
-    const double gap = (triangle && !text.isEmpty()) ? triW * 0.35 : 0.0;
-    QSize smallest(std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
-    const QSize area(static_cast<int>(std::ceil(triW + gap + fm.horizontalAdvance(text) + 8.0)),
-                     static_cast<int>(std::ceil(fm.height() + 8.0)));
-    for (int step = 0; step < 64 * 64; ++step) {
-        const QPointF offset((step % 64) / 64.0 / dpr, (step / 64) / 64.0 / dpr);
-        QImage img(area * dpr, QImage::Format_RGB32);
-        img.setDevicePixelRatio(dpr);
-        img.setDotsPerMeterX(qRound(w.logicalDpiX() / 0.0254));
-        img.setDotsPerMeterY(qRound(w.logicalDpiY() / 0.0254));
-        img.fill(kPod);
-        {
-            QPainter p(&img);
-            p.setRenderHint(QPainter::Antialiasing);
-            const QPointF origin = QPointF(4.0, 4.0 + fm.ascent()) + offset;
-            if (triangle) {
-                const double midY = origin.y() - fm.capHeight() * 0.5;
-                QPolygonF tri;
-                tri << QPointF(origin.x(), midY + triW * 0.5) << QPointF(origin.x() + triW, midY + triW * 0.5)
-                    << QPointF(origin.x() + triW * 0.5, midY - triW * 0.5);
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(255, 0, 255));
-                p.drawPolygon(tri);
-            }
-            p.setFont(font);
-            p.setPen(QColor(255, 0, 255));
-            p.drawText(origin + QPointF(triW + gap, 0.0), text);
-        }
-        QRect box;
-        for (int y = 0; y < img.height(); ++y) {
-            const auto *row = reinterpret_cast<const QRgb *>(img.constScanLine(y));
-            for (int x = 0; x < img.width(); ++x) {
-                if (row[x] != kPod.rgb()) {
-                    box |= QRect(x, y, 1, 1);
-                }
-            }
-        }
-        smallest = QSize(std::min(smallest.width(), box.width()), std::min(smallest.height(), box.height()));
-    }
-    cache.insert(key, smallest);
-    return smallest;
+    return ReadoutInk::smallestLineInk(text, triangle, ReadoutInk::floorFont(w), w, dpr, kPod);
 }
 
-// Rows: every type, horizontal and vertical, with and without stubs
 void addTypesAndOrientations()
 {
     QTest::addColumn<ValveType>("type");
@@ -826,13 +739,8 @@ void tst_ValveIndicator::readoutStates()
         const auto markedInk = ReadoutTest::readoutInkGroups(mi, box(marked));
         const auto plainInk = ReadoutTest::readoutInkGroups(pi, box(plain));
         const QString where = QStringLiteral("input %1").arg(c.input);
-        QVERIFY2(!plainInk.isEmpty() && markedInk.size() == plainInk.size() + c.extraGroups,
-                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text").arg(markedInk.size()).arg(plainInk.size())));
-        const ReadoutTest::InkGroup &tri = markedInk.first();
-        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
-        const int flat = c.up ? ReadoutTest::spread(tri.bottom) : ReadoutTest::spread(tri.top);
-        const int pointed = c.up ? ReadoutTest::spread(tri.top) : ReadoutTest::spread(tri.bottom);
-        QVERIFY2(flat <= 1 && pointed >= 2, qPrintable(where + QStringLiteral(": flat %1, pointed %2").arg(flat).arg(pointed)));
+        const QString triangle = ReadoutTest::triangleError(markedInk, plainInk, c.extraGroups, c.up);
+        QVERIFY2(triangle.isEmpty(), qPrintable(where + QStringLiteral(": ") + triangle));
     }
     ValveIndicator invalid;
     make(invalid, kNaN);
