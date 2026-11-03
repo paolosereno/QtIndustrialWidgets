@@ -66,3 +66,6 @@ CPackSourceConfig.cmake
 *.zip
 *.dmg
 
+
+# Python bytecode (tools/mutation_check.py imports tools/run_configs.py)
+__pycache__/
