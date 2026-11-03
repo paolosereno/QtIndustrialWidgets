@@ -304,16 +304,9 @@ void checkOutOfRangeMark(const QFont *font)
         const QVector<InkGroup> marked = readoutInkGroups(renderGauge(outOfRange), box);
         const QVector<InkGroup> plain = readoutInkGroups(renderGauge(valid), validBox);
         const QString where = QStringLiteral("input %1").arg(c.input);
-        QVERIFY2(marked.size() == plain.size() + 1,
-                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text").arg(marked.size()).arg(plain.size())));
-
-        // The triangle: one flat side, and the other narrowing to the apex
-        const InkGroup &tri = marked.first();
-        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
-        const int flat = c.up ? spread(tri.bottom) : spread(tri.top);
-        const int pointed = c.up ? spread(tri.top) : spread(tri.bottom);
-        QVERIFY2(flat <= 1 && pointed >= 2,
-                 qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
+        // One more ink group, the triangle: one flat side, and the other narrowing to the apex
+        const QString triangle = triangleError(marked, plain, 1, c.up);
+        QVERIFY2(triangle.isEmpty(), qPrintable(where + QStringLiteral(": ") + triangle));
     }
 }
 
