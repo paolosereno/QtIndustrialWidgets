@@ -37,8 +37,11 @@ QT_QPA_PLATFORM=offscreen ./build/bin/bench_StripChart
 # Licence compliance (CI fails without it)
 reuse lint
 
-# Sabotage checks in the 8 configurations (QT_SCALE_FACTOR 1/1.25/1.5/2, with and without fonts), and the no-font
-# environment: use these tools, not copies in the scratchpad (sabotage file format: tools/mutation_check.py --help)
+# Tests and sabotage checks in the 8 configurations (QT_SCALE_FACTOR 1/1.25/1.5/2, with and without fonts), and the
+# no-font environment: only these tools, never scripts or loops of your own (sabotage file format:
+# tools/mutation_check.py --help). run_configs.py exits non-zero if any configuration fails, crashes, skips or
+# blacklists a test function, or cannot be set up (the one without fonts included); report its table as it is.
+python3 tools/run_configs.py tst_TankDisplay tst_TankDisplayLayout --markdown table.md
 python3 tools/mutation_check.py sabotages.json --require-detection --markdown table.md
 (source tools/nofont-env.sh && QT_QPA_PLATFORM=offscreen ./build/bin/tst_TankDisplay)
 ```
