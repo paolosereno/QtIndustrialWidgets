@@ -1467,15 +1467,8 @@ void tst_LinearGauge::outOfRangeMarkIsAShape()
         const QVector<InkGroup> markedInk = readoutInkGroups(marked, podBox(outOfRange, marked));
         const QVector<InkGroup> plainInk = readoutInkGroups(plain, podBox(valid, plain));
         const QString where = QStringLiteral("input %1").arg(c.input);
-        QVERIFY2(markedInk.size() == plainInk.size() + 1,
-                 qPrintable(where + QStringLiteral(": %1 ink groups, %2 for the valid text")
-                                        .arg(markedInk.size()).arg(plainInk.size())));
-        const InkGroup &tri = markedInk.first();
-        QVERIFY2(tri.top.size() >= 3, qPrintable(where));
-        const int flat = c.up ? spread(tri.bottom) : spread(tri.top);
-        const int pointed = c.up ? spread(tri.top) : spread(tri.bottom);
-        QVERIFY2(flat <= 1 && pointed >= 2,
-                 qPrintable(where + QStringLiteral(": flat side spread %1, pointed side %2").arg(flat).arg(pointed)));
+        const QString triangle = triangleError(markedInk, plainInk, 1, c.up);
+        QVERIFY2(triangle.isEmpty(), qPrintable(where + QStringLiteral(": ") + triangle));
     }
 }
 
