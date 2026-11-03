@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 
 #include "FontTestUtils.h"
+#include "ReadoutInkTestUtils.h"
 #include "ScreenChangeTestUtils.h"
 
 #include <memory>
@@ -369,66 +370,14 @@ QFont sevenPointValueFont(const QWidget &w)
     return f;
 }
 
-// The ink box, in device px, of a readout line drawn at 7 pt: the triangle (when \a triangle; 0.9 x the cap height,
-// 0.35 of it before the text, as the gauges draw it) and \a text. It is drawn as the widget draws it: same dpi and
-// device pixel ratio as \a w, on an opaque background (so with the same antialiasing, subpixel at DPR 1), and the
-// smallest width and height over all the sub-pixel positions are returned: the edges of a shape cover one column
-// more or less depending on where it falls (in x and in y together: a faint bottom row hides faint side columns), and
-// the raster engine places shapes and glyphs at 1/64 px, so the 64 x 64 offsets give the exact minimum. The
-// reference the readout is measured against, without any slack
+// The ink box, in device px, of a readout line drawn at 7 pt on the dial colour of the tests (subpixel antialiasing
+// at DPR 1, as the bargraph draws it): see ReadoutInk::smallestLineInk(). The reference the readout is measured
+// against, without any slack
 QSize sevenPointLineInk(const QString &text, bool triangle, const QWidget &w, qreal dpr)
 {
-    static QHash<QString, QSize> cache; // one font and one device pixel ratio per test run
-    const QString key = (triangle ? QStringLiteral("^") : QStringLiteral("_")) + text;
-    if (cache.contains(key)) {
-        return cache.value(key);
-    }
-    const QFont font = sevenPointValueFont(w);
-    const QFontMetricsF fm(font, &w);
-    const double triW = triangle ? fm.capHeight() * 0.9 : 0.0;
-    const double gap = (triangle && !text.isEmpty()) ? triW * 0.35 : 0.0;
-    const QColor background(28, 32, 40);
-    QSize smallest(std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
-    const QSize area(static_cast<int>(std::ceil(triW + gap + fm.horizontalAdvance(text) + 8.0)),
-                     static_cast<int>(std::ceil(fm.height() + 8.0))); // logical px
-    for (int step = 0; step < 64 * 64; ++step) {
-        const QPointF offset((step % 64) / 64.0 / dpr, (step / 64) / 64.0 / dpr); // logical px
-        QImage img(area * dpr, QImage::Format_RGB32);
-        img.setDevicePixelRatio(dpr);
-        img.setDotsPerMeterX(qRound(w.logicalDpiX() / 0.0254));
-        img.setDotsPerMeterY(qRound(w.logicalDpiY() / 0.0254));
-        img.fill(background);
-        {
-            QPainter p(&img);
-            p.setRenderHint(QPainter::Antialiasing);
-            const QPointF origin = QPointF(4.0, 4.0 + fm.ascent()) + offset; // left end, baseline
-            if (triangle) {
-                const double midY = origin.y() - fm.capHeight() * 0.5;
-                QPolygonF tri;
-                tri << QPointF(origin.x(), midY + triW * 0.5) << QPointF(origin.x() + triW, midY + triW * 0.5)
-                    << QPointF(origin.x() + triW * 0.5, midY - triW * 0.5);
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(255, 0, 255));
-                p.drawPolygon(tri);
-            }
-            p.setFont(font);
-            p.setPen(QColor(255, 0, 255));
-            p.drawText(origin + QPointF(triW + gap, 0.0), text);
-        }
-        QRect box;
-        for (int y = 0; y < img.height(); ++y) {
-            const auto *row = reinterpret_cast<const QRgb *>(img.constScanLine(y));
-            for (int x = 0; x < img.width(); ++x) {
-                if (row[x] != background.rgb()) {
-                    box |= QRect(x, y, 1, 1);
-                }
-            }
-        }
-        smallest = smallest.boundedTo(box.size());
-    }
-    cache.insert(key, smallest);
-    return smallest;
+    return ReadoutInk::smallestLineInk(text, triangle, sevenPointValueFont(w), w, dpr, QColor(28, 32, 40));
 }
+
 } // namespace
 
 class tst_CircularBargraph : public QObject

@@ -63,6 +63,26 @@ inline int spread(const QVector<int> &v)
     return *std::max_element(v.begin(), v.end()) - *std::min_element(v.begin(), v.end());
 }
 
+// Empty when \a marked holds the state triangle as its first ink group: \a extraGroups more groups than \a plain
+// (the same text without the marks), and a first group at least 3 columns wide, flat on its base (spread <= 1) and
+// pointed at its tip (spread >= 2), the tip up when \a up; otherwise what differs
+inline QString triangleError(const QVector<InkGroup> &marked, const QVector<InkGroup> &plain, int extraGroups, bool up)
+{
+    if (plain.isEmpty() || marked.size() != plain.size() + extraGroups) {
+        return QStringLiteral("%1 ink groups, %2 for the valid text").arg(marked.size()).arg(plain.size());
+    }
+    const InkGroup &tri = marked.first();
+    if (tri.top.size() < 3) {
+        return QStringLiteral("triangle %1 px wide").arg(tri.top.size());
+    }
+    const int flat = up ? spread(tri.bottom) : spread(tri.top);
+    const int pointed = up ? spread(tri.top) : spread(tri.bottom);
+    if (flat > 1 || pointed < 2) {
+        return QStringLiteral("flat %1, pointed %2").arg(flat).arg(pointed);
+    }
+    return QString();
+}
+
 // Empty when \a dashes are the ink groups of "---": three groups, each flat with its top and bottom edges level
 // with those of the others; otherwise what differs. Checked by groups, not by glyph shapes: without installed
 // fonts (Windows offscreen CI) every character is drawn as the same box. The dashes sit at fractional
