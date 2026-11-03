@@ -8,7 +8,8 @@
 //
 // Targets (WCAG 2.x): 4.5:1 for text (1.4.3, normal text: the readouts); 3:1 for graphical objects that carry
 // meaning (1.4.11: the fill, the limit lines and the hatch of an invalid input drawn on the empty inside of
-// TankDisplay, tankInterior()). Each is measured on the rendered pixels, with no tolerance.
+// TankDisplay, tankInterior()). The status tags of ValveIndicator are text on the background of the widget
+// (valveStatusTag()): 4.5:1 against the showcase background. Each is measured on the rendered pixels, with no tolerance.
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/CircularBargraph.h>
@@ -17,9 +18,11 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ValveIndicator.h>
 
 #include "internal/LinearGaugeScale.h"
 #include "internal/TankDisplayTestAccess.h"
+#include "internal/ValveIndicatorTestAccess.h"
 
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -285,6 +288,14 @@ void style(TankDisplay &t, bool dark)
     }
 }
 
+void style(ValveIndicator &v, bool dark)
+{
+    if (!dark) {
+        v.setTextColor(QColor(30, 39, 46));
+        v.setOutlineColor(QColor(80, 90, 105));
+    }
+}
+
 void style(Compass &c, bool dark)
 {
     if (dark) {
@@ -348,6 +359,10 @@ private Q_SLOTS:
     void tankDisplay();
     void tankInterior_data();
     void tankInterior();
+    void valveIndicator_data();
+    void valveIndicator();
+    void valveStatusTag_data();
+    void valveStatusTag();
     void readoutColorProperty();
     void readoutFollowsReadoutColorNotTextColor_data();
     void readoutFollowsReadoutColorNotTextColor();
@@ -554,6 +569,75 @@ void tst_ReadoutContrast::tankInterior()
     check("hatch", mostContrasting(img, inside, hatchedEmpty), hatchedEmpty);
 }
 
+void tst_ReadoutContrast::valveIndicator_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<double>("value");
+    for (const bool dark : {true, false}) {
+        const char *theme = dark ? "dark" : "light";
+        QTest::addRow("%s valid", theme) << dark << 42.0;
+        QTest::addRow("%s invalid", theme) << dark << kNaN;
+        QTest::addRow("%s overrange", theme) << dark << 130.0;
+        QTest::addRow("%s underrange", theme) << dark << -10.0;
+    }
+}
+
+// #153: the opening readout of ValveIndicator on its opaque panel, in every state of the opening
+void tst_ReadoutContrast::valveIndicator()
+{
+    QFETCH(bool, dark);
+    QFETCH(double, value);
+    ValveIndicator v;
+    v.setValveType(ValveIndicator::ValveType::Control);
+    v.setStatus(ValveIndicator::ValveStatus::Open);
+    v.setOpening(value);
+    style(v, dark);
+    v.resize(180, 220);
+    const QImage img = renderOn(v, dark);
+    checkReading(measureReadout(img, deviceRect(internal::ValveIndicatorTestAccess::lastLayout(v).pod, img.devicePixelRatio())),
+                 scaledPixels(15, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::valveStatusTag_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<int>("status");
+    QTest::addColumn<int>("minPixels");
+    for (const bool dark : {true, false}) {
+        const char *theme = dark ? "dark" : "light";
+        QTest::addRow("%s unknown (?)", theme) << dark << static_cast<int>(ValveIndicator::ValveStatus::Unknown) << 8;
+        QTest::addRow("%s fault (FAULT)", theme) << dark << static_cast<int>(ValveIndicator::ValveStatus::Fault) << 30;
+    }
+}
+
+// #153: the status tags of ValveIndicator are text drawn on the background of the widget, not on a panel: textColor()
+// against the showcase background of each theme, with the gallery styling
+void tst_ReadoutContrast::valveStatusTag()
+{
+    QFETCH(bool, dark);
+    QFETCH(int, status);
+    QFETCH(int, minPixels);
+    ValveIndicator v;
+    v.setStatus(static_cast<ValveIndicator::ValveStatus>(status));
+    style(v, dark);
+    v.resize(180, 160);
+    // As the gallery export draws a showcase (examples/gallery/GalleryExport.cpp): onto the showcase background,
+    // without the window background of the widget (grab() would paint the default palette under the tag)
+    const qreal scale = v.devicePixelRatioF();
+    QImage img(v.size() * scale, QImage::Format_ARGB32);
+    img.setDevicePixelRatio(scale);
+    img.fill(dark ? QColor(0x18, 0x1d, 0x27) : QColor(0xff, 0xff, 0xff));
+    {
+        QPainter painter(&img);
+        v.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+    }
+    const QRectF tag = internal::ValveIndicatorTestAccess::lastLayout(v).tag;
+    const qreal dpr = img.devicePixelRatio();
+    // The whole row (no inset: the row is as tall as the text line); its ends are background
+    const QRect box = QRectF(tag.topLeft() * dpr, tag.size() * dpr).toAlignedRect().intersected(img.rect());
+    checkReading(measureReadout(img, box), scaledPixels(minPixels, dpr));
+}
+
 void tst_ReadoutContrast::compass_data()
 {
     QTest::addColumn<bool>("dark");
@@ -699,13 +783,15 @@ int countIn(const QImage &img, const QRect &box, bool (*pred)(QRgb))
 }
 } // namespace
 
-// #159: the property of the widgets whose readout once used textColor(), and of TankDisplay (#152)
+// #159: the property of the widgets whose readout once used textColor(), and of TankDisplay (#152) and
+// ValveIndicator (#153)
 void tst_ReadoutContrast::readoutColorProperty()
 {
     checkReadoutColorProperty<RadialGauge>(QColor(245, 246, 250));
     checkReadoutColorProperty<LinearGauge>(QColor(240, 244, 248));
     checkReadoutColorProperty<Compass>(QColor(225, 231, 236));
     checkReadoutColorProperty<TankDisplay>(QColor(240, 244, 248));
+    checkReadoutColorProperty<ValveIndicator>(QColor(240, 244, 248));
 }
 
 void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor_data()
@@ -721,6 +807,9 @@ void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor_data()
     QTest::newRow("TankDisplay valid") << QStringLiteral("TankDisplay") << 47.0;
     QTest::newRow("TankDisplay invalid") << QStringLiteral("TankDisplay") << kNaN;
     QTest::newRow("TankDisplay overrange") << QStringLiteral("TankDisplay") << 130.0;
+    QTest::newRow("ValveIndicator valid") << QStringLiteral("ValveIndicator") << 47.0;
+    QTest::newRow("ValveIndicator invalid") << QStringLiteral("ValveIndicator") << kNaN;
+    QTest::newRow("ValveIndicator overrange") << QStringLiteral("ValveIndicator") << 130.0;
 }
 
 // #159: with textColor() pure green and readoutColor() magenta, the readout is magenta and has no green
@@ -769,6 +858,17 @@ void tst_ReadoutContrast::readoutFollowsReadoutColorNotTextColor()
         t.resize(160, 260);
         img = renderOn(t, true);
         pod = deviceRect(internal::TankDisplayTestAccess::lastLayout(t).pod, img.devicePixelRatio());
+    } else if (widget == QLatin1String("ValveIndicator")) {
+        ValveIndicator v;
+        v.setValveType(ValveIndicator::ValveType::Control);
+        v.setStatus(ValveIndicator::ValveStatus::Fault); // the FAULT tag in textColor()
+        v.setOpening(value);
+        v.setTextColor(text);
+        v.setOutlineColor(text);
+        v.setReadoutColor(readout);
+        v.resize(180, 220);
+        img = renderOn(v, true);
+        pod = deviceRect(internal::ValveIndicatorTestAccess::lastLayout(v).pod, img.devicePixelRatio());
     } else {
         Compass c;
         c.setHeading(value);
