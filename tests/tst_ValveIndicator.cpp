@@ -595,6 +595,16 @@ void tst_ValveIndicator::statusShapesAtTheirPoints()
         QVERIFY(area.size() > 500);
         const QString error = HatchTest::hatchError(mask, area);
         QVERIFY2(error.isEmpty(), qPrintable(error));
+        // In unknownColor(): pure green blended on black stays green at any coverage (a 1.2 px line covers no whole
+        // pixel at DPR 1), so every pixel the hatch touches has red and blue below a quarter of its green
+        int otherHue = 0;
+        for (const QPoint &q : area) {
+            const QRgb px = img.pixel(q);
+            if (channelDistance(px, kBackground.rgb()) > 60 && std::max(qRed(px), qBlue(px)) * 4 > qGreen(px)) {
+                ++otherHue;
+            }
+        }
+        QVERIFY2(otherHue == 0, qPrintable(QStringLiteral("%1 hatch pixels not in unknownColor()").arg(otherHue)));
     }
 }
 
@@ -928,11 +938,20 @@ void tst_ValveIndicator::readoutNeverBelowSevenPoints()
     for (const QPoint &p : ink) {
         QVERIFY2(podDevice.contains(p), "readout ink outside the panel");
     }
+    const bool outOfRange = state == ValueState::Overrange || state == ValueState::Underrange;
     if (ink.isEmpty()) {
         QVERIFY2(state == ValueState::Valid, "only a valid readout may be left out");
+        // The unit goes first: the number is left out only when it does not fit alone at 7 pt, between the margins
+        // of the panel (max(2, 0.12 x its shorter side) on each side)
+        QFont seven = v.font();
+        seven.setBold(true);
+        seven.setPixelSize(internal::minimumReadoutPixelSize(v.logicalDpiY()));
+        const double advance = QFontMetricsF(seven, &v).horizontalAdvance(QString::number(input, 'f', precision));
+        const double available = pod.width() - 2.0 * std::max(2.0, std::min(pod.width(), pod.height()) * 0.12);
+        QVERIFY2(advance > available, qPrintable(QStringLiteral("no readout, but the number alone at 7 pt is %1 px for %2 px")
+                                                     .arg(advance).arg(available)));
         return;
     }
-    const bool outOfRange = state == ValueState::Overrange || state == ValueState::Underrange;
     const QString number = state == ValueState::Invalid
         ? QStringLiteral("---")
         : (std::isinf(input) ? (input > 0 ? QLatin1Char('>') + QString::number(100.0, 'f', precision)
