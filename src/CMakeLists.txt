@@ -205,6 +205,27 @@ set_target_properties(LevelMeterLayout PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(TankDisplayLayout OBJECT
+    internal/TankDisplayLayout.cpp
+    internal/TankDisplayLayout.h
+)
+
+target_include_directories(TankDisplayLayout
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(TankDisplayLayout
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+)
+
+set_target_properties(TankDisplayLayout PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(AnalysisChartView OBJECT
     internal/AnalysisChartView.cpp
     internal/AnalysisChartView.h
@@ -250,6 +271,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     AnnunciatorPanel.cpp
     Compass.cpp
     CircularBargraph.cpp
+    TankDisplay.cpp
     $<TARGET_OBJECTS:NumberFormat>
     $<TARGET_OBJECTS:ValueClassification>
     $<TARGET_OBJECTS:ValueStateDrawing>
@@ -259,6 +281,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     $<TARGET_OBJECTS:RadialGaugeLayout>
     $<TARGET_OBJECTS:IndustrialSwitchLayout>
     $<TARGET_OBJECTS:LevelMeterLayout>
+    $<TARGET_OBJECTS:TankDisplayLayout>
     $<TARGET_OBJECTS:FontScale>
     $<TARGET_OBJECTS:AnalysisChartView>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
@@ -275,6 +298,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/AnnunciatorPanel.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/Compass.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/CircularBargraph.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/TankDisplay.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

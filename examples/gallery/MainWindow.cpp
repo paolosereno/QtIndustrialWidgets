@@ -16,6 +16,7 @@
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/AnalysisChart.h>
+#include <QtIndustrialWidgets/TankDisplay.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -1545,6 +1546,94 @@ void MainWindow::setupUi()
     analysisLayout->addWidget(analysisControlsBox);
     tabWidget->addTab(analysisTab, QStringLiteral("Analysis Chart"));
 
+    // ------------------------------------------------------------------------
+    // Tanks & Silos (TankDisplay, #152)
+    // ------------------------------------------------------------------------
+    auto *tanksTab = new QWidget(tabWidget);
+    auto *tanksLayout = new QVBoxLayout(tanksTab);
+    tanksLayout->setContentsMargins(12, 12, 12, 12);
+    tanksLayout->setSpacing(12);
+
+    auto *tanksBox = new QGroupBox(QStringLiteral("Storage Tanks && Silos (TankDisplay)"), tanksTab);
+    auto *tanksRow = new QHBoxLayout(tanksBox);
+    tanksRow->setContentsMargins(14, 22, 14, 14);
+    tanksRow->setSpacing(18);
+
+    auto *fuelTank = new TankDisplay(tanksBox);
+    fuelTank->setLimits(5.0, 15.0, 85.0, 95.0);
+    auto *lyingTank = new TankDisplay(tanksBox);
+    lyingTank->setShape(TankDisplay::TankShape::HorizontalCylinder);
+    lyingTank->setRange(0.0, 2.4); // the level: the volume of a lying cylinder is not linear in the height
+    lyingTank->setPrecision(2);
+    lyingTank->setMajorTicks(4);
+    lyingTank->setUnit(QStringLiteral("m"));
+    lyingTank->setContentColor(QColor(230, 160, 40));
+    lyingTank->setLimits(0.12, 0.3, 2.1, 2.28);
+    auto *silo = new TankDisplay(tanksBox);
+    silo->setShape(TankDisplay::TankShape::Hopper);
+    silo->setContent(TankDisplay::Content::Granular);
+    silo->setContentColor(QColor(196, 164, 112));
+    silo->setPrecision(0);
+    silo->setLimits(5.0, 15.0, 80.0, 90.0);
+    auto *sphere = new TankDisplay(tanksBox);
+    sphere->setShape(TankDisplay::TankShape::Sphere);
+    sphere->setContentColor(QColor(46, 204, 113));
+    sphere->setLimits(10.0, 25.0, 75.0, 90.0);
+    const QList<TankDisplay *> tanks{fuelTank, lyingTank, silo, sphere};
+    for (TankDisplay *tank : tanks) {
+        tank->setLimitHysteresis(0.02 * (tank->maximum() - tank->minimum()));
+        tank->setMinimumHeight(260);
+        tanksRow->addWidget(tank, tank->shape() == TankDisplay::TankShape::HorizontalCylinder ? 2 : 1);
+    }
+    tanksLayout->addWidget(tanksBox, 1);
+
+    auto *tanksControls = new QGroupBox(QStringLiteral("Level"), tanksTab);
+    auto *tanksControlsLayout = new QGridLayout(tanksControls);
+    auto *levelSlider = new QSlider(Qt::Horizontal, tanksControls);
+    levelSlider->setRange(-10, 110);
+    auto *levelLabel = new QLabel(tanksControls);
+    levelLabel->setMinimumWidth(170);
+    auto *faultCheck = new QCheckBox(QStringLiteral("Sensor fault (NaN)"), tanksControls);
+    auto *limitLabel = new QLabel(tanksControls);
+    limitLabel->setStyleSheet(QStringLiteral("font-family: monospace;"));
+    tanksControlsLayout->addWidget(new QLabel(QStringLiteral("Fill (% of range):"), tanksControls), 0, 0);
+    tanksControlsLayout->addWidget(levelSlider, 0, 1);
+    tanksControlsLayout->addWidget(levelLabel, 0, 2);
+    tanksControlsLayout->addWidget(faultCheck, 1, 0);
+    tanksControlsLayout->addWidget(limitLabel, 1, 1, 1, 2);
+    tanksLayout->addWidget(tanksControls);
+
+    auto showLimitStates = [=]() {
+        QStringList states;
+        for (TankDisplay *tank : tanks) {
+            states << QString::fromLatin1(QMetaEnum::fromType<TankDisplay::LimitState>().valueToKey(
+                static_cast<int>(tank->limitState())));
+        }
+        limitLabel->setText(QStringLiteral("Limit states: ") + states.join(QStringLiteral(" · ")));
+    };
+    for (TankDisplay *tank : tanks) {
+        connect(tank, &TankDisplay::limitStateChanged, this, showLimitStates);
+    }
+    auto applyLevel = [=]() {
+        const double fraction = levelSlider->value() / 100.0;
+        for (TankDisplay *tank : tanks) {
+            tank->setValue(faultCheck->isChecked() ? std::numeric_limits<double>::quiet_NaN()
+                                                   : tank->minimum() + fraction * (tank->maximum() - tank->minimum()));
+        }
+        levelLabel->setText(QStringLiteral("%1 % of the range").arg(levelSlider->value()));
+    };
+    connect(levelSlider, &QSlider::valueChanged, this, applyLevel);
+    connect(faultCheck, &QCheckBox::toggled, this, applyLevel);
+    // Different levels in the four vessels at start: one per limit state
+    levelSlider->setValue(62);
+    fuelTank->setValue(62.4);
+    lyingTank->setValue(2.2);
+    silo->setValue(93.0);
+    sphere->setValue(21.5);
+    showLimitStates();
+
+    tabWidget->addTab(tanksTab, QStringLiteral("Tanks"));
+
     rootLayout->addWidget(tabWidget);
 }
 
@@ -1833,6 +1922,12 @@ void MainWindow::toggleTheme()
 void MainWindow::applyTheme(bool dark)
 {
     m_isDarkTheme = dark;
+    // TankDisplay (#152) draws on the panel: its texts follow the theme; the readout panel is dark in both
+    for (TankDisplay *tank : findChildren<TankDisplay *>()) {
+        tank->setTextColor(dark ? QColor(240, 244, 248) : QColor(30, 39, 46));
+        tank->setScaleColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
+        tank->setVesselColor(dark ? QColor(120, 134, 150) : QColor(110, 122, 138));
+    }
     m_themeButton->setText(dark ? QStringLiteral("Light Theme")
                                 : QStringLiteral("Dark Theme"));
 
@@ -2186,7 +2281,7 @@ void MainWindow::prepareForExport()
 bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStringList *written, QString *error)
 {
     static const char *const names[] = {"dashboard", "manual-controls", "circular-bargraph",
-                                        "annunciator", "compass", "daq", "analysis-chart"};
+                                        "annunciator", "compass", "daq", "analysis-chart", "tanks"};
     if (m_tabWidget->count() != static_cast<int>(sizeof(names) / sizeof(names[0]))) {
         *error = QStringLiteral("gallery has %1 tabs, the export knows %2").arg(m_tabWidget->count())
                      .arg(sizeof(names) / sizeof(names[0]));

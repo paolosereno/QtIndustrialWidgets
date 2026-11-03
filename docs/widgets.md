@@ -245,6 +245,53 @@ Bargraph of curved segments on an arc (`qiw::CircularBargraph`).
   above (`▲ 120.0`, `>100.0` for +Inf). A NaN input is shown as `Invalid` (all segments unlit, readout `---`).
   `rawValue()` keeps the unclamped input.
 
+## TankDisplay
+
+<img src="images/tank-display-limits.png" alt="TankDisplay" width="160">
+
+Level indicator for tanks and silos (`qiw::TankDisplay`, #152).
+- **Vessel**: `shape` is `TankShape::VerticalCylinder`, `HorizontalCylinder`, `Hopper` (a cylinder with a conical
+  bottom) or `Sphere`; `content` is `Content::Liquid` (a flat fill) or `Content::Granular` (a fill with a grain
+  texture). The vessel keeps the proportions of its shape and is centred in the space left by the readout, the scale
+  and the limit tags.
+- **Scale and fill**: the scale runs from the bottom of the vessel (`minimum`) to its top (`maximum`), with
+  `majorTicks`, `minorTicks` and labels that keep a minimum gap. The fill height is linear in the value. The widget
+  converts nothing: it shows the value the application passes, on the scale the application sets. In a horizontal
+  cylinder or a sphere the volume is not linear in the height, so a volume scale would put the surface at the wrong
+  height there: pass the level (in % or in m) instead.
+- **Limits**: `lowLowLimit`, `lowLimit`, `highLimit`, `highHighLimit`, each disabled by NaN (the default). The enabled
+  limits must keep `lowLow ≤ low < high ≤ highHigh`; `setLimits()` and the single setters reject a change that breaks
+  the order, or a limit of ±Inf, and change nothing: `setLimits()` returns `false`, a single setter (and a property
+  write) emits a `qWarning()` that names the limit and the reason.
+- **Limit state**: `limitState()` is `Unknown`, `Normal`, `Low`, `LowLow`, `High` or `HighHigh`, with
+  `limitStateChanged()`. It is computed on the input, not on the value shown, so +Inf gives `HighHigh` when that
+  limit is enabled. A high limit is entered at `input >= limit` and left below `limit − limitHysteresis`; a low limit
+  is entered at `input <= limit` and left above `limit + limitHysteresis` (default hysteresis 0). A NaN input gives
+  `Unknown`, never `Normal`.
+- **Markers**: each enabled limit inside the range has a dashed line across the vessel and a triangle on its left;
+  the triangle of the limit in force is filled and tagged `HH`, `H`, `L` or `LL`, so the state is not told by colour
+  alone. A limit outside the range has no marker while it is not in force; in force, its filled and tagged triangle
+  stands at that end of the scale, with a small triangle past it pointing away from the scale (the limit lies beyond
+  it). So every limit state other than `Normal` and `Unknown` is visible. The widget only shows and reports the
+  limits: acknowledgement and latching stay in the application.
+- **Readout**: optional, above the vessel, on an opaque panel in `readoutColor()` (#159). The text is never below
+  7 pt; without room the unit goes first, then the number, never the triangle or `---`. `minimumSizeHint()` is
+  computed from the font, the logical DPI and the configuration (shape, scale labels, limit tags, readout).
+- **No value until the first `setValue()`**: unlike the gauges, which start at their minimum as `Valid`, a new
+  `TankDisplay` starts `Invalid` (`value()` and `rawValue()` NaN, the vessel hatched, the readout `---`) with
+  `limitState()` `Unknown`, so that a level that was never read is never shown as a level.
+- **Value state**: as the other gauges (#151). Out-of-range inputs and ±Inf fill to the end of the scale and the
+  readout shows the input after a triangle; a NaN input empties the vessel, hatches it and shows `---`.
+- **Colours**: `contentColor`, `vesselColor` (the wall; the empty inside is a dark shade of it in every theme),
+  `scaleColor`, `textColor`, `readoutColor`, `limitColor`. The content colour carries no meaning of its own. The
+  hatch of an invalid input is derived from the inside, mixed toward white or black (whichever contrasts more) up to
+  4.5:1 against it, so it keeps at least 3:1 (WCAG 2.x, graphical objects) for any `vesselColor`. The limit lines
+  are aligned to device pixels, so they reach their colour at every device pixel ratio.
+- **Contrast is guaranteed only for the hatch**, which the library computes. `contentColor` and `limitColor` are
+  drawn on the inside as given: whoever changes `vesselColor` (and so the inside) or these colours must check
+  their contrast against the inside (3:1 for graphical objects). For example, with `vesselColor` (235, 235, 235)
+  the inside is (59, 59, 59), and the default `limitColor` measures 2.93:1 against it.
+
 ## AnalysisChart
 
 <img src="images/analysis-chart-review.png" alt="AnalysisChart" width="640">

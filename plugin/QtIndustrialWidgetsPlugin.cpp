@@ -16,6 +16,7 @@
 #include <QtIndustrialWidgets/AnnunciatorPanel.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/CircularBargraph.h>
+#include <QtIndustrialWidgets/TankDisplay.h>
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -1160,6 +1161,104 @@ QIcon CircularBargraphPlugin::icon() const
 }
 
 // ============================================================================
+// TankDisplayPlugin
+// ============================================================================
+
+TankDisplayPlugin::TankDisplayPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void TankDisplayPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *TankDisplayPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::TankDisplay(parent);
+}
+
+QString TankDisplayPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString TankDisplayPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/TankDisplay.h");
+}
+
+QString TankDisplayPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::TankDisplay");
+}
+
+QString TankDisplayPlugin::toolTip() const
+{
+    return QStringLiteral("Tank and silo level indicator with high/low limits");
+}
+
+QString TankDisplayPlugin::whatsThis() const
+{
+    return QStringLiteral("A vessel (vertical or horizontal cylinder, hopper or sphere) filled with a liquid or a "
+                          "granular solid up to the value, with a vertical scale, a readout and four limits "
+                          "(low-low, low, high, high-high) whose crossings it reports.");
+}
+
+QString TankDisplayPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::TankDisplay\" name=\"tankDisplay\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>160</width>\n"
+        "   <height>260</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon TankDisplayPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Vertical cylinder with dished heads, two-thirds full
+    QPainterPath vessel;
+    vessel.moveTo(8, 7);
+    vessel.arcTo(QRectF(8, 3, 16, 8), 180, -180);
+    vessel.lineTo(24, 25);
+    vessel.arcTo(QRectF(8, 21, 16, 8), 0, -180);
+    vessel.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(30, 34, 38));
+    p.drawPath(vessel);
+    QPainterPath below;
+    below.addRect(QRectF(7, 13, 18, 17));
+    p.setBrush(QColor(52, 152, 219));
+    p.drawPath(vessel.intersected(below));
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(120, 134, 150), 1.5));
+    p.drawPath(vessel);
+
+    // High limit marker
+    QPolygonF marker;
+    marker << QPointF(2, 6) << QPointF(6, 9) << QPointF(2, 12);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(231, 76, 60));
+    p.drawPolygon(marker);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -1178,6 +1277,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new AnnunciatorPanelPlugin(this));
     m_widgets.append(new CompassPlugin(this));
     m_widgets.append(new CircularBargraphPlugin(this));
+    m_widgets.append(new TankDisplayPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

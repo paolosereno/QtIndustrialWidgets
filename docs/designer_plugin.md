@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # Qt Designer plugin {#designer_plugin}
 
-The plugin module `QtIndustrialWidgetsPlugin` registers the 12 widgets in **Qt Widgets Designer** and in the Designer
+The plugin module `QtIndustrialWidgetsPlugin` registers the 13 widgets in **Qt Widgets Designer** and in the Designer
 integrated in **Qt Creator**.
 
 ## Build
@@ -83,5 +83,6 @@ The plugin adds the category **Industrial Widgets** to the Widget Box, with thes
 10. `QtIndustrialWidgets::AnnunciatorPanel`
 11. `QtIndustrialWidgets::Compass`
 12. `QtIndustrialWidgets::CircularBargraph`
+13. `QtIndustrialWidgets::TankDisplay`
 
 The Property Editor shows each widget's `Q_PROPERTY`s (ranges, thresholds, colours, orientation, …).
