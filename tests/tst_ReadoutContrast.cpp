@@ -9,7 +9,8 @@
 // Targets (WCAG 2.x): 4.5:1 for text (1.4.3, normal text: the readouts); 3:1 for graphical objects that carry
 // meaning (1.4.11: the fill, the limit lines and the hatch of an invalid input drawn on the empty inside of
 // TankDisplay, tankInterior()). The status tags of ValveIndicator are text on the background of the widget
-// (valveStatusTag()): 4.5:1 against the showcase background. Each is measured on the rendered pixels, with no tolerance.
+// (valveStatusTag()): 4.5:1 against the showcase background; its body in each status colour is a graphical object
+// on that background (valveStatusColours()): 3:1. Each is measured on the rendered pixels, with no tolerance.
 
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/CircularBargraph.h>
@@ -293,6 +294,10 @@ void style(ValveIndicator &v, bool dark)
     if (!dark) {
         v.setTextColor(QColor(30, 39, 46));
         v.setOutlineColor(QColor(80, 90, 105));
+        // Darker open, transit and unknown colours, the same hues: 3:1 on white
+        v.setOpenColor(QColor(36, 160, 89));
+        v.setTransitColor(QColor(170, 138, 10));
+        v.setUnknownColor(QColor(125, 145, 146));
     }
 }
 
@@ -363,6 +368,8 @@ private Q_SLOTS:
     void valveIndicator();
     void valveStatusTag_data();
     void valveStatusTag();
+    void valveStatusColours_data();
+    void valveStatusColours();
     void readoutColorProperty();
     void readoutFollowsReadoutColorNotTextColor_data();
     void readoutFollowsReadoutColorNotTextColor();
@@ -636,6 +643,53 @@ void tst_ReadoutContrast::valveStatusTag()
     // The whole row (no inset: the row is as tall as the text line); its ends are background
     const QRect box = QRectF(tag.topLeft() * dpr, tag.size() * dpr).toAlignedRect().intersected(img.rect());
     checkReading(measureReadout(img, box), scaledPixels(minPixels, dpr));
+}
+
+void tst_ReadoutContrast::valveStatusColours_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<int>("status");
+    const auto statuses = QMetaEnum::fromType<ValveIndicator::ValveStatus>();
+    for (const bool dark : {true, false}) {
+        for (int i = 0; i < statuses.keyCount(); ++i) {
+            QTest::addRow("%s %s", dark ? "dark" : "light", statuses.key(i)) << dark << statuses.value(i);
+        }
+    }
+}
+
+// #153: the body of ValveIndicator in each status colour, with the gallery styling, against the showcase background
+// of each theme: 3:1 (graphical objects). Measured on a pixel the body covers fully: the fill of a closed valve and
+// of the upstream half in transit, the solid outline (the downstream base, 2 px wide) of the other statuses
+void tst_ReadoutContrast::valveStatusColours()
+{
+    constexpr double kGraphicsRatio = 3.0;
+    QFETCH(bool, dark);
+    QFETCH(int, status);
+    const auto s = static_cast<ValveIndicator::ValveStatus>(status);
+    ValveIndicator v;
+    v.setStatus(s);
+    v.setPipeStubsVisible(true);
+    style(v, dark);
+    v.resize(180, 160);
+    const qreal scale = v.devicePixelRatioF();
+    const QColor background = dark ? QColor(0x18, 0x1d, 0x27) : QColor(0xff, 0xff, 0xff);
+    QImage img(v.size() * scale, QImage::Format_ARGB32);
+    img.setDevicePixelRatio(scale);
+    img.fill(background);
+    {
+        QPainter painter(&img);
+        v.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+    }
+    const bool filled = s == ValveIndicator::ValveStatus::Closed || s == ValveIndicator::ValveStatus::Transit;
+    const QPointF unit = filled ? QPointF(-0.5, 0.0) : QPointF(1.0, 0.3);
+    const QPointF at = internal::ValveIndicatorTestAccess::lastLayout(v).transform.map(unit) * scale;
+    const QRgb px = img.pixel(static_cast<int>(std::floor(at.x())), static_cast<int>(std::floor(at.y())));
+    const double ratio = contrast(px, background.rgb());
+    QVERIFY2(ratio >= kGraphicsRatio,
+             qPrintable(QStringLiteral("body (%1,%2,%3) on (%4,%5,%6): %7:1, %8:1 needed")
+                            .arg(qRed(px)).arg(qGreen(px)).arg(qBlue(px))
+                            .arg(background.red()).arg(background.green()).arg(background.blue())
+                            .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
 }
 
 void tst_ReadoutContrast::compass_data()
