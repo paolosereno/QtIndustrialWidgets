@@ -5,24 +5,35 @@
 
 # Environment without any font, for the tests that must hold when no font is installed (fontconfig only: Linux).
 #
-#   source tools/nofont-env.sh [DIR]
+#   source tools/nofont-env.sh [--dir DIR]
 #
 # Writes DIR/fonts.conf (default: a new temporary directory), a fontconfig configuration whose only font directory
 # is the empty DIR/empty, and exports FONTCONFIG_FILE for the commands that follow in the same shell. It fails
 # (returns 1, FONTCONFIG_FILE left as it was) if fc-list is missing or still lists a font: then the tests would run
 # with fonts while claiming to run without.
 #
+# The directory is given with --dir, never as a bare argument: "source" without arguments passes on the positional
+# parameters of the calling script, which would otherwise be taken for DIR. Any other argument is refused (return 2);
+# in a script with arguments, source it with --dir or after "set --".
+#
 # Example:
 #   (source tools/nofont-env.sh && QT_QPA_PLATFORM=offscreen ./build/bin/tst_TankDisplay)
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     echo "nofont-env.sh: source it, so that FONTCONFIG_FILE reaches the commands that follow:" >&2
-    echo "  source tools/nofont-env.sh [DIR]" >&2
+    echo "  source tools/nofont-env.sh [--dir DIR]" >&2
     exit 2
 fi
 
 qiw_nofont_setup() {
-    local dir="${1:-}"
+    local dir=""
+    if [[ $# -eq 2 && "$1" == "--dir" && -n "$2" ]]; then
+        dir="$2"
+    elif [[ $# -ne 0 ]]; then
+        echo "nofont-env.sh: unexpected arguments: $*" >&2
+        echo "  source tools/nofont-env.sh [--dir DIR]  (in a script with arguments: --dir, or \"set --\" first)" >&2
+        return 2
+    fi
     if [[ -z "$dir" ]]; then
         dir="$(mktemp -d "${TMPDIR:-/tmp}/qiw-nofonts.XXXXXX")" || return 1
     fi
@@ -61,7 +72,7 @@ qiw_nofont_setup "$@"
 qiw_nofont_status=$?
 unset -f qiw_nofont_setup
 if [[ $qiw_nofont_status -ne 0 ]]; then
-    unset qiw_nofont_status
-    return 1
+    # The status is expanded before the variable is removed: 1 (fonts visible, no fc-list) or 2 (arguments)
+    eval "unset qiw_nofont_status; return $qiw_nofont_status"
 fi
 unset qiw_nofont_status

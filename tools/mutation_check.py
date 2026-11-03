@@ -71,7 +71,7 @@ def git(root, *args, check=True):
 def no_font_config(directory):
     """FONTCONFIG_FILE of an environment without fonts, from nofont-env.sh next to this script."""
     script = Path(__file__).resolve().parent / "nofont-env.sh"
-    r = subprocess.run(["bash", "-c", 'source "$1" "$2" > /dev/null && printf "%s" "$FONTCONFIG_FILE"', "_",
+    r = subprocess.run(["bash", "-c", 'source "$1" --dir "$2" > /dev/null && printf "%s" "$FONTCONFIG_FILE"', "_",
                         str(script), str(directory)], capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout:
         fail(f"{script} failed:\n{r.stderr.strip()}")
