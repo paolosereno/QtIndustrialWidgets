@@ -23,7 +23,8 @@ SABOTAGES.json (paths relative to the repository root):
 (after the earlier edits of the same sabotage), so that a sabotage never lands somewhere else silently.
 
 The 8 configurations: QT_SCALE_FACTOR 1, 1.25, 1.5 and 2, each with the system fonts and with no font at all
-(tools/nofont-env.sh, which fails if fc-list still sees a font). QT_QPA_PLATFORM=offscreen.
+(nofont-env.sh next to this script, which fails if fc-list still sees a font). QT_QPA_PLATFORM=offscreen.
+The repository is the one of the current directory, so the script can also run on another worktree.
 
 For each sabotage, in order:
   1. the edits are written;
@@ -67,13 +68,13 @@ def git(root, *args, check=True):
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=check)
 
 
-def no_font_config(root, directory):
-    """FONTCONFIG_FILE of an environment without fonts, from tools/nofont-env.sh (which checks it with fc-list)."""
-    script = root / "tools" / "nofont-env.sh"
+def no_font_config(directory):
+    """FONTCONFIG_FILE of an environment without fonts, from nofont-env.sh next to this script."""
+    script = Path(__file__).resolve().parent / "nofont-env.sh"
     r = subprocess.run(["bash", "-c", 'source "$1" "$2" > /dev/null && printf "%s" "$FONTCONFIG_FILE"', "_",
                         str(script), str(directory)], capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout:
-        fail(f"tools/nofont-env.sh failed:\n{r.stderr.strip()}")
+        fail(f"{script} failed:\n{r.stderr.strip()}")
     return r.stdout
 
 
@@ -164,7 +165,7 @@ def main():
         apply_edits(root, s)
 
     nofont_dir = Path(tempfile.mkdtemp(prefix="qiw-mutation-nofonts."))
-    configs = [(scale, None) for scale in SCALES] + [(scale, no_font_config(root, nofont_dir)) for scale in SCALES]
+    configs = [(scale, None) for scale in SCALES] + [(scale, no_font_config(nofont_dir)) for scale in SCALES]
     labels = [f"fonts {s}" for s in SCALES] + [f"no fonts {s}" for s in SCALES]
 
     rows = []
