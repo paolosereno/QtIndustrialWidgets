@@ -337,6 +337,10 @@ ValveIndicator *valve(Theme theme, ValveIndicator::ValveType type, ValveIndicato
     if (!isDark(theme)) {
         v->setTextColor(QColor(30, 39, 46));
         v->setOutlineColor(QColor(80, 90, 105));
+        // The default open, transit and unknown colours are below 3:1 on white: darker, with the same hues
+        v->setOpenColor(QColor(36, 160, 89));
+        v->setTransitColor(QColor(170, 138, 10));
+        v->setUnknownColor(QColor(125, 145, 146));
     }
     return v;
 }

@@ -2012,10 +2012,14 @@ void MainWindow::applyTheme(bool dark)
         tank->setScaleColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
         tank->setVesselColor(dark ? QColor(120, 134, 150) : QColor(110, 122, 138));
     }
-    // ValveIndicator (#153) as well: tags and marks on the panel; the readout panel is dark in both
+    // ValveIndicator (#153) as well: tags and marks on the panel; the readout panel is dark in both. On white the
+    // default open, transit and unknown colours are below 3:1: darker, with the same hues (tst_ReadoutContrast)
     for (ValveIndicator *valve : findChildren<ValveIndicator *>()) {
         valve->setTextColor(dark ? QColor(240, 244, 248) : QColor(30, 39, 46));
         valve->setOutlineColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
+        valve->setOpenColor(dark ? QColor(46, 204, 113) : QColor(36, 160, 89));
+        valve->setTransitColor(dark ? QColor(241, 196, 15) : QColor(170, 138, 10));
+        valve->setUnknownColor(dark ? QColor(149, 165, 166) : QColor(125, 145, 146));
     }
     m_themeButton->setText(dark ? QStringLiteral("Light Theme")
                                 : QStringLiteral("Dark Theme"));
