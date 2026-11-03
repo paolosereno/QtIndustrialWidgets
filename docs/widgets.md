@@ -325,7 +325,9 @@ indicator only: it shows what the application tells it and sends no command.
   colours of the plant. The meaning is carried by the shape, never by the colour alone. The library checks the
   contrast of the readout (4.5:1 against its panel) and of the status tags in the gallery styling
   (`tests/tst_ReadoutContrast.cpp`); the status colours are drawn as given, so whoever changes them or the
-  background must check their contrast (3:1 for graphical objects).
+  background must check their contrast (3:1 for graphical objects). On white the default open, transit and unknown
+  colours are below 3:1 (2.10, 1.66 and 2.56:1); the light theme of the gallery uses the same hues, darker:
+  (36, 160, 89), (170, 138, 10) and (125, 145, 146).
 - **Size**: `minimumSizeHint()` is computed from the font, the logical DPI and the configuration (type,
   orientation, stubs, opening), and follows a change of screen (#177). The status and the opening do not change it.
 
