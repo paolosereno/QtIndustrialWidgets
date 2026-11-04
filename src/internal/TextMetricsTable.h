@@ -6,11 +6,11 @@
 
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QRectF>
 #include <QtCore/QString>
 #include <QtGui/QFont>
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -25,6 +25,9 @@ namespace internal {
  * afterwards. Built from the complete font of the widget (family, weight, style, letter and word spacing, stretch,
  * capitalization, kerning, style strategy, ...); only the pixel size changes from one lookup to another. It measures
  * as QFontMetricsF(font) does, with no paint device, so the values are those of a direct measure.
+ *
+ * The values are kept in hash tables on (text, pixel size): a search asks for the same texts tens of thousands of
+ * times, and an ordered map spent most of that time comparing strings.
  *
  * A table lives for one computation and is dropped at its end: it does not follow a change of the font.
  */
@@ -57,10 +60,10 @@ private:
     QFont fontAt(int pixelSize) const;
 
     QFont m_font;
-    std::map<std::pair<QString, int>, QRectF> m_rects;
-    std::map<std::pair<QString, int>, double> m_advances;
-    std::map<int, double> m_heights;
-    std::map<int, double> m_capHeights;
+    QHash<std::pair<QString, int>, QRectF> m_rects;
+    QHash<std::pair<QString, int>, double> m_advances;
+    QHash<int, double> m_heights;
+    QHash<int, double> m_capHeights;
     std::vector<Measure> m_measures;
 };
 
