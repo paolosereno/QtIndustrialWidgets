@@ -27,27 +27,35 @@ The 8 configurations: QT_SCALE_FACTOR 1, 1.25, 1.5 and 2, each with the system f
 The configurations and the way a test binary is run and counted come from run_configs.py, next to this script.
 The repository is the one of the current directory, so the script can also run on another worktree.
 
+A baseline without edits runs first, on a build made with --clean-first: if it does not pass in all 8 configurations
+as run_configs.py requires (no FAIL!, nothing skipped, no crash), the results would mean nothing and the script stops.
+The SHA-256 of every file in BUILD_DIR/bin and BUILD_DIR/lib after that build is the reference of the clean sources.
+
 For each sabotage, in order:
   1. the edits are written;
-  2. the objects of the touched .cpp files are removed (the WSL clock can go back, so that make or ninja would skip
-     a rebuild); a touched file of another kind (a header) rebuilds everything with --clean-first;
-  3. cmake --build; a sabotage that does not compile is reported as BUILD FAILED;
-  4. every test binary runs in the 8 configurations; the result is the number of FAIL! lines per configuration
+  2. the build: the objects of the touched .cpp files are removed (the WSL clock can go back, so that make or ninja
+     would skip a rebuild); a touched file of another kind (a header) rebuilds everything with --clean-first;
+     a sabotage that does not compile is reported as BUILD FAILED;
+  3. every test binary runs in the 8 configurations; the result is the number of FAIL! lines per configuration
      (a crash, a timeout or a missing "Totals:" counts 1000) and the names of the failing test functions;
-  5. the sources are restored with git checkout HEAD -- <files>, also on an error or Ctrl+C.
-A baseline without edits runs first: if it does not pass in all 8 configurations as run_configs.py requires (no
-FAIL!, nothing skipped, no crash), the results would mean nothing and the script stops.
-At the end, git diff --exit-code on every touched file checks that the sources are back to HEAD.
+  4. the sources are restored, also on an error or Ctrl+C: the script writes back the bytes it read before the edits
+     (not git checkout: when mtimes go back, git can take a sabotaged file of the same size for unchanged, #197);
+  5. the build again, as in step 2, so that no object of the sabotage is left for the next one (#197); the files of
+     BUILD_DIR/bin and BUILD_DIR/lib must then match the reference of the clean build, otherwise the script stops
+     before the next sabotage.
+At the end, the content of every touched file is compared with HEAD (git hash-object, not git's stat cache).
 
 The files to sabotage must have no local change (it would be lost on the restore): commit or save it first.
 After the run, CLAUDE.md rule 8 still applies: cmake --build BUILD_DIR --clean-first and a full ctest before any
 measurement or image.
 
 Exit status: 0 done; 1 setup error, a missing "old", or a failing baseline; 2 with --require-detection, a sabotage
-missed in at least one configuration (or not compiled); 3 the sources differ from HEAD after the restore.
+missed in at least one configuration (or not compiled); 3 the sources differ from HEAD after the restore; 4 the build
+after a restore does not match the clean build (or does not compile), so the run stopped.
 """
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -84,8 +92,8 @@ def apply_edits(root, sabotage):
     return contents
 
 
-def rebuild(build_dir, touched):
-    clean_first = any(p.suffix not in (".cpp", ".cc", ".cxx") for p in touched)
+def rebuild(build_dir, touched, clean_first=False):
+    clean_first = clean_first or any(p.suffix not in (".cpp", ".cc", ".cxx") for p in touched)
     if not clean_first:
         for p in touched:
             for obj in build_dir.rglob(p.name + ".o"):
@@ -94,6 +102,31 @@ def rebuild(build_dir, touched):
                 obj.unlink()
     cmd = ["cmake", "--build", str(build_dir)] + (["--clean-first"] if clean_first else [])
     return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def output_hashes(build_dir):
+    """{path relative to BUILD_DIR: SHA-256} of the files in BUILD_DIR/bin and BUILD_DIR/lib."""
+    hashes = {}
+    for sub in ("bin", "lib"):
+        for path in sorted((build_dir / sub).rglob("*")):
+            if path.is_file():
+                hashes[str(path.relative_to(build_dir))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
+def differing_from_head(root, files):
+    """The files whose content differs from HEAD, read from the disk (git diff and git status trust the stat cache)."""
+    differ = []
+    for f in files:
+        head = git(root, "rev-parse", "--verify", "--quiet", f"HEAD:{f}", check=False).stdout.strip()
+        disk = git(root, "hash-object", "--", f, check=False).stdout.strip()
+        if not head or head != disk:
+            differ.append(f)
+    return differ
+
+
+def build_tail(build):
+    return "\n  ".join((build.stdout + build.stderr).strip().splitlines()[-15:])
 
 
 def main():
@@ -125,9 +158,9 @@ def main():
             fail(f'{s["name"]}: no test to run')
 
     touched_all = sorted({edit["file"] for s in sabotages for edit in s.get("edits", [])})
-    dirty = git(root, "status", "--porcelain", "--", *touched_all).stdout.strip() if touched_all else ""
+    dirty = differing_from_head(root, touched_all)
     if dirty:
-        fail(f"local changes in files to sabotage (they would be lost on the restore):\n{dirty}")
+        fail("files to sabotage that differ from HEAD (local changes, or not in HEAD): " + ", ".join(dirty))
     for s in sabotages:  # every "old" must be found before anything is touched
         apply_edits(root, s)
 
@@ -141,22 +174,38 @@ def main():
 
     rows = []
     missed = False
+    clean = {}          # output_hashes() of the clean build
+    unclean = None      # why the build after a restore is not the clean build
 
     def run_one(name, sabotage):
+        nonlocal unclean
         tests = sabotage.get("tests", default_tests)
         contents = apply_edits(root, sabotage)
+        originals = {path: path.read_bytes() for path in contents}
         try:
             for path, text in contents.items():
                 path.write_text(text, encoding="utf-8")
-            build = rebuild(build_dir, list(contents))
+            build = rebuild(build_dir, list(contents), clean_first=not contents)
             if build.returncode != 0:
-                tail = (build.stdout + build.stderr).strip().splitlines()[-15:]
-                print(f"{name}: BUILD FAILED\n  " + "\n  ".join(tail), flush=True)
+                print(f"{name}: BUILD FAILED\n  " + build_tail(build), flush=True)
                 return None
+            if not contents:
+                clean.update(output_hashes(build_dir))
             return run_all(bin_dir, tests, configs, args.jobs, args.timeout)
         finally:
             if contents:
-                git(root, "checkout", "HEAD", "--", *[str(p.relative_to(root)) for p in contents])
+                for path, data in originals.items():
+                    path.write_bytes(data)
+                # Without this build an object of the sabotage could stay for the next one (#197)
+                build = rebuild(build_dir, list(contents))
+                if build.returncode != 0:
+                    unclean = f"after {name}, the restored sources do not compile:\n  " + build_tail(build)
+                else:
+                    now = output_hashes(build_dir)
+                    differ = sorted(f for f in clean if now.get(f) != clean[f])
+                    if differ:
+                        unclean = (f"after {name} and the restore, the build does not match the clean build: "
+                                   + ", ".join(differ))
 
     try:
         baseline = run_one("baseline", {"name": "baseline", "edits": [], "tests": sorted(
@@ -164,21 +213,27 @@ def main():
         if baseline is None or not all(r.ok() for r in baseline):
             names = sorted(set().union(*[r.names for r in baseline])) if baseline else []
             fail("the baseline (no sabotage) fails: " + (", ".join(names) or "build failed"))
+        if not clean:
+            fail(f"no file in {build_dir / 'bin'} or {build_dir / 'lib'} to check the builds against")
         print("baseline: " + " ".join("0" for _ in configs), flush=True)
         for s in sabotages:
             result = run_one(s["name"], s)
             if result is None:
                 rows.append((s["name"], None, "BUILD FAILED"))
                 missed = True
+                if unclean:
+                    break
                 continue
             counts = [r.fails for r in result]
             names = ", ".join(sorted(set().union(*[r.names for r in result])))
             missed = missed or any(c == 0 for c in counts)
             rows.append((s["name"], counts, names))
             print(f'{s["name"]}: {" ".join(str(c) for c in counts)}  | {names}', flush=True)
+            if unclean:
+                break
     finally:
         shutil.rmtree(nofont_dir, ignore_errors=True)
-        restored = git(root, "diff", "--exit-code", "HEAD", "--", *touched_all, check=False) if touched_all else None
+        not_restored = differing_from_head(root, touched_all)
 
     if args.markdown:
         lines = ["| Sabotage | " + " | ".join(labels) + " | Caught by |",
@@ -189,10 +244,15 @@ def main():
         args.markdown.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print("configurations: " + ", ".join(labels))
-    if restored is not None and restored.returncode != 0:
-        print("mutation_check: the sources differ from HEAD after the restore:\n" + restored.stdout, file=sys.stderr)
+    if not_restored:
+        print("mutation_check: the sources differ from HEAD after the restore: " + ", ".join(not_restored),
+              file=sys.stderr)
         return 3
-    print("sources restored (git diff --exit-code: clean). Rule 8: rebuild with --clean-first and run the full ctest.")
+    if unclean:
+        print(f"mutation_check: {unclean}\nThe run stopped: no further sabotage ran on this build. Rebuild with "
+              "--clean-first.", file=sys.stderr)
+        return 4
+    print("sources restored (same content as HEAD). Rule 8: rebuild with --clean-first and run the full ctest.")
     if args.require_detection and missed:
         print("mutation_check: at least one sabotage was missed in a configuration (or did not compile)",
               file=sys.stderr)

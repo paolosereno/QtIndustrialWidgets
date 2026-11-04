@@ -494,6 +494,17 @@ if(Python3_Interpreter_FOUND)
                 -s ${PROJECT_SOURCE_DIR}/benchmarks -p test_merge_runs.py -v)
     set_tests_properties(merge_runs PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 endif()
+
+# tools/mutation_check.py (#197): its tests build a small CMake project with git, cmake and the C++ compiler, and run it
+# in the 8 configurations of tools/run_configs.py, whose configurations without fonts need fontconfig (Linux only).
+find_program(QIW_FC_LIST fc-list)
+find_package(Git QUIET)
+if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND QIW_FC_LIST AND Git_FOUND)
+    add_test(NAME mutation_check
+        COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                -s ${PROJECT_SOURCE_DIR}/tools -p test_mutation_check.py -v)
+    set_tests_properties(mutation_check PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+endif()
 add_executable(tst_TankDisplayLayout
     tst_TankDisplayLayout.cpp
     $<TARGET_OBJECTS:TankDisplayLayout>
