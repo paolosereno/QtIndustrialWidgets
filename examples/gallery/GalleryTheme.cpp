@@ -30,6 +30,7 @@ void applyGalleryTheme(RadialGauge &gauge, Theme theme)
     if (isDark(theme)) {
         gauge.setDialColor(QColor(20, 24, 32));
         gauge.setTextColor(QColor(245, 246, 250));
+        gauge.setScaleColor(QColor(210, 218, 226)); // the widget default
         gauge.setBezelColor(QColor(48, 56, 70));
     } else {
         gauge.setDialColor(QColor(242, 244, 248));
@@ -45,6 +46,7 @@ void applyGalleryTheme(LinearGauge &gauge, Theme theme)
         gauge.setBezelColor(QColor(36, 43, 56));
         gauge.setTroughColor(QColor(20, 24, 32));
         gauge.setTextColor(QColor(245, 246, 250));
+        gauge.setScaleColor(QColor(200, 208, 218)); // the widget default
     } else {
         gauge.setBezelColor(QColor(215, 222, 230));
         gauge.setTroughColor(QColor(235, 240, 245));

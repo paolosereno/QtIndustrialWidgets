@@ -400,6 +400,29 @@ set_target_properties(tst_GalleryShowcases PROPERTIES
 )
 add_dpr_tests(tst_GalleryShowcases)
 
+# #190: the gallery theme colours, set in both themes, so that a theme switch gives the colours of the second theme
+add_executable(tst_GalleryTheme
+    tst_GalleryTheme.cpp
+    ${PROJECT_SOURCE_DIR}/examples/gallery/GalleryTheme.cpp
+)
+target_link_libraries(tst_GalleryTheme
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_GalleryTheme
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/examples/gallery
+)
+set_target_properties(tst_GalleryTheme PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_GalleryTheme)
+
 # #8: heap allocations per frame must not grow with the number of visible gaps. Both executables replace the global
 # operator new with a counter (tests/AllocationCounter.h); each test first checks that the counter sees an allocation
 # it knows of.
