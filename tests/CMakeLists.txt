@@ -582,3 +582,22 @@ set_target_properties(tst_ValveIndicator PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_ValveIndicator)
+add_executable(tst_TextMetricsTable
+    tst_TextMetricsTable.cpp
+    $<TARGET_OBJECTS:TextMetricsTable>
+)
+target_link_libraries(tst_TextMetricsTable
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_TextMetricsTable
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_TextMetricsTable PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_TextMetricsTable)

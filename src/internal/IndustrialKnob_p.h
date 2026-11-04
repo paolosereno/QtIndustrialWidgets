@@ -13,6 +13,7 @@
 
 #include "FontScale.h"
 #include "RadialGaugeLayout.h"
+#include "TextMetricsTable.h"
 
 #include <QtCore/QPointF>
 #include <QtCore/QSize>
@@ -94,14 +95,35 @@ public:
     double angleOf(double value) const;
     double valueAtScaleAngle(double angle) const;
     int tickCount() const;
-    // Texts, boxes and selection of the labels at a geometry
-    ScaleLayout labelsAt(const internal::KnobScaleGeometry &geometry, const QFont &widgetFont, double dpr) const;
+    // Text of the label of tick \a index (0 to tickCount()); counted in m_labelFormats
+    QString labelText(int index) const;
+    // What the size search of minimumSizeHint() keeps for one computation (#184): the label texts, formatted once,
+    // and the table of their measures, each taken once at each font size
+    struct MinimumMetrics {
+        explicit MinimumMetrics(const QFont &labelFont) : table(labelFont) {}
+        internal::TextMetricsTable table; // The widget font, bold, as labelsAt() draws the labels
+        std::vector<QString> labelTexts;  // labelText() of each tick
+    };
+    MinimumMetrics minimumMetrics(const QFont &widgetFont) const;
+    // Texts, boxes and selection of the labels at a geometry. With \a metrics (minimumSizeHint(), #184) the texts
+    // come from it and are measured through it; without (paint), they are formatted and measured here
+    ScaleLayout labelsAt(const internal::KnobScaleGeometry &geometry, const QFont &widgetFont, double dpr,
+                         MinimumMetrics *metrics = nullptr) const;
     static std::vector<internal::LayoutRect> drawnInk(const ScaleLayout &layout);
     // The geometry the labels of this configuration need at a size
-    internal::KnobScaleGeometry fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr) const;
+    internal::KnobScaleGeometry fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr,
+                                               MinimumMetrics *metrics = nullptr) const;
     const ScaleLayout &scaleFor(const QSize &size, const QFont &widgetFont, double dpr);
-    bool widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr) const;
+    bool widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr,
+                             MinimumMetrics *metrics) const;
     int computeMinimumWidth(int ceiling, const QFont &widgetFont, double dpr) const;
+
+    // IndustrialKnobTestAccess (#184): the reference that measures every label each time, as before the table, and
+    // the real measures of the table and the label texts formatted in the last computation of minimumSizeHint()
+    bool m_minimumWithoutTable{false};
+    mutable std::vector<internal::TextMetricsTable::Measure> m_lastMinimumMeasures;
+    mutable quint64 m_labelFormats{0}; // Calls of labelText() so far
+    mutable quint64 m_lastMinimumLabelFormats{0};
     // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
     double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr);
 

@@ -22,12 +22,15 @@
 #include <functional>
 #include <memory>
 #include <limits>
+#include <set>
 
 #include "ReadoutTestUtils.h"
 #include "TextInkTestUtils.h"
+#include "TextMetricsTestUtils.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/RadialGaugeTestAccess.h"
 #include "internal/ValueClassification.h"
 
 using namespace QtIndustrialWidgets;
@@ -350,6 +353,14 @@ private Q_SLOTS:
     void minimumSizeHintLimits();
     void minimumSizeHintFollowsConfiguration_data();
     void minimumSizeHintFollowsConfiguration();
+    void minimumWithTableEqualsReference_data();
+    void minimumWithTableEqualsReference();
+    void minimumMeasuresEachTextOnce_data();
+    void minimumMeasuresEachTextOnce();
+    void minimumMeasuresTheLabelTexts_data();
+    void minimumMeasuresTheLabelTexts();
+    void minimumTableNotKeptAcrossComputations_data();
+    void minimumTableNotKeptAcrossComputations();
     void displayNeverCutsALabel_data();
     void displayNeverCutsALabel();
     void valueFontNeverBelow7pt();
@@ -1213,6 +1224,195 @@ void tst_RadialGauge::minimumSizeHintFollowsConfiguration()
         QVERIFY2(after != before, qPrintable(QStringLiteral("still %1").arg(after)));
     }
     QCOMPARE(layout->minimumSize().width(), after);
+}
+
+// #184: configurations for the checks of the text-metrics tables of minimumSizeHint(): ranges and precisions,
+// the display and the unit, and fonts that differ from the application font in more than family, weight and
+// style, at the same pixel size
+static void addMinimumTableRows()
+{
+    using Setup = std::function<void(RadialGauge &)>;
+    QTest::addColumn<Setup>("setup");
+    const QFont app = QApplication::font();
+    QTest::addRow("default") << Setup([](RadialGauge &) {});
+    QTest::addRow("display hidden") << Setup([](RadialGauge &g) { g.setDigitalDisplayVisible(false); });
+    QTest::addRow("no unit") << Setup([](RadialGauge &g) { g.setUnit(QString()); });
+    QTest::addRow("0 to 1e4, precision 1, 20 ticks") << Setup([](RadialGauge &g) {
+        g.setRange(0.0, 1e4);
+        g.setPrecision(1);
+        g.setMajorTicks(20);
+    });
+    QTest::addRow("0 to 1e12, precision 3, 20 ticks") << Setup([](RadialGauge &g) {
+        g.setRange(0.0, 1e12);
+        g.setPrecision(3);
+        g.setMajorTicks(20);
+    });
+    QTest::addRow("-1e12 to 1e12, precision 0") << Setup([](RadialGauge &g) {
+        g.setRange(-1e12, 1e12);
+        g.setPrecision(0);
+    });
+    QTest::addRow("letter spacing") << Setup([app](RadialGauge &g) { g.setFont(TextMetricsTest::spacedFont(app)); });
+    QTest::addRow("word spacing") << Setup([app](RadialGauge &g) {
+        QFont f = app;
+        f.setWordSpacing(6.0);
+        g.setFont(f);
+        g.setUnit(QStringLiteral("m3 per h"));
+    });
+    QTest::addRow("stretch") << Setup([app](RadialGauge &g) {
+        QFont f = app;
+        f.setStretch(QFont::ExtraExpanded);
+        g.setFont(f);
+    });
+    QTest::addRow("capitals") << Setup([app](RadialGauge &g) {
+        QFont f = app;
+        f.setCapitalization(QFont::AllUppercase);
+        g.setFont(f);
+    });
+    QTest::addRow("no kerning") << Setup([app](RadialGauge &g) {
+        QFont f = app;
+        f.setKerning(false);
+        g.setFont(f);
+    });
+    QTest::addRow("other family, italic") << Setup([app](RadialGauge &g) { g.setFont(FontTest::otherFont(app)); });
+    QTest::addRow("doubled font") << Setup([](RadialGauge &g) { g.setFont(FontTest::doubledFont()); });
+    // Value texts (formatFixed() of the range ends) whose decimals decide the minimum
+    QTest::addRow("precision 6") << Setup([](RadialGauge &g) { g.setPrecision(6); });
+    // Long fractional labels at the ends, which decide the minimum (sideKeepsScaleEnds()): scaleLabelText() writes
+    // 1000000.5 and 1000010.5 (whole labels have no decimals at any precision)
+    QTest::addRow("1000000.5 to 1000010.5, precision 1") << Setup([](RadialGauge &g) {
+        g.setRange(1000000.5, 1000010.5);
+        g.setPrecision(1);
+    });
+    // A font from tests/fonts, also where no font is installed. Taken out of the font database by the test function
+    QTest::addRow("readout test font") << Setup([](RadialGauge &g) {
+        QString error;
+        g.setFont(readoutTestFont(&error));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+    });
+}
+
+void tst_RadialGauge::minimumWithTableEqualsReference_data()
+{
+    addMinimumTableRows();
+}
+
+// #184: minimumSizeHint() with its tables (each text measured once in the side search) is the same as the
+// reference that measures every text at every side tried, as before the tables
+void tst_RadialGauge::minimumWithTableEqualsReference()
+{
+    using Setup = std::function<void(RadialGauge &)>;
+    using Access = internal::RadialGaugeTestAccess;
+    QFETCH(Setup, setup);
+    RadialGauge withTable;
+    setup(withTable);
+    RadialGauge reference;
+    setup(reference);
+    Access::setMinimumWithoutTable(reference, true);
+    const QSize hint = withTable.minimumSizeHint();
+    const QSize expected = reference.minimumSizeHint();
+    // Out of the font database again before the checks: without installed fonts the test font (digits only) would
+    // stay the only font of the application in the tests that follow
+    QFontDatabase::removeAllApplicationFonts();
+    QCOMPARE(hint, expected);
+    // The table was used, and the reference did not use it
+    QVERIFY(!Access::lastMinimumMeasures(withTable).at(0).empty());
+    for (const auto &log : Access::lastMinimumMeasures(reference)) {
+        QVERIFY(log.empty());
+    }
+}
+
+void tst_RadialGauge::minimumMeasuresEachTextOnce_data()
+{
+    addMinimumTableRows();
+}
+
+// #184: one computation of minimumSizeHint() measures each text at each font size once, in each of its tables
+// (labels and value; unit)
+void tst_RadialGauge::minimumMeasuresEachTextOnce()
+{
+    using Setup = std::function<void(RadialGauge &)>;
+    QFETCH(Setup, setup);
+    RadialGauge gauge;
+    setup(gauge);
+    (void)gauge.minimumSizeHint();
+    QFontDatabase::removeAllApplicationFonts(); // as in minimumWithTableEqualsReference()
+    const auto logs = internal::RadialGaugeTestAccess::lastMinimumMeasures(gauge);
+    QCOMPARE(logs.size(), size_t(2));
+    QVERIFY(!logs[0].empty());
+    QCOMPARE(logs[1].empty(), gauge.unit().isEmpty() || !gauge.digitalDisplayVisible());
+    for (const auto &log : logs) {
+        const QString repeated = TextMetricsTest::repeatedMeasure(log);
+        QVERIFY2(repeated.isEmpty(), qPrintable(repeated));
+    }
+}
+
+void tst_RadialGauge::minimumMeasuresTheLabelTexts_data()
+{
+    addMinimumTableRows();
+}
+
+// #184: the label texts, formatted once per computation, are those of the ticks: the texts measured as label
+// boxes (boundingRect()) are exactly scaleLabelText() of each major tick at the precision
+void tst_RadialGauge::minimumMeasuresTheLabelTexts()
+{
+    using Setup = std::function<void(RadialGauge &)>;
+    QFETCH(Setup, setup);
+    RadialGauge gauge;
+    setup(gauge);
+    (void)gauge.minimumSizeHint();
+    QFontDatabase::removeAllApplicationFonts(); // as in minimumWithTableEqualsReference()
+    const auto logs = internal::RadialGaugeTestAccess::lastMinimumMeasures(gauge);
+    std::set<QString> measured;
+    for (const auto &m : logs.at(0)) {
+        if (m.kind == internal::TextMetricsTable::Kind::BoundingRect) {
+            measured.insert(m.text);
+        }
+    }
+    std::set<QString> expected;
+    for (int i = 0; i <= gauge.majorTicks(); ++i) {
+        const double frac = static_cast<double>(i) / gauge.majorTicks();
+        expected.insert(internal::scaleLabelText(gauge.minimum() + frac * (gauge.maximum() - gauge.minimum()),
+                                                 gauge.precision()));
+    }
+    const auto list = [](const std::set<QString> &texts) {
+        return QStringList(texts.begin(), texts.end()).join(QStringLiteral(" | "));
+    };
+    QVERIFY2(measured == expected, qPrintable(QStringLiteral("measured: %1\nexpected: %2").arg(list(measured), list(expected))));
+}
+
+void tst_RadialGauge::minimumTableNotKeptAcrossComputations_data()
+{
+    // The same pixel size as the application font: only what the table must not keep changes
+    QTest::addColumn<bool>("family");
+    QTest::addRow("letter spacing") << false;
+    QTest::addRow("family") << true;
+}
+
+// #184: the tables live for one computation. After a font change at the same pixel sizes, minimumSizeHint() is
+// that of the reference with the new font, not one measured with the texts of the old font
+void tst_RadialGauge::minimumTableNotKeptAcrossComputations()
+{
+    QFETCH(bool, family);
+    QFont other = TextMetricsTest::spacedFont(QApplication::font());
+    if (family) {
+        QString error;
+        other = readoutTestFont(&error); // the application font with the family of the test font
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+    }
+    RadialGauge gauge;
+    const QSize first = gauge.minimumSizeHint();
+    gauge.setFont(other);
+    const QSize second = gauge.minimumSizeHint();
+    RadialGauge reference;
+    reference.setFont(other);
+    internal::RadialGaugeTestAccess::setMinimumWithoutTable(reference, true);
+    const QSize expected = reference.minimumSizeHint();
+    // Out of the font database again before the checks: without installed fonts the test font (digits only) would
+    // stay the only font of the application in the tests that follow
+    QFontDatabase::removeAllApplicationFonts();
+    QVERIFY2(expected != first, qPrintable(QStringLiteral("the font change leaves the minimum at %1: it checks nothing")
+                                               .arg(first.width())));
+    QCOMPARE(second, expected);
 }
 
 void tst_RadialGauge::displayNeverCutsALabel_data()

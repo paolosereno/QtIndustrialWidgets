@@ -155,7 +155,9 @@ as fast, within one run (compare min and median) and between runs (the values of
 both modes: trace pixel counts are identical between runs, and steady and streaming frames of the same case draw the
 same pixels. In fast runs the append time, which involves no rendering, drops as well, which points to the whole
 thread running faster (for example scheduling on a different core type of the hybrid CPU under WSL2, or a different
-clock frequency). This explanation has not been verified. Small differences between cases on this page are
+clock frequency). This explanation has not been verified: under WSL2 the core type cannot be chosen from inside the
+virtual machine (a test of 2026-11-04 in
+[Bimodal timings and the P and E cores](#bimodal-timings-and-the-p-and-e-cores-2026-11-04)). Small differences between cases on this page are
 therefore not meaningful; the targets are evaluated for every run, and the growth target on a measurement that
 the two modes do not affect (the interleaved 100k / 4M case).
 
@@ -752,28 +754,30 @@ Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: analysis_v2_run1.md, 
 
 `RadialGauge` (#60), `CircularBargraph` (#167) and `IndustrialKnob` (#170) compute `minimumSizeHint()` from the font
 and the configuration. This part measures what the first call costs: it runs on the GUI thread when a layout first asks
-for the minimum, and again after a setter that changes it. One session (2026-11-02, benchmark source commit
-`87a1ff4`, library 2.6.0 with the changes of #177): a selection of the worst case, then **5 runs** of
-`bench_MinimumSizeHint`, merged with `benchmarks/merge_runs.py`. Every run is published.
+for the minimum, and again after a setter that changes it. One session (2026-11-04, benchmark source commit
+`ef3fe92`, library 2.6.0 with the changes of #177 and #184): a selection of the worst case, then **5 runs** of
+`bench_MinimumSizeHint`, merged with `benchmarks/merge_runs.py`. Every run is published. The session of 2026-11-02,
+before #184, is kept below as a [historical section](#historical-session-of-2026-11-02-before-184), with its misses.
 
 ## Targets
 
-Approved in #177 before the session, on the **median of the first call** of each case:
+Approved in #177 before the session of 2026-11-02, and unchanged since, on the **median of the first call** of each
+case:
 
 | Case | Target | Reason |
 |---|---|---|
 | Default configuration | ≤ 2 ms per widget | 50 widgets add at most 100 ms to the start of a window |
 | Worst case | ≤ 16.7 ms | one frame at 60 Hz: the hint is computed on the GUI thread, also after a setter |
 
-**Worst case**: for each widget, the configuration with the largest cost over a fixed grid, defined before the session:
-ranges 0–1e2, 0–1e3, …, 0–1e12 and −1e12–1e12; precisions 0–3; 10 or 20 major ticks (knob and gauge; the bargraph
-has none). It was chosen once, with `--select` (median of 5 first calls per configuration), before the timing runs, and
-passed to every run.
+**Worst case**: for each widget, the configuration with the largest cost over a fixed grid, defined before the first
+session: ranges 0–1e2, 0–1e3, …, 0–1e12 and −1e12–1e12; precisions 0–3; 10 or 20 major ticks (knob and gauge; the
+bargraph has none). In each session it is chosen once, with `--select` (median of 5 first calls per configuration),
+before the timing runs, and passed to every run.
 
 ## Commands
 
 Build with `-DBUILD_BENCHMARKS=ON` as in [Commands](#commands), `cmake --build build --clean-first`, the full
-`ctest` passing (86 of 86). Then, in `build/session`:
+`ctest` passing (106 of 106). Then, in `build/session`:
 
 ```bash
 export QT_QPA_PLATFORM=offscreen
@@ -797,9 +801,10 @@ case; it did not stop.
   (nearest rank) of the 30.
 - **Setup:** DPR 1; the application font of the machine, DejaVu Sans 12 px.
 - **Bimodal timings:** as in [Run-to-run variation](#run-to-run-variation-bimodal-timings), the timings on this machine
-  are bimodal. Here the medians sit in the slow mode in every run: the minimum of a case is about half its median.
-  An exploratory run before the session, without `taskset` and without interleaving, gave medians close to these
-  minimums (knob 1.6 ms, gauge 2.0–2.4 ms by default). The targets are evaluated on the session medians, as approved.
+  are bimodal. In this session the median of the worst case of the knob sits in the slow mode in every run
+  (13.5–15.0 ms), its minimum in the fast mode (5.7–8.5 ms). The targets are evaluated on the session medians, as
+  approved. Whether the two modes are the P and the E cores of the CPU was tested apart, with the method of this
+  session unchanged: [Bimodal timings and the P and E cores](#bimodal-timings-and-the-p-and-e-cores-2026-11-04).
 
 ## Results
 
@@ -820,10 +825,389 @@ Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: hint_run1.md, run 2: 
 | QPA platform | offscreen |
 | Application font | DejaVu Sans, 12 px |
 | Library version | 2.6.0 |
+| Benchmark source commit | ef3fe92957fa2f679ec58757c7e2d14d98cb681b |
+| BENCH_WORST | 0,1000000000000,0,20;0,100000000,1,20;-1000000000000,1000000000000,2,10 |
+
+#### First minimumSizeHint() of a new widget (targets on the median: default ≤ 2 ms, worst case ≤ 16.7 ms)
+
+| Case | Minimum size | Trials | min (ms), runs 1–5 | median (ms), runs 1–5 | median (ms), range | p95 (ms), runs 1–5 | p95 (ms), range | Target, runs 1–5 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| IndustrialKnob, default | 80 | 30 | 0.417 · 0.432 · 0.418 · 0.439 · 0.418 | 1.093 · 1.088 · 0.998 · 1.086 · 1.077 | 0.998–1.093 | 1.320 · 1.183 · 1.181 · 1.143 · 1.126 | 1.126–1.320 | PASS · PASS · PASS · PASS · PASS |
+| IndustrialKnob, worst case: 0 to 1e+12, precision 0, 20 major ticks | 105 | 30 | 5.860 · 5.984 · 5.824 · 8.475 · 5.712 | 14.853 · 14.674 · 13.485 · 14.973 · 14.270 | 13.485–14.973 | 15.493 · 15.069 · 15.031 · 15.765 · 16.157 | 15.031–16.157 | PASS · PASS · PASS · PASS · PASS |
+| RadialGauge, default | 98 | 30 | 0.256 · 0.253 · 0.253 · 0.530 · 0.250 | 0.616 · 0.615 · 0.613 · 0.623 · 0.583 | 0.583–0.623 | 0.686 · 0.656 · 0.672 · 0.657 · 0.745 | 0.656–0.745 | PASS · PASS · PASS · PASS · PASS |
+| RadialGauge, worst case: 0 to 1e+08, precision 1, 20 major ticks | 180 | 30 | 0.912 · 0.922 · 0.907 · 1.829 · 0.915 | 2.217 · 2.288 · 2.130 · 2.289 · 1.991 | 1.991–2.289 | 2.350 · 2.349 · 2.327 · 2.418 · 2.439 | 2.327–2.439 | PASS · PASS · PASS · PASS · PASS |
+| CircularBargraph, default | 50 | 30 | 0.002 · 0.002 · 0.002 · 0.003 · 0.002 | 0.005 · 0.006 · 0.005 · 0.007 · 0.005 | 0.005–0.007 | 0.018 · 0.020 · 0.010 · 0.011 · 0.010 | 0.010–0.020 | PASS · PASS · PASS · PASS · PASS |
+| CircularBargraph, worst case: -1e+12 to 1e+12, precision 2 | 50 | 30 | 0.002 · 0.002 · 0.002 · 0.003 · 0.002 | 0.005 · 0.005 · 0.005 · 0.005 · 0.005 | 0.005–0.005 | 0.006 · 0.007 · 0.006 · 0.008 · 0.006 | 0.006–0.008 | PASS · PASS · PASS · PASS · PASS |
+
+<!-- bench_MinimumSizeHint results: end -->
+
+All six cases meet their target in all five runs. The 240 configurations of the grid (below) have the same minimum
+size as in the session of 2026-11-02; the worst cases differ, since the selection is run again in each session and
+neighbouring configurations of the grid lie within the spread of the two timing modes.
+
+### Worst-case selection
+
+##### IndustrialKnob: grid, median of 5 first calls
+
+| Configuration | Minimum size | median (ms) |
+|---|---|---|
+| 0 to 100, precision 0, 10 major ticks | 80 | 1.095 |
+| 0 to 100, precision 0, 20 major ticks | 80 | 2.056 |
+| 0 to 100, precision 1, 10 major ticks | 80 | 1.114 |
+| 0 to 100, precision 1, 20 major ticks | 80 | 2.058 |
+| 0 to 100, precision 2, 10 major ticks | 80 | 1.102 |
+| 0 to 100, precision 2, 20 major ticks | 80 | 2.050 |
+| 0 to 100, precision 3, 10 major ticks | 80 | 1.087 |
+| 0 to 100, precision 3, 20 major ticks | 80 | 2.079 |
+| 0 to 1e+03, precision 0, 10 major ticks | 80 | 1.612 |
+| 0 to 1e+03, precision 0, 20 major ticks | 80 | 2.929 |
+| 0 to 1e+03, precision 1, 10 major ticks | 80 | 1.616 |
+| 0 to 1e+03, precision 1, 20 major ticks | 80 | 2.918 |
+| 0 to 1e+03, precision 2, 10 major ticks | 80 | 1.640 |
+| 0 to 1e+03, precision 2, 20 major ticks | 80 | 2.994 |
+| 0 to 1e+03, precision 3, 10 major ticks | 80 | 1.617 |
+| 0 to 1e+03, precision 3, 20 major ticks | 80 | 2.963 |
+| 0 to 1e+04, precision 0, 10 major ticks | 80 | 2.611 |
+| 0 to 1e+04, precision 0, 20 major ticks | 80 | 2.489 |
+| 0 to 1e+04, precision 1, 10 major ticks | 80 | 2.369 |
+| 0 to 1e+04, precision 1, 20 major ticks | 80 | 4.082 |
+| 0 to 1e+04, precision 2, 10 major ticks | 80 | 3.016 |
+| 0 to 1e+04, precision 2, 20 major ticks | 80 | 5.536 |
+| 0 to 1e+04, precision 3, 10 major ticks | 80 | 3.089 |
+| 0 to 1e+04, precision 3, 20 major ticks | 80 | 5.331 |
+| 0 to 1e+05, precision 0, 10 major ticks | 80 | 4.071 |
+| 0 to 1e+05, precision 0, 20 major ticks | 80 | 7.248 |
+| 0 to 1e+05, precision 1, 10 major ticks | 80 | 4.051 |
+| 0 to 1e+05, precision 1, 20 major ticks | 80 | 7.195 |
+| 0 to 1e+05, precision 2, 10 major ticks | 80 | 3.645 |
+| 0 to 1e+05, precision 2, 20 major ticks | 80 | 3.863 |
+| 0 to 1e+05, precision 3, 10 major ticks | 80 | 1.571 |
+| 0 to 1e+05, precision 3, 20 major ticks | 80 | 2.783 |
+| 0 to 1e+06, precision 0, 10 major ticks | 80 | 3.953 |
+| 0 to 1e+06, precision 0, 20 major ticks | 80 | 3.736 |
+| 0 to 1e+06, precision 1, 10 major ticks | 80 | 1.848 |
+| 0 to 1e+06, precision 1, 20 major ticks | 80 | 9.258 |
+| 0 to 1e+06, precision 2, 10 major ticks | 80 | 4.915 |
+| 0 to 1e+06, precision 2, 20 major ticks | 80 | 9.508 |
+| 0 to 1e+06, precision 3, 10 major ticks | 80 | 4.861 |
+| 0 to 1e+06, precision 3, 20 major ticks | 80 | 9.724 |
+| 0 to 1e+07, precision 0, 10 major ticks | 80 | 5.474 |
+| 0 to 1e+07, precision 0, 20 major ticks | 80 | 11.047 |
+| 0 to 1e+07, precision 1, 10 major ticks | 80 | 5.503 |
+| 0 to 1e+07, precision 1, 20 major ticks | 80 | 11.299 |
+| 0 to 1e+07, precision 2, 10 major ticks | 80 | 5.349 |
+| 0 to 1e+07, precision 2, 20 major ticks | 80 | 11.119 |
+| 0 to 1e+07, precision 3, 10 major ticks | 80 | 3.569 |
+| 0 to 1e+07, precision 3, 20 major ticks | 80 | 11.201 |
+| 0 to 1e+08, precision 0, 10 major ticks | 80 | 5.785 |
+| 0 to 1e+08, precision 0, 20 major ticks | 80 | 13.591 |
+| 0 to 1e+08, precision 1, 10 major ticks | 80 | 5.736 |
+| 0 to 1e+08, precision 1, 20 major ticks | 80 | 13.562 |
+| 0 to 1e+08, precision 2, 10 major ticks | 80 | 5.817 |
+| 0 to 1e+08, precision 2, 20 major ticks | 80 | 10.114 |
+| 0 to 1e+08, precision 3, 10 major ticks | 80 | 2.259 |
+| 0 to 1e+08, precision 3, 20 major ticks | 80 | 12.578 |
+| 0 to 1e+09, precision 0, 10 major ticks | 82 | 3.396 |
+| 0 to 1e+09, precision 0, 20 major ticks | 82 | 14.207 |
+| 0 to 1e+09, precision 1, 10 major ticks | 82 | 6.050 |
+| 0 to 1e+09, precision 1, 20 major ticks | 82 | 14.498 |
+| 0 to 1e+09, precision 2, 10 major ticks | 82 | 5.958 |
+| 0 to 1e+09, precision 2, 20 major ticks | 82 | 12.491 |
+| 0 to 1e+09, precision 3, 10 major ticks | 82 | 6.092 |
+| 0 to 1e+09, precision 3, 20 major ticks | 82 | 14.834 |
+| 0 to 1e+10, precision 0, 10 major ticks | 90 | 5.801 |
+| 0 to 1e+10, precision 0, 20 major ticks | 90 | 14.207 |
+| 0 to 1e+10, precision 1, 10 major ticks | 90 | 5.814 |
+| 0 to 1e+10, precision 1, 20 major ticks | 90 | 14.499 |
+| 0 to 1e+10, precision 2, 10 major ticks | 90 | 3.989 |
+| 0 to 1e+10, precision 2, 20 major ticks | 90 | 14.075 |
+| 0 to 1e+10, precision 3, 10 major ticks | 90 | 5.828 |
+| 0 to 1e+10, precision 3, 20 major ticks | 90 | 14.515 |
+| 0 to 1e+11, precision 0, 10 major ticks | 97 | 2.392 |
+| 0 to 1e+11, precision 0, 20 major ticks | 97 | 10.849 |
+| 0 to 1e+11, precision 1, 10 major ticks | 97 | 5.289 |
+| 0 to 1e+11, precision 1, 20 major ticks | 97 | 12.848 |
+| 0 to 1e+11, precision 2, 10 major ticks | 97 | 4.473 |
+| 0 to 1e+11, precision 2, 20 major ticks | 97 | 15.133 |
+| 0 to 1e+11, precision 3, 10 major ticks | 97 | 5.474 |
+| 0 to 1e+11, precision 3, 20 major ticks | 97 | 15.222 |
+| 0 to 1e+12, precision 0, 10 major ticks | 105 | 6.119 |
+| 0 to 1e+12, precision 0, 20 major ticks | 105 | 15.388 |
+| 0 to 1e+12, precision 1, 10 major ticks | 105 | 5.994 |
+| 0 to 1e+12, precision 1, 20 major ticks | 105 | 15.011 |
+| 0 to 1e+12, precision 2, 10 major ticks | 105 | 6.128 |
+| 0 to 1e+12, precision 2, 20 major ticks | 105 | 15.268 |
+| 0 to 1e+12, precision 3, 10 major ticks | 105 | 6.004 |
+| 0 to 1e+12, precision 3, 20 major ticks | 105 | 15.062 |
+| -1e+12 to 1e+12, precision 0, 10 major ticks | 138 | 3.036 |
+| -1e+12 to 1e+12, precision 0, 20 major ticks | 156 | 4.325 |
+| -1e+12 to 1e+12, precision 1, 10 major ticks | 138 | 3.055 |
+| -1e+12 to 1e+12, precision 1, 20 major ticks | 156 | 4.282 |
+| -1e+12 to 1e+12, precision 2, 10 major ticks | 138 | 3.019 |
+| -1e+12 to 1e+12, precision 2, 20 major ticks | 156 | 4.072 |
+| -1e+12 to 1e+12, precision 3, 10 major ticks | 138 | 1.978 |
+| -1e+12 to 1e+12, precision 3, 20 major ticks | 156 | 2.036 |
+
+Worst case of IndustrialKnob: 0 to 1e+12, precision 0, 20 major ticks (15.388 ms).
+
+##### RadialGauge: grid, median of 5 first calls
+
+| Configuration | Minimum size | median (ms) |
+|---|---|---|
+| 0 to 100, precision 0, 10 major ticks | 90 | 0.414 |
+| 0 to 100, precision 0, 20 major ticks | 90 | 0.620 |
+| 0 to 100, precision 1, 10 major ticks | 98 | 0.264 |
+| 0 to 100, precision 1, 20 major ticks | 98 | 0.336 |
+| 0 to 100, precision 2, 10 major ticks | 90 | 0.939 |
+| 0 to 100, precision 2, 20 major ticks | 90 | 1.050 |
+| 0 to 100, precision 3, 10 major ticks | 90 | 1.155 |
+| 0 to 100, precision 3, 20 major ticks | 90 | 1.048 |
+| 0 to 1e+03, precision 0, 10 major ticks | 97 | 0.248 |
+| 0 to 1e+03, precision 0, 20 major ticks | 97 | 0.344 |
+| 0 to 1e+03, precision 1, 10 major ticks | 90 | 0.509 |
+| 0 to 1e+03, precision 1, 20 major ticks | 90 | 0.622 |
+| 0 to 1e+03, precision 2, 10 major ticks | 90 | 0.959 |
+| 0 to 1e+03, precision 2, 20 major ticks | 90 | 1.052 |
+| 0 to 1e+03, precision 3, 10 major ticks | 136 | 0.230 |
+| 0 to 1e+03, precision 3, 20 major ticks | 136 | 0.300 |
+| 0 to 1e+04, precision 0, 10 major ticks | 109 | 0.238 |
+| 0 to 1e+04, precision 0, 20 major ticks | 109 | 0.311 |
+| 0 to 1e+04, precision 1, 10 major ticks | 90 | 0.926 |
+| 0 to 1e+04, precision 1, 20 major ticks | 90 | 2.166 |
+| 0 to 1e+04, precision 2, 10 major ticks | 136 | 0.555 |
+| 0 to 1e+04, precision 2, 20 major ticks | 136 | 0.678 |
+| 0 to 1e+04, precision 3, 10 major ticks | 150 | 0.840 |
+| 0 to 1e+04, precision 3, 20 major ticks | 150 | 0.447 |
+| 0 to 1e+05, precision 0, 10 major ticks | 120 | 0.235 |
+| 0 to 1e+05, precision 0, 20 major ticks | 120 | 0.304 |
+| 0 to 1e+05, precision 1, 10 major ticks | 136 | 0.236 |
+| 0 to 1e+05, precision 1, 20 major ticks | 136 | 0.296 |
+| 0 to 1e+05, precision 2, 10 major ticks | 150 | 0.382 |
+| 0 to 1e+05, precision 2, 20 major ticks | 150 | 0.476 |
+| 0 to 1e+05, precision 3, 10 major ticks | 165 | 1.983 |
+| 0 to 1e+05, precision 3, 20 major ticks | 165 | 0.935 |
+| 0 to 1e+06, precision 0, 10 major ticks | 133 | 0.383 |
+| 0 to 1e+06, precision 0, 20 major ticks | 133 | 0.462 |
+| 0 to 1e+06, precision 1, 10 major ticks | 150 | 0.968 |
+| 0 to 1e+06, precision 1, 20 major ticks | 150 | 1.113 |
+| 0 to 1e+06, precision 2, 10 major ticks | 165 | 2.014 |
+| 0 to 1e+06, precision 2, 20 major ticks | 165 | 2.142 |
+| 0 to 1e+06, precision 3, 10 major ticks | 180 | 2.189 |
+| 0 to 1e+06, precision 3, 20 major ticks | 180 | 2.290 |
+| 0 to 1e+07, precision 0, 10 major ticks | 145 | 0.534 |
+| 0 to 1e+07, precision 0, 20 major ticks | 145 | 0.665 |
+| 0 to 1e+07, precision 1, 10 major ticks | 165 | 1.508 |
+| 0 to 1e+07, precision 1, 20 major ticks | 165 | 2.125 |
+| 0 to 1e+07, precision 2, 10 major ticks | 180 | 2.178 |
+| 0 to 1e+07, precision 2, 20 major ticks | 180 | 2.265 |
+| 0 to 1e+07, precision 3, 10 major ticks | 195 | 1.908 |
+| 0 to 1e+07, precision 3, 20 major ticks | 195 | 2.021 |
+| 0 to 1e+08, precision 0, 10 major ticks | 156 | 1.614 |
+| 0 to 1e+08, precision 0, 20 major ticks | 156 | 1.758 |
+| 0 to 1e+08, precision 1, 10 major ticks | 180 | 2.170 |
+| 0 to 1e+08, precision 1, 20 major ticks | 180 | 2.361 |
+| 0 to 1e+08, precision 2, 10 major ticks | 195 | 1.902 |
+| 0 to 1e+08, precision 2, 20 major ticks | 195 | 2.006 |
+| 0 to 1e+08, precision 3, 10 major ticks | 211 | 1.027 |
+| 0 to 1e+08, precision 3, 20 major ticks | 211 | 1.066 |
+| 0 to 1e+09, precision 0, 10 major ticks | 172 | 2.315 |
+| 0 to 1e+09, precision 0, 20 major ticks | 172 | 2.286 |
+| 0 to 1e+09, precision 1, 10 major ticks | 195 | 1.938 |
+| 0 to 1e+09, precision 1, 20 major ticks | 195 | 2.039 |
+| 0 to 1e+09, precision 2, 10 major ticks | 211 | 1.028 |
+| 0 to 1e+09, precision 2, 20 major ticks | 211 | 1.076 |
+| 0 to 1e+09, precision 3, 10 major ticks | 220 | 0.267 |
+| 0 to 1e+09, precision 3, 20 major ticks | 220 | 0.316 |
+| 0 to 1e+10, precision 0, 10 major ticks | 187 | 2.145 |
+| 0 to 1e+10, precision 0, 20 major ticks | 187 | 2.250 |
+| 0 to 1e+10, precision 1, 10 major ticks | 211 | 1.030 |
+| 0 to 1e+10, precision 1, 20 major ticks | 211 | 1.088 |
+| 0 to 1e+10, precision 2, 10 major ticks | 220 | 0.269 |
+| 0 to 1e+10, precision 2, 20 major ticks | 220 | 0.300 |
+| 0 to 1e+10, precision 3, 10 major ticks | 220 | 0.267 |
+| 0 to 1e+10, precision 3, 20 major ticks | 220 | 0.305 |
+| 0 to 1e+11, precision 0, 10 major ticks | 214 | 0.743 |
+| 0 to 1e+11, precision 0, 20 major ticks | 214 | 0.761 |
+| 0 to 1e+11, precision 1, 10 major ticks | 220 | 0.265 |
+| 0 to 1e+11, precision 1, 20 major ticks | 220 | 0.303 |
+| 0 to 1e+11, precision 2, 10 major ticks | 220 | 0.272 |
+| 0 to 1e+11, precision 2, 20 major ticks | 220 | 0.306 |
+| 0 to 1e+11, precision 3, 10 major ticks | 220 | 0.290 |
+| 0 to 1e+11, precision 3, 20 major ticks | 220 | 0.310 |
+| 0 to 1e+12, precision 0, 10 major ticks | 220 | 0.114 |
+| 0 to 1e+12, precision 0, 20 major ticks | 220 | 0.152 |
+| 0 to 1e+12, precision 1, 10 major ticks | 220 | 0.124 |
+| 0 to 1e+12, precision 1, 20 major ticks | 220 | 0.169 |
+| 0 to 1e+12, precision 2, 10 major ticks | 220 | 0.128 |
+| 0 to 1e+12, precision 2, 20 major ticks | 220 | 0.169 |
+| 0 to 1e+12, precision 3, 10 major ticks | 216 | 0.486 |
+| 0 to 1e+12, precision 3, 20 major ticks | 216 | 0.528 |
+| -1e+12 to 1e+12, precision 0, 10 major ticks | 220 | 0.132 |
+| -1e+12 to 1e+12, precision 0, 20 major ticks | 220 | 0.171 |
+| -1e+12 to 1e+12, precision 1, 10 major ticks | 220 | 0.142 |
+| -1e+12 to 1e+12, precision 1, 20 major ticks | 220 | 0.183 |
+| -1e+12 to 1e+12, precision 2, 10 major ticks | 216 | 0.605 |
+| -1e+12 to 1e+12, precision 2, 20 major ticks | 216 | 0.561 |
+| -1e+12 to 1e+12, precision 3, 10 major ticks | 216 | 0.486 |
+| -1e+12 to 1e+12, precision 3, 20 major ticks | 216 | 0.533 |
+
+Worst case of RadialGauge: 0 to 1e+08, precision 1, 20 major ticks (2.361 ms).
+
+##### CircularBargraph: grid, median of 5 first calls
+
+| Configuration | Minimum size | median (ms) |
+|---|---|---|
+| 0 to 100, precision 0 | 50 | 0.005 |
+| 0 to 100, precision 1 | 50 | 0.005 |
+| 0 to 100, precision 2 | 50 | 0.005 |
+| 0 to 100, precision 3 | 50 | 0.005 |
+| 0 to 1e+03, precision 0 | 50 | 0.005 |
+| 0 to 1e+03, precision 1 | 50 | 0.005 |
+| 0 to 1e+03, precision 2 | 50 | 0.005 |
+| 0 to 1e+03, precision 3 | 50 | 0.005 |
+| 0 to 1e+04, precision 0 | 50 | 0.005 |
+| 0 to 1e+04, precision 1 | 50 | 0.005 |
+| 0 to 1e+04, precision 2 | 50 | 0.005 |
+| 0 to 1e+04, precision 3 | 50 | 0.005 |
+| 0 to 1e+05, precision 0 | 50 | 0.005 |
+| 0 to 1e+05, precision 1 | 50 | 0.005 |
+| 0 to 1e+05, precision 2 | 50 | 0.005 |
+| 0 to 1e+05, precision 3 | 50 | 0.005 |
+| 0 to 1e+06, precision 0 | 50 | 0.005 |
+| 0 to 1e+06, precision 1 | 50 | 0.005 |
+| 0 to 1e+06, precision 2 | 50 | 0.005 |
+| 0 to 1e+06, precision 3 | 50 | 0.005 |
+| 0 to 1e+07, precision 0 | 50 | 0.005 |
+| 0 to 1e+07, precision 1 | 50 | 0.005 |
+| 0 to 1e+07, precision 2 | 50 | 0.005 |
+| 0 to 1e+07, precision 3 | 50 | 0.005 |
+| 0 to 1e+08, precision 0 | 50 | 0.005 |
+| 0 to 1e+08, precision 1 | 50 | 0.005 |
+| 0 to 1e+08, precision 2 | 50 | 0.005 |
+| 0 to 1e+08, precision 3 | 50 | 0.005 |
+| 0 to 1e+09, precision 0 | 50 | 0.005 |
+| 0 to 1e+09, precision 1 | 50 | 0.005 |
+| 0 to 1e+09, precision 2 | 50 | 0.005 |
+| 0 to 1e+09, precision 3 | 50 | 0.005 |
+| 0 to 1e+10, precision 0 | 50 | 0.005 |
+| 0 to 1e+10, precision 1 | 50 | 0.005 |
+| 0 to 1e+10, precision 2 | 50 | 0.005 |
+| 0 to 1e+10, precision 3 | 50 | 0.005 |
+| 0 to 1e+11, precision 0 | 50 | 0.005 |
+| 0 to 1e+11, precision 1 | 50 | 0.005 |
+| 0 to 1e+11, precision 2 | 50 | 0.005 |
+| 0 to 1e+11, precision 3 | 50 | 0.005 |
+| 0 to 1e+12, precision 0 | 50 | 0.005 |
+| 0 to 1e+12, precision 1 | 50 | 0.005 |
+| 0 to 1e+12, precision 2 | 50 | 0.005 |
+| 0 to 1e+12, precision 3 | 50 | 0.005 |
+| -1e+12 to 1e+12, precision 0 | 50 | 0.005 |
+| -1e+12 to 1e+12, precision 1 | 50 | 0.005 |
+| -1e+12 to 1e+12, precision 2 | 50 | 0.006 |
+| -1e+12 to 1e+12, precision 3 | 50 | 0.005 |
+
+Worst case of CircularBargraph: -1e+12 to 1e+12, precision 2 (0.006 ms).
+
+## Profile before and after #184
+
+`valgrind --tool=callgrind` on the first `minimumSizeHint()` of four new widgets, counted only inside the call
+(`CALLGRIND_START_INSTRUMENTATION` / `CALLGRIND_STOP_INSTRUMENTATION`), Release build, DPR 1, application font Sans
+Serif 9 pt (DejaVu Sans, 12 px). The same driver ran against the library at `fbfb7d4` (before #184) and at `ef3fe92`
+(the commit of the session). Instructions per widget, inclusive:
+
+| Case | Minimum size | Before (`fbfb7d4`) | After (`ef3fe92`) |
+|---|---|---|---|
+| `RadialGauge`, default | 98 | 31.2 M | 4.2 M |
+| `IndustrialKnob`, default | 80 | 25.5 M | 7.0 M |
+| `IndustrialKnob`, worst case of this session (0–1e12, precision 0, 20 major ticks) | 105 | 1,029.8 M | 104.5 M |
+
+The counts after #184 vary by about 1 % from one process to the next with the same build: the hash tables of
+`TextMetricsTable` (`QHash`) take a random seed.
+
+In the worst case of the knob the search is the same before and after: 57 widths tried, 2,265 label layouts
+(`labelsAt()`) per knob. What changed, per knob:
+
+| Call | Before | After |
+|---|---|---|
+| `scaleLabelText()` (label texts formatted) | 47,565 | 21 |
+| `QFontMetricsF::boundingRect()` (labels measured) | 47,565 | 42 |
+| `measureCenteredTextInk()` (label ink on a raster, cached per text and size) | 42 | 42 |
+
+After #184 the worst case of the knob spends its instructions in the lookups of the table (17.3 %, of which hashing
+7 %), the selection of the labels (`layoutRadialScaleLabels()`, 15.9 %), the 42 ink measures (13.9 %), the string
+comparisons of the ink cache of the knob (12.1 %, a `std::map` on text and size that #184 does not change) and
+allocations. Text shaping is no longer among the costs.
+
+An intermediate session on 2026-11-04, at `5b1a31a` (the table of #184, with the knob still formatting its labels at
+every step), met every target except the worst case of the knob (0–1e11, precision 1, 20 major ticks): medians
+15.9 · 26.3 · 30.6 · 35.6 · 35.1 ms, PASS in run 1 only. Its profile (226 M instructions per knob: 37 % formatting
+the label texts, 22 % string comparisons in the ordered maps of the table and of the ink cache) led to the last two
+changes of #184: the texts formatted once per computation, and hash tables in `TextMetricsTable`. That session was
+not kept: the session above replaces it.
+
+## Bimodal timings and the P and E cores (2026-11-04)
+
+The i5-13600KF has 6 P cores with 2 threads each and 8 E cores. The test asked whether the two timing modes are the
+two core types. It does not change the method of the session above.
+
+- **What WSL2 shows.** `lscpu` lists 20 CPUs as 10 cores of 2 threads; CPUID leaf 7 reports no hybrid CPU (EDX
+  bit 15 is 0) and leaf 0x1A gives no core type on any of the 20 CPUs. On native Linux, CPUs 0–11 are the threads of
+  the P cores and 12–19 the E cores; under WSL2 they are virtual CPUs, which the Windows host runs on any physical
+  core. `taskset` pins a virtual CPU, not a core.
+- **Fixed work per virtual CPU.** An integer loop (1,000,000 rounds of xor-shift and multiply, no memory traffic),
+  timed 500 times pinned to each of the 20 CPUs: every CPU has the same fast mode (min 1.375 ms) and a slow mode of
+  about 4.5 ms; the share of slow samples is 37–83 % depending on the CPU. Repeated later on CPUs 0, 6, 11, 12, 15
+  and 19 (1,000 samples each): 7.1, 2.1, 6.1, 0.9, 54.9 and 70.6 %. Pinned to the set 0–11 and to the set 12–19,
+  alternated three times: 55.4, 59.9, 66.2 % slow on 0–11 and 72.8, 43.3, 33.5 % on 12–19.
+- **`bench_MinimumSizeHint` per set.** One run pinned to 0–11 and one to 12–19, alternated over six rounds, at
+  `ef3fe92` built from clean, with the worst cases of an exploratory selection (the knob from 0 to 1e11, precision 1,
+  20 major ticks). Worst case of the knob, min / median in ms:
+
+| Round | CPUs 0–11 | CPUs 12–19 |
+|---|---|---|
+| 1 | 5.983 / 11.392 | 14.426 / 15.311 |
+| 2 | 5.896 / 10.510 | 15.032 / 15.584 |
+| 3 | 6.281 / 15.232 | 5.819 / 14.304 |
+| 4 | 14.366 / 15.259 | 5.915 / 6.441 |
+| 5 | 13.424 / 15.258 | 6.014 / 12.356 |
+| 6 | 8.021 / 15.229 | 5.841 / 6.987 |
+
+**Result.** The mode follows the time of the run, not the set of CPUs: rounds 1–2 favour 0–11, rounds 4–6 favour
+12–19, and each CPU shows both modes. Inside WSL2, `taskset` cannot choose between the P and the E cores, so this test
+can neither confirm nor exclude that the two modes are the two core types. Pinning to the P cores would have to be
+done on the Windows host (the affinity of the WSL2 virtual machine). If adopted, it is a change of method from a
+future session on; this session and the earlier ones use `taskset -c 0-11` inside WSL2, as in
+[Commands](#commands-1).
+
+## Historical: session of 2026-11-02 (before #184)
+
+Session of 2026-11-02, benchmark source commit `87a1ff4`, library 2.6.0 with the changes of #177, before #184. Same
+targets, commands (with the full `ctest` passing, 86 of 86 then) and method as above. Three of the six cases missed
+their target: `IndustrialKnob` by default and in its worst case, `RadialGauge` by default. The medians sat in the slow
+mode in every run: the minimum of a case was about half its median. An exploratory run before that session, without
+`taskset` and without interleaving, gave medians close to these minimums (knob 1.6 ms, gauge 2.0–2.4 ms by default).
+
+### Results, 2026-11-02
+
+Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: hint_run1.md, run 2: hint_run2.md, run 3: hint_run3.md, run 4: hint_run4.md, run 5: hint_run5.md).
+
+##### Environment
+
+| Item | Value |
+| --- | --- |
+| CPU | 13th Gen Intel(R) Core(TM) i5-13600KF (12 logical CPUs, x86_64) |
+| OS | Ubuntu 24.04.1 LTS |
+| Kernel | linux 6.18.54.1-microsoft-standard-WSL2 |
+| Compiler | GCC 13.3.0 |
+| Build | NDEBUG defined, __OPTIMIZE__ defined |
+| Qt | 6.4.2 (compiled against 6.4.2) |
+| QPA platform | offscreen |
+| Application font | DejaVu Sans, 12 px |
+| Library version | 2.6.0 |
 | Benchmark source commit | 87a1ff4ae97f938f650db8645ddc361e5e7f12c9 |
 | BENCH_WORST | 0,1000000000000,3,20;0,10000,1,20;0,10000000000,1,10 |
 
-#### First minimumSizeHint() of a new widget (targets on the median: default ≤ 2 ms, worst case ≤ 16.7 ms)
+##### First minimumSizeHint() of a new widget (targets on the median: default ≤ 2 ms, worst case ≤ 16.7 ms)
 
 | Case | Minimum size | Trials | min (ms), runs 1–5 | median (ms), runs 1–5 | median (ms), range | p95 (ms), runs 1–5 | p95 (ms), range | Target, runs 1–5 |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -834,9 +1218,7 @@ Merged with `benchmarks/merge_runs.py` from 5 runs (run 1: hint_run1.md, run 2: 
 | CircularBargraph, default | 50 | 30 | 0.002 · 0.002 · 0.002 · 0.005 · 0.002 | 0.005 · 0.006 · 0.005 · 0.007 · 0.006 | 0.005–0.007 | 0.008 · 0.009 · 0.009 · 0.010 · 0.008 | 0.008–0.010 | PASS · PASS · PASS · PASS · PASS |
 | CircularBargraph, worst case: 0 to 1e+10, precision 1 | 50 | 30 | 0.002 · 0.002 · 0.002 · 0.005 · 0.002 | 0.005 · 0.005 · 0.005 · 0.005 · 0.005 | 0.005–0.005 | 0.006 · 0.005 · 0.008 · 0.006 · 0.005 | 0.005–0.008 | PASS · PASS · PASS · PASS · PASS |
 
-<!-- bench_MinimumSizeHint results: end -->
-
-### Worst-case selection
+### Worst-case selection, 2026-11-02
 
 ##### IndustrialKnob: grid, median of 5 first calls
 
@@ -1099,7 +1481,7 @@ Worst case of RadialGauge: 0 to 1e+04, precision 1, 20 major ticks (11.336 ms).
 
 Worst case of CircularBargraph: 0 to 1e+10, precision 1 (0.003 ms).
 
-## Cause of the misses (profile)
+### Cause of the misses (profile, 2026-11-02)
 
 Three of the six cases miss their target: `IndustrialKnob` by default and in its worst case, and `RadialGauge` by
 default. The profile comes from `valgrind --tool=callgrind` on four first calls of each case: instruction counts,
