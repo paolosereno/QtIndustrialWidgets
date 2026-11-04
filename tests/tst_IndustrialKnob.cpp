@@ -241,6 +241,8 @@ private Q_SLOTS:
     void minimumWithTableEqualsReference();
     void minimumMeasuresEachTextOnce_data();
     void minimumMeasuresEachTextOnce();
+    void minimumFormatsEachLabelOnce_data();
+    void minimumFormatsEachLabelOnce();
     void minimumTableNotKeptAcrossComputations();
     void dialFollowsTheDrawnLabels_data();
     void dialFollowsTheDrawnLabels();
@@ -882,6 +884,12 @@ static void addMinimumTableRows()
         k.setRange(-1e12, 1e12);
         k.setPrecision(0);
     });
+    // Above the floor of 80 px in all 8 configurations, also with letter spacing (minimumTableNotKeptAcrossComputations)
+    QTest::addRow("-1e6 to 1e6, precision 0, letter spacing") << Setup([app](IndustrialKnob &k) {
+        k.setRange(-1e6, 1e6);
+        k.setPrecision(0);
+        k.setFont(TextMetricsTest::spacedFont(app));
+    });
     QTest::addRow("discrete, 12 steps") << Setup([](IndustrialKnob &k) {
         k.setMode(IndustrialKnob::KnobMode::Discrete);
         k.setDiscreteSteps(12);
@@ -946,6 +954,27 @@ void tst_IndustrialKnob::minimumMeasuresEachTextOnce()
     QVERIFY(!log.empty());
     const QString repeated = TextMetricsTest::repeatedMeasure(log);
     QVERIFY2(repeated.isEmpty(), qPrintable(repeated));
+}
+
+void tst_IndustrialKnob::minimumFormatsEachLabelOnce_data()
+{
+    addMinimumTableRows();
+}
+
+// #184: one computation of minimumSizeHint() formats each label text once, not at every width and radius tried
+void tst_IndustrialKnob::minimumFormatsEachLabelOnce()
+{
+    using Setup = std::function<void(IndustrialKnob &)>;
+    using Access = internal::IndustrialKnobTestAccess;
+    QFETCH(Setup, setup);
+    IndustrialKnob knob;
+    setup(knob);
+    (void)knob.minimumSizeHint();
+    const int ticks = knob.mode() == IndustrialKnob::KnobMode::Discrete ? std::max(1, knob.discreteSteps() - 1)
+                                                                          : std::max(1, knob.majorTicks());
+    QCOMPARE(Access::lastMinimumLabelFormats(knob), static_cast<quint64>(ticks) + 1);
+    // The search laid out sizes from the table
+    QVERIFY(!Access::lastMinimumMeasures(knob).empty());
 }
 
 // #184: the table lives for one computation. After a font change at the same pixel sizes, minimumSizeHint() is

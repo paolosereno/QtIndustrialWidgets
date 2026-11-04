@@ -31,6 +31,11 @@ public:
     static std::vector<TextMetricsTable::Measure> lastMinimumMeasures(const IndustrialKnob &knob) {
         return knob.d_ptr->m_lastMinimumMeasures;
     }
+
+    // Label texts formatted in the last computation of minimumSizeHint() (labelText() calls)
+    static quint64 lastMinimumLabelFormats(const IndustrialKnob &knob) {
+        return knob.d_ptr->m_lastMinimumLabelFormats;
+    }
 };
 
 } // namespace internal
