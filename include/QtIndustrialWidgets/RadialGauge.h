@@ -16,6 +16,9 @@
 namespace QtIndustrialWidgets {
 
 class RadialGaugePrivate;
+namespace internal {
+class RadialGaugeTestAccess;
+}
 
 /**
  * \class RadialGauge
@@ -284,6 +287,7 @@ private:
 
     std::unique_ptr<RadialGaugePrivate> d_ptr;
     Q_DECLARE_PRIVATE(RadialGauge)
+    friend class internal::RadialGaugeTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets
