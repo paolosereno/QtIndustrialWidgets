@@ -47,7 +47,8 @@ int IndustrialKnobPrivate::tickCount() const
 }
 
 IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const internal::KnobScaleGeometry &geometry,
-                                                                   const QFont &widgetFont, double dpr) const
+                                                                   const QFont &widgetFont, double dpr,
+                                                                   internal::TextMetricsTable *metrics) const
 {
     if (m_labelInkDpr != dpr || m_labelInk.size() > kMaximumLabelInks) {
         m_labelInk.clear();
@@ -69,7 +70,7 @@ IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const interna
         out.texts.push_back(m_mode == IndustrialKnob::KnobMode::Discrete ? QString::number(i + 1)
                                                                          : internal::scaleLabelText(val, m_precision));
         const QString &text = out.texts.back();
-        const QRectF textRect = fm.boundingRect(text);
+        const QRectF textRect = metrics ? metrics->boundingRect(text, geometry.labelFontPx) : fm.boundingRect(text);
         const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
             internal::knobLabelBox(geometry, angleOf(val), textRect.width(), textRect.height()), dpr);
         out.boxes.push_back(box);
@@ -87,7 +88,8 @@ IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const interna
         out.ink.push_back({centerX + ink->second.left, centerY + ink->second.top, ink->second.right - ink->second.left,
                            ink->second.bottom - ink->second.top});
     }
-    out.labels = internal::layoutRadialScaleLabels(out.boxes, internal::scaleLabelMinGap(fm.height()));
+    const double labelHeight = metrics ? metrics->height(geometry.labelFontPx) : fm.height();
+    out.labels = internal::layoutRadialScaleLabels(out.boxes, internal::scaleLabelMinGap(labelHeight));
     return out;
 }
 
@@ -100,10 +102,11 @@ std::vector<internal::LayoutRect> IndustrialKnobPrivate::drawnInk(const ScaleLay
     return drawn;
 }
 
-internal::KnobScaleGeometry IndustrialKnobPrivate::fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr) const
+internal::KnobScaleGeometry IndustrialKnobPrivate::fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr,
+                                                                  internal::TextMetricsTable *metrics) const
 {
     return internal::knobScaleGeometry(size.width(), size.height(), [&](const internal::KnobScaleGeometry &g) {
-        return drawnInk(labelsAt(g, widgetFont, dpr));
+        return drawnInk(labelsAt(g, widgetFont, dpr, metrics));
     });
 }
 
@@ -118,10 +121,12 @@ const IndustrialKnobPrivate::ScaleLayout &IndustrialKnobPrivate::scaleFor(const 
     return m_scale;
 }
 
-bool IndustrialKnobPrivate::widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr) const
+bool IndustrialKnobPrivate::widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr,
+                                                internal::TextMetricsTable *metrics) const
 {
     const int height = minimumHeightOf(width);
-    const ScaleLayout layout = labelsAt(fittedGeometry(QSize(width, height), widgetFont, dpr), widgetFont, dpr);
+    const ScaleLayout layout =
+        labelsAt(fittedGeometry(QSize(width, height), widgetFont, dpr, metrics), widgetFont, dpr, metrics);
     const std::vector<int> &drawn = layout.labels.drawn;
     auto shown = [&](int label) { return std::find(drawn.begin(), drawn.end(), label) != drawn.end(); };
     return shown(0) && (!lastLabelRequired || shown(tickCount())) && internal::knobLabelsInside(drawnInk(layout), width, height);
@@ -129,20 +134,33 @@ bool IndustrialKnobPrivate::widthKeepsScaleEnds(int width, bool lastLabelRequire
 
 int IndustrialKnobPrivate::computeMinimumWidth(int ceiling, const QFont &widgetFont, double dpr) const
 {
-    // Ends that lie on each other at the preferred size never both fit (#60, part b): the first one is drawn
-    const ScaleLayout preferred = labelsAt(fittedGeometry(QSize(ceiling, minimumHeightOf(ceiling)), widgetFont, dpr), widgetFont, dpr);
-    const std::vector<int> &drawn = preferred.labels.drawn;
-    const bool lastLabelRequired = std::find(drawn.begin(), drawn.end(), tickCount()) != drawn.end();
+    // #184: each label measured once in the whole search (widths and radii tried), not at every step. The table is
+    // dropped at the end of the computation, so it never holds metrics of an earlier font or configuration
+    QFont labelFont = widgetFont;
+    labelFont.setBold(true); // as labelsAt() draws the labels
+    internal::TextMetricsTable table(labelFont);
+    internal::TextMetricsTable *metrics = m_minimumWithoutTable ? nullptr : &table;
+    auto search = [&]() {
+        // Ends that lie on each other at the preferred size never both fit (#60, part b): the first one is drawn
+        const QSize preferredSize(ceiling, minimumHeightOf(ceiling));
+        const ScaleLayout preferred =
+            labelsAt(fittedGeometry(preferredSize, widgetFont, dpr, metrics), widgetFont, dpr, metrics);
+        const std::vector<int> &drawn = preferred.labels.drawn;
+        const bool lastLabelRequired = std::find(drawn.begin(), drawn.end(), tickCount()) != drawn.end();
 
-    // From the top, since a larger size is not always better: the labels grow in steps. The whole
-    // range from the result up keeps them, and the ceiling is returned even if it does not
-    if (!widthKeepsScaleEnds(ceiling, lastLabelRequired, widgetFont, dpr)) {
-        return ceiling;
-    }
-    int width = ceiling;
-    while (width > kMinimumWidth && widthKeepsScaleEnds(width - 1, lastLabelRequired, widgetFont, dpr)) {
-        --width;
-    }
+        // From the top, since a larger size is not always better: the labels grow in steps. The whole
+        // range from the result up keeps them, and the ceiling is returned even if it does not
+        if (!widthKeepsScaleEnds(ceiling, lastLabelRequired, widgetFont, dpr, metrics)) {
+            return ceiling;
+        }
+        int width = ceiling;
+        while (width > kMinimumWidth && widthKeepsScaleEnds(width - 1, lastLabelRequired, widgetFont, dpr, metrics)) {
+            --width;
+        }
+        return width;
+    };
+    const int width = search();
+    m_lastMinimumMeasures = table.measures();
     return width;
 }
 

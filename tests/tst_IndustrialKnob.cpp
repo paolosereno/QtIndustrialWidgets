@@ -7,6 +7,7 @@
 
 #include "FontTestUtils.h"
 #include "LabelInkTestUtils.h"
+#include "TextMetricsTestUtils.h"
 #include "internal/FontScale.h"
 #include "internal/IndustrialKnobTestAccess.h"
 #include "internal/LinearGaugeScale.h"
@@ -236,6 +237,11 @@ private Q_SLOTS:
     void minimumSizeHintMakesRoomForALabelAtTheTop();
     void minimumSizeHintFollowsConfiguration_data();
     void minimumSizeHintFollowsConfiguration();
+    void minimumWithTableEqualsReference_data();
+    void minimumWithTableEqualsReference();
+    void minimumMeasuresEachTextOnce_data();
+    void minimumMeasuresEachTextOnce();
+    void minimumTableNotKeptAcrossComputations();
     void dialFollowsTheDrawnLabels_data();
     void dialFollowsTheDrawnLabels();
     void precisionChangesTheLabelsDrawn();
@@ -856,6 +862,117 @@ void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration()
         QVERIFY2(after != before, qPrintable(QStringLiteral("still %1").arg(after)));
     }
     QCOMPARE(layout->minimumSize().width(), after);
+}
+
+// #184: configurations for the checks of the text-metrics table of minimumSizeHint(): ranges, precisions, the
+// discrete mode, and fonts that differ from the application font in more than family, weight and style, at the
+// same pixel size
+static void addMinimumTableRows()
+{
+    using Setup = std::function<void(IndustrialKnob &)>;
+    QTest::addColumn<Setup>("setup");
+    const QFont app = QApplication::font();
+    QTest::addRow("default") << Setup([](IndustrialKnob &) {});
+    QTest::addRow("0 to 1e12, precision 3, 20 ticks") << Setup([](IndustrialKnob &k) {
+        k.setRange(0.0, 1e12);
+        k.setPrecision(3);
+        k.setMajorTicks(20);
+    });
+    QTest::addRow("-1e12 to 1e12, precision 0") << Setup([](IndustrialKnob &k) {
+        k.setRange(-1e12, 1e12);
+        k.setPrecision(0);
+    });
+    QTest::addRow("discrete, 12 steps") << Setup([](IndustrialKnob &k) {
+        k.setMode(IndustrialKnob::KnobMode::Discrete);
+        k.setDiscreteSteps(12);
+    });
+    QTest::addRow("letter spacing") << Setup([app](IndustrialKnob &k) { k.setFont(TextMetricsTest::spacedFont(app)); });
+    QTest::addRow("stretch") << Setup([app](IndustrialKnob &k) {
+        QFont f = app;
+        f.setStretch(QFont::ExtraExpanded);
+        k.setFont(f);
+    });
+    QTest::addRow("capitals") << Setup([app](IndustrialKnob &k) {
+        QFont f = app;
+        f.setCapitalization(QFont::AllUppercase);
+        k.setFont(f);
+    });
+    QTest::addRow("no kerning") << Setup([app](IndustrialKnob &k) {
+        QFont f = app;
+        f.setKerning(false);
+        k.setFont(f);
+    });
+    QTest::addRow("other family, italic") << Setup([app](IndustrialKnob &k) { k.setFont(FontTest::otherFont(app)); });
+    QTest::addRow("doubled font") << Setup([](IndustrialKnob &k) { k.setFont(FontTest::doubledFont()); });
+}
+
+void tst_IndustrialKnob::minimumWithTableEqualsReference_data()
+{
+    addMinimumTableRows();
+}
+
+// #184: minimumSizeHint() with its table (each label measured once in the width and radius searches) is the same
+// as the reference that measures every label at every size tried, as before the table
+void tst_IndustrialKnob::minimumWithTableEqualsReference()
+{
+    using Setup = std::function<void(IndustrialKnob &)>;
+    using Access = internal::IndustrialKnobTestAccess;
+    QFETCH(Setup, setup);
+    IndustrialKnob withTable;
+    setup(withTable);
+    IndustrialKnob reference;
+    setup(reference);
+    Access::setMinimumWithoutTable(reference, true);
+    QCOMPARE(withTable.minimumSizeHint(), reference.minimumSizeHint());
+    // The table was used, and the reference did not use it
+    QVERIFY(!Access::lastMinimumMeasures(withTable).empty());
+    QVERIFY(Access::lastMinimumMeasures(reference).empty());
+}
+
+void tst_IndustrialKnob::minimumMeasuresEachTextOnce_data()
+{
+    addMinimumTableRows();
+}
+
+// #184: one computation of minimumSizeHint() measures each label at each font size once
+void tst_IndustrialKnob::minimumMeasuresEachTextOnce()
+{
+    using Setup = std::function<void(IndustrialKnob &)>;
+    QFETCH(Setup, setup);
+    IndustrialKnob knob;
+    setup(knob);
+    (void)knob.minimumSizeHint();
+    const auto log = internal::IndustrialKnobTestAccess::lastMinimumMeasures(knob);
+    QVERIFY(!log.empty());
+    const QString repeated = TextMetricsTest::repeatedMeasure(log);
+    QVERIFY2(repeated.isEmpty(), qPrintable(repeated));
+}
+
+// #184: the table lives for one computation. After a font change at the same pixel sizes, minimumSizeHint() is
+// that of the reference with the new font, not one measured with the labels of the old font. The change is one of
+// letter spacing: a change of family (the test font of tests/fonts) leaves the minimum of this knob at the floor
+// at QT_SCALE_FACTOR 2 and without installed fonts, where it would check nothing
+void tst_IndustrialKnob::minimumTableNotKeptAcrossComputations()
+{
+    // Labels that decide the size: the default knob stops at the floor of 80 px, which no font change moves
+    const auto configure = [](IndustrialKnob &k) {
+        k.setRange(-1e6, 1e6);
+        k.setPrecision(0);
+    };
+    IndustrialKnob knob;
+    configure(knob);
+    const QSize first = knob.minimumSizeHint();
+    const QFont other = TextMetricsTest::spacedFont(QApplication::font());
+    knob.setFont(other);
+    const QSize second = knob.minimumSizeHint();
+    IndustrialKnob reference;
+    configure(reference);
+    reference.setFont(other);
+    internal::IndustrialKnobTestAccess::setMinimumWithoutTable(reference, true);
+    const QSize expected = reference.minimumSizeHint();
+    QVERIFY2(expected != first, qPrintable(QStringLiteral("the font change leaves the minimum at %1: it checks nothing")
+                                               .arg(first.width())));
+    QCOMPARE(second, expected);
 }
 
 void tst_IndustrialKnob::dialFollowsTheDrawnLabels_data()
