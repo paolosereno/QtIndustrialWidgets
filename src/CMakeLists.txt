@@ -184,6 +184,27 @@ set_target_properties(FontScale PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(TextMetricsTable OBJECT
+    internal/TextMetricsTable.cpp
+    internal/TextMetricsTable.h
+)
+
+target_include_directories(TextMetricsTable
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(TextMetricsTable
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+)
+
+set_target_properties(TextMetricsTable PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(LevelMeterLayout OBJECT
     internal/LevelMeterLayout.cpp
     internal/LevelMeterLayout.h
@@ -306,6 +327,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     $<TARGET_OBJECTS:TankDisplayLayout>
     $<TARGET_OBJECTS:ValveIndicatorLayout>
     $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:TextMetricsTable>
     $<TARGET_OBJECTS:AnalysisChartView>
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/qtindustrialwidgets_global.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/ValueState.h
