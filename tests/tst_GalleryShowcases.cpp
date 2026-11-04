@@ -14,11 +14,11 @@
 #include <QtIndustrialWidgets/ValveIndicator.h>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
-#include <QtCore/QMetaProperty>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSet>
 #include <QtWidgets/QWidget>
 
+#include "ColourPropertyTestUtils.h"
 #include "Showcases.h"
 
 #include <map>
@@ -60,21 +60,8 @@ QStringList publicWidgetClasses()
     return classes;
 }
 
-using Colours = std::map<QString, QColor>;
-
-// Every QColor property of the widget, read through its meta-object
-Colours colours(const QObject &o)
-{
-    Colours out;
-    const QMetaObject *mo = o.metaObject();
-    for (int i = 0; i < mo->propertyCount(); ++i) {
-        const QMetaProperty p = mo->property(i);
-        if (p.metaType().id() == QMetaType::QColor) {
-            out[QString::fromLatin1(p.name())] = p.read(&o).value<QColor>();
-        }
-    }
-    return out;
-}
+using ColourPropertyTest::Colours;
+using ColourPropertyTest::colours;
 
 // GalleryShowcase::applyGalleryTheme() for the widgets that GalleryTheme.cpp styles; false for the others
 bool applyGalleryTheme(QWidget &w, GalleryShowcase::Theme theme)

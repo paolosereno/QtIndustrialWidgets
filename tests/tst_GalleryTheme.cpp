@@ -16,9 +16,8 @@
 #include <QtIndustrialWidgets/TankDisplay.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
+#include "ColourPropertyTestUtils.h"
 #include "GalleryTheme.h"
-
-#include <QtCore/QMetaProperty>
 
 #include <functional>
 #include <map>
@@ -29,21 +28,8 @@ using GalleryShowcase::Theme;
 
 namespace {
 
-using Colours = std::map<QString, QColor>;
-
-// Every QColor property of the widget, read through its meta-object
-Colours colours(const QObject &o)
-{
-    Colours out;
-    const QMetaObject *mo = o.metaObject();
-    for (int i = 0; i < mo->propertyCount(); ++i) {
-        const QMetaProperty p = mo->property(i);
-        if (p.metaType().id() == QMetaType::QColor) {
-            out[QString::fromLatin1(p.name())] = p.read(&o).value<QColor>();
-        }
-    }
-    return out;
-}
+using ColourPropertyTest::Colours;
+using ColourPropertyTest::colours;
 
 QString differences(const Colours &got, const Colours &expected)
 {
