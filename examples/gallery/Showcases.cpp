@@ -40,48 +40,6 @@ QColor ledTextColor(Theme theme)
     return isDark(theme) ? QColor(225, 231, 236) : QColor(30, 39, 46);
 }
 
-// Colours as in MainWindow::applyTheme()
-void styleRadialGauge(RadialGauge *g, Theme theme)
-{
-    if (isDark(theme)) {
-        g->setDialColor(QColor(20, 24, 32));
-        g->setTextColor(QColor(245, 246, 250));
-        g->setBezelColor(QColor(48, 56, 70));
-    } else {
-        g->setDialColor(QColor(242, 244, 248));
-        g->setTextColor(QColor(30, 39, 46));
-        g->setScaleColor(QColor(80, 90, 105));
-        g->setBezelColor(QColor(200, 208, 218));
-    }
-}
-
-void styleLinearGauge(LinearGauge *g, Theme theme)
-{
-    if (isDark(theme)) {
-        g->setBezelColor(QColor(36, 43, 56));
-        g->setTroughColor(QColor(20, 24, 32));
-        g->setTextColor(QColor(245, 246, 250));
-    } else {
-        g->setBezelColor(QColor(215, 222, 230));
-        g->setTroughColor(QColor(235, 240, 245));
-        g->setTextColor(QColor(30, 39, 46));
-        g->setScaleColor(QColor(80, 90, 105));
-    }
-}
-
-void styleKnob(IndustrialKnob *k, Theme theme)
-{
-    if (isDark(theme)) {
-        k->setKnobColor(QColor(42, 48, 60));
-        k->setScaleColor(QColor(190, 200, 215));
-        k->setTextColor(QColor(240, 244, 250));
-    } else {
-        k->setKnobColor(QColor(220, 226, 235));
-        k->setScaleColor(QColor(70, 80, 95));
-        k->setTextColor(QColor(30, 39, 46));
-    }
-}
-
 QWidget *radialGaugeWarning(Theme theme)
 {
     auto *g = new RadialGauge;
@@ -91,7 +49,7 @@ QWidget *radialGaugeWarning(Theme theme)
     g->setPrecision(0);
     g->setUnit(QStringLiteral("RPM"));
     g->setValue(6400.0); // warning zone
-    styleRadialGauge(g, theme);
+    applyGalleryTheme(*g, theme);
     return g;
 }
 
@@ -104,7 +62,7 @@ QWidget *radialGaugeInvalid(Theme theme)
     g->setPrecision(0);
     g->setUnit(QStringLiteral("RPM"));
     g->setValue(std::numeric_limits<double>::quiet_NaN()); // sensor fault: no needle, "---"
-    styleRadialGauge(g, theme);
+    applyGalleryTheme(*g, theme);
     return g;
 }
 
@@ -119,7 +77,7 @@ QWidget *linearGaugeThermometer(Theme theme)
     g->setPrecision(1);
     g->setUnit(QStringLiteral("°C"));
     g->setValue(88.0);
-    styleLinearGauge(g, theme);
+    applyGalleryTheme(*g, theme);
     return g;
 }
 
@@ -134,7 +92,7 @@ QWidget *linearGaugeInvalid(Theme theme)
     g->setPrecision(1);
     g->setUnit(QStringLiteral("°C"));
     g->setValue(std::numeric_limits<double>::quiet_NaN()); // sensor fault: empty, hatched tube, "---"
-    styleLinearGauge(g, theme);
+    applyGalleryTheme(*g, theme);
     return g;
 }
 
@@ -149,7 +107,7 @@ QWidget *linearGaugeHorizontal(Theme theme)
     g->setPrecision(0);
     g->setUnit(QStringLiteral("bar"));
     g->setValue(140.0);
-    styleLinearGauge(g, theme);
+    applyGalleryTheme(*g, theme);
     return g;
 }
 
@@ -199,7 +157,7 @@ QWidget *knobContinuous(Theme theme)
     k->setPrecision(0);
     k->setUnit(QStringLiteral("RPM"));
     k->setValue(2400.0);
-    styleKnob(k, theme);
+    applyGalleryTheme(*k, theme);
     return k;
 }
 
@@ -209,7 +167,7 @@ QWidget *knobDiscrete(Theme theme)
     k->setMode(IndustrialKnob::KnobMode::Discrete);
     k->setDiscreteSteps(5);
     k->setValue(25.0); // position 2 of 5 (default range 0..100)
-    styleKnob(k, theme);
+    applyGalleryTheme(*k, theme);
     return k;
 }
 
@@ -261,22 +219,13 @@ QWidget *switchRocker(Theme)
     return s;
 }
 
-void styleTank(TankDisplay *t, Theme theme)
-{
-    if (!isDark(theme)) {
-        t->setTextColor(QColor(30, 39, 46));
-        t->setScaleColor(QColor(80, 90, 105));
-        t->setVesselColor(QColor(110, 122, 138));
-    }
-}
-
 QWidget *tankVerticalCylinder(Theme theme)
 {
     auto *t = new TankDisplay;
     t->setUnit(QStringLiteral("%"));
     t->setLimits(5.0, 15.0, 85.0, 95.0);
     t->setValue(62.4);
-    styleTank(t, theme);
+    applyGalleryTheme(*t, theme);
     return t;
 }
 
@@ -290,7 +239,7 @@ QWidget *tankHorizontalCylinder(Theme theme)
     t->setUnit(QStringLiteral("m"));
     t->setContentColor(QColor(230, 160, 40));
     t->setValue(1.12);
-    styleTank(t, theme);
+    applyGalleryTheme(*t, theme);
     return t;
 }
 
@@ -303,7 +252,7 @@ QWidget *tankLimits(Theme theme)
     t->setPrecision(0);
     t->setLimits(5.0, 15.0, 80.0, 90.0);
     t->setValue(93.0); // high-high limit in force: filled marker and "HH" tag
-    styleTank(t, theme);
+    applyGalleryTheme(*t, theme);
     return t;
 }
 
@@ -314,7 +263,7 @@ QWidget *tankSphere(Theme theme)
     t->setContentColor(QColor(46, 204, 113));
     t->setLimits(10.0, 25.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
     t->setValue(21.5); // low limit in force
-    styleTank(t, theme);
+    applyGalleryTheme(*t, theme);
     return t;
 }
 
@@ -323,25 +272,18 @@ QWidget *tankInvalid(Theme theme)
     auto *t = new TankDisplay;
     t->setLimits(5.0, 15.0, 85.0, 95.0);
     t->setValue(std::numeric_limits<double>::quiet_NaN()); // sensor fault: empty, hatched vessel, "---"
-    styleTank(t, theme);
+    applyGalleryTheme(*t, theme);
     return t;
 }
 
-// ValveIndicator (#153): the texts and the marks on the panel follow the theme; the readout panel is dark in both
+// ValveIndicator (#153): colours of the theme in GalleryTheme.cpp
 ValveIndicator *valve(Theme theme, ValveIndicator::ValveType type, ValveIndicator::ValveStatus status)
 {
     auto *v = new ValveIndicator;
     v->setValveType(type);
     v->setStatus(status);
     v->setPipeStubsVisible(true);
-    if (!isDark(theme)) {
-        v->setTextColor(QColor(30, 39, 46));
-        v->setOutlineColor(QColor(80, 90, 105));
-        // The default open, transit and unknown colours are below 3:1 on white: darker, with the same hues
-        v->setOpenColor(QColor(36, 160, 89));
-        v->setTransitColor(QColor(170, 138, 10));
-        v->setUnknownColor(QColor(125, 145, 146));
-    }
+    applyGalleryTheme(*v, theme);
     return v;
 }
 
@@ -447,15 +389,7 @@ QWidget *compassHeadingUp(Theme theme)
     c->setHeading(47.0);
     c->setTargetHeading(75.0);
     c->setHeadingBugVisible(true);
-    if (isDark(theme)) {
-        c->setDialColor(QColor(20, 24, 32));
-        c->setBezelColor(QColor(48, 56, 70));
-        c->setTextColor(QColor(225, 231, 236));
-    } else {
-        c->setDialColor(QColor(242, 244, 248));
-        c->setBezelColor(QColor(200, 208, 218));
-        c->setTextColor(QColor(30, 39, 46));
-    }
+    applyGalleryTheme(*c, theme);
     return c;
 }
 
@@ -470,7 +404,7 @@ QWidget *circularBargraph(Theme theme, double value)
     b->setUnit(QStringLiteral("%"));
     b->setValue(82.0); // peak
     b->setValue(value);
-    b->setDialColor(isDark(theme) ? QColor(0, 0, 0) : QColor(24, 28, 36)); // as in the gallery
+    applyGalleryTheme(*b, theme);
     return b;
 }
 
@@ -578,11 +512,6 @@ QString kebabCase(const QString &className)
         out += c.toLower();
     }
     return out;
-}
-
-QColor backgroundColor(Theme theme)
-{
-    return isDark(theme) ? QColor(0x18, 0x1d, 0x27) : QColor(0xff, 0xff, 0xff);
 }
 
 const std::vector<Showcase> &showcases()
