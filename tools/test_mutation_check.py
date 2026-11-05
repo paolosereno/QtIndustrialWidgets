@@ -134,8 +134,10 @@ class MutationCheckTest(unittest.TestCase):
             r = run(cmd, self.repo)
             self.assertEqual(r.returncode, 0, r.stderr)
         generator = ["-G", "Ninja"] if shutil.which("ninja") else []
-        # No rule that runs CMake again: when the clock jumps back during the configuration (under WSL it was seen to
-        # go back by up to 135 s), build.ninja can be older than CMakeCache.txt, and ninja regenerates it without end
+        # No rule that runs CMake again. Under this WSL, CLOCK_REALTIME steps 136.3 s ahead every 5 s, for 55-185 ms,
+        # and then back (measured against CLOCK_MONOTONIC, system at rest). A file written in that window is dated in
+        # the future, and the files written after it look older: CMakeCache.txt can then be newer than build.ninja,
+        # and ninja regenerates it without end
         r = run(["cmake", "-S", ".", "-B", "build", "-DCMAKE_BUILD_TYPE=Release",
                  "-DCMAKE_SUPPRESS_REGENERATION=ON"] + generator, self.repo)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
