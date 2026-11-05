@@ -93,6 +93,7 @@ add_dpr_tests(tst_LinearGauge)
 # #159: readout contrast of the gauges, the compass, the knob and the bargraph
 add_executable(tst_ReadoutContrast
     tst_ReadoutContrast.cpp
+    ${PROJECT_SOURCE_DIR}/examples/gallery/GalleryTheme.cpp
     $<TARGET_OBJECTS:LinearGaugeScale>
 )
 target_link_libraries(tst_ReadoutContrast
@@ -107,6 +108,7 @@ target_include_directories(tst_ReadoutContrast
     PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/examples/gallery
 )
 set_target_properties(tst_ReadoutContrast PROPERTIES
     AUTOMOC ON
@@ -374,6 +376,7 @@ add_dpr_tests(tst_FixedFormatUsage)
 add_executable(tst_GalleryShowcases
     tst_GalleryShowcases.cpp
     ${PROJECT_SOURCE_DIR}/examples/gallery/Showcases.cpp
+    ${PROJECT_SOURCE_DIR}/examples/gallery/GalleryTheme.cpp
 )
 target_link_libraries(tst_GalleryShowcases
     PRIVATE
@@ -396,6 +399,29 @@ set_target_properties(tst_GalleryShowcases PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_GalleryShowcases)
+
+# #190: the gallery theme colours, set in both themes, so that a theme switch gives the colours of the second theme
+add_executable(tst_GalleryTheme
+    tst_GalleryTheme.cpp
+    ${PROJECT_SOURCE_DIR}/examples/gallery/GalleryTheme.cpp
+)
+target_link_libraries(tst_GalleryTheme
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_GalleryTheme
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/examples/gallery
+)
+set_target_properties(tst_GalleryTheme PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_GalleryTheme)
 
 # #8: heap allocations per frame must not grow with the number of visible gaps. Both executables replace the global
 # operator new with a counter (tests/AllocationCounter.h); each test first checks that the counter sees an allocation

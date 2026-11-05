@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 // #159: contrast of the digital readouts against their pod, with the default readout and zone colours, in the
-// dark and light styling of the gallery (examples/gallery/Showcases.cpp, MainWindow::applyTheme()), in every
-// value state.
+// dark and light styling of the gallery, in every value state. The styling and the showcase background come from
+// examples/gallery/GalleryTheme.cpp (#190), the code the live gallery and the image export use, so a colour changed
+// in the gallery is measured here.
 //
 // Targets (WCAG 2.x): 4.5:1 for text (1.4.3, normal text: the readouts); 3:1 for graphical objects that carry
 // meaning (1.4.11: the fill, the limit lines and the hatch of an invalid input drawn on the empty inside of
@@ -21,6 +22,7 @@
 #include <QtIndustrialWidgets/TankDisplay.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
+#include "GalleryTheme.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/TankDisplayTestAccess.h"
 #include "internal/ValveIndicatorTestAccess.h"
@@ -62,13 +64,17 @@ int channelDistance(QRgb a, QRgb b)
     return std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
 }
 
+GalleryShowcase::Theme themeOf(bool dark) { return dark ? GalleryShowcase::Theme::Dark : GalleryShowcase::Theme::Light; }
+
 // The showcase background of the gallery export
+QColor showcaseBackground(bool dark) { return GalleryShowcase::backgroundColor(themeOf(dark)); }
+
 QImage renderOn(QWidget &w, bool dark)
 {
     const QPixmap pix = w.grab();
     QImage img(pix.size(), QImage::Format_ARGB32);
     img.setDevicePixelRatio(pix.devicePixelRatio());
-    img.fill(dark ? QColor(0x18, 0x1d, 0x27) : QColor(0xff, 0xff, 0xff));
+    img.fill(showcaseBackground(dark));
     QPainter p(&img);
     p.drawPixmap(0, 0, pix);
     p.end();
@@ -251,80 +257,11 @@ void checkReading(const Reading &r, int minPixels)
 
 int scaledPixels(int logical, qreal dpr) { return static_cast<int>(logical * dpr * dpr); }
 
-// Gallery styling (examples/gallery/Showcases.cpp)
-void style(RadialGauge &g, bool dark)
+// Gallery styling, from examples/gallery/GalleryTheme.cpp
+template <typename Widget>
+void style(Widget &w, bool dark)
 {
-    if (dark) {
-        g.setDialColor(QColor(20, 24, 32));
-        g.setTextColor(QColor(245, 246, 250));
-        g.setBezelColor(QColor(48, 56, 70));
-    } else {
-        g.setDialColor(QColor(242, 244, 248));
-        g.setTextColor(QColor(30, 39, 46));
-        g.setScaleColor(QColor(80, 90, 105));
-        g.setBezelColor(QColor(200, 208, 218));
-    }
-}
-
-void style(LinearGauge &g, bool dark)
-{
-    if (dark) {
-        g.setBezelColor(QColor(36, 43, 56));
-        g.setTroughColor(QColor(20, 24, 32));
-        g.setTextColor(QColor(245, 246, 250));
-    } else {
-        g.setBezelColor(QColor(215, 222, 230));
-        g.setTroughColor(QColor(235, 240, 245));
-        g.setTextColor(QColor(30, 39, 46));
-        g.setScaleColor(QColor(80, 90, 105));
-    }
-}
-
-void style(TankDisplay &t, bool dark)
-{
-    if (!dark) {
-        t.setTextColor(QColor(30, 39, 46));
-        t.setScaleColor(QColor(80, 90, 105));
-        t.setVesselColor(QColor(110, 122, 138));
-    }
-}
-
-void style(ValveIndicator &v, bool dark)
-{
-    if (!dark) {
-        v.setTextColor(QColor(30, 39, 46));
-        v.setOutlineColor(QColor(80, 90, 105));
-        // Darker open, transit and unknown colours, the same hues: 3:1 on white
-        v.setOpenColor(QColor(36, 160, 89));
-        v.setTransitColor(QColor(170, 138, 10));
-        v.setUnknownColor(QColor(125, 145, 146));
-    }
-}
-
-void style(Compass &c, bool dark)
-{
-    if (dark) {
-        c.setDialColor(QColor(20, 24, 32));
-        c.setBezelColor(QColor(48, 56, 70));
-        c.setTextColor(QColor(225, 231, 236));
-    } else {
-        c.setDialColor(QColor(242, 244, 248));
-        c.setBezelColor(QColor(200, 208, 218));
-        c.setTextColor(QColor(30, 39, 46));
-    }
-}
-
-void style(IndustrialKnob &k, bool dark)
-{
-    if (dark) {
-        k.setKnobColor(QColor(42, 48, 60));
-        k.setScaleColor(QColor(190, 200, 215));
-        k.setTextColor(QColor(240, 244, 250));
-    } else {
-        k.setKnobColor(QColor(220, 226, 235));
-        k.setScaleColor(QColor(70, 80, 95));
-        k.setTextColor(QColor(30, 39, 46));
-    }
+    GalleryShowcase::applyGalleryTheme(w, themeOf(dark));
 }
 
 // Rows for both themes: a value in the normal, warning and error zones, an invalid input (NaN), and an input
@@ -633,7 +570,7 @@ void tst_ReadoutContrast::valveStatusTag()
     const qreal scale = v.devicePixelRatioF();
     QImage img(v.size() * scale, QImage::Format_ARGB32);
     img.setDevicePixelRatio(scale);
-    img.fill(dark ? QColor(0x18, 0x1d, 0x27) : QColor(0xff, 0xff, 0xff));
+    img.fill(showcaseBackground(dark));
     {
         QPainter painter(&img);
         v.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
@@ -672,7 +609,7 @@ void tst_ReadoutContrast::valveStatusColours()
     style(v, dark);
     v.resize(180, 160);
     const qreal scale = v.devicePixelRatioF();
-    const QColor background = dark ? QColor(0x18, 0x1d, 0x27) : QColor(0xff, 0xff, 0xff);
+    const QColor background = showcaseBackground(dark);
     QImage img(v.size() * scale, QImage::Format_ARGB32);
     img.setDevicePixelRatio(scale);
     img.fill(background);
@@ -788,7 +725,7 @@ void tst_ReadoutContrast::circularBargraph()
     b.setUnit(QStringLiteral("%"));
     b.setValue(82.0);
     b.setValue(value);
-    b.setDialColor(dark ? QColor(0, 0, 0) : QColor(24, 28, 36)); // as in the gallery
+    style(b, dark);
     b.resize(260, 260);
     const QImage img = renderOn(b, dark);
     // The pod well, as in CircularBargraph::paintEvent(): a circle of 0.9 x the inner radius of the segments

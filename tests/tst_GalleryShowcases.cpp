@@ -5,14 +5,23 @@
 // Every public widget must have a showcase in examples/gallery/Showcases.cpp, the list the
 // documentation image export (--export-gallery) renders. A new widget comes with its showcase.
 #include <QtTest/QtTest>
+#include <QtIndustrialWidgets/CircularBargraph.h>
+#include <QtIndustrialWidgets/Compass.h>
+#include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/LinearGauge.h>
+#include <QtIndustrialWidgets/RadialGauge.h>
+#include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ValveIndicator.h>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSet>
 #include <QtWidgets/QWidget>
 
+#include "ColourPropertyTestUtils.h"
 #include "Showcases.h"
 
+#include <map>
 #include <memory>
 
 class tst_GalleryShowcases : public QObject
@@ -24,6 +33,8 @@ private Q_SLOTS:
     void showcasesBuildTheirWidget_data();
     void showcasesBuildTheirWidget();
     void fileNamesAreStableAndUnique();
+    void showcasesUseTheGalleryTheme_data();
+    void showcasesUseTheGalleryTheme();
 };
 
 namespace {
@@ -46,6 +57,34 @@ QStringList publicWidgetClasses()
             classes << it.next().captured(1);
         }
     }
+    return classes;
+}
+
+using ColourPropertyTest::Colours;
+using ColourPropertyTest::colours;
+
+// GalleryShowcase::applyGalleryTheme() for the widgets that GalleryTheme.cpp styles; false for the others
+bool applyGalleryTheme(QWidget &w, GalleryShowcase::Theme theme)
+{
+    using namespace QtIndustrialWidgets;
+    using GalleryShowcase::applyGalleryTheme;
+    if (auto *x = qobject_cast<RadialGauge *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<LinearGauge *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<IndustrialKnob *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<Compass *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<CircularBargraph *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<TankDisplay *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<ValveIndicator *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    return false;
+}
+
+const QStringList &themedClasses()
+{
+    static const QStringList classes = {
+        QStringLiteral("RadialGauge"), QStringLiteral("LinearGauge"),      QStringLiteral("IndustrialKnob"),
+        QStringLiteral("Compass"),     QStringLiteral("CircularBargraph"), QStringLiteral("TankDisplay"),
+        QStringLiteral("ValveIndicator"),
+    };
     return classes;
 }
 
@@ -115,6 +154,55 @@ void tst_GalleryShowcases::fileNamesAreStableAndUnique()
         }
     }
     QCOMPARE(GalleryShowcase::kebabCase(QStringLiteral("SevenSegmentDisplay")), QStringLiteral("seven-segment-display"));
+}
+
+void tst_GalleryShowcases::showcasesUseTheGalleryTheme_data()
+{
+    QTest::addColumn<int>("index");
+    QTest::addColumn<bool>("dark");
+    const auto &all = GalleryShowcase::showcases();
+    QSet<QString> covered;
+    for (int i = 0; i < static_cast<int>(all.size()); ++i) {
+        const GalleryShowcase::Showcase &s = all[static_cast<size_t>(i)];
+        if (!themedClasses().contains(s.widgetClass)) {
+            continue;
+        }
+        covered.insert(s.widgetClass);
+        for (bool dark : {true, false}) {
+            QTest::newRow(qPrintable(s.fileStem(dark ? GalleryShowcase::Theme::Dark : GalleryShowcase::Theme::Light)))
+                << i << dark;
+        }
+    }
+    // A missing class would make this test check less than it says
+    QCOMPARE(covered.size(), themedClasses().size());
+}
+
+// #190: the showcases of the widgets that GalleryTheme.cpp styles (the colours tst_ReadoutContrast measures) carry
+// exactly the colours of the gallery theme: applying the theme again changes none of their QColor properties. A colour
+// set in Showcases.cpp instead of GalleryTheme.cpp would be exported but not measured
+void tst_GalleryShowcases::showcasesUseTheGalleryTheme()
+{
+    QFETCH(int, index);
+    QFETCH(bool, dark);
+    const GalleryShowcase::Theme theme = dark ? GalleryShowcase::Theme::Dark : GalleryShowcase::Theme::Light;
+    const GalleryShowcase::Theme other = dark ? GalleryShowcase::Theme::Light : GalleryShowcase::Theme::Dark;
+    const GalleryShowcase::Showcase &s = GalleryShowcase::showcases()[static_cast<size_t>(index)];
+    std::unique_ptr<QWidget> widget(s.create(theme));
+    QVERIFY(widget);
+    const Colours shown = colours(*widget);
+    QVERIFY(applyGalleryTheme(*widget, theme));
+    const Colours themed = colours(*widget);
+    QStringList diff;
+    for (const auto &[name, colour] : themed) {
+        if (shown.at(name) != colour) {
+            diff << QStringLiteral("%1: %2 in the showcase, %3 in the theme")
+                        .arg(name, shown.at(name).name(QColor::HexArgb), colour.name(QColor::HexArgb));
+        }
+    }
+    QVERIFY2(diff.isEmpty(), qPrintable(diff.join(QStringLiteral("; "))));
+    // The theme reaches this widget: the other theme changes its colours
+    QVERIFY(applyGalleryTheme(*widget, other));
+    QVERIFY(colours(*widget) != themed);
 }
 
 QTEST_MAIN(tst_GalleryShowcases)

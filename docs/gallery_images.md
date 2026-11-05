@@ -94,6 +94,9 @@ Every public widget needs at least one showcase: `tst_GalleryShowcases` reads th
 
 1. In `examples/gallery/Showcases.cpp`, write a factory that builds and configures the widget for a `Theme` (no
    parent, no event loop needed, fixed data only).
+   The theme colours of the widgets whose contrast `tst_ReadoutContrast` measures come from
+   `examples/gallery/GalleryTheme.cpp` (#190), shared with the live gallery and the test: call `applyGalleryTheme()`
+   in the factory instead of setting those colours, since `tst_GalleryShowcases` checks it.
 2. Add an entry to `showcases()`: widget class name, kebab-case variant, logical size and factory. A size of
    `QSize()` renders the widget at its own `sizeHint()`.
 3. Rebuild, run `tst_GalleryShowcases`, regenerate the images and add the new PNG to the README table.

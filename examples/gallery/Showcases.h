@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "GalleryTheme.h"
+
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtGui/QColor>
@@ -17,8 +19,6 @@ class QWidget;
 // export (--export-gallery) and by tst_GalleryShowcases, which checks that every public widget
 // has at least one.
 namespace GalleryShowcase {
-
-enum class Theme { Dark, Light };
 
 struct Showcase {
     QString widgetClass; ///< Class name in namespace QtIndustrialWidgets, e.g. "RadialGauge"
@@ -34,9 +34,6 @@ struct Showcase {
 
 /// All showcases, in a stable order.
 const std::vector<Showcase> &showcases();
-
-/// Background the showcase images are rendered on (the gallery's group-box colour).
-QColor backgroundColor(Theme theme);
 
 /// "RadialGauge" -> "radial-gauge"
 QString kebabCase(const QString &className);

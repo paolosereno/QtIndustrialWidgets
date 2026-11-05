@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MainWindow.h"
+#include "GalleryTheme.h"
 
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
@@ -2006,21 +2007,33 @@ void MainWindow::toggleTheme()
 void MainWindow::applyTheme(bool dark)
 {
     m_isDarkTheme = dark;
-    // TankDisplay (#152) draws on the panel: its texts follow the theme; the readout panel is dark in both
+    // #190: the colours of the widgets measured by tst_ReadoutContrast, and the showcase background, come from
+    // GalleryTheme.cpp, shared with the image export and the test
+    using GalleryShowcase::applyGalleryTheme;
+    const GalleryShowcase::Theme theme = dark ? GalleryShowcase::Theme::Dark : GalleryShowcase::Theme::Light;
+    for (RadialGauge *gauge : {m_rpmGauge, m_boostGauge, m_oilGauge, m_steeringGauge}) {
+        applyGalleryTheme(*gauge, theme);
+    }
+    for (LinearGauge *gauge : {m_coolantGauge, m_fuelGauge, m_hydraulicGauge}) {
+        applyGalleryTheme(*gauge, theme);
+    }
+    for (IndustrialKnob *knob : {m_throttleKnob, m_boostKnob, m_modeSelectorKnob}) {
+        if (knob) applyGalleryTheme(*knob, theme);
+    }
+    for (Compass *compass : {m_compassHeadingUp, m_compassNorthUp}) {
+        if (compass) applyGalleryTheme(*compass, theme);
+    }
+    for (CircularBargraph *bargraph : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
+        if (bargraph) applyGalleryTheme(*bargraph, theme);
+    }
     for (TankDisplay *tank : findChildren<TankDisplay *>()) {
-        tank->setTextColor(dark ? QColor(240, 244, 248) : QColor(30, 39, 46));
-        tank->setScaleColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
-        tank->setVesselColor(dark ? QColor(120, 134, 150) : QColor(110, 122, 138));
+        applyGalleryTheme(*tank, theme);
     }
-    // ValveIndicator (#153) as well: tags and marks on the panel; the readout panel is dark in both. On white the
-    // default open, transit and unknown colours are below 3:1: darker, with the same hues (tst_ReadoutContrast)
     for (ValveIndicator *valve : findChildren<ValveIndicator *>()) {
-        valve->setTextColor(dark ? QColor(240, 244, 248) : QColor(30, 39, 46));
-        valve->setOutlineColor(dark ? QColor(200, 208, 218) : QColor(80, 90, 105));
-        valve->setOpenColor(dark ? QColor(46, 204, 113) : QColor(36, 160, 89));
-        valve->setTransitColor(dark ? QColor(241, 196, 15) : QColor(170, 138, 10));
-        valve->setUnknownColor(dark ? QColor(149, 165, 166) : QColor(125, 145, 146));
+        applyGalleryTheme(*valve, theme);
     }
+    // The group boxes are the showcase background of the export
+    const QString groupBoxBackground = GalleryShowcase::backgroundColor(theme).name();
     m_themeButton->setText(dark ? QStringLiteral("Light Theme")
                                 : QStringLiteral("Dark Theme"));
 
@@ -2044,7 +2057,7 @@ void MainWindow::applyTheme(bool dark)
             "QTabWidget::pane { border: 1px solid #283042; background: #171c26; border-radius: 6px; }"
             "QTabBar::tab { background: #1c2230; color: #8e9bb0; padding: 8px 18px; margin-right: 4px; border-top-left-radius: 4px; border-top-right-radius: 4px; font-weight: bold; }"
             "QTabBar::tab:selected { background: #22293a; color: #00e5ff; border-bottom: 2px solid #00e5ff; }"
-            "QGroupBox { border: 1px solid #283042; border-radius: 6px; margin-top: 1.1em; font-weight: bold; color: #a4b3c6; background-color: #181d27; }"
+            "QGroupBox { border: 1px solid #283042; border-radius: 6px; margin-top: 1.1em; font-weight: bold; color: #a4b3c6; background-color: %1; }"
             "QGroupBox::title { subcontrol-origin: margin; left: 14px; padding: 0 6px; }"
             "QPushButton { background-color: #242c3d; border: 1px solid #364259; border-radius: 4px; color: #e1e7ec; padding: 6px 14px; font-weight: bold; }"
             "QPushButton:hover { background-color: #2e384e; border-color: #00e5ff; }"
@@ -2078,59 +2091,15 @@ void MainWindow::applyTheme(bool dark)
             "QScrollBar::right-arrow:horizontal { image: url(:/gallery/images/arrow-right.png); width: 5px; height: 8px; }"
             "QTabBar QToolButton { background-color: #242c3d; border: 1px solid #364259; }"
         );
-        setStyleSheet(qss);
+        setStyleSheet(qss.arg(groupBoxBackground));
 
         // Update widget colors for dark mode
-        m_rpmGauge->setDialColor(QColor(20, 24, 32));
-        m_rpmGauge->setTextColor(QColor(245, 246, 250));
-        m_rpmGauge->setBezelColor(QColor(48, 56, 70));
-
-        m_boostGauge->setDialColor(QColor(20, 24, 32));
-        m_boostGauge->setTextColor(QColor(245, 246, 250));
-        m_boostGauge->setBezelColor(QColor(48, 56, 70));
-
-        m_oilGauge->setDialColor(QColor(20, 24, 32));
-        m_oilGauge->setTextColor(QColor(245, 246, 250));
-        m_oilGauge->setBezelColor(QColor(48, 56, 70));
-
-        m_steeringGauge->setDialColor(QColor(20, 24, 32));
-        m_steeringGauge->setTextColor(QColor(245, 246, 250));
-        m_steeringGauge->setBezelColor(QColor(48, 56, 70));
-
-        m_coolantGauge->setBezelColor(QColor(36, 43, 56));
-        m_coolantGauge->setTroughColor(QColor(20, 24, 32));
-        m_coolantGauge->setTextColor(QColor(245, 246, 250));
-
-        m_fuelGauge->setBezelColor(QColor(36, 43, 56));
-        m_fuelGauge->setTroughColor(QColor(20, 24, 32));
-        m_fuelGauge->setTextColor(QColor(245, 246, 250));
-
-        m_hydraulicGauge->setBezelColor(QColor(36, 43, 56));
-        m_hydraulicGauge->setTroughColor(QColor(20, 24, 32));
-        m_hydraulicGauge->setTextColor(QColor(245, 246, 250));
-
         m_speedDisplay->setBackgroundColor(QColor(16, 20, 28));
         m_speedDisplay->setBezelColor(QColor(40, 48, 62));
         m_voltageDisplay->setBackgroundColor(QColor(16, 20, 28));
         m_voltageDisplay->setBezelColor(QColor(40, 48, 62));
         m_timerDisplay->setBackgroundColor(QColor(16, 20, 28));
         m_timerDisplay->setBezelColor(QColor(40, 48, 62));
-
-        if (m_throttleKnob) {
-            m_throttleKnob->setKnobColor(QColor(42, 48, 60));
-            m_throttleKnob->setScaleColor(QColor(190, 200, 215));
-            m_throttleKnob->setTextColor(QColor(240, 244, 250));
-        }
-        if (m_boostKnob) {
-            m_boostKnob->setKnobColor(QColor(42, 48, 60));
-            m_boostKnob->setScaleColor(QColor(190, 200, 215));
-            m_boostKnob->setTextColor(QColor(240, 244, 250));
-        }
-        if (m_modeSelectorKnob) {
-            m_modeSelectorKnob->setKnobColor(QColor(42, 48, 60));
-            m_modeSelectorKnob->setScaleColor(QColor(190, 200, 215));
-            m_modeSelectorKnob->setTextColor(QColor(240, 244, 250));
-        }
 
         if (m_stripChart) {
             m_stripChart->setBackgroundColor(QColor(14, 18, 25));
@@ -2156,23 +2125,6 @@ void MainWindow::applyTheme(bool dark)
         if (m_annunciatorHornLabel && m_annunciatorPanel && !m_annunciatorPanel->isAudibleHornActive()) {
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #283042; border-radius: 4px; color: #a4b3c6;"));
         }
-
-        if (m_compassHeadingUp) {
-            m_compassHeadingUp->setDialColor(QColor(20, 24, 32));
-            m_compassHeadingUp->setBezelColor(QColor(48, 56, 70));
-            m_compassHeadingUp->setTextColor(QColor(225, 231, 236));
-        }
-        if (m_compassNorthUp) {
-            m_compassNorthUp->setDialColor(QColor(20, 24, 32));
-            m_compassNorthUp->setBezelColor(QColor(48, 56, 70));
-            m_compassNorthUp->setTextColor(QColor(225, 231, 236));
-        }
-
-        // The default dial colour (24, 28, 36) is almost the dark panel colour: use black so the
-        // disc stays visible (it is decorative, the segments carry the value)
-        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
-            if (bg) bg->setDialColor(QColor(0, 0, 0));
-        }
     } else {
         // Modern Clean Light SCADA Theme
         QString qss = QStringLiteral(
@@ -2182,7 +2134,7 @@ void MainWindow::applyTheme(bool dark)
             "QTabWidget::pane { border: 1px solid #dcdde1; background: #ffffff; border-radius: 6px; }"
             "QTabBar::tab { background: #e8ecf1; color: #718093; padding: 8px 18px; margin-right: 4px; border-top-left-radius: 4px; border-top-right-radius: 4px; font-weight: bold; }"
             "QTabBar::tab:selected { background: #ffffff; color: #0984e3; border-bottom: 2px solid #0984e3; }"
-            "QGroupBox { border: 1px solid #dcdde1; border-radius: 6px; margin-top: 1.1em; font-weight: bold; color: #2f3640; background-color: #ffffff; }"
+            "QGroupBox { border: 1px solid #dcdde1; border-radius: 6px; margin-top: 1.1em; font-weight: bold; color: #2f3640; background-color: %1; }"
             "QGroupBox::title { subcontrol-origin: margin; left: 14px; padding: 0 6px; }"
             "QPushButton { background-color: #f5f6fa; border: 1px solid #dcdde1; border-radius: 4px; color: #2f3640; padding: 6px 14px; font-weight: bold; }"
             "QPushButton:hover { background-color: #e8ecf1; border-color: #0984e3; }"
@@ -2191,44 +2143,9 @@ void MainWindow::applyTheme(bool dark)
             "QSlider::sub-page:horizontal { background: #0984e3; border-radius: 3px; }"
             "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #0984e3; width: 16px; margin-top: -5px; margin-bottom: -5px; border-radius: 8px; }"
         );
-        setStyleSheet(qss);
+        setStyleSheet(qss.arg(groupBoxBackground));
 
         // Update widget colors for light mode
-        m_rpmGauge->setDialColor(QColor(242, 244, 248));
-        m_rpmGauge->setTextColor(QColor(30, 39, 46));
-        m_rpmGauge->setScaleColor(QColor(80, 90, 105));
-        m_rpmGauge->setBezelColor(QColor(200, 208, 218));
-
-        m_boostGauge->setDialColor(QColor(242, 244, 248));
-        m_boostGauge->setTextColor(QColor(30, 39, 46));
-        m_boostGauge->setScaleColor(QColor(80, 90, 105));
-        m_boostGauge->setBezelColor(QColor(200, 208, 218));
-
-        m_oilGauge->setDialColor(QColor(242, 244, 248));
-        m_oilGauge->setTextColor(QColor(30, 39, 46));
-        m_oilGauge->setScaleColor(QColor(80, 90, 105));
-        m_oilGauge->setBezelColor(QColor(200, 208, 218));
-
-        m_steeringGauge->setDialColor(QColor(242, 244, 248));
-        m_steeringGauge->setTextColor(QColor(30, 39, 46));
-        m_steeringGauge->setScaleColor(QColor(80, 90, 105));
-        m_steeringGauge->setBezelColor(QColor(200, 208, 218));
-
-        m_coolantGauge->setBezelColor(QColor(215, 222, 230));
-        m_coolantGauge->setTroughColor(QColor(235, 240, 245));
-        m_coolantGauge->setTextColor(QColor(30, 39, 46));
-        m_coolantGauge->setScaleColor(QColor(80, 90, 105));
-
-        m_fuelGauge->setBezelColor(QColor(215, 222, 230));
-        m_fuelGauge->setTroughColor(QColor(235, 240, 245));
-        m_fuelGauge->setTextColor(QColor(30, 39, 46));
-        m_fuelGauge->setScaleColor(QColor(80, 90, 105));
-
-        m_hydraulicGauge->setBezelColor(QColor(215, 222, 230));
-        m_hydraulicGauge->setTroughColor(QColor(235, 240, 245));
-        m_hydraulicGauge->setTextColor(QColor(30, 39, 46));
-        m_hydraulicGauge->setScaleColor(QColor(80, 90, 105));
-
         m_speedDisplay->setBackgroundColor(QColor(230, 236, 242));
         m_speedDisplay->setBezelColor(QColor(190, 200, 210));
         m_speedDisplay->setActiveSegmentColor(QColor(0, 130, 200));
@@ -2243,22 +2160,6 @@ void MainWindow::applyTheme(bool dark)
         m_timerDisplay->setBezelColor(QColor(190, 200, 210));
         m_timerDisplay->setActiveSegmentColor(QColor(210, 140, 0));
         m_timerDisplay->setInactiveSegmentColor(QColor(210, 140, 0, 25));
-
-        if (m_throttleKnob) {
-            m_throttleKnob->setKnobColor(QColor(220, 226, 235));
-            m_throttleKnob->setScaleColor(QColor(70, 80, 95));
-            m_throttleKnob->setTextColor(QColor(30, 39, 46));
-        }
-        if (m_boostKnob) {
-            m_boostKnob->setKnobColor(QColor(220, 226, 235));
-            m_boostKnob->setScaleColor(QColor(70, 80, 95));
-            m_boostKnob->setTextColor(QColor(30, 39, 46));
-        }
-        if (m_modeSelectorKnob) {
-            m_modeSelectorKnob->setKnobColor(QColor(220, 226, 235));
-            m_modeSelectorKnob->setScaleColor(QColor(70, 80, 95));
-            m_modeSelectorKnob->setTextColor(QColor(30, 39, 46));
-        }
 
         if (m_stripChart) {
             m_stripChart->setBackgroundColor(QColor(242, 246, 252));
@@ -2283,22 +2184,6 @@ void MainWindow::applyTheme(bool dark)
         }
         if (m_annunciatorHornLabel && m_annunciatorPanel && !m_annunciatorPanel->isAudibleHornActive()) {
             m_annunciatorHornLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-family: monospace; padding: 4px 10px; background: #e8ecf1; border-radius: 4px; color: #718093;"));
-        }
-
-        if (m_compassHeadingUp) {
-            m_compassHeadingUp->setDialColor(QColor(242, 244, 248));
-            m_compassHeadingUp->setBezelColor(QColor(200, 208, 218));
-            m_compassHeadingUp->setTextColor(QColor(30, 39, 46));
-        }
-        if (m_compassNorthUp) {
-            m_compassNorthUp->setDialColor(QColor(242, 244, 248));
-            m_compassNorthUp->setBezelColor(QColor(200, 208, 218));
-            m_compassNorthUp->setTextColor(QColor(30, 39, 46));
-        }
-
-        // Back to the CircularBargraph default dial colour
-        for (CircularBargraph *bg : {m_circBargraphBar, m_circBargraphDot, m_circBargraphSemi}) {
-            if (bg) bg->setDialColor(QColor(24, 28, 36));
         }
     }
 }
