@@ -49,7 +49,8 @@ The files to sabotage must have no local change (it would be lost on the restore
 After the run, CLAUDE.md rule 8 still applies: cmake --build BUILD_DIR --clean-first and a full ctest before any
 measurement or image.
 
-Exit status: 0 done; 1 setup error, a missing "old", or a failing baseline; 2 with --require-detection, a sabotage
+Exit status: 0 done; 1 setup error (a file to sabotage outside the repository, among others), a missing "old", or a
+failing baseline; 2 with --require-detection, a sabotage
 missed in at least one configuration (or not compiled); 3 the sources differ from HEAD after the restore; 4 the build
 after a restore does not match the clean build (or does not compile), so the run stopped.
 """
@@ -77,11 +78,19 @@ def git(root, *args, check=True):
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=check)
 
 
+def inside_root(root, name):
+    """The resolved path of a file to sabotage; fails if it is outside the repository (absolute, "..", a link)."""
+    path = (root / name).resolve()
+    if not path.is_relative_to(root):
+        fail(f'"{name}" is outside the repository {root}: only files of the repository can be sabotaged')
+    return path
+
+
 def apply_edits(root, sabotage):
     """New contents of the touched files; fails if an "old" does not occur exactly once."""
     contents = {}
     for edit in sabotage.get("edits", []):
-        path = root / edit["file"]
+        path = inside_root(root, edit["file"])
         text = contents.get(path)
         if text is None:
             text = path.read_text(encoding="utf-8")
@@ -141,7 +150,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=1800, help="seconds per test binary and configuration")
     args = parser.parse_args()
 
-    root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip())
+    root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip()).resolve()
     build_dir = (root / args.build_dir).resolve()
     bin_dir = build_dir / "bin"
     spec = json.loads(args.sabotages.read_text(encoding="utf-8"))
@@ -150,6 +159,9 @@ def main():
                  if not args.only or any(s["name"].startswith(o) for o in args.only)]
     if not sabotages:
         fail("no sabotage to run")
+    for s in sabotages:  # before any file is read or written
+        for edit in s.get("edits", []):
+            inside_root(root, edit["file"])
     for s in sabotages:
         for t in s.get("tests", default_tests):
             if not (bin_dir / t).is_file():

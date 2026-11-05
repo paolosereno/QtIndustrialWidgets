@@ -22,7 +22,8 @@ caught; sabotage B (in b.cpp) cannot be caught. Each test runs A then B through 
     sabotage A. mutation_check.py must notice that the binary differs from the clean build and stop.
 A third test starts from a build that already holds sabotage A: the baseline must be built from the clean sources.
 A fourth one has a local change in b.cpp that git's stat cache does not see (and no test catches): the script must
-refuse to run, since the restore would overwrite it.
+refuse to run, since the restore would overwrite it. A fifth one names a file outside the repository: refused before
+any file is read or written.
 """
 
 import os
@@ -210,6 +211,19 @@ class MutationCheckTest(unittest.TestCase):
         self.assertIn("b.cpp", r.stderr)
         self.assertNotIn("baseline:", r.stdout)
         self.assertEqual(b.read_text(encoding="utf-8"), local, "the local change was lost")
+
+    def test_file_outside_the_repository_is_refused(self):
+        outside = self.tmp / "outside.cpp"
+        outside.write_text("int valueC() { return 2; }\n", encoding="utf-8")
+        self.spec.write_text('{"tests": ["tst_fixture"], "sabotages": [{"name": "X outside", "edits": '
+                             '[{"file": "../outside.cpp", "old": "return 2;", "new": "return 3;"}]}]}',
+                             encoding="utf-8")
+        r = self.mutation_check("clock back")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('"../outside.cpp" is outside the repository', r.stderr)
+        self.assertNotIn("baseline:", r.stdout)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "int valueC() { return 2; }\n")
+        self.assertSourcesClean()
 
     def test_binary_left_by_a_sabotage_stops_the_run(self):
         r = self.mutation_check("skip")
