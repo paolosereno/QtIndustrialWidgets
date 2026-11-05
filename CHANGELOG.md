@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.7.0] - 2026-11-05
+
+### Upgrade notes
+Behaviour changes that can reach code using the library. The entries below give the details.
+
+- **`RadialGauge` and `CircularBargraph`: a move to a screen of another logical DPI updates the layout** (#177). Their `minimumSizeHint()` depends on the logical DPI, and the widget now calls `updateGeometry()` at its first repaint on the new screen. A layout can then give these widgets a different size after the move: for example 122 × 122 instead of 98 × 98 for the default gauge, from 96 to 144 dpi. A change of device pixel ratio alone changes nothing.
+
 ### Added
 - **`ValveIndicator`** (#153): valve symbol showing the status of a valve and, optionally, its opening. Gate, ball, butterfly and control valve symbols in common P&ID practice, horizontal or vertical, with optional pipe stubs. The status (`Unknown`, the default, `Closed`, `Open`, `Transit`, `Fault`) is told by the shape (hatch and `?`, filled body, outlined body, upstream half filled with a dashed outline, cross and `FAULT`), so no status depends on colour; the default colours are only a default choice. The opening (0 to 100 %, always shown by a control valve, optional for the others) has a bar and a readout, with the value states of #151, at 7 pt or more on an opaque panel (#159); a new widget has no opening (`Invalid`) until the first `setOpening()`. Status and opening are independent. `minimumSizeHint()` computed from the font and the configuration, with the logical-DPI check of #177. An indicator only: it sends no command. Registered in the Qt Designer plugin; showcases and a gallery tab (`tab-valves.png`).
 - **`TankDisplay`** (#152): level indicator for tanks and silos. A vertical cylinder, a horizontal cylinder, a hopper or a sphere, filled with a liquid or a granular solid up to the value, with a vertical scale and a readout. Four limits (low-low, low, high, high-high, each disabled by NaN) with `setLimits()`, which rejects an invalid order and changes nothing, a hysteresis applied when leaving a limit, and `limitState()` / `limitStateChanged()`: computed on the input, `Unknown` for NaN. The single limit setters reject the same values with a `qWarning()` naming the limit and the reason. The marker of the limit in force is filled and tagged (`HH`, `H`, `L`, `LL`); a limit in force outside the range is drawn at that end of the scale with a sign that it lies beyond. Unlike the gauges, a new `TankDisplay` has no value until the first `setValue()`: it starts `Invalid` (hatched, `---`) with the limit state `Unknown`. Value states as #151, readout at 7 pt or more on an opaque panel (#159), `minimumSizeHint()` computed from the font and the configuration, and the logical-DPI check of #177. The widget converts no level into a volume. Registered in the Qt Designer plugin; showcases and a gallery tab (`tab-tanks.png`).
