@@ -30,6 +30,27 @@ follows `dialColor` and its readout `textColor`. With the default readout and zo
 light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) against its pod
 (`tests/tst_ReadoutContrast.cpp`).
 
+## Controls {#controls}
+
+Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob`; the setpoint controls planned
+(#180, #154) will follow them.
+- **A press never changes the value.** The value changes only by dragging or with the keyboard. `IndustrialKnob`
+  starts a drag only on its dial as it is drawn, and the drag is relative: the value moves by the angle the pointer
+  moves, never jumps to the point pressed.
+- **Keyboard:** the arrows move by a small step, PageUp/PageDown by a large step, Home/End go to the ends. Both steps
+  are properties (`step`, `pageStep`).
+- **Two signals.** `valueChanged()` is emitted at every change of the value, from the operator or from the
+  application. `valueCommitted()` is emitted once at the end of an operator action that changed the value:
+  - the release of a drag;
+  - the release of a key: for a key held down, each auto-repeat step emits `valueChanged()` and `valueCommitted()`
+    comes once, at the release that is not an auto-repeat;
+  - a drag or a held key that loses the focus, or whose widget is hidden, ends there and is committed.
+
+  A programmatic `setValue()` emits `valueChanged()`, never `valueCommitted()`. An application can therefore write
+  the committed value to a PLC and show the value read back with `setValue()` without a write loop.
+- **Non-finite input:** `setValue()` with NaN or ±Inf is rejected. The value stays unchanged and a warning is printed
+  (`qWarning()`).
+
 ## RadialGauge
 
 <img src="images/radial-gauge-warning.png" alt="RadialGauge" width="300">
@@ -128,14 +149,18 @@ Rotary knob (`qiw::IndustrialKnob`).
   full radius, with the centre fixed, so that the pixels of the labels stay inside the widget. `minimumSizeHint()` is
   computed from the font, the configuration and the device pixel ratio, between 80 × 90 and `sizeHint()`: from that size up the labels drawn are inside the
   widget and the first and last ones are drawn, with the same exception.
-- **Input**: mouse drag (the value follows the pointer's angle around the dial as it is drawn), mouse wheel, and the
-  keys arrows, PageUp/PageDown, Home/End. A press in the gap between the ends of the scale changes nothing and starts
-  no drag. During a drag started on the scale the value stops at the end it reaches and never jumps to the other one:
-  it moves again when the pointer is back on that end (#175).
+- **Input** (the [rules for controls](#controls), #182): relative mouse drag, mouse wheel, and the keys arrows
+  (`step`), PageUp/PageDown (`pageStep`, 5 × `step` until it is set), Home/End.
+  - A press changes nothing. A left press on the dial as it is drawn (within the radius of its scale), on the scale,
+    starts a drag. The value then moves by the angle the pointer moves around the centre of the dial.
+  - A press in the gap between the ends of the scale, or outside the dial, starts no drag (#175).
+  - During a drag the value stops at the end it reaches and never jumps to the other one: it moves again when the
+    pointer is back on that end (#175).
+  - `valueCommitted()` at the release of a drag or of a key, as in the rules.
 - **Rendering**: the knob has a serrated grip of 32 teeth; ticks and scale are cached, so a rotation redraws only the
   moving parts.
-- **Non-finite input** (#151): the knob is an input control and has no value state. `setValue()` ignores NaN (the knob
-  keeps its position) and clamps ±Inf to the ends of the range.
+- **Non-finite input** (#151, #182): the knob is an input control and has no value state. `setValue()` rejects NaN and
+  ±Inf with a warning: the knob keeps its position.
 
 ## StripChart
 

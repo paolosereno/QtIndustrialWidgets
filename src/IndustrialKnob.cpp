@@ -251,11 +251,10 @@ QSize IndustrialKnob::minimumSizeHint() const
 
 void IndustrialKnob::setValue(double val)
 {
-    if (std::isnan(val)) {
+    // #182: a control rejects non-finite input, with a warning, and keeps its value
+    if (!std::isfinite(val)) {
+        qWarning("IndustrialKnob::setValue: non-finite value %s ignored", qPrintable(QString::number(val)));
         return;
-    }
-    if (std::isinf(val)) {
-        val = (val > 0.0) ? d_ptr->m_maximum : d_ptr->m_minimum;
     }
 
     double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
@@ -298,6 +297,28 @@ void IndustrialKnob::setRange(double min, double max)
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
     Q_EMIT valueChanged(d_ptr->m_value);
     update();
+}
+
+double IndustrialKnob::pageStep() const
+{
+    Q_D(const IndustrialKnob);
+    return d->m_pageStepSet ? d->m_pageStep : d->m_step * 5.0;
+}
+
+void IndustrialKnob::setPageStep(double step)
+{
+    if (!std::isfinite(step) || step <= 0.0) return;
+    if (d_ptr->m_pageStepSet && qFuzzyCompare(d_ptr->m_pageStep, step)) return;
+    d_ptr->m_pageStep = step;
+    d_ptr->m_pageStepSet = true;
+    Q_EMIT appearanceChanged();
+}
+
+void IndustrialKnob::resetPageStep()
+{
+    if (!d_ptr->m_pageStepSet) return;
+    d_ptr->m_pageStepSet = false;
+    Q_EMIT appearanceChanged();
 }
 
 void IndustrialKnob::setStep(double step)
@@ -495,11 +516,13 @@ double IndustrialKnob::angleToValue(double angle) const
 
 void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
 {
-    // #175: the shorter way round from the last point, so a jump over the gap between the ends is seen as one. Past
-    // an end the value stays there until the pointer comes back on that end, the way it came or after a full turn
+    // #182: relative drag, the value moves by the angle the pointer moves. #175: the shorter way round from the last
+    // point, so a jump over the gap between the ends is seen as one. Past an end the value stays there until the
+    // pointer comes back on that end, the way it came or after a full turn
     const double span = d_ptr->m_spanAngle;
     const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF());
-    double dragAngle = d_ptr->m_dragAngle + std::remainder(angle - d_ptr->m_dragAngle, 360.0);
+    double dragAngle = d_ptr->m_dragAngle + std::remainder(angle - d_ptr->m_lastPointerAngle, 360.0);
+    d_ptr->m_lastPointerAngle = angle;
     if (dragAngle >= span + 360.0) {
         dragAngle -= 360.0;
     } else if (dragAngle <= -360.0) {
@@ -512,13 +535,20 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        // #175: a press in the gap between the ends of the scale selects nothing and starts no drag
-        const double angle = d_ptr->scaleAngleAt(event->position(), size(), font(), devicePixelRatioF());
-        if (angle <= d_ptr->m_spanAngle) {
+        // #182: a press never changes the value. It starts a relative drag only on the dial as it is drawn, within
+        // the radius of its scale geometry; #175: and not in the gap between the ends of the scale
+        const internal::KnobScaleGeometry &dial =
+            d_ptr->scaleFor(size(), font(), devicePixelRatioF()).geometry;
+        const QPointF pos = event->position();
+        const bool onDial = std::hypot(pos.x() - dial.centerX, pos.y() - dial.centerY) <= dial.radius;
+        const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF());
+        if (onDial && angle <= d_ptr->m_spanAngle) {
+            d_ptr->endAction(this); // A key held while the drag starts ends here
             d_ptr->m_isDragging = true;
-            d_ptr->m_lastMousePos = event->position();
-            d_ptr->m_dragAngle = angle;
-            setValue(d_ptr->valueAtScaleAngle(angle));
+            d_ptr->m_lastMousePos = pos;
+            d_ptr->m_dragAngle = d_ptr->angleOf(d_ptr->m_value) - d_ptr->m_startAngle;
+            d_ptr->m_lastPointerAngle = angle;
+            d_ptr->m_actionStartValue = d_ptr->m_value;
         }
         event->accept();
         return;
@@ -539,7 +569,7 @@ void IndustrialKnob::mouseMoveEvent(QMouseEvent *event)
 void IndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        d_ptr->m_isDragging = false;
+        d_ptr->endAction(this);
         event->accept();
         return;
     }
@@ -554,38 +584,89 @@ void IndustrialKnob::wheelEvent(QWheelEvent *event)
     event->accept();
 }
 
+namespace {
+
+bool isStepKey(int key)
+{
+    switch (key) {
+    case Qt::Key_Left:
+    case Qt::Key_Down:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_PageDown:
+    case Qt::Key_PageUp:
+    case Qt::Key_Home:
+    case Qt::Key_End:
+        return true;
+    default:
+        return false;
+    }
+}
+
+} // namespace
+
 void IndustrialKnob::keyPressEvent(QKeyEvent *event)
 {
-    switch (event->key()) {
-        case Qt::Key_Left:
-        case Qt::Key_Down:
-            setValue(d_ptr->m_value - d_ptr->m_step);
-            event->accept();
-            return;
-        case Qt::Key_Right:
-        case Qt::Key_Up:
-            setValue(d_ptr->m_value + d_ptr->m_step);
-            event->accept();
-            return;
-        case Qt::Key_PageDown:
-            setValue(d_ptr->m_value - d_ptr->m_step * 5.0);
-            event->accept();
-            return;
-        case Qt::Key_PageUp:
-            setValue(d_ptr->m_value + d_ptr->m_step * 5.0);
-            event->accept();
-            return;
-        case Qt::Key_Home:
-            setValue(d_ptr->m_minimum);
-            event->accept();
-            return;
-        case Qt::Key_End:
-            setValue(d_ptr->m_maximum);
-            event->accept();
-            return;
-        default:
-            QWidget::keyPressEvent(event);
+    const int key = event->key();
+    if (!isStepKey(key)) {
+        QWidget::keyPressEvent(event);
+        return;
     }
+    // #182: a key action starts at the first press of a key (or at an auto-repeat, when the first press was not
+    // seen) and ends at the release of that key that is not an auto-repeat
+    if (!d_ptr->m_keyAction) {
+        d_ptr->endAction(this); // A drag running when the key is pressed ends here
+        d_ptr->m_keyAction = true;
+        d_ptr->m_actionStartValue = d_ptr->m_value;
+    }
+    d_ptr->m_actionKey = key;
+    switch (key) {
+    case Qt::Key_Left:
+    case Qt::Key_Down:
+        setValue(d_ptr->m_value - d_ptr->m_step);
+        break;
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+        setValue(d_ptr->m_value + d_ptr->m_step);
+        break;
+    case Qt::Key_PageDown:
+        setValue(d_ptr->m_value - pageStep());
+        break;
+    case Qt::Key_PageUp:
+        setValue(d_ptr->m_value + pageStep());
+        break;
+    case Qt::Key_Home:
+        setValue(d_ptr->m_minimum);
+        break;
+    default: // Qt::Key_End
+        setValue(d_ptr->m_maximum);
+        break;
+    }
+    event->accept();
+}
+
+void IndustrialKnob::keyReleaseEvent(QKeyEvent *event)
+{
+    if (!isStepKey(event->key())) {
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+    if (!event->isAutoRepeat() && d_ptr->m_keyAction && event->key() == d_ptr->m_actionKey) {
+        d_ptr->endAction(this);
+    }
+    event->accept();
+}
+
+void IndustrialKnob::focusOutEvent(QFocusEvent *event)
+{
+    d_ptr->endAction(this); // #182: the release will not reach the knob
+    QWidget::focusOutEvent(event);
+}
+
+void IndustrialKnob::hideEvent(QHideEvent *event)
+{
+    d_ptr->endAction(this);
+    QWidget::hideEvent(event);
 }
 
 void IndustrialKnob::renderStaticScale(const QSize &targetSize)

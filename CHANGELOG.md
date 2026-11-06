@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`IndustrialKnob::valueCommitted(double)`** (#182): emitted once at the end of an operator action that changed the value: the release of a drag, the release of a key (once for a key held down, at the release that is not an auto-repeat), or the loss of focus or a hide during one. `setValue()` never emits it, so an application can write committed values to a device and show the value read back without a write loop. `valueChanged()` is still emitted at every change. The shared rules for controls are in [docs/widgets.md](docs/widgets.md#controls).
+- **`IndustrialKnob::pageStep`** (#182): the large step of PageUp/PageDown, a property with `setPageStep()` and `resetPageStep()`. Until it is set it is 5 × `step`, as before.
+
+### Changed
+- **`IndustrialKnob`: a press no longer sets the value** (#182). The drag is relative: the value moves by the angle the pointer moves around the dial from the press, instead of jumping to the angle pressed. A drag starts only on the dial as it is drawn (within the radius of its scale), on the scale; a press outside the dial, or in the gap between the ends of the scale (#175), starts none. The end stops of #175 are unchanged.
+- **`IndustrialKnob::setValue()` rejects ±Inf** (#182): the value stays unchanged and a warning is printed, instead of moving to the end of the range. NaN was already ignored and now prints the same warning.
+
 ### Fixed
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.7.0` tag archive (the tagged commit still had the `v2.6.0` hash, since the hash can be computed only after the tag).
 

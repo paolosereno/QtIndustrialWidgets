@@ -28,9 +28,23 @@ class IndustrialKnobTestAccess;
  * The background ticks and scale are cached in a pixmap at the device pixel ratio, so a rotation redraws only the
  * moving parts.
  *
- * Non-finite input (#151): the knob is an input control, so it has no value state (see QtIndustrialWidgets::ValueState
- * for the indicators). setValue() ignores NaN (the knob keeps its position) and clamps +Inf / -Inf to maximum() /
- * minimum(); setRange() ignores non-finite bounds.
+ * Input (#182, the rules for controls in docs/widgets.md):
+ * - A press never changes the value. A left press on the dial as it is drawn (within the radius of its scale
+ *   geometry), on the scale, starts a drag; a press in the gap between the ends of the scale or outside the dial
+ *   starts none (#175). The drag is relative: the value moves by the angle the pointer moves around the centre of
+ *   the dial from the press. Past an end the value stays there until the pointer comes back on that end, the way
+ *   it came or after a full turn (#175).
+ * - Keys: the arrows move by step(), PageUp/PageDown by pageStep(), Home/End go to minimum() / maximum().
+ * - valueChanged() is emitted at every change of the value: during a drag, at each key step (auto-repeat too),
+ *   from setValue() and when setRange() clamps the value. valueCommitted() is emitted once at the end of an
+ *   operator action that changed the value: the release of a drag, or the release of a key (for a held key, once,
+ *   at the release that is not an auto-repeat); a drag or a held key also ends when the knob loses focus or is
+ *   hidden. setValue() never emits valueCommitted(), so an application that writes committed values to a device
+ *   and shows the value read back with setValue() gets no write loop.
+ *
+ * Non-finite input (#151, #182): the knob is an input control, so it has no value state (see
+ * QtIndustrialWidgets::ValueState for the indicators). setValue() rejects NaN and +Inf / -Inf: the value stays
+ * unchanged and a warning is printed (qWarning()). setRange() ignores non-finite bounds.
  *
  * Fonts: the texts use the family, weight and style of the widget font (setFont(), style sheets);
  * their sizes come from the widget geometry and do not follow the size of the widget font, because
@@ -52,6 +66,7 @@ class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
     Q_PROPERTY(double maximum READ maximum WRITE setMaximum NOTIFY rangeChanged)
     Q_PROPERTY(double value READ value WRITE setValue NOTIFY valueChanged)
     Q_PROPERTY(double step READ step WRITE setStep NOTIFY appearanceChanged)
+    Q_PROPERTY(double pageStep READ pageStep WRITE setPageStep RESET resetPageStep NOTIFY appearanceChanged)
     Q_PROPERTY(int precision READ precision WRITE setPrecision NOTIFY appearanceChanged)
     Q_PROPERTY(QString unit READ unit WRITE setUnit NOTIFY appearanceChanged)
     Q_PROPERTY(double startAngle READ startAngle WRITE setStartAngle NOTIFY appearanceChanged)
@@ -91,6 +106,12 @@ public:
     [[nodiscard]] double value() const;
     /** \brief Returns the increment step size. */
     [[nodiscard]] double step() const;
+    /**
+     * \brief Returns the large step of PageUp and PageDown (#182).
+     *
+     * 5 x step() until setPageStep() is called, and again after resetPageStep().
+     */
+    [[nodiscard]] double pageStep() const;
     /** \brief Returns the decimal display precision. */
     [[nodiscard]] int precision() const;
     /** \brief Returns the measurement unit label. */
@@ -142,7 +163,12 @@ public:
     [[nodiscard]] QSize minimumSizeHint() const override;
 
 public Q_SLOTS:
-    /** \brief Sets the current rotary position value. */
+    /**
+     * \brief Sets the value, clamped to the range (and to the nearest step in Discrete mode).
+     *
+     * Emits valueChanged() if the value changes, never valueCommitted(). NaN and +Inf / -Inf are rejected: the value
+     * stays unchanged and a warning is printed (#182).
+     */
     void setValue(double value);
     /** \brief Sets the minimum value. */
     void setMinimum(double min);
@@ -152,6 +178,10 @@ public Q_SLOTS:
     void setRange(double min, double max);
     /** \brief Sets the stepping increment for wheel and arrow keys. */
     void setStep(double step);
+    /** \brief Sets the large step of PageUp and PageDown; non-finite and non-positive values are ignored (#182). */
+    void setPageStep(double step);
+    /** \brief Makes pageStep() 5 x step() again (#182). */
+    void resetPageStep();
     /** \brief Sets the decimal display precision. */
     void setPrecision(int precision);
     /** \brief Sets the measurement unit label. */
@@ -185,8 +215,13 @@ public Q_SLOTS:
     void setTextColor(const QColor &color);
 
 Q_SIGNALS:
-    /** \brief Emitted when the knob value changes. */
+    /** \brief Emitted at every change of the value, from the operator or from the application. */
     void valueChanged(double value);
+    /**
+     * \brief Emitted once at the end of an operator action that changed the value: the release of a drag or of a
+     * key, or the loss of focus or a hide during one (#182). Never emitted by setValue().
+     */
+    void valueCommitted(double value);
     /** \brief Emitted when the scale range changes. */
     void rangeChanged(double min, double max);
     /** \brief Emitted when the knob mode changes. */
@@ -203,6 +238,9 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
 
 private:
     void invalidateCache();
