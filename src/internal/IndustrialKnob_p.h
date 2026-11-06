@@ -59,11 +59,21 @@ public:
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
 
+    double m_pageStep{0.0};      // pageStep() once set; until then 5 x m_step (#182)
+    bool m_pageStepSet{false};
+
     bool m_isDragging{false};
     QPointF m_lastMousePos;
-    // Pointer during a drag, in degrees from the start of the scale. Not wrapped: out of [0, span] it has gone
-    // past an end, and the value stays there
+    // Angle of the value during a relative drag (#182), in degrees from the start of the scale. Not wrapped: out of
+    // [0, span] it has gone past an end, and the value stays there (#175)
     double m_dragAngle{0.0};
+    double m_lastPointerAngle{0.0}; // Pointer at the last press or move, in [0, 360) from the start of the scale
+
+    // #182: an operator action (a drag or a key) runs from its start to its end, where valueCommitted() is emitted
+    // if the value is not the one it started from
+    bool m_keyAction{false};
+    int m_actionKey{0};           // The key whose release that is not an auto-repeat ends the key action
+    double m_actionStartValue{0.0};
     int m_minimumWidth{0};   // minimumSizeHint().width(), computed when asked for; 0: to compute
     double m_minimumWidthDpr{0.0};
     // #170: ink of each label text at each font size, measured on a raster. Kept across resizes and changes of the
@@ -126,6 +136,19 @@ public:
     mutable quint64 m_lastMinimumLabelFormats{0};
     // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
     double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr);
+
+    // #182: ends the drag or the key action that is running, if any, and emits valueCommitted() if the value is not
+    // the one it started from
+    void endAction(IndustrialKnob *knob)
+    {
+        if (!m_isDragging && !m_keyAction) return;
+        m_isDragging = false;
+        m_keyAction = false;
+        m_actionKey = 0;
+        if (!qFuzzyCompare(m_value, m_actionStartValue)) {
+            Q_EMIT knob->valueCommitted(m_value);
+        }
+    }
 
     // After a setter minimumSizeHint() depends on (#170)
     void minimumSizeChanged(QWidget *widget)

@@ -202,6 +202,18 @@ void sendMouse(IndustrialKnob &knob, QEvent::Type type, const QPointF &point)
     QCoreApplication::sendEvent(&knob, &event);
 }
 
+void sendKey(IndustrialKnob &knob, QEvent::Type type, int key, bool autoRepeat)
+{
+    QKeyEvent event(type, key, Qt::NoModifier, QString(), autoRepeat);
+    QCoreApplication::sendEvent(&knob, &event);
+}
+
+// The value at \a angle degrees (0 = 12 o'clock, clockwise) of a knob with the default angles
+double valueAtAngle(const IndustrialKnob &knob, double angle)
+{
+    return knob.minimum() + (angle - knob.startAngle()) / knob.spanAngle() * (knob.maximum() - knob.minimum());
+}
+
 } // namespace
 
 class tst_IndustrialKnob : public QObject
@@ -225,8 +237,19 @@ private Q_SLOTS:
     void scaleLabelsKeepMinimumGap();
     void scaleLabelsStayInsideTheWidget_data();
     void scaleLabelsStayInsideTheWidget();
-    void clickOnTheDrawnDialSelectsItsValue_data();
-    void clickOnTheDrawnDialSelectsItsValue();
+    void dragOnTheDrawnDialMovesByTheAngle_data();
+    void dragOnTheDrawnDialMovesByTheAngle();
+    void pressOutsideTheDrawnDialStartsNoDrag();
+    void dragCommitsOnceAtTheRelease();
+    void keyStepCommitsAtTheRelease();
+    void heldKeyCommitsOnceAtTheRelease_data();
+    void heldKeyCommitsOnceAtTheRelease();
+    void keyAtTheEndDoesNotCommit();
+    void pageHomeAndEndKeysCommit();
+    void setValueAndSetRangeNeverCommit();
+    void focusOutOrHideEndsTheAction_data();
+    void focusOutOrHideEndsTheAction();
+    void pageStepFollowsStepUntilSet();
     void clickInTheGapChangesNothing();
     void dragIntoTheGapStopsAtTheNearestEnd();
     void dragPastTheMaximumDoesNotReachZero();
@@ -357,22 +380,28 @@ void tst_IndustrialKnob::nanAndInfinityResilience()
     knob.setValue(50.0);
     QCOMPARE(knob.value(), 50.0);
 
-    // Continuous mode: NaN ignored
-    knob.setValue(std::numeric_limits<double>::quiet_NaN());
-    QCOMPARE(knob.value(), 50.0);
-
-    // +Inf and -Inf clamped
-    knob.setValue(std::numeric_limits<double>::infinity());
-    QCOMPARE(knob.value(), 100.0);
-    knob.setValue(-std::numeric_limits<double>::infinity());
-    QCOMPARE(knob.value(), 0.0);
-
-    // Discrete mode: NaN must not cause undefined behavior / crash
+    // #182: NaN, +Inf and -Inf are rejected with a warning, in both modes: the value and the signals do not move
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (double input : {nan, inf, -inf}) {
+        QTest::ignoreMessage(QtWarningMsg, qPrintable(QStringLiteral("IndustrialKnob::setValue: non-finite value %1 ignored")
+                                                          .arg(QString::number(input))));
+        knob.setValue(input);
+        QCOMPARE(knob.value(), 50.0);
+    }
+    QCOMPARE(changed.count(), 0);
     knob.setMode(IndustrialKnob::KnobMode::Discrete);
     knob.setDiscreteSteps(5);
     knob.setValue(50.0);
-    knob.setValue(std::numeric_limits<double>::quiet_NaN());
-    QCOMPARE(knob.value(), 50.0);
+    const int afterDiscrete = changed.count();
+    for (double input : {nan, inf, -inf}) {
+        QTest::ignoreMessage(QtWarningMsg, qPrintable(QStringLiteral("IndustrialKnob::setValue: non-finite value %1 ignored")
+                                                          .arg(QString::number(input))));
+        knob.setValue(input);
+        QCOMPARE(knob.value(), 50.0);
+    }
+    QCOMPARE(changed.count(), afterDiscrete);
 
     // Range with NaN/Inf ignored
     knob.setRange(std::numeric_limits<double>::quiet_NaN(), 100.0);
@@ -513,7 +542,7 @@ void tst_IndustrialKnob::scaleLabelsStayInsideTheWidget()
     QVERIFY2(onEdge == 0, qPrintable(QStringLiteral("%1 pixels of label ink in the margin of the widget").arg(onEdge)));
 }
 
-void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue_data()
+void tst_IndustrialKnob::dragOnTheDrawnDialMovesByTheAngle_data()
 {
     QTest::addColumn<int>("width");
     QTest::addColumn<int>("height");
@@ -525,10 +554,10 @@ void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue_data()
     }
 }
 
-// #170: the mouse reads the angle around the dial that is drawn. The point clicked is taken from the pixels of the
-// dial, not from its formulas: on its rim, at the angle of the value. 1.5 px across the radius covers the rounding of
-// the click to a pixel and of the centre measured
-void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue()
+// #170, #182: a press changes nothing; the drag that follows moves the value by the angle the pointer moves around
+// the dial that is drawn. The points are taken from the pixels of the dial, not from its formulas: on its rim, away
+// from the angle of the value. 1.5 px across the radius covers the centre measured
+void tst_IndustrialKnob::dragOnTheDrawnDialMovesByTheAngle()
 {
     QFETCH(int, width);
     QFETCH(int, height);
@@ -546,16 +575,300 @@ void tst_IndustrialKnob::clickOnTheDrawnDialSelectsItsValue()
     const DrawnDial dial = drawnDialOf(knob);
     QVERIFY(dial.radius > 20.0);
     const double tolerance = maximum * (1.5 / dial.radius * 180.0 / M_PI) / knob.spanAngle();
-    for (double angle : {-90.0, -45.0, 0.0, 45.0, 90.0}) {
-        const double rad = angle * M_PI / 180.0;
-        const QPointF point(dial.center.x() + dial.radius * std::sin(rad), dial.center.y() - dial.radius * std::cos(rad));
-        const double expected = maximum * (angle - knob.startAngle()) / knob.spanAngle();
-        QTest::mouseClick(&knob, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+    struct Drag { double press; double to; };
+    for (const Drag drag : {Drag{-90.0, -45.0}, Drag{-45.0, 45.0}, Drag{90.0, 0.0}, Drag{45.0, -90.0}}) {
+        knob.setValue(maximum * 0.5); // At 0 degrees: every press is away from the value
+        QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+        QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+        sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, drag.press));
+        QCOMPARE(knob.value(), maximum * 0.5);
+        QCOMPARE(changed.count(), 0);
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, (drag.press + drag.to) * 0.5));
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, drag.to));
+        const double expected = maximum * 0.5 + maximum * (drag.to - drag.press) / knob.spanAngle();
         QVERIFY2(std::abs(knob.value() - expected) <= tolerance,
-                 qPrintable(QStringLiteral("angle %1: value %2, expected %3 +/- %4 (dial at %5, %6, radius %7)")
-                                .arg(angle).arg(knob.value()).arg(expected).arg(tolerance)
+                 qPrintable(QStringLiteral("drag %1 -> %2: value %3, expected %4 +/- %5 (dial at %6, %7, radius %8)")
+                                .arg(drag.press).arg(drag.to).arg(knob.value()).arg(expected).arg(tolerance)
                                 .arg(dial.center.x()).arg(dial.center.y()).arg(dial.radius)));
+        sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, drag.to));
+        QCOMPARE(committed.count(), 1);
+        QCOMPARE(committed.at(0).at(0).toDouble(), knob.value());
     }
+}
+
+// #182: a press counts only on the dial as it is drawn, within the radius of its scale geometry. Outside it, on the
+// side of the labels, a press and a drag change nothing; inside it they do
+void tst_IndustrialKnob::pressOutsideTheDrawnDialStartsNoDrag()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    // dial.radius is the ink of the ticks, at 0.92 of the radius of the geometry: 1.2 times it is outside the dial
+    const auto pointAt = [&](double angle, double radius) {
+        const double rad = angle * M_PI / 180.0;
+        return QPointF(dial.center.x() + radius * std::sin(rad), dial.center.y() - radius * std::cos(rad));
+    };
+    const QPointF outside = pointAt(90.0, dial.radius * 1.2);
+    QVERIFY(QRectF(knob.rect()).contains(outside));
+
+    knob.setValue(50.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    sendMouse(knob, QEvent::MouseButtonPress, outside);
+    sendMouse(knob, QEvent::MouseMove, pointAt(45.0, dial.radius * 0.8));
+    sendMouse(knob, QEvent::MouseMove, pointAt(0.0, dial.radius * 0.8));
+    sendMouse(knob, QEvent::MouseButtonRelease, pointAt(0.0, dial.radius * 0.8));
+    QCOMPARE(knob.value(), 50.0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(committed.count(), 0);
+
+    // The same drag from inside the dial moves the value by the angle: -90 degrees of 270 on 0-100
+    sendMouse(knob, QEvent::MouseButtonPress, pointAt(90.0, dial.radius * 0.8));
+    sendMouse(knob, QEvent::MouseMove, pointAt(45.0, dial.radius * 0.8));
+    sendMouse(knob, QEvent::MouseMove, pointAt(0.0, dial.radius * 0.8));
+    sendMouse(knob, QEvent::MouseButtonRelease, pointAt(0.0, dial.radius * 0.8));
+    QVERIFY2(std::abs(knob.value() - (50.0 - 100.0 / 3.0)) < 1.0, qPrintable(QString::number(knob.value())));
+    QCOMPARE(committed.count(), 1);
+}
+
+// #182: valueChanged() at every move of a drag, valueCommitted() once at the release, and none for a drag that
+// ends on the value it started from
+void tst_IndustrialKnob::dragCommitsOnceAtTheRelease()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+
+    knob.setValue(50.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    for (double angle : {30.0, 60.0, 90.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+    }
+    QCOMPARE(changed.count(), 3);
+    QCOMPARE(committed.count(), 0);
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), knob.value());
+    QVERIFY2(std::abs(knob.value() - 83.3) < 1.0, qPrintable(QString::number(knob.value())));
+
+    // Away and back to where it started: changes, but nothing to commit
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 90.0));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 60.0));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    QCOMPARE(changed.count(), 5);
+    QCOMPARE(committed.count(), 1);
+}
+
+// #182: a single key step changes the value at the press and commits it at the release
+void tst_IndustrialKnob::keyStepCommitsAtTheRelease()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValue(50.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+
+    sendKey(knob, QEvent::KeyPress, Qt::Key_Up, false);
+    QCOMPARE(knob.value(), 51.0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(committed.count(), 0);
+    sendKey(knob, QEvent::KeyRelease, Qt::Key_Up, false);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), 51.0);
+
+    QTest::keyClick(&knob, Qt::Key_Left);
+    QCOMPARE(knob.value(), 50.0);
+    QCOMPARE(committed.count(), 2);
+    QCOMPARE(committed.at(1).at(0).toDouble(), 50.0);
+}
+
+void tst_IndustrialKnob::heldKeyCommitsOnceAtTheRelease_data()
+{
+    QTest::addColumn<bool>("releasePairs");
+    QTest::newRow("press and release pairs (xcb)") << true;
+    QTest::newRow("presses only (Windows, macOS)") << false;
+}
+
+// #182: a held key steps at each auto-repeat and commits once, at the release that is not an auto-repeat
+void tst_IndustrialKnob::heldKeyCommitsOnceAtTheRelease()
+{
+    QFETCH(bool, releasePairs);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValue(50.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+
+    sendKey(knob, QEvent::KeyPress, Qt::Key_Up, false);
+    for (int i = 0; i < 3; ++i) {
+        if (releasePairs) {
+            sendKey(knob, QEvent::KeyRelease, Qt::Key_Up, true);
+        }
+        sendKey(knob, QEvent::KeyPress, Qt::Key_Up, true);
+    }
+    QCOMPARE(knob.value(), 54.0);
+    QCOMPARE(changed.count(), 4);
+    QCOMPARE(committed.count(), 0);
+    sendKey(knob, QEvent::KeyRelease, Qt::Key_Up, false);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), 54.0);
+}
+
+// #182: a key that changes nothing (at an end) commits nothing
+void tst_IndustrialKnob::keyAtTheEndDoesNotCommit()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValue(100.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    for (int key : {Qt::Key_Up, Qt::Key_Right, Qt::Key_PageUp, Qt::Key_End}) {
+        QTest::keyClick(&knob, static_cast<Qt::Key>(key));
+    }
+    QCOMPARE(knob.value(), 100.0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(committed.count(), 0);
+}
+
+// #182: PageUp/PageDown move by pageStep(), Home/End go to the ends, each committed at its release
+void tst_IndustrialKnob::pageHomeAndEndKeysCommit()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(2.0);
+    knob.setValue(50.0);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    struct Step { Qt::Key key; double value; };
+    int commits = 0;
+    for (const Step step : {Step{Qt::Key_PageUp, 60.0}, Step{Qt::Key_PageDown, 50.0}, Step{Qt::Key_Home, 0.0},
+                            Step{Qt::Key_End, 100.0}}) {
+        QTest::keyClick(&knob, step.key);
+        QCOMPARE(knob.value(), step.value);
+        QCOMPARE(committed.count(), ++commits);
+        QCOMPARE(committed.last().at(0).toDouble(), step.value);
+    }
+}
+
+// #182: setValue() and the clamping of setRange() emit valueChanged() but never valueCommitted()
+void tst_IndustrialKnob::setValueAndSetRangeNeverCommit()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    knob.setValue(70.0);
+    knob.setRange(0.0, 50.0);
+    QCOMPARE(knob.value(), 50.0);
+    QVERIFY(changed.count() >= 2);
+    QCOMPARE(committed.count(), 0);
+}
+
+void tst_IndustrialKnob::focusOutOrHideEndsTheAction_data()
+{
+    QTest::addColumn<bool>("drag");
+    QTest::addColumn<bool>("hide");
+    QTest::newRow("drag, focus out") << true << false;
+    QTest::newRow("drag, hide") << true << true;
+    QTest::newRow("held key, focus out") << false << false;
+    QTest::newRow("held key, hide") << false << true;
+}
+
+// #182: a drag or a held key that loses the focus or the window ends there and commits once; the release that
+// comes later, and the moves before it, do nothing
+void tst_IndustrialKnob::focusOutOrHideEndsTheAction()
+{
+    QFETCH(bool, drag);
+    QFETCH(bool, hide);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    knob.setValue(50.0);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+
+    if (drag) {
+        sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    } else {
+        sendKey(knob, QEvent::KeyPress, Qt::Key_PageUp, false);
+        sendKey(knob, QEvent::KeyPress, Qt::Key_PageUp, true);
+    }
+    const double moved = knob.value();
+    QVERIFY(moved > 50.0);
+    QCOMPARE(committed.count(), 0);
+
+    if (hide) {
+        knob.hide();
+    } else {
+        QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+        QCoreApplication::sendEvent(&knob, &focusOut);
+    }
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), moved);
+
+    if (drag) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+        QCOMPARE(knob.value(), moved);
+        sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    } else {
+        sendKey(knob, QEvent::KeyRelease, Qt::Key_PageUp, false);
+    }
+    QCOMPARE(committed.count(), 1);
+}
+
+// #182: pageStep() is 5 x step() until it is set, keeps its value when step() changes, and follows step() again after
+// resetPageStep(). Non-finite and non-positive values are ignored
+void tst_IndustrialKnob::pageStepFollowsStepUntilSet()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    QCOMPARE(knob.pageStep(), 5.0);
+    knob.setStep(2.0);
+    QCOMPARE(knob.pageStep(), 10.0);
+
+    QSignalSpy appearance(&knob, &IndustrialKnob::appearanceChanged);
+    knob.setPageStep(3.0);
+    QCOMPARE(knob.pageStep(), 3.0);
+    QCOMPARE(appearance.count(), 1);
+    knob.setPageStep(3.0);
+    QCOMPARE(appearance.count(), 1);
+    for (double invalid : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+        knob.setPageStep(invalid);
+        QCOMPARE(knob.pageStep(), 3.0);
+    }
+    QCOMPARE(appearance.count(), 1);
+
+    knob.setValue(50.0);
+    QTest::keyClick(&knob, Qt::Key_PageUp);
+    QCOMPARE(knob.value(), 53.0);
+    knob.setStep(4.0);
+    QCOMPARE(knob.pageStep(), 3.0);
+
+    const int before = appearance.count();
+    knob.resetPageStep();
+    QCOMPARE(knob.pageStep(), 20.0);
+    QCOMPARE(appearance.count(), before + 1);
+    QTest::keyClick(&knob, Qt::Key_PageDown);
+    QCOMPARE(knob.value(), 33.0);
 }
 
 // #175: a press below the dial, between the two ends of the 270 degrees scale, changes nothing and starts no drag
@@ -602,6 +915,8 @@ void tst_IndustrialKnob::dragIntoTheGapStopsAtTheNearestEnd()
     const DrawnDial dial = drawnDialOf(knob);
     QVERIFY(dial.radius > 20.0);
 
+    // #182: the drag is relative, so the value is set first and the press is at its angle
+    knob.setValue(valueAtAngle(knob, 120.0));
     sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 120.0));
     QVERIFY(knob.value() > 90.0);
     for (double angle : {137.0, 150.0, 170.0, 190.0, 210.0, 223.0}) {
@@ -615,6 +930,7 @@ void tst_IndustrialKnob::dragIntoTheGapStopsAtTheNearestEnd()
     QVERIFY2(std::abs(knob.value() - 94.4) < 1.0, qPrintable(QString::number(knob.value())));
     sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 120.0));
 
+    knob.setValue(valueAtAngle(knob, -120.0));
     sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, -120.0));
     QVERIFY(knob.value() < 10.0);
     for (double angle : {-137.0, -150.0, -170.0, 170.0, 150.0, 137.0}) {
@@ -641,6 +957,8 @@ void tst_IndustrialKnob::dragPastTheMaximumDoesNotReachZero()
     const DrawnDial dial = drawnDialOf(knob);
     QVERIFY(dial.radius > 20.0);
 
+    // #182: the drag is relative, so the value is set first and the press is at its angle
+    knob.setValue(valueAtAngle(knob, 130.0));
     sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 130.0));
     const double start = knob.value();
     QVERIFY(start > 95.0);
@@ -666,6 +984,7 @@ void tst_IndustrialKnob::dragPastTheMaximumDoesNotReachZero()
     }
 
     // The same past the minimum, the other way round
+    knob.setValue(valueAtAngle(knob, -130.0));
     sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, -130.0));
     QVERIFY(knob.value() < 5.0);
     sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 120.0));
