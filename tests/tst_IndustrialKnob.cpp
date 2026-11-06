@@ -795,6 +795,11 @@ void tst_IndustrialKnob::focusOutOrHideEndsTheAction()
     QFETCH(bool, hide);
 
     IndustrialKnob knob;
+    // A focused widget that is hidden also loses the focus, so the hide rows use a knob that never has it: there
+    // only the hide can end the action
+    if (hide) {
+        knob.setFocusPolicy(Qt::NoFocus);
+    }
     knob.setRange(0.0, 100.0);
     knob.setStep(0.01);
     knob.resize(220, 240);
