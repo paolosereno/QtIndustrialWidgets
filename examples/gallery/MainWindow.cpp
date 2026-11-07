@@ -42,6 +42,7 @@
 #include <QtCore/QEasingCurve>
 #include <QtCore/QMetaEnum>
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QTimeZone>
 #include <QtGui/QPalette>
 #include <QtGui/QPainter>
 #include <QtGui/QImageWriter>
@@ -1535,7 +1536,13 @@ void MainWindow::setupUi()
     auto *analysisLabelCombo = new QComboBox(analysisControlsBox);
     analysisLabelCombo->addItem(QStringLiteral("Relative (from data start)"), static_cast<int>(AnalysisChart::TimeLabelFormat::Relative));
     analysisLabelCombo->addItem(QStringLiteral("Absolute (HH:mm:ss.zzz)"), static_cast<int>(AnalysisChart::TimeLabelFormat::Absolute));
+    // QDateTime(QDate, QTime, Qt::TimeSpec) is deprecated since Qt 6.9; QTimeZone(QTimeZone::UTC) gives the same
+    // QDateTime from Qt 6.5 (#215)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    m_analysisChart->setTimeOrigin(QDateTime(QDate(2026, 10, 18), QTime(9, 30, 0), QTimeZone(QTimeZone::UTC)));
+#else
     m_analysisChart->setTimeOrigin(QDateTime(QDate(2026, 10, 18), QTime(9, 30, 0), Qt::UTC));
+#endif
     connect(analysisLabelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
         m_analysisChart->setTimeLabelFormat(static_cast<AnalysisChart::TimeLabelFormat>(analysisLabelCombo->itemData(idx).toInt()));
     });
