@@ -440,6 +440,7 @@ void MainWindow::setupUi()
     m_throttleKnob->setPrecision(0);
     m_throttleKnob->setMajorTicks(8);
     m_throttleKnob->setMinorTicks(4);
+    m_throttleKnob->setAccessibleName(QStringLiteral("Throttle")); // #183: the knob has no name of its own
 
     // Boost Regulator Knob (Continuous)
     m_boostKnob = new IndustrialKnob(knobBox);
@@ -450,6 +451,7 @@ void MainWindow::setupUi()
     m_boostKnob->setPrecision(2);
     m_boostKnob->setMajorTicks(6);
     m_boostKnob->setMinorTicks(3);
+    m_boostKnob->setAccessibleName(QStringLiteral("Boost pressure"));
     m_boostKnob->setPointerColor(QColor(235, 59, 90));
     m_boostKnob->setTrackColor(QColor(235, 59, 90));
 
@@ -460,6 +462,7 @@ void MainWindow::setupUi()
     m_modeSelectorKnob->setRange(1.0, 4.0);
     m_modeSelectorKnob->setValue(2.0);
     m_modeSelectorKnob->setUnit(QStringLiteral("MODE"));
+    m_modeSelectorKnob->setAccessibleName(QStringLiteral("Drive mode"));
     m_modeSelectorKnob->setPointerColor(QColor(46, 204, 113));
     m_modeSelectorKnob->setTrackColor(QColor(46, 204, 113));
 

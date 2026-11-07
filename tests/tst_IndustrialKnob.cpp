@@ -14,7 +14,10 @@
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
 
+#include <array>
 #include <memory>
+#include <utility>
+#include <QtGui/QAccessible>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
@@ -291,6 +294,43 @@ double angleOf(const QPoint &p, const QPointF &center, qreal dpr)
     return std::atan2((p.x() + 0.5) / dpr - center.x(), center.y() - (p.y() + 0.5) / dpr) * 180.0 / M_PI;
 }
 
+// #183: the accessibility events a knob sends while the recorder lives, seen through the test hook: under
+// QT_QPA_PLATFORM=offscreen there is no accessibility backend, and Qt drops the events before any update handler
+class AccessibleEvents
+{
+public:
+    struct Event {
+        QAccessible::Event type;
+        QObject *object;
+        double value;      // ValueChanged
+        bool readOnly;     // StateChanged: the readOnly state changed
+    };
+
+    explicit AccessibleEvents(IndustrialKnob &knob)
+        : m_knob(knob)
+    {
+        internal::IndustrialKnobTestAccess::setAccessibleObserver(knob, [this](QAccessibleEvent *event) {
+            Event e{event->type(), event->object(), 0.0, false};
+            if (event->type() == QAccessible::ValueChanged) {
+                e.value = static_cast<QAccessibleValueChangeEvent *>(event)->value().toDouble();
+            } else if (event->type() == QAccessible::StateChanged) {
+                e.readOnly = static_cast<QAccessibleStateChangeEvent *>(event)->changedStates().readOnly;
+            }
+            m_events.push_back(e);
+        });
+    }
+    ~AccessibleEvents() { internal::IndustrialKnobTestAccess::setAccessibleObserver(m_knob, {}); }
+    AccessibleEvents(const AccessibleEvents &) = delete;
+    AccessibleEvents &operator=(const AccessibleEvents &) = delete;
+
+    // The events recorded since the last take()
+    QList<Event> take() { return std::exchange(m_events, {}); }
+
+private:
+    IndustrialKnob &m_knob;
+    QList<Event> m_events;
+};
+
 double lightness(QRgb p) { return (0.2126 * qRed(p) + 0.7152 * qGreen(p) + 0.0722 * qBlue(p)) / 255.0; }
 
 int colourDistance(QRgb a, const QColor &b)
@@ -373,6 +413,17 @@ private Q_SLOTS:
     void limitsAreHatchedWithStopMarks();
     void wheelIsOffByDefault();
     void wheelStepsOnlyWithFocus();
+
+    // #183: focus and accessibility
+    void focusRingIsASolidRingInTextColor_data();
+    void focusRingIsASolidRingInTextColor();
+    void focusTraversalReachesTheKnob_data();
+    void focusTraversalReachesTheKnob();
+    void accessibleInterfaceDescribesTheKnob();
+    void accessibleNameHasNoFallback();
+    void accessibleFocusState();
+    void accessibleSetValueIsOperatorInput();
+    void accessibleEventsFollowTheValue();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -2414,6 +2465,331 @@ void tst_IndustrialKnob::wheelStepsOnlyWithFocus()
     QCOMPARE(knob->value(), 52.0);
     QCOMPARE(committed.count(), 6);
     QCOMPARE(committed.last().at(0).toDouble(), 52.0);
+}
+
+void tst_IndustrialKnob::focusRingIsASolidRingInTextColor_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::newRow("220x240") << 220 << 240;
+    QTest::newRow("160x180") << 160 << 180;
+}
+
+// #183: with the focus the knob draws a solid ring in textColor() around the grip, 4 px out from it, in the gap before
+// the band of the ticks: every pixel the pen covers in full is in textColor() (not dashed, not translucent), all
+// around, and nothing else changes
+void tst_IndustrialKnob::focusRingIsASolidRingInTextColor()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+
+    QWidget window;
+    // A dark background, far from the default textColor, as in the dark theme: on the light default background of
+    // the window a gap or a translucent ring would look like textColor
+    QPalette palette = window.palette();
+    palette.setColor(QPalette::Window, QColor(30, 33, 40));
+    window.setPalette(palette);
+    window.setAutoFillBackground(true);
+    auto *knob = new IndustrialKnob(&window);
+    auto *other = new QLineEdit(&window);
+    knob->setRange(0.0, 100.0);
+    knob->setValue(30.0);
+    knob->setGeometry(0, 0, width, height);
+    other->setGeometry(0, height + 10, width, 30);
+    window.resize(width, height + 50);
+    QVERIFY(focusOn(*other));
+    const QImage plain = renderKnob(*knob);
+    QVERIFY(focusOn(*knob));
+    const QImage focused = renderKnob(*knob);
+
+    const qreal dpr = knob->devicePixelRatioF();
+    const internal::KnobScaleGeometry g = drawnGeometryOf(*knob, width, height);
+    const QPointF center(g.centerX, g.centerY);
+    const double grip = g.radius * 0.65;  // The knob, as paintEvent() draws it
+    const double band = g.radius * 0.80;  // Inner end of the ticks: scaleRadius - tickLen
+    const QVector<QPoint> changed = differingPixels(plain, focused);
+    QVERIFY2(!changed.isEmpty(), "no focus indicator");
+    for (const QPoint &p : changed) {
+        const double r = distanceOf(p, center, dpr);
+        QVERIFY2(r > grip + 0.5 && r < band - 0.5,
+                 qPrintable(QStringLiteral("pixel (%1, %2) at radius %3, outside the gap %4-%5")
+                                .arg(p.x()).arg(p.y()).arg(r).arg(grip).arg(band)));
+    }
+    // The pixels covered in full by the 2 px pen: the whole square of the pixel inside the annulus of the pen, from
+    // ring - 1 to ring + 1 (its farthest corner within the outer edge, its nearest point outside the inner edge). They
+    // must be in textColor; a pixel only partly covered mixes with the background, whatever the platform (#213)
+    const double ring = grip + 4.0;
+    const auto coveredInFull = [&](const QPoint &p) {
+        const double left = p.x() / dpr - center.x();
+        const double right = (p.x() + 1) / dpr - center.x();
+        const double top = p.y() / dpr - center.y();
+        const double bottom = (p.y() + 1) / dpr - center.y();
+        const double farX = std::max(std::abs(left), std::abs(right));
+        const double farY = std::max(std::abs(top), std::abs(bottom));
+        const double nearX = (left <= 0.0 && right >= 0.0) ? 0.0 : std::min(std::abs(left), std::abs(right));
+        const double nearY = (top <= 0.0 && bottom >= 0.0) ? 0.0 : std::min(std::abs(top), std::abs(bottom));
+        return std::hypot(farX, farY) <= ring + 1.0 && std::hypot(nearX, nearY) >= ring - 1.0;
+    };
+    std::array<int, 72> perSector{}; // Pixels checked in each 5 degree sector
+    int checked = 0;
+    int off = 0;
+    QString first;
+    for (int y = 0; y < focused.height(); ++y) {
+        for (int x = 0; x < focused.width(); ++x) {
+            const QPoint p(x, y);
+            if (!coveredInFull(p)) {
+                continue;
+            }
+            // Without focus the ring is not there: what is under it must be far from textColor, or this test sees
+            // nothing
+            QVERIFY2(colourDistance(plain.pixel(p), knob->textColor()) > 200,
+                     qPrintable(QStringLiteral("at (%1, %2) the background is too close to textColor").arg(x).arg(y)));
+            ++checked;
+            const double angle = std::fmod(angleOf(p, center, dpr) + 360.0, 360.0);
+            ++perSector[std::min(71, static_cast<int>(angle / 5.0))];
+            if (colourDistance(focused.pixel(p), knob->textColor()) > 48) {
+                if (off++ == 0) {
+                    const QRgb c = focused.pixel(p);
+                    first = QStringLiteral("%1 degrees: rgb(%2, %3, %4)").arg(angle).arg(qRed(c)).arg(qGreen(c)).arg(qBlue(c));
+                }
+            }
+        }
+    }
+    for (int i = 0; i < 72; ++i) {
+        QVERIFY2(perSector[i] > 0, qPrintable(QStringLiteral("no pixel checked between %1 and %2 degrees").arg(i * 5).arg(i * 5 + 5)));
+    }
+    QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 of %2 pixels of the ring are not textColor, the first at %3")
+                                      .arg(off).arg(checked).arg(first)));
+}
+
+void tst_IndustrialKnob::focusTraversalReachesTheKnob_data()
+{
+    QTest::addColumn<bool>("readOnly");
+    QTest::newRow("normal") << false;
+    QTest::newRow("read-only") << true;
+}
+
+// #183: Tab and Shift+Tab bring the focus to the knob and take it away, also in read-only; a click gives it the focus;
+// with the focus, the keys reach the knob through the real path (the focus widget of the window)
+void tst_IndustrialKnob::focusTraversalReachesTheKnob()
+{
+    QFETCH(bool, readOnly);
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *before = new QLineEdit(&window);
+    auto *knob = new IndustrialKnob(&window);
+    auto *after = new QLineEdit(&window);
+    layout->addWidget(before);
+    layout->addWidget(knob);
+    layout->addWidget(after);
+    knob->setRange(0.0, 100.0);
+    knob->setValue(50.0);
+    knob->setReadOnly(readOnly);
+    knob->setMinimumSize(160, 180);
+    QVERIFY(focusOn(*before));
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+    QVERIFY2(knob->hasFocus(), "Tab did not reach the knob");
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+    QVERIFY2(after->hasFocus(), "Tab did not leave the knob");
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Backtab);
+    QVERIFY2(knob->hasFocus(), "Shift+Tab did not reach the knob");
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Backtab);
+    QVERIFY2(before->hasFocus(), "Shift+Tab did not leave the knob");
+
+    QTest::mouseClick(knob, Qt::LeftButton, Qt::NoModifier, QPoint(knob->width() / 2, knob->height() / 2));
+    QVERIFY2(knob->hasFocus(), "a click did not give the focus");
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Up);
+    QCOMPARE(knob->value(), readOnly ? 50.0 : 51.0);
+}
+
+// #183: the accessible interface of the knob: role Dial, the name and description set by the application, the value
+// text as the readout draws it (also with the display hidden), the value interface with value, range and step (in
+// Discrete mode the step of a detent), and the read-only state
+void tst_IndustrialKnob::accessibleInterfaceDescribesTheKnob()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 8000.0);
+    knob.setPrecision(0);
+    knob.setUnit(QStringLiteral("RPM"));
+    knob.setStep(50.0);
+    knob.setValue(2400.0);
+    knob.setAccessibleName(QStringLiteral("Throttle"));
+    knob.setAccessibleDescription(QStringLiteral("Target engine speed"));
+
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&knob);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::Dial);
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("Throttle"));
+    QCOMPARE(iface->text(QAccessible::Description), QStringLiteral("Target engine speed"));
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("2400 RPM"));
+    QAccessibleValueInterface *value = iface->valueInterface();
+    QVERIFY(value);
+    QCOMPARE(value->currentValue().toDouble(), 2400.0);
+    QCOMPARE(value->minimumValue().toDouble(), 0.0);
+    QCOMPARE(value->maximumValue().toDouble(), 8000.0);
+    QCOMPARE(value->minimumStepSize().toDouble(), 50.0);
+    QVERIFY(!iface->state().readOnly);
+
+    knob.setValueDisplayVisible(false);
+    knob.setValue(1234.0);
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("1234 RPM"));
+    QCOMPARE(value->currentValue().toDouble(), 1234.0);
+
+    knob.setReadOnly(true);
+    QVERIFY(iface->state().readOnly);
+    knob.setReadOnly(false);
+    QVERIFY(!iface->state().readOnly);
+
+    knob.setRange(0.0, 100.0);
+    knob.setMode(IndustrialKnob::KnobMode::Discrete);
+    knob.setDiscreteSteps(5);
+    knob.setValue(25.0);
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("POS 2"));
+    QCOMPARE(value->minimumStepSize().toDouble(), 25.0);
+    QCOMPARE(value->maximumValue().toDouble(), 100.0);
+}
+
+// #183: without an accessible name the knob has none: the unit or anything else is not made into a name
+void tst_IndustrialKnob::accessibleNameHasNoFallback()
+{
+    IndustrialKnob knob;
+    knob.setUnit(QStringLiteral("bar"));
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&knob);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::Dial);
+    QCOMPARE(iface->text(QAccessible::Name), QString());
+}
+
+// #183: the knob is focusable, and focused while it has the focus
+void tst_IndustrialKnob::accessibleFocusState()
+{
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *knob = new IndustrialKnob(&window);
+    auto *other = new QLineEdit(&window);
+    layout->addWidget(knob);
+    layout->addWidget(other);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(knob);
+    QVERIFY(iface);
+    QVERIFY(iface->state().focusable);
+    QVERIFY(focusOn(*other));
+    QVERIFY(!iface->state().focused);
+    QVERIFY(focusOn(*knob));
+    QVERIFY(iface->state().focused);
+}
+
+// #183: a value set by assistive technology is operator input: bound by the value limits, ignored in read-only, and
+// committed (valueChanged() and valueCommitted()); a value that changes nothing, or that is not a finite number,
+// commits nothing
+void tst_IndustrialKnob::accessibleSetValueIsOperatorInput()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 8000.0);
+    knob.setValue(2400.0);
+    QAccessibleValueInterface *value = QAccessible::queryAccessibleInterface(&knob)->valueInterface();
+    QVERIFY(value);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+
+    value->setCurrentValue(3000.0);
+    QCOMPARE(knob.value(), 3000.0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.last().at(0).toDouble(), 3000.0);
+
+    value->setCurrentValue(3000.0);
+    value->setCurrentValue(std::numeric_limits<double>::quiet_NaN());
+    value->setCurrentValue(QStringLiteral("not a number"));
+    QCOMPARE(knob.value(), 3000.0);
+    QCOMPARE(committed.count(), 1);
+
+    knob.setValueLimits(1000.0, 5000.0);
+    value->setCurrentValue(7000.0);
+    QCOMPARE(knob.value(), 5000.0);
+    QCOMPARE(committed.count(), 2);
+    QCOMPARE(committed.last().at(0).toDouble(), 5000.0);
+
+    knob.setReadOnly(true);
+    const int changes = changed.count();
+    value->setCurrentValue(2000.0);
+    QCOMPARE(knob.value(), 5000.0);
+    QCOMPARE(changed.count(), changes);
+    QCOMPARE(committed.count(), 2);
+}
+
+// #183: one value-change event at every change of the value, from every source (key, wheel, drag, assistive
+// technology, setValue(), the clamping of setRange()), none when the value does not change; a range change sends one
+// too; a state-change event when read-only changes
+void tst_IndustrialKnob::accessibleEventsFollowTheValue()
+{
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *knob = new IndustrialKnob(&window);
+    layout->addWidget(knob);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->setValue(50.0);
+    knob->setMinimumSize(220, 240);
+    knob->setWheelEnabled(true);
+    QVERIFY(focusOn(*knob));
+    const DrawnDial dial = drawnDialOf(*knob);
+    QVERIFY(dial.radius > 20.0);
+
+    AccessibleEvents events(*knob);
+    using Ev = AccessibleEvents::Event;
+    // The values of the events, which must all be value changes of the knob (-1 marks any other event)
+    const auto values = [knob](const QList<Ev> &list) {
+        QList<double> out;
+        for (const Ev &e : list) {
+            out.push_back(e.type == QAccessible::ValueChanged && e.object == knob ? e.value : -1.0);
+        }
+        return out;
+    };
+
+    knob->setValue(10.0);
+    QCOMPARE(values(events.take()), QList<double>{10.0});
+    knob->setValue(10.0);
+    QCOMPARE(values(events.take()), QList<double>{});
+
+    QTest::keyClick(knob, Qt::Key_Up);
+    QCOMPARE(values(events.take()), QList<double>{11.0});
+    QTest::keyClick(knob, Qt::Key_Home);
+    QCOMPARE(values(events.take()), QList<double>{0.0});
+    QTest::keyClick(knob, Qt::Key_Home); // Already there
+    QCOMPARE(values(events.take()), QList<double>{});
+
+    QVERIFY(sendWheel(*knob, 120));
+    QCOMPARE(values(events.take()), QList<double>{1.0});
+
+    knob->setValue(50.0);
+    events.take();
+    sendMouse(*knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    sendMouse(*knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    const QList<double> dragged = values(events.take());
+    QCOMPARE(dragged.size(), 2);
+    QCOMPARE(dragged.last(), knob->value());
+
+    QAccessible::queryAccessibleInterface(knob)->valueInterface()->setCurrentValue(40.0);
+    QCOMPARE(values(events.take()), QList<double>{40.0});
+
+    knob->setRange(0.0, 30.0); // Clamps the value
+    QCOMPARE(values(events.take()), QList<double>{30.0});
+    knob->setRange(0.0, 200.0); // Keeps the value; the range changed
+    QCOMPARE(values(events.take()), QList<double>{30.0});
+
+    knob->setReadOnly(true);
+    const QList<Ev> state = events.take();
+    QCOMPARE(state.size(), 1);
+    QCOMPARE(state.first().type, QAccessible::StateChanged);
+    QCOMPARE(state.first().object, static_cast<QObject *>(knob));
+    QVERIFY(state.first().readOnly);
+    knob->setReadOnly(true);
+    QCOMPARE(events.take().size(), 0);
+    knob->setReadOnly(false);
+    QCOMPARE(events.take().size(), 1);
 }
 
 #include "tst_IndustrialKnob.moc"

@@ -16,6 +16,7 @@ namespace QtIndustrialWidgets {
 class IndustrialKnobPrivate;
 namespace internal {
 class IndustrialKnobTestAccess;
+class IndustrialKnobAccessible;
 }
 
 /**
@@ -57,6 +58,16 @@ class IndustrialKnobTestAccess;
  *   scale the parts outside the limits are hatched and each limit has a radial stop mark. In Discrete mode the
  *   operator reaches only the steps inside the limits.
  *
+ * Focus and accessibility (#183): the knob takes focus with Tab, Shift+Tab and a click, also in read-only, and
+ * draws a solid ring in textColor() just outside the grip while it has focus. Its accessible interface has the role
+ * QAccessible::Dial, the readout as value text (also when the readout is hidden; "POS n" in Discrete mode), the
+ * value, minimum(), maximum(), the step (step() in Continuous mode, the size of a detent in Discrete mode) and the
+ * read-only state. Every change of the value sends a QAccessibleValueChangeEvent, and so does every change of the
+ * range; setReadOnly() sends a QAccessibleStateChangeEvent. A value set by assistive technology is operator input:
+ * bound by the value limits, ignored in read-only, committed with valueCommitted(). The knob has no accessible name
+ * of its own: set one with setAccessibleName() (or a QLabel buddy). With value limits set, assistive technology sees
+ * the minimum and maximum of the scale, not the limits.
+ *
  * Non-finite input (#151, #182): the knob is an input control, so it has no value state (see
  * QtIndustrialWidgets::ValueState for the indicators). setValue() rejects NaN and +Inf / -Inf: the value stays
  * unchanged and a warning is printed (qWarning()). setRange() ignores non-finite bounds.
@@ -71,6 +82,7 @@ class IndustrialKnobTestAccess;
  * knob->setValue(50.0);
  * knob->setStep(1.0);
  * knob->setUnit("%");
+ * knob->setAccessibleName("Throttle"); // #183: the knob has no name of its own
  * \endcode
  */
 class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
@@ -316,6 +328,7 @@ private:
     std::unique_ptr<IndustrialKnobPrivate> d_ptr;
     Q_DECLARE_PRIVATE(IndustrialKnob)
     friend class internal::IndustrialKnobTestAccess; // test-only access; defined in src/internal/, not installed
+    friend class internal::IndustrialKnobAccessible; // accessible interface (#183); defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

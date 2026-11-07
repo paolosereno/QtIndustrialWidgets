@@ -73,6 +73,25 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
     they are the range;
   - on the scale, the parts outside the limits are hatched and each limit has a radial stop mark, so the limits do not
     rely on colour.
+- **Focus** (#183). The control takes focus with Tab and Shift+Tab and with a click, also in read-only. While it has
+  focus it draws a solid ring in `textColor`, which contrasts with the background like the labels: at least 3:1
+  against the background in both gallery themes (`tests/tst_ReadoutContrast.cpp`).
+- **Accessibility** (#183). The control has an accessible interface (`QAccessibleInterface`) with a role, the value
+  text as the readout draws it (also when the readout is hidden), the value, the minimum and maximum, the step and
+  the read-only state. Every change of the value sends a value-change event to assistive technology (a screen
+  reader), whatever its source; a change of the range sends one too, and a change of read-only sends a state-change
+  event. A value set by assistive technology is operator input: it is bound by the value limits, ignored in
+  read-only, and emits `valueCommitted()` when it changes the value.
+
+  **The control has no accessible name of its own**: the unit or the readout is not a name. Set one, as for any Qt
+  widget, or give the control a label with `QLabel::setBuddy()`:
+  ```cpp
+  auto *throttle = new qiw::IndustrialKnob(parent);
+  throttle->setAccessibleName(QStringLiteral("Throttle"));
+  throttle->setAccessibleDescription(QStringLiteral("Target engine speed")); // Optional
+  ```
+  Known limitation: with value limits set, assistive technology sees the minimum and maximum of the scale, not the
+  limits, since the Qt value interface has no place for them.
 
 ## RadialGauge
 
@@ -187,6 +206,9 @@ Rotary knob (`qiw::IndustrialKnob`).
     has a radial stop mark longer and thicker than a tick. Past a limit a drag holds the value there until the pointer
     comes back, as at an end of the scale. In Discrete mode the operator reaches only the steps inside the limits:
     Home/End go to the first and last of them.
+- **Focus and accessibility** (the [rules for controls](#controls), #183): a solid focus ring in `textColor`, just
+  outside the grip. Accessible role `Dial`; the value text is the readout, `POS n` in Discrete mode; the step is
+  `step` in Continuous mode and the size of a detent in Discrete mode.
 - **Rendering**: the knob has a serrated grip of 32 teeth; ticks and scale are cached, so a rotation redraws only the
   moving parts.
 - **Non-finite input** (#151, #182): the knob is an input control and has no value state. `setValue()` rejects NaN and

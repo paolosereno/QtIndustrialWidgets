@@ -6,6 +6,7 @@
 #include "internal/IndustrialKnob_p.h"
 
 #include "internal/FontScale.h"
+#include "internal/IndustrialKnobAccessible.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
@@ -209,6 +210,7 @@ IndustrialKnob::IndustrialKnob(QWidget *parent)
     setAttribute(Qt::WA_OpaquePaintEvent, false);
     setFocusPolicy(Qt::StrongFocus);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    internal::IndustrialKnobAccessible::installFactory(); // #183
 }
 
 IndustrialKnob::~IndustrialKnob() = default;
@@ -270,6 +272,7 @@ void IndustrialKnob::setValue(double val)
 
     d_ptr->m_value = clamped;
     Q_EMIT valueChanged(d_ptr->m_value);
+    d_ptr->notifyValue(this); // #183
     update();
 }
 
@@ -302,6 +305,7 @@ void IndustrialKnob::setRange(double min, double max)
         Q_EMIT valueLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
     }
     Q_EMIT valueChanged(d_ptr->m_value);
+    d_ptr->notifyValue(this); // #183: the value, or the range around it, changed
     update();
 }
 
@@ -492,6 +496,7 @@ void IndustrialKnob::setReadOnly(bool readOnly)
     d_ptr->m_readOnly = readOnly;
     d_ptr->m_wheelRemainder = 0;
     Q_EMIT readOnlyChanged(readOnly);
+    d_ptr->notifyReadOnly(this); // #183
     update();
 }
 
@@ -986,9 +991,9 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
         painter.strokePath(trackPath, trackPen);
     }
 
-    // 3. Focus Highlight Ring (when widget has keyboard/tab focus)
+    // 3. Focus ring (#183): solid, in textColor, which contrasts with the background like the labels in any theme
     if (hasFocus()) {
-        painter.setPen(QPen(QColor(0, 229, 255, 140), 1.5, Qt::DashLine));
+        painter.setPen(QPen(d_ptr->m_textColor, 2.0));
         painter.setBrush(Qt::NoBrush);
         painter.drawEllipse(center, knobRadius + 4.0, knobRadius + 4.0);
     }
@@ -1083,13 +1088,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
         double podH = 22.0;
         QRectF podRect((w - podW) * 0.5, h - podH - 2.0, podW, podH);
 
-        QString valStr;
-        if (d_ptr->m_mode == KnobMode::Discrete) {
-            int stepIdx = static_cast<int>(std::round((d_ptr->m_value - d_ptr->m_minimum) / ((d_ptr->m_maximum - d_ptr->m_minimum) / (d_ptr->m_discreteSteps - 1))));
-            valStr = QStringLiteral("POS %1").arg(stepIdx + 1);
-        } else {
-            valStr = QStringLiteral("%1 %2").arg(internal::formatFixed(d_ptr->m_value, d_ptr->m_precision), d_ptr->m_unit).trimmed();
-        }
+        const QString valStr = d_ptr->readoutText();
 
         QFont valFont = font();
         valFont.setPixelSize(11);
