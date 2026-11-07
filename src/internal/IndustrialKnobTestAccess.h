@@ -9,6 +9,9 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include "IndustrialKnob_p.h"
 
+#include <functional>
+#include <utility>
+
 namespace QtIndustrialWidgets {
 namespace internal {
 
@@ -37,6 +40,11 @@ public:
         return IndustrialKnobPrivate::padlockRect(knob.d_ptr->m_scale.geometry);
     }
 
+    // #183: \a observer sees every accessibility event the knob sends, before QAccessible::updateAccessibility();
+    // an empty function removes it
+    static void setAccessibleObserver(IndustrialKnob &knob, std::function<void(QAccessibleEvent *)> observer) {
+        knob.d_ptr->m_accessibleObserver = std::move(observer);
+    }
     // Label texts formatted in the last computation of minimumSizeHint() (labelText() calls)
     static quint64 lastMinimumLabelFormats(const IndustrialKnob &knob) {
         return knob.d_ptr->m_lastMinimumLabelFormats;

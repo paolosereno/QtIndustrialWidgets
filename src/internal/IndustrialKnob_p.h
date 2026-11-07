@@ -12,6 +12,7 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
 #include "FontScale.h"
+#include "NumberFormat.h"
 #include "RadialGaugeLayout.h"
 #include "TextMetricsTable.h"
 
@@ -20,6 +21,7 @@
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtCore/QtGlobal>
+#include <QtGui/QAccessible>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
 #include <QtGui/QPixmap>
@@ -28,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <utility>
 #include <vector>
@@ -200,6 +203,42 @@ public:
             target = m_minimum + std::clamp(nearest, first, last) * stepSize;
         }
         return target;
+    }
+
+    // The text of the readout, as paintEvent() draws it; also the value text of the accessible interface (#183)
+    QString readoutText() const
+    {
+        if (m_mode == IndustrialKnob::KnobMode::Discrete) {
+            int stepIdx = static_cast<int>(std::round((m_value - m_minimum) / ((m_maximum - m_minimum) / (m_discreteSteps - 1))));
+            return QStringLiteral("POS %1").arg(stepIdx + 1);
+        }
+        return QStringLiteral("%1 %2").arg(internal::formatFixed(m_value, m_precision), m_unit).trimmed();
+    }
+
+    // #183: every accessibility event of the knob goes through here. The observer is set by tests only
+    // (IndustrialKnobTestAccess): without an accessibility backend (QT_QPA_PLATFORM=offscreen) Qt drops the events
+    // before any update handler, so this is the only point where a test can see them
+    std::function<void(QAccessibleEvent *)> m_accessibleObserver;
+    void sendAccessible(QAccessibleEvent *event)
+    {
+        if (m_accessibleObserver) {
+            m_accessibleObserver(event);
+        }
+        QAccessible::updateAccessibility(event); // Does nothing while no assistive technology is active
+    }
+    // #183: tells assistive technology that the value (or the range around it) changed
+    void notifyValue(IndustrialKnob *knob)
+    {
+        QAccessibleValueChangeEvent event(knob, m_value);
+        sendAccessible(&event);
+    }
+    // #183: tells assistive technology that the read-only state changed
+    void notifyReadOnly(IndustrialKnob *knob)
+    {
+        QAccessible::State changed;
+        changed.readOnly = true;
+        QAccessibleStateChangeEvent event(knob, changed);
+        sendAccessible(&event);
     }
 
     // After a setter minimumSizeHint() depends on (#170)

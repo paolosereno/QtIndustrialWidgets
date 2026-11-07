@@ -306,6 +306,8 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     SevenSegmentDisplay.cpp
     LedIndicator.cpp
     IndustrialKnob.cpp
+    internal/IndustrialKnobAccessible.cpp
+    internal/IndustrialKnobAccessible.h
     StripChart.cpp
     AnalysisChart.cpp
     IndustrialSwitch.cpp
