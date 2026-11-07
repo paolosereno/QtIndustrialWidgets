@@ -32,7 +32,8 @@ light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) a
 
 ## Controls {#controls}
 
-Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob`; the setpoint controls planned
+Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob` (`IndustrialSwitch` follows the
+focus and accessibility items, with the details in [its section](#industrialswitch)); the setpoint controls planned
 (#180, #154) will follow them.
 - **A press never changes the value.** The value changes only by dragging or with the keyboard. `IndustrialKnob`
   starts a drag only on its dial as it is drawn, and the drag is relative: the value moves by the angle the pointer
@@ -246,6 +247,31 @@ Toggle or rocker switch (`qiw::IndustrialSwitch`).
 - **Orientation**: `Qt::Vertical` or `Qt::Horizontal`.
 - **Details**: optional status LED (`hasLed`), animated movement (`animated`), mouse click and drag, and the keys
   Space, Return and the arrows.
+- **Focus** (#183): the switch takes focus with Tab, Shift+Tab and a click, also with the guard closed. While it has
+  focus it draws a solid 2 px ring in `textColor`, the colour of the labels on the plate, along the inside of the
+  plate (2.25 to 4.25 px in from its edge, between the bevel and the corner screws): at least 3:1 against the plate in
+  both gallery themes (`tests/tst_ReadoutContrast.cpp`). Where a label, the LED or the open guard comes into that
+  band (the centre label of a vertical 3-position switch reaches 1 px from the edge), the ring leaves a gap 1 px
+  around it, so it never covers them. The ring changes neither the layout nor the size hints.
+- **Accessibility** (#183), with the general notes in [Controls](#controls):
+
+  | | 2 positions | 3 positions |
+  |---|---|---|
+  | Role | `CheckBox`, checkable, checked in the ON position | `Slider` |
+  | Value text | the label of the position (`labelOff` / `labelOn`) | `labelOff` / `labelCenter` / `labelOn` |
+  | Value | — | the position, 0 to 2, step 1 |
+  | Actions | toggle (as Space) | increase, decrease (as the arrows) |
+  | Event at every change of position | state change (checked) | value change |
+
+  - A label left empty gives the number of the position as value text.
+  - **Name**: `accessibleName()`, otherwise the title (`label()`). A change of the title that serves as name is
+    notified. The gallery switches all have a title.
+  - **Guard**: while it is closed the switch is read-only for assistive technology, and its only action of its own is
+    "Open guard"; open, it also has "Close guard". The actions and a value set by assistive technology follow the
+    guard like the keys: they move nothing while it is closed. A state-change event (read-only) is sent when the guard
+    opens, closes or is fitted.
+  - The role follows `positionCount`, and Qt has no event for a change of role: set `positionCount` before the switch
+    is shown, or a screen reader may keep the old role until the focus moves.
 
 ## LevelMeter
 
