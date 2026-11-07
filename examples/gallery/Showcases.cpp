@@ -157,6 +157,7 @@ QWidget *knobContinuous(Theme theme)
     k->setPrecision(0);
     k->setUnit(QStringLiteral("RPM"));
     k->setValue(2400.0);
+    k->setAccessibleName(QStringLiteral("Target speed")); // #183: the knob has no name of its own
     applyGalleryTheme(*k, theme);
     return k;
 }
@@ -167,6 +168,7 @@ QWidget *knobDiscrete(Theme theme)
     k->setMode(IndustrialKnob::KnobMode::Discrete);
     k->setDiscreteSteps(5);
     k->setValue(25.0); // position 2 of 5 (default range 0..100)
+    k->setAccessibleName(QStringLiteral("Selector")); // #183: the knob has no name of its own
     applyGalleryTheme(*k, theme);
     return k;
 }
