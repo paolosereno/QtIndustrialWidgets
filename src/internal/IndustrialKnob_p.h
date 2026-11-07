@@ -16,6 +16,7 @@
 #include "TextMetricsTable.h"
 
 #include <QtCore/QPointF>
+#include <QtCore/QRectF>
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtCore/QtGlobal>
@@ -24,6 +25,8 @@
 #include <QtGui/QPixmap>
 #include <QtWidgets/QWidget>
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <map>
 #include <utility>
@@ -74,6 +77,14 @@ public:
     bool m_keyAction{false};
     int m_actionKey{0};           // The key whose release that is not an auto-repeat ends the key action
     double m_actionStartValue{0.0};
+
+    // #182, PR 2: read-only, mouse wheel and value limits
+    bool m_readOnly{false};
+    bool m_wheelEnabled{false};
+    int m_wheelRemainder{0};      // angleDelta() summed towards the next notch (120); dropped at focus out
+    bool m_limitsSet{false};
+    double m_limitLow{0.0};       // As given to setValueLimits(); read within the range
+    double m_limitHigh{0.0};
     int m_minimumWidth{0};   // minimumSizeHint().width(), computed when asked for; 0: to compute
     double m_minimumWidthDpr{0.0};
     // #170: ink of each label text at each font size, measured on a raster. Kept across resizes and changes of the
@@ -148,6 +159,47 @@ public:
         if (!qFuzzyCompare(m_value, m_actionStartValue)) {
             Q_EMIT knob->valueCommitted(m_value);
         }
+    }
+
+    // #182: inner end of the pointer, as paintEvent() draws it: no angle of the pointer reaches inside this radius
+    static double pointerInnerRadius(const internal::KnobScaleGeometry &g)
+    {
+        return g.radius * 0.65 * 0.84 * 0.90 * 0.32; // knob, face, inner face, inner end of the pointer
+    }
+    // #182: the padlock of read-only, centred on the cap: its corners stay at 0.82 of pointerInnerRadius()
+    static QRectF padlockRect(const internal::KnobScaleGeometry &g)
+    {
+        const double r = pointerInnerRadius(g);
+        const double w = 0.95 * r;
+        const double h = 1.33 * r;
+        return QRectF(g.centerX - w * 0.5, g.centerY - h * 0.5, w, h);
+    }
+
+    // #182: the value limits as read: those set, within the range; without limits, the range
+    double limitLow() const { return m_limitsSet ? std::clamp(m_limitLow, m_minimum, m_maximum) : m_minimum; }
+    double limitHigh() const { return m_limitsSet ? std::clamp(m_limitHigh, m_minimum, m_maximum) : m_maximum; }
+
+    // #182: where the operator's input that asks for \a proposed takes the value. Inside the limits; from a value
+    // outside them (set with setValue()), only towards them: the interval allowed is the limits widened to the value,
+    // so input further out leaves it where it is. In Discrete mode, the nearest step inside that interval
+    double operatorTarget(double proposed) const
+    {
+        const double from = m_value;
+        const double low = std::min(limitLow(), from);
+        const double high = std::max(limitHigh(), from);
+        double target = std::clamp(proposed, low, high);
+        if (m_mode == IndustrialKnob::KnobMode::Discrete && m_discreteSteps > 1) {
+            const double stepSize = (m_maximum - m_minimum) / (m_discreteSteps - 1);
+            constexpr double kEpsilon = 1e-9; // A limit on a step counts as inside
+            const int first = static_cast<int>(std::ceil((low - m_minimum) / stepSize - kEpsilon));
+            const int last = static_cast<int>(std::floor((high - m_minimum) / stepSize + kEpsilon));
+            if (first > last) {
+                return from;
+            }
+            const int nearest = static_cast<int>(std::round((target - m_minimum) / stepSize));
+            target = m_minimum + std::clamp(nearest, first, last) * stepSize;
+        }
+        return target;
     }
 
     // After a setter minimumSizeHint() depends on (#170)

@@ -430,7 +430,7 @@ QString IndustrialKnobPlugin::toolTip() const
 
 QString IndustrialKnobPlugin::whatsThis() const
 {
-    return QStringLiteral("A rotary control knob with CNC knurled grip, graduated circular scale, continuous and discrete modes, and mouse/wheel interaction.");
+    return QStringLiteral("A rotary control knob with CNC knurled grip, graduated circular scale, continuous and discrete modes, mouse and keyboard input, and an optional mouse wheel.");
 }
 
 QString IndustrialKnobPlugin::domXml() const

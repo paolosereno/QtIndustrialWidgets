@@ -50,6 +50,29 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
   the committed value to a PLC and show the value read back with `setValue()` without a write loop.
 - **Non-finite input:** `setValue()` with NaN or ±Inf is rejected. The value stays unchanged and a warning is printed
   (`qWarning()`).
+- **Mouse wheel: off by default** (`wheelEnabled`). While it is off, a wheel event is ignored and goes to the parent,
+  so a scroll area around the control scrolls. When it is on, the wheel acts only while the control has focus: each
+  notch is one `step`, with `valueChanged()` and `valueCommitted()` at once. A notch is 120 units of
+  `QWheelEvent::angleDelta()`, summed over the smaller events of a high-resolution wheel or a touchpad; the part of a
+  notch not yet reached is dropped when the control loses focus.
+- **Read-only** (`readOnly`, `readOnlyChanged()`). Mouse, keyboard and wheel input are ignored and go to the parent.
+  The control can still take focus, and `setValue()` still works. It is not greyed out: a padlock, drawn as a path
+  in `textColor` (at least 3:1 against the control in both gallery themes), shows the state without relying on
+  colour. Turning read-only on during a drag or a held key ends that action, with `valueCommitted()` if it changed the
+  value.
+- **Value limits** (`setValueLimits()`, `clearValueLimits()`, `valueLimitLow()`, `valueLimitHigh()`,
+  `valueLimitsChanged()`). They bind the operator's input only:
+  - a drag, the keys and the wheel never take the value outside the limits, and Home/End go to them; a step that
+    would cross a limit stops on it;
+  - `setValue()` is bound by the range only. A value inside the scale but outside the limits (a value read back from
+    a device, for example) is kept as it is and shown where it is, in the hatched part of the scale;
+  - from such a value, input towards the limits is applied, and input that would take the value further out is
+    ignored;
+  - setting the limits does not change the value. Invalid limits (non-finite, or low ≥ high) are ignored. The limits
+    are kept as set and read within the range, so they apply in full again when the range grows back; without limits
+    they are the range;
+  - on the scale, the parts outside the limits are hatched and each limit has a radial stop mark, so the limits do not
+    rely on colour.
 
 ## RadialGauge
 
@@ -149,14 +172,21 @@ Rotary knob (`qiw::IndustrialKnob`).
   full radius, with the centre fixed, so that the pixels of the labels stay inside the widget. `minimumSizeHint()` is
   computed from the font, the configuration and the device pixel ratio, between 80 × 90 and `sizeHint()`: from that size up the labels drawn are inside the
   widget and the first and last ones are drawn, with the same exception.
-- **Input** (the [rules for controls](#controls), #182): relative mouse drag, mouse wheel, and the keys arrows
-  (`step`), PageUp/PageDown (`pageStep`, 5 × `step` until it is set), Home/End.
+- **Input** (the [rules for controls](#controls), #182): relative mouse drag, the keys arrows (`step`), PageUp/PageDown
+  (`pageStep`, 5 × `step` until it is set), Home/End, and the mouse wheel when it is enabled (`wheelEnabled`, off by
+  default; only with focus).
   - A press changes nothing. A left press on the dial as it is drawn (within the radius of its scale), on the scale,
     starts a drag. The value then moves by the angle the pointer moves around the centre of the dial.
   - A press in the gap between the ends of the scale, or outside the dial, starts no drag (#175).
   - During a drag the value stops at the end it reaches and never jumps to the other one: it moves again when the
     pointer is back on that end (#175).
   - `valueCommitted()` at the release of a drag or of a key, as in the rules.
+  - Read-only (`readOnly`): the padlock is drawn at the centre of the cap, inside the inner end of the pointer, so the
+    pointer is never covered at any angle.
+  - Value limits (`setValueLimits()`): the band of the ticks is hatched outside them, and each limit inside the range
+    has a radial stop mark longer and thicker than a tick. Past a limit a drag holds the value there until the pointer
+    comes back, as at an end of the scale. In Discrete mode the operator reaches only the steps inside the limits:
+    Home/End go to the first and last of them.
 - **Rendering**: the knob has a serrated grip of 32 teeth; ticks and scale are cached, so a rotation redraws only the
   moving parts.
 - **Non-finite input** (#151, #182): the knob is an input control and has no value state. `setValue()` rejects NaN and

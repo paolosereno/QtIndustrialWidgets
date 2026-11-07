@@ -23,6 +23,7 @@
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
 #include "GalleryTheme.h"
+#include "internal/IndustrialKnobTestAccess.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/TankDisplayTestAccess.h"
 #include "internal/ValveIndicatorTestAccess.h"
@@ -295,6 +296,8 @@ private Q_SLOTS:
     void compass();
     void industrialKnob_data();
     void industrialKnob();
+    void industrialKnobPadlock_data();
+    void industrialKnobPadlock();
     void circularBargraph_data();
     void circularBargraph();
     void tankDisplay_data();
@@ -663,6 +666,71 @@ void tst_ReadoutContrast::compass()
     checkReading(measureReadout(img, deviceRect(QRectF(centre.x() - podW / 2.0, centre.y() - podH / 2.0, podW, podH),
                                                 img.devicePixelRatio())),
                  scaledPixels(30, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::industrialKnobPadlock_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<double>("value");
+    for (const bool dark : {true, false}) {
+        const char *theme = dark ? "dark" : "light";
+        for (const double value : {0.0, 2400.0, 8000.0}) {
+            QTest::addRow("%s, value %g", theme, value) << dark << value;
+        }
+    }
+}
+
+// #182: the padlock of read-only is a graphical object that carries the state: textColor() against every pixel of
+// the cap around it, inside its rectangle, at 3:1 (WCAG 1.4.11) in both gallery themes. Its pixels are those that change
+// with textColor() inside its rectangle; the others there are the cap
+void tst_ReadoutContrast::industrialKnobPadlock()
+{
+    QFETCH(bool, dark);
+    QFETCH(double, value);
+    constexpr double kGraphicsRatio = 3.0;
+    IndustrialKnob k;
+    k.setRange(0.0, 8000.0);
+    k.setValue(value);
+    style(k, dark);
+    k.resize(220, 240);
+    k.setReadOnly(true);
+    const QColor text = k.textColor();
+    const QImage img = renderOn(k, dark);
+    k.setTextColor(QColor(255 - text.red(), 255 - text.green(), 255 - text.blue()));
+    const QImage other = renderOn(k, dark);
+    k.setTextColor(text);
+
+    const qreal dpr = img.devicePixelRatio();
+    const QRectF logical = internal::IndustrialKnobTestAccess::padlockRect(k);
+    QVERIFY(!logical.isEmpty());
+    const QRect box = QRectF(logical.topLeft() * dpr, logical.size() * dpr).toAlignedRect();
+    int ink = 0;
+    int solid = 0;
+    int cap = 0;
+    double worst = std::numeric_limits<double>::max();
+    QRgb worstCap = 0;
+    for (int y = box.top(); y <= box.bottom(); ++y) {
+        for (int x = box.left(); x <= box.right(); ++x) {
+            const QRgb p = img.pixel(x, y);
+            if (p != other.pixel(x, y)) {
+                ++ink;
+                solid += channelDistance(p, text.rgb()) <= 2 ? 1 : 0;
+                continue;
+            }
+            ++cap;
+            if (contrast(text.rgb(), p) < worst) {
+                worst = contrast(text.rgb(), p);
+                worstCap = p;
+            }
+        }
+    }
+    QVERIFY2(ink > 0 && solid > 0, qPrintable(QStringLiteral("%1 padlock pixels, %2 of them in textColor").arg(ink).arg(solid)));
+    QVERIFY2(cap > 0, "no cap pixel around the padlock");
+    QVERIFY2(worst >= kGraphicsRatio,
+             qPrintable(QStringLiteral("padlock rgb(%1, %2, %3) against the cap rgb(%4, %5, %6): %7:1 (target %8:1)")
+                            .arg(text.red()).arg(text.green()).arg(text.blue())
+                            .arg(qRed(worstCap)).arg(qGreen(worstCap)).arg(qBlue(worstCap))
+                            .arg(worst, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
 }
 
 void tst_ReadoutContrast::industrialKnob_data()
