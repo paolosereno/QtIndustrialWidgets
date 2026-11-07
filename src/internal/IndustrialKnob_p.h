@@ -224,7 +224,10 @@ public:
         if (m_accessibleObserver) {
             m_accessibleObserver(event);
         }
-        QAccessible::updateAccessibility(event); // Does nothing while no assistive technology is active
+        // Does nothing while no assistive technology is active. Not covered by the tests: under
+        // QT_QPA_PLATFORM=offscreen (the CI) Qt drops every accessibility event here, before any update handler, so
+        // removing this call would go unnoticed. The test on a real platform is #214
+        QAccessible::updateAccessibility(event);
     }
     // #183: tells assistive technology that the value (or the range around it) changed
     void notifyValue(IndustrialKnob *knob)

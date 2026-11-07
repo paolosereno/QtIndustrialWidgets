@@ -14,6 +14,7 @@
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
 
+#include <array>
 #include <memory>
 #include <utility>
 #include <QtGui/QAccessible>
@@ -2475,8 +2476,8 @@ void tst_IndustrialKnob::focusRingIsASolidRingInTextColor_data()
 }
 
 // #183: with the focus the knob draws a solid ring in textColor() around the grip, 4 px out from it, in the gap before
-// the band of the ticks: every half degree of its centre line is in textColor() (not dashed, not translucent), and
-// nothing else changes
+// the band of the ticks: every pixel the pen covers in full is in textColor() (not dashed, not translucent), all
+// around, and nothing else changes
 void tst_IndustrialKnob::focusRingIsASolidRingInTextColor()
 {
     QFETCH(int, width);
@@ -2514,25 +2515,51 @@ void tst_IndustrialKnob::focusRingIsASolidRingInTextColor()
                  qPrintable(QStringLiteral("pixel (%1, %2) at radius %3, outside the gap %4-%5")
                                 .arg(p.x()).arg(p.y()).arg(r).arg(grip).arg(band)));
     }
+    // The pixels covered in full by the 2 px pen: the whole square of the pixel inside the annulus of the pen, from
+    // ring - 1 to ring + 1 (its farthest corner within the outer edge, its nearest point outside the inner edge). They
+    // must be in textColor; a pixel only partly covered mixes with the background, whatever the platform (#213)
     const double ring = grip + 4.0;
+    const auto coveredInFull = [&](const QPoint &p) {
+        const double left = p.x() / dpr - center.x();
+        const double right = (p.x() + 1) / dpr - center.x();
+        const double top = p.y() / dpr - center.y();
+        const double bottom = (p.y() + 1) / dpr - center.y();
+        const double farX = std::max(std::abs(left), std::abs(right));
+        const double farY = std::max(std::abs(top), std::abs(bottom));
+        const double nearX = (left <= 0.0 && right >= 0.0) ? 0.0 : std::min(std::abs(left), std::abs(right));
+        const double nearY = (top <= 0.0 && bottom >= 0.0) ? 0.0 : std::min(std::abs(top), std::abs(bottom));
+        return std::hypot(farX, farY) <= ring + 1.0 && std::hypot(nearX, nearY) >= ring - 1.0;
+    };
+    std::array<int, 72> perSector{}; // Pixels checked in each 5 degree sector
+    int checked = 0;
     int off = 0;
     QString first;
-    for (int i = 0; i < 720; ++i) {
-        const double rad = i * 0.5 * M_PI / 180.0;
-        const QPoint p(static_cast<int>(std::floor((center.x() + ring * std::sin(rad)) * dpr)),
-                       static_cast<int>(std::floor((center.y() - ring * std::cos(rad)) * dpr)));
-        // Without focus the ring is not there: what is under it must be far from textColor, or this test sees nothing
-        QVERIFY2(colourDistance(plain.pixel(p), knob->textColor()) > 200,
-                 qPrintable(QStringLiteral("at %1 degrees the background is too close to textColor").arg(i * 0.5)));
-        if (colourDistance(focused.pixel(p), knob->textColor()) > 48) {
-            if (off++ == 0) {
-                const QRgb c = focused.pixel(p);
-                first = QStringLiteral("%1 degrees: rgb(%2, %3, %4)").arg(i * 0.5).arg(qRed(c)).arg(qGreen(c)).arg(qBlue(c));
+    for (int y = 0; y < focused.height(); ++y) {
+        for (int x = 0; x < focused.width(); ++x) {
+            const QPoint p(x, y);
+            if (!coveredInFull(p)) {
+                continue;
+            }
+            // Without focus the ring is not there: what is under it must be far from textColor, or this test sees
+            // nothing
+            QVERIFY2(colourDistance(plain.pixel(p), knob->textColor()) > 200,
+                     qPrintable(QStringLiteral("at (%1, %2) the background is too close to textColor").arg(x).arg(y)));
+            ++checked;
+            const double angle = std::fmod(angleOf(p, center, dpr) + 360.0, 360.0);
+            ++perSector[std::min(71, static_cast<int>(angle / 5.0))];
+            if (colourDistance(focused.pixel(p), knob->textColor()) > 48) {
+                if (off++ == 0) {
+                    const QRgb c = focused.pixel(p);
+                    first = QStringLiteral("%1 degrees: rgb(%2, %3, %4)").arg(angle).arg(qRed(c)).arg(qGreen(c)).arg(qBlue(c));
+                }
             }
         }
     }
-    QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 of 720 points of the ring are not textColor, the first at %2")
-                                      .arg(off).arg(first)));
+    for (int i = 0; i < 72; ++i) {
+        QVERIFY2(perSector[i] > 0, qPrintable(QStringLiteral("no pixel checked between %1 and %2 degrees").arg(i * 5).arg(i * 5 + 5)));
+    }
+    QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 of %2 pixels of the ring are not textColor, the first at %3")
+                                      .arg(off).arg(checked).arg(first)));
 }
 
 void tst_IndustrialKnob::focusTraversalReachesTheKnob_data()
