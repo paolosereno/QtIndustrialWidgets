@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include "internal/IndustrialSwitch_p.h"
 
+#include "internal/IndustrialSwitchAccessible.h"
 #include "internal/IndustrialSwitchLayout.h"
 
 #include <QtCore/QEvent>
@@ -82,6 +83,7 @@ IndustrialSwitch::IndustrialSwitch(QWidget *parent)
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_Hover, true);
+    internal::IndustrialSwitchAccessible::installFactory(); // #183
 
     d_ptr->m_switchAnim = new QVariantAnimation(this);
     d_ptr->m_switchAnim->setDuration(130);
@@ -202,6 +204,7 @@ void IndustrialSwitch::setPosition(int position)
 
     Q_EMIT positionChanged(d_ptr->m_position);
     Q_EMIT toggled(isChecked());
+    d_ptr->notifyPosition(this); // #183
 }
 
 void IndustrialSwitch::setChecked(bool checked)
@@ -234,8 +237,12 @@ void IndustrialSwitch::setOrientation(Qt::Orientation orientation)
 void IndustrialSwitch::setHasSafetyGuard(bool guard)
 {
     if (d_ptr->m_hasSafetyGuard == guard) return;
+    const bool readOnlyBefore = d_ptr->accessibleReadOnly();
     d_ptr->m_hasSafetyGuard = guard;
     d_ptr->m_isGuardOpen = false;
+    if (d_ptr->accessibleReadOnly() != readOnlyBefore) {
+        d_ptr->notifyReadOnly(this); // #183
+    }
     d_ptr->m_guardOpenFactor = 0.0;
     d_ptr->m_cacheValid = false;
     updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
@@ -246,7 +253,11 @@ void IndustrialSwitch::setHasSafetyGuard(bool guard)
 void IndustrialSwitch::setGuardOpen(bool open)
 {
     if (d_ptr->m_isGuardOpen == open) return;
+    const bool readOnlyBefore = d_ptr->accessibleReadOnly();
     d_ptr->m_isGuardOpen = open;
+    if (d_ptr->accessibleReadOnly() != readOnlyBefore) {
+        d_ptr->notifyReadOnly(this); // #183
+    }
 
     if (d_ptr->m_animated) {
         d_ptr->m_guardAnim->stop();
@@ -281,6 +292,10 @@ void IndustrialSwitch::setLabel(const QString &label)
 {
     if (d_ptr->m_label == label) return;
     d_ptr->m_label = label;
+    if (accessibleName().isEmpty()) { // #183: the title is the accessible name
+        QAccessibleEvent event(this, QAccessible::NameChanged);
+        d_ptr->sendAccessible(&event);
+    }
     d_ptr->m_cacheValid = false;
     updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();

@@ -311,6 +311,8 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     StripChart.cpp
     AnalysisChart.cpp
     IndustrialSwitch.cpp
+    internal/IndustrialSwitchAccessible.cpp
+    internal/IndustrialSwitchAccessible.h
     LevelMeter.cpp
     AnnunciatorPanel.cpp
     Compass.cpp

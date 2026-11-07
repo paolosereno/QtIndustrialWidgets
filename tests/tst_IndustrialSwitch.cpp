@@ -7,14 +7,19 @@
 
 #include "FontTestUtils.h"
 #include "internal/IndustrialSwitchLayout.h"
+#include "internal/IndustrialSwitchTestAccess.h"
+#include <QtGui/QAccessible>
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QLineEdit>
+#include <QtWidgets/QVBoxLayout>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 using namespace QtIndustrialWidgets;
@@ -234,6 +239,94 @@ bool focusOn(QWidget &widget)
     return QTest::qWaitFor([&] { return widget.hasFocus(); });
 }
 
+// #183: the layout of \a sw, as paintEvent() computes it
+internal::SwitchLayout layoutOf(const IndustrialSwitch &sw)
+{
+    internal::SwitchLayoutInput in;
+    in.size = sw.size();
+    in.orientation = sw.orientation();
+    in.positions = sw.positionCount();
+    in.guard = sw.hasSafetyGuard();
+    in.font = sw.font();
+    in.title = sw.label();
+    in.on = sw.labelOn();
+    in.off = sw.labelOff();
+    in.center = sw.labelCenter();
+    return internal::layoutSwitch(in);
+}
+
+// #183: the accessibility events a switch sends while the recorder lives, seen through the test hook: under
+// QT_QPA_PLATFORM=offscreen there is no accessibility backend, and Qt drops the events before any update handler
+class AccessibleEvents
+{
+public:
+    struct Event {
+        QAccessible::Event type;
+        QObject *object;
+        double value;   // ValueChanged
+        bool checked;   // StateChanged: the checked state changed
+        bool readOnly;  // StateChanged: the readOnly state changed
+    };
+
+    explicit AccessibleEvents(IndustrialSwitch &sw)
+        : m_switch(sw)
+    {
+        internal::IndustrialSwitchTestAccess::setAccessibleObserver(sw, [this](QAccessibleEvent *event) {
+            Event e{event->type(), event->object(), 0.0, false, false};
+            if (event->type() == QAccessible::ValueChanged) {
+                e.value = static_cast<QAccessibleValueChangeEvent *>(event)->value().toDouble();
+            } else if (event->type() == QAccessible::StateChanged) {
+                const QAccessible::State s = static_cast<QAccessibleStateChangeEvent *>(event)->changedStates();
+                e.checked = s.checked;
+                e.readOnly = s.readOnly;
+            }
+            m_events.push_back(e);
+        });
+    }
+    ~AccessibleEvents() { internal::IndustrialSwitchTestAccess::setAccessibleObserver(m_switch, {}); }
+    AccessibleEvents(const AccessibleEvents &) = delete;
+    AccessibleEvents &operator=(const AccessibleEvents &) = delete;
+
+    // The events recorded since the last take(), as text: "value 2", "checked", "readOnly", "name", or the type
+    QStringList take()
+    {
+        QStringList out;
+        for (const Event &e : std::exchange(m_events, {})) {
+            QString s;
+            if (e.object != &m_switch) {
+                s = QStringLiteral("other object");
+            } else if (e.type == QAccessible::ValueChanged) {
+                s = QStringLiteral("value %1").arg(e.value);
+            } else if (e.type == QAccessible::StateChanged) {
+                s = e.checked && !e.readOnly ? QStringLiteral("checked")
+                    : e.readOnly && !e.checked ? QStringLiteral("readOnly")
+                                               : QStringLiteral("state");
+            } else if (e.type == QAccessible::NameChanged) {
+                s = QStringLiteral("name");
+            } else {
+                s = QStringLiteral("event %1").arg(static_cast<int>(e.type));
+            }
+            out.push_back(s);
+        }
+        return out;
+    }
+
+private:
+    IndustrialSwitch &m_switch;
+    QList<Event> m_events;
+};
+
+// #183: a wheel step sent to \a sw; true if the switch took it
+bool sendWheel(IndustrialSwitch &sw, int delta)
+{
+    const QPointF pos(sw.width() / 2.0, sw.height() / 2.0);
+    QWheelEvent wheel(pos, sw.mapToGlobal(pos), QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    wheel.setAccepted(false);
+    QCoreApplication::sendEvent(&sw, &wheel);
+    return wheel.isAccepted();
+}
+
 SwitchConfig fetchConfig()
 {
     QFETCH(int, type);
@@ -280,6 +373,15 @@ private Q_SLOTS:
     void sizeHintKeepsGuardedThreePositionSwitchReadable();
     void focusRingAlongThePlate_data() { addSwitchRows(); }
     void focusRingAlongThePlate();
+    void focusTraversalReachesTheSwitch_data();
+    void focusTraversalReachesTheSwitch();
+    void accessibleTwoPositions();
+    void accessibleThreePositions();
+    void accessibleNameFallsBackToTheTitle();
+    void accessibleClosedGuard_data();
+    void accessibleClosedGuard();
+    void accessibleEventsFollowThePosition_data();
+    void accessibleEventsFollowThePosition();
 };
 
 void tst_IndustrialSwitch::defaultValues()
@@ -962,6 +1064,282 @@ void tst_IndustrialSwitch::focusRingAlongThePlate()
         QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 of %2 pixels of the ring are not textColor, the first at %3")
                                           .arg(off).arg(checked).arg(first) + where));
     }
+}
+
+void tst_IndustrialSwitch::focusTraversalReachesTheSwitch_data()
+{
+    QTest::addColumn<int>("guardMode"); // 0: no guard, 1: closed, 2: open
+    QTest::newRow("no guard") << 0;
+    QTest::newRow("guard closed") << 1;
+    QTest::newRow("guard open") << 2;
+}
+
+// #183: Tab and Shift+Tab bring the focus to the switch and take it away, also with the guard closed; a click gives
+// it the focus; with the focus, Space reaches the switch through the real path (the focus widget of the window)
+void tst_IndustrialSwitch::focusTraversalReachesTheSwitch()
+{
+    QFETCH(int, guardMode);
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *before = new QLineEdit(&window);
+    auto *sw = new IndustrialSwitch(&window);
+    auto *after = new QLineEdit(&window);
+    layout->addWidget(before);
+    layout->addWidget(sw);
+    layout->addWidget(after);
+    sw->setAnimated(false);
+    sw->setHasSafetyGuard(guardMode > 0);
+    sw->setGuardOpen(guardMode == 2);
+    sw->setMinimumSize(120, 190);
+    QVERIFY(focusOn(*before));
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+    QVERIFY2(sw->hasFocus(), "Tab did not reach the switch");
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+    QVERIFY2(after->hasFocus(), "Tab did not leave the switch");
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Backtab);
+    QVERIFY2(sw->hasFocus(), "Shift+Tab did not reach the switch");
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Space);
+    QCOMPARE(sw->position(), guardMode == 1 ? 0 : 1); // A closed guard opens instead
+    QCOMPARE(sw->isGuardOpen(), guardMode > 0);
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Backtab);
+    QVERIFY2(before->hasFocus(), "Shift+Tab did not leave the switch");
+    QTest::mouseClick(sw, Qt::LeftButton, Qt::NoModifier, QPoint(sw->width() / 2, sw->height() / 2));
+    QVERIFY2(sw->hasFocus(), "a click did not give the focus");
+}
+
+// #183: two positions: role CheckBox, checkable and checked with the ON position, the label of the position as value
+// text, no value interface, and the toggle action of Space
+void tst_IndustrialSwitch::accessibleTwoPositions()
+{
+    IndustrialSwitch sw;
+    sw.setAnimated(false);
+    sw.setLabelOff(QStringLiteral("STOP"));
+    sw.setLabelOn(QStringLiteral("RUN"));
+    sw.setAccessibleName(QStringLiteral("Pump 1"));
+    sw.setAccessibleDescription(QStringLiteral("Feed pump"));
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&sw);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::CheckBox);
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("Pump 1"));
+    QCOMPARE(iface->text(QAccessible::Description), QStringLiteral("Feed pump"));
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("STOP"));
+    QVERIFY(iface->state().checkable);
+    QVERIFY(!iface->state().checked);
+    QVERIFY(!iface->state().readOnly);
+    QVERIFY(!iface->valueInterface());
+    QAccessibleActionInterface *actions = iface->actionInterface();
+    QVERIFY(actions);
+    QCOMPARE(actions->actionNames(), (QStringList{QAccessibleActionInterface::toggleAction(), QAccessibleActionInterface::setFocusAction()}));
+
+    sw.setChecked(true);
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("RUN"));
+    QVERIFY(iface->state().checked);
+    actions->doAction(QAccessibleActionInterface::toggleAction());
+    QCOMPARE(sw.position(), 0);
+    QVERIFY(!iface->state().checked);
+
+    sw.setLabelOff(QString()); // Without a label, the number of the position
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("0"));
+}
+
+// #183: three positions: role Slider with the value interface (position, 0 to 2, step 1), the label of the position
+// as value text, the increase and decrease actions of the arrows; a value set by assistive technology is rounded and
+// bound to the positions, and one that is not a finite number is ignored
+void tst_IndustrialSwitch::accessibleThreePositions()
+{
+    IndustrialSwitch sw;
+    sw.setAnimated(false);
+    sw.setPositionCount(3);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&sw);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::Slider);
+    QVERIFY(!iface->state().checkable);
+    QAccessibleValueInterface *value = iface->valueInterface();
+    QVERIFY(value);
+    QCOMPARE(value->minimumValue().toInt(), 0);
+    QCOMPARE(value->maximumValue().toInt(), 2);
+    QCOMPARE(value->minimumStepSize().toInt(), 1);
+    const QStringList texts{QStringLiteral("OFF"), QStringLiteral("AUTO"), QStringLiteral("ON")};
+    for (int position = 0; position < 3; ++position) {
+        sw.setPosition(position);
+        QCOMPARE(value->currentValue().toInt(), position);
+        QCOMPARE(iface->text(QAccessible::Value), texts.at(position));
+        QVERIFY(!iface->state().checked);
+    }
+    sw.setLabelCenter(QString());
+    sw.setPosition(1);
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("1"));
+
+    value->setCurrentValue(1.6);
+    QCOMPARE(sw.position(), 2);
+    value->setCurrentValue(0);
+    QCOMPARE(sw.position(), 0);
+    value->setCurrentValue(7);
+    QCOMPARE(sw.position(), 2);
+    value->setCurrentValue(std::numeric_limits<double>::quiet_NaN());
+    value->setCurrentValue(QStringLiteral("not a number"));
+    QCOMPARE(sw.position(), 2);
+
+    QAccessibleActionInterface *actions = iface->actionInterface();
+    QVERIFY(actions);
+    QCOMPARE(actions->actionNames(),
+             (QStringList{QAccessibleActionInterface::increaseAction(), QAccessibleActionInterface::decreaseAction(),
+                          QAccessibleActionInterface::setFocusAction()}));
+    actions->doAction(QAccessibleActionInterface::decreaseAction());
+    QCOMPARE(sw.position(), 1);
+    actions->doAction(QAccessibleActionInterface::increaseAction());
+    actions->doAction(QAccessibleActionInterface::increaseAction()); // Already at the end
+    QCOMPARE(sw.position(), 2);
+
+    sw.setPositionCount(2); // The role follows the number of positions
+    QCOMPARE(iface->role(), QAccessible::CheckBox);
+    QVERIFY(!iface->valueInterface());
+}
+
+// #183: the name is accessibleName(), otherwise the title engraved on the plate (label()); a change of the title
+// that changes the name is notified
+void tst_IndustrialSwitch::accessibleNameFallsBackToTheTitle()
+{
+    IndustrialSwitch sw;
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&sw);
+    QVERIFY(iface);
+    QCOMPARE(iface->text(QAccessible::Name), QString());
+    AccessibleEvents events(sw);
+    sw.setLabel(QStringLiteral("MAIN POWER"));
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("MAIN POWER"));
+    QCOMPARE(events.take(), QStringList{QStringLiteral("name")});
+    sw.setAccessibleName(QStringLiteral("Main power switch"));
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("Main power switch"));
+    events.take();
+    sw.setLabel(QStringLiteral("POWER")); // The name does not change
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("Main power switch"));
+    QCOMPARE(events.take(), QStringList{});
+}
+
+void tst_IndustrialSwitch::accessibleClosedGuard_data()
+{
+    QTest::addColumn<int>("positions");
+    QTest::newRow("2 positions") << 2;
+    QTest::newRow("3 positions") << 3;
+}
+
+// #183: while the guard is closed the switch is read-only for assistive technology and has one action of its own,
+// "Open guard" (setFocus, from QAccessibleWidget, stays);
+// the other actions and a value set by assistive technology move nothing. Open, it has the actions of its positions
+// and "Close guard"
+void tst_IndustrialSwitch::accessibleClosedGuard()
+{
+    QFETCH(int, positions);
+    IndustrialSwitch sw;
+    sw.setAnimated(false);
+    sw.setPositionCount(positions);
+    sw.setHasSafetyGuard(true);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&sw);
+    QVERIFY(iface);
+    QAccessibleActionInterface *actions = iface->actionInterface();
+    QVERIFY(actions);
+    QVERIFY(iface->state().readOnly);
+    QCOMPARE(actions->actionNames(), (QStringList{QStringLiteral("Open guard"), QAccessibleActionInterface::setFocusAction()}));
+
+    actions->doAction(QAccessibleActionInterface::toggleAction());
+    actions->doAction(QAccessibleActionInterface::increaseAction());
+    if (positions == 3) {
+        iface->valueInterface()->setCurrentValue(2);
+    }
+    QCOMPARE(sw.position(), 0);
+    QVERIFY(!sw.isGuardOpen());
+
+    actions->doAction(QStringLiteral("Open guard"));
+    QVERIFY(sw.isGuardOpen());
+    QVERIFY(!iface->state().readOnly);
+    const QStringList open = positions == 2
+        ? QStringList{QAccessibleActionInterface::toggleAction(), QStringLiteral("Close guard"),
+                      QAccessibleActionInterface::setFocusAction()}
+        : QStringList{QAccessibleActionInterface::increaseAction(), QAccessibleActionInterface::decreaseAction(),
+                      QStringLiteral("Close guard"), QAccessibleActionInterface::setFocusAction()};
+    QCOMPARE(actions->actionNames(), open);
+    actions->doAction(positions == 2 ? QAccessibleActionInterface::toggleAction() : QAccessibleActionInterface::increaseAction());
+    QCOMPARE(sw.position(), 1);
+
+    actions->doAction(QStringLiteral("Close guard"));
+    QVERIFY(!sw.isGuardOpen());
+    QVERIFY(iface->state().readOnly);
+    actions->doAction(QStringLiteral("Close guard")); // Not available: nothing happens
+    QVERIFY(!sw.isGuardOpen());
+}
+
+void tst_IndustrialSwitch::accessibleEventsFollowThePosition_data()
+{
+    QTest::addColumn<int>("positions");
+    QTest::newRow("2 positions") << 2;
+    QTest::newRow("3 positions") << 3;
+}
+
+// #183: one event at every change of the position, from every source (setPosition(), keys, wheel, click, the actions
+// and the value of assistive technology), none when the position does not change: with two positions a change of
+// the checked state, with three a change of the value. A state change of read-only when the guard opens or closes,
+// or is fitted
+void tst_IndustrialSwitch::accessibleEventsFollowThePosition()
+{
+    QFETCH(int, positions);
+    QWidget window;
+    auto *sw = new IndustrialSwitch(&window);
+    sw->setAnimated(false);
+    sw->setPositionCount(positions);
+    sw->resize(120, 190);
+    window.resize(120, 190);
+    QVERIFY(focusOn(*sw));
+    const auto change = [positions](int position) {
+        return positions == 2 ? QStringList{QStringLiteral("checked")} : QStringList{QStringLiteral("value %1").arg(position)};
+    };
+
+    AccessibleEvents events(*sw);
+    sw->setPosition(1);
+    QCOMPARE(events.take(), change(1));
+    sw->setPosition(1);
+    QCOMPARE(events.take(), QStringList{});
+
+    QTest::keyClick(sw, Qt::Key_Down);
+    QCOMPARE(events.take(), change(0));
+    QTest::keyClick(sw, Qt::Key_Down); // Already at the start
+    QCOMPARE(events.take(), QStringList{});
+    QTest::keyClick(sw, Qt::Key_Space);
+    QCOMPARE(events.take(), change(1));
+
+    QVERIFY(sendWheel(*sw, -120));
+    QCOMPARE(events.take(), change(0));
+
+    // A click on the upper part of the switch: ON with three positions, a toggle with two
+    const QRectF s = layoutOf(*sw).switchRect;
+    QTest::mouseClick(sw, Qt::LeftButton, Qt::NoModifier, QPointF(s.center().x(), s.top() + s.height() * 0.1).toPoint());
+    QCOMPARE(events.take(), change(positions - 1));
+
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(sw);
+    if (positions == 2) {
+        iface->actionInterface()->doAction(QAccessibleActionInterface::toggleAction());
+        QCOMPARE(events.take(), change(0));
+    } else {
+        iface->actionInterface()->doAction(QAccessibleActionInterface::decreaseAction());
+        QCOMPARE(events.take(), change(1));
+        iface->valueInterface()->setCurrentValue(0);
+        QCOMPARE(events.take(), change(0));
+        iface->valueInterface()->setCurrentValue(0);
+        QCOMPARE(events.take(), QStringList{});
+    }
+
+    sw->setHasSafetyGuard(true); // Fitted closed: read-only
+    QCOMPARE(events.take(), QStringList{QStringLiteral("readOnly")});
+    sw->setGuardOpen(true);
+    QCOMPARE(events.take(), QStringList{QStringLiteral("readOnly")});
+    sw->setGuardOpen(true);
+    QCOMPARE(events.take(), QStringList{});
+    sw->setGuardOpen(false);
+    QCOMPARE(events.take(), QStringList{QStringLiteral("readOnly")});
+    sw->setHasSafetyGuard(false); // No guard: not read-only
+    QCOMPARE(events.take(), QStringList{QStringLiteral("readOnly")});
 }
 
 QTEST_MAIN(tst_IndustrialSwitch)
