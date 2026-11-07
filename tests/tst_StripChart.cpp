@@ -11,6 +11,7 @@
 #include <internal/StripChartGeometry.h>
 #include <internal/M4Decimator.h>
 #include "StripChartTestUtils.h"
+#include "TestDateTime.h"
 #include <QtGui/QPixmap>
 #include <QtGui/QImage>
 
@@ -30,13 +31,6 @@ public:
 Q_SIGNALS:
     void pointReady(int ch, double v);
 };
-
-namespace {
-// Expected-failure message for pixel checks where decimation buckets do not cover whole device
-// columns (approved by the maintainer; tracked in #12).
-const char *const kBucketNotPixelAligned = "Bucket boundaries are not aligned to device columns yet; see #12";
-
-} // namespace
 
 class tst_StripChart : public QObject
 {
@@ -681,7 +675,7 @@ void tst_StripChart::timeTickLabels()
         chart->setXAxisMode(StripChart::XAxisMode::Time);
         chart->setTimeLabelFormat(StripChart::TimeLabelFormat::Absolute);
         chart->setTimeSpan(std::chrono::seconds(10));
-        QDateTime origin(QDate(2026, 1, 1), QTime(12, 0, 0), Qt::UTC);
+        QDateTime origin = TestDateTime::utc(QDate(2026, 1, 1), QTime(12, 0, 0));
         chart->setTimeOrigin(origin);
 
         int ch = chart->addChannel(QStringLiteral("Ch0"), Qt::green);
