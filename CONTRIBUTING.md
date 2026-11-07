@@ -112,4 +112,5 @@ Reference the issue (`Fixes #<n>`) and include a report with:
 - screenshots, if the rendering changed;
 - any deviation from the issue and why, and anything you noticed outside its scope.
 
-CI builds and tests every pull request on Linux, Windows and macOS. The maintainer reviews and merges.
+CI builds and tests every pull request on Linux, Windows and macOS, with compiler warnings as errors (on macOS,
+except deprecations; see [How it is verified](README.md#how-it-is-verified)). The maintainer reviews and merges.
