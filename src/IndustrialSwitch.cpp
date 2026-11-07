@@ -49,13 +49,16 @@ internal::SwitchLayout layoutOf(const QWidget &w, const IndustrialSwitchPrivate 
 }
 
 // #183: where the focus ring may be drawn: the widget less the boxes of the texts, the glow of the LED and the guard
-// (closed, with its shadow, tab and brackets, and open), 1 px around each
+// (closed, with its shadow, tab and brackets, and open), 1 px around each. The boxes are united, not added to one
+// path: with the odd-even fill of a path, two boxes that overlap would cancel out where they overlap
 QPainterPath focusRingClip(const internal::SwitchLayout &L, const QRectF &widget, bool led, bool guard)
 {
     QPainterPath keepOut;
     const auto leaveOut = [&keepOut](const QRectF &box) {
         if (!box.isEmpty()) {
-            keepOut.addRect(box.adjusted(-1, -1, 1, 1));
+            QPainterPath one;
+            one.addRect(box.adjusted(-1, -1, 1, 1));
+            keepOut = keepOut.united(one);
         }
     };
     for (const QRectF &box : {L.titleBox, L.onBox, L.offBox, L.centerBox}) {
