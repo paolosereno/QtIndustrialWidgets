@@ -6,6 +6,7 @@
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/StripChart.h>
 
+#include "TestDateTime.h"
 #include "internal/StripChartTestAccess.h"
 #include "internal/AnalysisChartTestAccess.h"
 #include "internal/M4Decimator.h"
@@ -605,7 +606,7 @@ void tst_AnalysisChart::timeLabels()
     QCOMPARE(static_cast<qint64>(rel.front().position), start);
     QVERIFY2(rel.front().label.startsWith(QStringLiteral("0 ")), qPrintable(rel.front().label));
 
-    const QDateTime origin(QDate(2026, 10, 17), QTime(12, 0, 0), Qt::UTC);
+    const QDateTime origin = TestDateTime::utc(QDate(2026, 10, 17), QTime(12, 0, 0));
     chart.setTimeOrigin(origin);
     chart.setTimeLabelFormat(AnalysisChart::TimeLabelFormat::Absolute);
     chart.grab();

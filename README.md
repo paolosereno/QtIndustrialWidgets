@@ -99,7 +99,10 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
   ([CONTRIBUTING.md](https://github.com/paolosereno/QtIndustrialWidgets/blob/main/CONTRIBUTING.md)).
 - **CI** ([ci.yml](.github/workflows/ci.yml)), on every pull request and push to `main`: build and the full test
   suite on Linux (Ubuntu 24.04, GCC, Qt 6.4.2 and Qt 6.2.4), Windows (MSVC, Qt 6.6.3) and macOS (Apple Clang, Homebrew Qt);
-  `reuse lint`; on Linux, the export of the gallery images and the Doxygen documentation.
+  `reuse lint`; on Linux, the export of the gallery images and the Doxygen documentation. Compiler warnings are
+  errors in every build job (`CMAKE_COMPILE_WARNING_AS_ERROR`, CI only: a user build is not affected), and on Linux
+  the benchmarks are compiled too, not run. On macOS deprecation warnings stay warnings: the job uses Homebrew's Qt,
+  which is updated without any change in the repository, and it is a required check.
 - **Static analysis**: [SonarCloud](https://sonarcloud.io/summary/new_code?id=paolosereno_QtIndustrialWidgets)
   analyses every pull request and `main`; its quality gate on new code (reliability, security and maintainability
   ratings, duplicated lines, reviewed security hotspots) is a check of the pull request.

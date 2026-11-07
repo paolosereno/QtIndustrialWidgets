@@ -157,10 +157,10 @@ std::vector<TickLabel> measureLabels(LevelMeter &m, double maximum)
     for (const QPoint &p : ink) {
         const int a = vertical ? p.x() : p.y();
         if (a < labelStart) continue;
-        const double along = vertical ? p.y() : p.x();
+        const double pos = vertical ? p.y() : p.x();
         size_t best = 0;
         for (size_t i = 1; i < out.size(); ++i) {
-            if (std::abs(out[i].position - along) < std::abs(out[best].position - along)) best = i;
+            if (std::abs(out[i].position - pos) < std::abs(out[best].position - pos)) best = i;
         }
         const int extent = p.x(); // labels are horizontal text in both orientations
         TickLabel &t = out[best];

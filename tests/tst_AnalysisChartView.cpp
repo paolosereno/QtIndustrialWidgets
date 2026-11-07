@@ -4,6 +4,7 @@
 
 #include <QtTest/QtTest>
 
+#include "TestDateTime.h"
 #include "internal/AnalysisChartView.h"
 #include "internal/AnalysisPyramid.h"
 
@@ -172,7 +173,7 @@ void tst_AnalysisChartView::relativeTimeTicks()
 // #25: Absolute labels are timeOrigin + t (HH:mm:ss.zzz); t itself without an origin
 void tst_AnalysisChartView::absoluteTimeTicks()
 {
-    const QDateTime origin(QDate(2026, 10, 17), QTime(10, 0, 0), Qt::UTC);
+    const QDateTime origin = TestDateTime::utc(QDate(2026, 10, 17), QTime(10, 0, 0));
     const auto ticks = timeAxisTicks({0, 2000000000LL}, 0, 400.0, 60.0, true, origin);
     QVERIFY(!ticks.empty());
     QCOMPARE(ticks.front().label, origin.toString(QStringLiteral("HH:mm:ss.zzz")));
@@ -292,7 +293,7 @@ void tst_AnalysisChartView::readoutTimes()
     const qint64 s = 1000000000LL;
     QCOMPARE(readoutTimeText(7 * s + s / 2, 7 * s, false, QDateTime(), 100000000LL), QStringLiteral("0.5 s"));
     QCOMPARE(readoutTimeText(7 * s + 123456789LL, 7 * s, false, QDateTime(), 1000000LL), QStringLiteral("123 ms"));
-    const QDateTime origin(QDate(2026, 10, 17), QTime(12, 0, 0), Qt::UTC);
+    const QDateTime origin = TestDateTime::utc(QDate(2026, 10, 17), QTime(12, 0, 0));
     QCOMPARE(readoutTimeText(1500000000LL, 7 * s, true, origin, 100000000LL), QStringLiteral("12:00:01.500"));
     // Absolute without an origin: t itself, as elapsed time from 0
     QCOMPARE(readoutTimeText(7 * s + s / 2, 7 * s, true, QDateTime(), 100000000LL), QStringLiteral("7.5 s"));

@@ -23,6 +23,7 @@
 #include <memory>
 #include <limits>
 #include <set>
+#include <utility>
 
 #include "ReadoutTestUtils.h"
 #include "TextInkTestUtils.h"
@@ -936,7 +937,7 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap()
 
     const QVector<QRect> clusters = LabelInk::inkClusters(ink, threshold);
 
-    for (const QRect &c : qAsConst(clusters)) {
+    for (const QRect &c : std::as_const(clusters)) {
         QVERIFY2(c.width() <= largest.width() + tolerance && c.height() <= largest.height() + tolerance,
                  qPrintable(QStringLiteral("label ink %1x%2 at (%3, %4) is larger than the largest label alone %5x%6: "
                                            "labels closer than %7 device px (minimum gap %8 px, DPR %9)")
@@ -962,7 +963,7 @@ void tst_RadialGauge::scaleLabelsKeepMinimumGap()
         const QPointF p = labelCentres[static_cast<size_t>(i)];
         QRect nearest;
         double best = std::numeric_limits<double>::infinity();
-        for (const QRect &c : qAsConst(clusters)) {
+        for (const QRect &c : std::as_const(clusters)) {
             if (distance(c, p) < best) {
                 best = distance(c, p);
                 nearest = c;

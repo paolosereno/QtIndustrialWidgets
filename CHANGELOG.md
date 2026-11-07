@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.7.0` tag archive (the tagged commit still had the `v2.6.0` hash, since the hash can be computed only after the tag).
 
+### Tests
+- **Compiler warnings are errors in CI** (#215): the four build jobs of `ci.yml` configure with `CMAKE_COMPILE_WARNING_AS_ERROR=ON` (`-Werror`, `/WX`); the project does not set it, so a user build is not affected. On macOS deprecations stay warnings (`-Wno-error=deprecated-declarations`), because the job uses Homebrew's Qt, which is updated without any change in the repository. The Linux (Qt 6) job also compiles the benchmarks, without running them. The 11 warnings already on `main` are fixed with no change of behaviour: a shadowed `dpr` in `LinearGauge.cpp`, a shadowed local and `qAsConst` in the tests, an unused constant in `tst_StripChart`, and `QDateTime(QDate, QTime, Qt::UTC)`, deprecated since Qt 6.9, in four tests and the gallery.
+
 ---
 
 ## [2.7.0] - 2026-11-05
