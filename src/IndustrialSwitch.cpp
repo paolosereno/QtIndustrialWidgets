@@ -47,6 +47,32 @@ internal::SwitchLayout layoutOf(const QWidget &w, const IndustrialSwitchPrivate 
     return internal::layoutSwitch(layoutInput(w, d));
 }
 
+// #183: where the focus ring may be drawn: the widget less the boxes of the texts, the glow of the LED and the guard
+// (closed, with its shadow, tab and brackets, and open), 1 px around each
+QPainterPath focusRingClip(const internal::SwitchLayout &L, const QRectF &widget, bool led, bool guard)
+{
+    QPainterPath keepOut;
+    const auto leaveOut = [&keepOut](const QRectF &box) {
+        if (!box.isEmpty()) {
+            keepOut.addRect(box.adjusted(-1, -1, 1, 1));
+        }
+    };
+    for (const QRectF &box : {L.titleBox, L.onBox, L.offBox, L.centerBox}) {
+        leaveOut(box);
+    }
+    if (led) {
+        const double r = internal::kSwitchLedGlow;
+        leaveOut(QRectF(L.led.x() - r, L.led.y() - r, 2 * r, 2 * r));
+    }
+    if (guard) {
+        leaveOut(L.guardOuter);
+        leaveOut(L.openGuard);
+    }
+    QPainterPath clip;
+    clip.addRect(widget);
+    return clip.subtracted(keepOut);
+}
+
 } // namespace
 
 IndustrialSwitch::IndustrialSwitch(QWidget *parent)
@@ -905,6 +931,21 @@ void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
     // Draw Safety Guard over the switch if enabled
     if (d_ptr->m_hasSafetyGuard) {
         drawSafetyGuard(painter, switchRect);
+    }
+
+    // Focus ring (#183): solid, 2 px, in textColor (the colour of the labels on the plate), along the inside of the
+    // plate from 2.25 to 4.25 px in from its edge, between the bevel and the corner screws. It keeps 1.5 px clear of
+    // the bevel, so that at a fractional device pixel ratio no pixel holds both the bevel and the edge of the ring.
+    // The layout lets a label, the LED or the open guard come into that band, so the ring leaves out their boxes,
+    // 1 px around them: it never covers them. Its shape comes from the layout only, not from the state of the guard
+    // or from an animation
+    if (hasFocus()) {
+        const QRectF plate = QRectF(rect()).adjusted(3, 3, -3, -3);
+        painter.setClipPath(focusRingClip(layoutOf(*this, d_ptr.get()), QRectF(rect()), d_ptr->m_hasLed, d_ptr->m_hasSafetyGuard));
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(d_ptr->m_textColor, 2.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(plate.adjusted(3.25, 3.25, -3.25, -3.25), 2.75, 2.75);
     }
 }
 

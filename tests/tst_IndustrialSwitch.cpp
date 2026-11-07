@@ -9,8 +9,10 @@
 #include "internal/IndustrialSwitchLayout.h"
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
+#include <QtWidgets/QLineEdit>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -193,6 +195,45 @@ void addSwitchRows()
     }
 }
 
+// #183: distance between two axis-aligned rectangles, 0 when they meet
+double rectDistance(const QRectF &a, const QRectF &b)
+{
+    const double dx = std::max({0.0, a.left() - b.right(), b.left() - a.right()});
+    const double dy = std::max({0.0, a.top() - b.bottom(), b.top() - a.bottom()});
+    return std::hypot(dx, dy);
+}
+
+// #183: a rounded rectangle as QPainter::drawRoundedRect() draws it, with circular corners: the rectangle shrunk by
+// the radius, widened by a disc of that radius (a convex set)
+struct RoundedRect {
+    QRectF rect;
+    double radius;
+    QRectF core() const { return rect.adjusted(radius, radius, -radius, -radius); }
+    bool contains(const QPointF &p) const { return rectDistance(QRectF(p, QSizeF(0, 0)), core()) <= radius; }
+    bool containsAll(const QRectF &square) const
+    {
+        return contains(square.topLeft()) && contains(square.topRight()) && contains(square.bottomLeft())
+            && contains(square.bottomRight());
+    }
+    bool meets(const QRectF &square) const { return rectDistance(square, core()) <= radius; }
+    bool meetsInside(const QRectF &square) const { return rectDistance(square, core()) < radius; }
+};
+
+// #183: focus on \a widget in its active window
+bool focusOn(QWidget &widget)
+{
+    QWidget *window = widget.window();
+    if (!window->isVisible()) {
+        window->show();
+    }
+    window->activateWindow();
+    if (!QTest::qWaitForWindowActive(window)) {
+        return false;
+    }
+    widget.setFocus(Qt::OtherFocusReason);
+    return QTest::qWaitFor([&] { return widget.hasFocus(); });
+}
+
 SwitchConfig fetchConfig()
 {
     QFETCH(int, type);
@@ -237,6 +278,8 @@ private Q_SLOTS:
     void widerFontFullCriterionAtMinimumSize();
     void sizeHintKeepsGuardedThreePositionSwitchReadable_data();
     void sizeHintKeepsGuardedThreePositionSwitchReadable();
+    void focusRingAlongThePlate_data() { addSwitchRows(); }
+    void focusRingAlongThePlate();
 };
 
 void tst_IndustrialSwitch::defaultValues()
@@ -811,6 +854,114 @@ void tst_IndustrialSwitch::fontChangeRefreshesCache()
     QVERIFY2(FontTest::differingPixelCount(before, expected) > 100, "the font change is not visible: the test checks nothing");
     const int stale = FontTest::differingPixelCount(after, expected);
     QVERIFY2(stale == 0, qPrintable(QStringLiteral("%1 pixels differ from a widget created with the new font").arg(stale)));
+}
+
+// #183: with the focus the switch draws a solid ring in textColor() along the inside of the plate, from 2.25 to 4.25 px
+// in from its edge. Only pixels of that band change, and none is a pixel of a text, of the LED or of the guard: the ring
+// leaves out the boxes of the layout that come into the band (the texts, the glow of the LED, the closed and the open
+// guard, 1 px around each). Every other pixel the pen covers in full is textColor, all around. Without a guard, with
+// the guard closed and open, in every layout of the label tests
+void tst_IndustrialSwitch::focusRingAlongThePlate()
+{
+    const SwitchConfig c = fetchConfig();
+    for (int guardMode : {0, 1, 2}) { // No guard, closed, open
+        const QString where = QStringLiteral(" (%1)").arg(guardMode == 0 ? "no guard" : guardMode == 1 ? "guard closed" : "guard open");
+        QWidget window;
+        IndustrialSwitch *sw = makeSwitch(c, guardMode > 0, guardMode == 2).release();
+        sw->setParent(&window);
+        auto *other = new QLineEdit(&window);
+        sw->move(0, 0);
+        other->setGeometry(0, sw->height() + 10, 60, 24);
+        window.resize(std::max(sw->width(), 60), sw->height() + 40);
+        QVERIFY(focusOn(*other));
+        const QImage plain = grabImage(*sw);
+        const std::vector<QPoint> ink = textInk(*sw);
+        const std::vector<QPoint> led = ledPixels(*sw);
+        const std::vector<QPoint> guard = guardMode > 0 ? guardPixels(*sw) : std::vector<QPoint>{};
+        QVERIFY(focusOn(*sw));
+        const QImage focused = grabImage(*sw);
+        QCOMPARE(focused.size(), plain.size());
+
+        const qreal dpr = focused.devicePixelRatio();
+        const QRectF plate = QRectF(sw->rect()).adjusted(3, 3, -3, -3);
+        const RoundedRect outer{plate.adjusted(2.25, 2.25, -2.25, -2.25), 3.75}; // Outer edge of the ring
+        const RoundedRect inner{plate.adjusted(4.25, 4.25, -4.25, -4.25), 1.75}; // Inner edge of the ring
+        const QPointF centre = plate.center();
+        // The boxes the ring leaves out, from the layout shared by painting and tests
+        internal::SwitchLayoutInput in;
+        in.size = sw->size();
+        in.orientation = sw->orientation();
+        in.positions = sw->positionCount();
+        in.guard = sw->hasSafetyGuard();
+        in.font = sw->font();
+        in.title = sw->label();
+        in.on = sw->labelOn();
+        in.off = sw->labelOff();
+        in.center = sw->labelCenter();
+        const internal::SwitchLayout layout = internal::layoutSwitch(in);
+        std::vector<QRectF> leftOut;
+        for (const QRectF &box : {layout.titleBox, layout.onBox, layout.offBox, layout.centerBox}) {
+            if (!box.isEmpty()) {
+                leftOut.push_back(box.adjusted(-1, -1, 1, 1));
+            }
+        }
+        const double glow = internal::kSwitchLedGlow;
+        leftOut.push_back(QRectF(layout.led.x() - glow - 1, layout.led.y() - glow - 1, 2 * glow + 2, 2 * glow + 2));
+        if (sw->hasSafetyGuard()) {
+            leftOut.push_back(layout.guardOuter.adjusted(-1, -1, 1, 1));
+            leftOut.push_back(layout.openGuard.adjusted(-1, -1, 1, 1));
+        }
+        const auto isLeftOut = [&leftOut](const QRectF &square) {
+            return std::any_of(leftOut.begin(), leftOut.end(), [&](const QRectF &box) { return box.intersects(square); });
+        };
+        const std::vector<QPoint> changed = differingPixels(plain, focused);
+        QVERIFY2(!changed.empty(), qPrintable("no focus indicator" + where));
+        for (const QPoint &p : changed) {
+            const QRectF square(p.x() / dpr, p.y() / dpr, 1.0 / dpr, 1.0 / dpr);
+            QVERIFY2(outer.meets(square) && !inner.containsAll(square),
+                     qPrintable(QStringLiteral("pixel (%1, %2) changed outside the band of the ring").arg(p.x()).arg(p.y()) + where));
+        }
+        QCOMPARE(commonPixels(changed, ink), 0);
+        QCOMPARE(commonPixels(changed, led), 0);
+        QCOMPARE(commonPixels(changed, guard), 0);
+
+        std::array<int, 72> perSector{};
+        int off = 0;
+        int checked = 0;
+        QString first;
+        for (int y = 0; y < focused.height(); ++y) {
+            for (int x = 0; x < focused.width(); ++x) {
+                const QRectF square(x / dpr, y / dpr, 1.0 / dpr, 1.0 / dpr);
+                if (!outer.containsAll(square) || inner.meetsInside(square)) {
+                    continue; // Not covered in full by the pen
+                }
+                const QPointF c2 = square.center() - centre;
+                const double angle = std::fmod(std::atan2(c2.x(), -c2.y()) * 180.0 / M_PI + 360.0, 360.0);
+                ++perSector[std::min(71, static_cast<int>(angle / 5.0))];
+                if (isLeftOut(square)) {
+                    continue; // The ring leaves this pixel out
+                }
+                const QColor under(plain.pixel(x, y));
+                // Without focus the ring is not there: what is under it must be far from textColor, or the test
+                // sees nothing
+                QVERIFY2(std::max({std::abs(under.red() - sw->textColor().red()), std::abs(under.green() - sw->textColor().green()),
+                                   std::abs(under.blue() - sw->textColor().blue())}) > 100,
+                         qPrintable(QStringLiteral("at (%1, %2) the plate is too close to textColor").arg(x).arg(y) + where));
+                ++checked;
+                const QColor got(focused.pixel(x, y));
+                const int distance = std::max({std::abs(got.red() - sw->textColor().red()), std::abs(got.green() - sw->textColor().green()),
+                                               std::abs(got.blue() - sw->textColor().blue())});
+                if (distance > 48 && off++ == 0) {
+                    first = QStringLiteral("(%1, %2): rgb(%3, %4, %5)").arg(x).arg(y).arg(got.red()).arg(got.green()).arg(got.blue());
+                }
+            }
+        }
+        for (int i = 0; i < 72; ++i) {
+            QVERIFY2(perSector[i] > 0, qPrintable(QStringLiteral("no pixel covered in full between %1 and %2 degrees").arg(i * 5).arg(i * 5 + 5) + where));
+        }
+        QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 of %2 pixels of the ring are not textColor, the first at %3")
+                                          .arg(off).arg(checked).arg(first) + where));
+    }
 }
 
 QTEST_MAIN(tst_IndustrialSwitch)
