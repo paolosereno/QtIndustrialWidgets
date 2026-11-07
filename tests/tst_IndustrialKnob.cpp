@@ -2483,6 +2483,12 @@ void tst_IndustrialKnob::focusRingIsASolidRingInTextColor()
     QFETCH(int, height);
 
     QWidget window;
+    // A dark background, far from the default textColor, as in the dark theme: on the light default background of
+    // the window a gap or a translucent ring would look like textColor
+    QPalette palette = window.palette();
+    palette.setColor(QPalette::Window, QColor(30, 33, 40));
+    window.setPalette(palette);
+    window.setAutoFillBackground(true);
     auto *knob = new IndustrialKnob(&window);
     auto *other = new QLineEdit(&window);
     knob->setRange(0.0, 100.0);
@@ -2515,6 +2521,9 @@ void tst_IndustrialKnob::focusRingIsASolidRingInTextColor()
         const double rad = i * 0.5 * M_PI / 180.0;
         const QPoint p(static_cast<int>(std::floor((center.x() + ring * std::sin(rad)) * dpr)),
                        static_cast<int>(std::floor((center.y() - ring * std::cos(rad)) * dpr)));
+        // Without focus the ring is not there: what is under it must be far from textColor, or this test sees nothing
+        QVERIFY2(colourDistance(plain.pixel(p), knob->textColor()) > 200,
+                 qPrintable(QStringLiteral("at %1 degrees the background is too close to textColor").arg(i * 0.5)));
         if (colourDistance(focused.pixel(p), knob->textColor()) > 48) {
             if (off++ == 0) {
                 const QRgb c = focused.pixel(p);
