@@ -966,10 +966,15 @@ void tst_IndustrialSwitch::fontChangeRefreshesCache()
 void tst_IndustrialSwitch::focusRingAlongThePlate()
 {
     const SwitchConfig c = fetchConfig();
+    // The texts of the label tests, and long ones that bring the labels and the LED to the edges of the plate
+    const SwitchTexts longTexts{QStringLiteral("EMERGENCY STOP"), QStringLiteral("ARMED AND READY"), QStringLiteral("SAFE MODE"),
+                                QStringLiteral("AUTOMATIC")};
+    for (const SwitchTexts &texts : {SwitchTexts{}, longTexts})
     for (int guardMode : {0, 1, 2}) { // No guard, closed, open
-        const QString where = QStringLiteral(" (%1)").arg(guardMode == 0 ? "no guard" : guardMode == 1 ? "guard closed" : "guard open");
+        const QString where = QStringLiteral(" (%1, %2 texts)").arg(guardMode == 0 ? "no guard" : guardMode == 1 ? "guard closed" : "guard open",
+                                                                     texts.on == longTexts.on ? "long" : "short");
         QWidget window;
-        IndustrialSwitch *sw = makeSwitch(c, guardMode > 0, guardMode == 2).release();
+        IndustrialSwitch *sw = makeSwitch(c, guardMode > 0, guardMode == 2, texts).release();
         sw->setParent(&window);
         auto *other = new QLineEdit(&window);
         sw->move(0, 0);
