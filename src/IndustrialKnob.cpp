@@ -288,6 +288,8 @@ void IndustrialKnob::setRange(double min, double max)
     if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     if (qFuzzyCompare(min, d_ptr->m_minimum) && qFuzzyCompare(max, d_ptr->m_maximum)) return;
 
+    const double lowBefore = d_ptr->limitLow();
+    const double highBefore = d_ptr->limitHigh();
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
     d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
@@ -295,6 +297,10 @@ void IndustrialKnob::setRange(double min, double max)
     invalidateCache();
     d_ptr->minimumSizeChanged(this);
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    // #182: the limits are read within the range, so a new range can move them
+    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
+        Q_EMIT valueLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
+    }
     Q_EMIT valueChanged(d_ptr->m_value);
     update();
 }
@@ -471,6 +477,60 @@ void IndustrialKnob::setTextColor(const QColor &color)
     update();
 }
 
+bool IndustrialKnob::isReadOnly() const { Q_D(const IndustrialKnob); return d->m_readOnly; }
+bool IndustrialKnob::isWheelEnabled() const { Q_D(const IndustrialKnob); return d->m_wheelEnabled; }
+
+double IndustrialKnob::valueLimitLow() const { Q_D(const IndustrialKnob); return d->limitLow(); }
+double IndustrialKnob::valueLimitHigh() const { Q_D(const IndustrialKnob); return d->limitHigh(); }
+
+void IndustrialKnob::setReadOnly(bool readOnly)
+{
+    if (d_ptr->m_readOnly == readOnly) return;
+    if (readOnly) {
+        d_ptr->endAction(this); // #182: a drag or a held key running now ends, and commits if it changed the value
+    }
+    d_ptr->m_readOnly = readOnly;
+    d_ptr->m_wheelRemainder = 0;
+    Q_EMIT readOnlyChanged(readOnly);
+    update();
+}
+
+void IndustrialKnob::setWheelEnabled(bool enabled)
+{
+    if (d_ptr->m_wheelEnabled == enabled) return;
+    d_ptr->m_wheelEnabled = enabled;
+    d_ptr->m_wheelRemainder = 0;
+    Q_EMIT appearanceChanged();
+}
+
+void IndustrialKnob::setValueLimits(double low, double high)
+{
+    if (!std::isfinite(low) || !std::isfinite(high) || low >= high) return;
+    const double lowBefore = d_ptr->limitLow();
+    const double highBefore = d_ptr->limitHigh();
+    d_ptr->m_limitsSet = true;
+    d_ptr->m_limitLow = low;
+    d_ptr->m_limitHigh = high;
+    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
+        invalidateCache(); // The hatching and the stop marks are in the static scale
+        Q_EMIT valueLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
+        update();
+    }
+}
+
+void IndustrialKnob::clearValueLimits()
+{
+    if (!d_ptr->m_limitsSet) return;
+    const double lowBefore = d_ptr->limitLow();
+    const double highBefore = d_ptr->limitHigh();
+    d_ptr->m_limitsSet = false;
+    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
+        invalidateCache();
+        Q_EMIT valueLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
+        update();
+    }
+}
+
 void IndustrialKnob::invalidateCache()
 {
     d_ptr->m_cacheDirty = true;
@@ -529,11 +589,16 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
         dragAngle += 360.0;
     }
     d_ptr->m_dragAngle = dragAngle;
-    setValue(d_ptr->valueAtScaleAngle(dragAngle));
+    // #182: within the value limits; past one, the value stays there until the pointer comes back, as at an end
+    setValue(d_ptr->operatorTarget(d_ptr->valueAtScaleAngle(dragAngle)));
 }
 
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 {
+    if (d_ptr->m_readOnly) {
+        event->ignore(); // #182: read-only, the press goes to the parent
+        return;
+    }
     if (event->button() == Qt::LeftButton) {
         // #182: a press never changes the value. It starts a relative drag only on the dial as it is drawn, within
         // the radius of its scale geometry; #175: and not in the gap between the ends of the scale
@@ -558,6 +623,10 @@ void IndustrialKnob::mousePressEvent(QMouseEvent *event)
 
 void IndustrialKnob::mouseMoveEvent(QMouseEvent *event)
 {
+    if (d_ptr->m_readOnly) {
+        event->ignore();
+        return;
+    }
     if (d_ptr->m_isDragging && (event->buttons() & Qt::LeftButton)) {
         updateValueFromPoint(event->position());
         event->accept();
@@ -568,6 +637,10 @@ void IndustrialKnob::mouseMoveEvent(QMouseEvent *event)
 
 void IndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (d_ptr->m_readOnly) {
+        event->ignore();
+        return;
+    }
     if (event->button() == Qt::LeftButton) {
         d_ptr->endAction(this);
         event->accept();
@@ -578,9 +651,27 @@ void IndustrialKnob::mouseReleaseEvent(QMouseEvent *event)
 
 void IndustrialKnob::wheelEvent(QWheelEvent *event)
 {
-    double numSteps = event->angleDelta().y() / 120.0;
-    double delta = numSteps * d_ptr->m_step;
-    setValue(d_ptr->m_value + delta);
+    // #182: off by default, and only while the knob has focus; otherwise ignored, so that the parent (a scroll area)
+    // gets it. Each notch (120 units, summed over the smaller events of a high-resolution wheel or a touchpad) is one
+    // step, committed at once
+    if (!d_ptr->m_wheelEnabled || d_ptr->m_readOnly || !hasFocus()) {
+        event->ignore();
+        return;
+    }
+    constexpr int kNotch = 120;
+    d_ptr->m_wheelRemainder += event->angleDelta().y();
+    if (std::abs(d_ptr->m_wheelRemainder) >= kNotch) {
+        d_ptr->endAction(this); // A drag or a held key running ends before the wheel steps
+    }
+    while (std::abs(d_ptr->m_wheelRemainder) >= kNotch) {
+        const int direction = d_ptr->m_wheelRemainder > 0 ? 1 : -1;
+        d_ptr->m_wheelRemainder -= direction * kNotch;
+        const double before = d_ptr->m_value;
+        setValue(d_ptr->operatorTarget(d_ptr->m_value + direction * d_ptr->m_step));
+        if (!qFuzzyCompare(d_ptr->m_value, before)) {
+            Q_EMIT valueCommitted(d_ptr->m_value);
+        }
+    }
     event->accept();
 }
 
@@ -603,6 +694,29 @@ bool isStepKey(int key)
     }
 }
 
+// #182: a padlock filling \a box: a shackle (a stroked arch) on a filled body with rounded corners
+void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color)
+{
+    const double w = box.width();
+    const double h = box.height();
+    const double cx = box.center().x();
+    const double stroke = w * 0.18;
+    const double bodyTop = box.top() + h * 0.42;
+    const double arch = w * 0.70 - stroke; // Width of the centre line of the shackle
+    const QRectF archRect(cx - arch * 0.5, box.top() + stroke * 0.5, arch, arch);
+    QPainterPath shackle;
+    shackle.moveTo(cx - arch * 0.5, bodyTop + stroke * 0.5);
+    shackle.lineTo(cx - arch * 0.5, archRect.center().y());
+    shackle.arcTo(archRect, 180.0, -180.0);
+    shackle.lineTo(cx + arch * 0.5, bodyTop + stroke * 0.5);
+    painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::FlatCap));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(shackle);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(color);
+    painter.drawRoundedRect(QRectF(box.left(), bodyTop, w, box.bottom() - bodyTop), w * 0.12, w * 0.12);
+}
+
 } // namespace
 
 void IndustrialKnob::keyPressEvent(QKeyEvent *event)
@@ -610,6 +724,10 @@ void IndustrialKnob::keyPressEvent(QKeyEvent *event)
     const int key = event->key();
     if (!isStepKey(key)) {
         QWidget::keyPressEvent(event);
+        return;
+    }
+    if (d_ptr->m_readOnly) {
+        event->ignore(); // #182: read-only, the key goes to the parent
         return;
     }
     // #182: a key action starts at the first press of a key (or at an auto-repeat, when the first press was not
@@ -620,28 +738,30 @@ void IndustrialKnob::keyPressEvent(QKeyEvent *event)
         d_ptr->m_actionStartValue = d_ptr->m_value;
     }
     d_ptr->m_actionKey = key;
+    // #182: within the value limits; Home and End go to them
+    double proposed = d_ptr->m_maximum; // Qt::Key_End
     switch (key) {
     case Qt::Key_Left:
     case Qt::Key_Down:
-        setValue(d_ptr->m_value - d_ptr->m_step);
+        proposed = d_ptr->m_value - d_ptr->m_step;
         break;
     case Qt::Key_Right:
     case Qt::Key_Up:
-        setValue(d_ptr->m_value + d_ptr->m_step);
+        proposed = d_ptr->m_value + d_ptr->m_step;
         break;
     case Qt::Key_PageDown:
-        setValue(d_ptr->m_value - pageStep());
+        proposed = d_ptr->m_value - pageStep();
         break;
     case Qt::Key_PageUp:
-        setValue(d_ptr->m_value + pageStep());
+        proposed = d_ptr->m_value + pageStep();
         break;
     case Qt::Key_Home:
-        setValue(d_ptr->m_minimum);
+        proposed = d_ptr->m_minimum;
         break;
-    default: // Qt::Key_End
-        setValue(d_ptr->m_maximum);
+    default:
         break;
     }
+    setValue(d_ptr->operatorTarget(proposed));
     event->accept();
 }
 
@@ -649,6 +769,10 @@ void IndustrialKnob::keyReleaseEvent(QKeyEvent *event)
 {
     if (!isStepKey(event->key())) {
         QWidget::keyReleaseEvent(event);
+        return;
+    }
+    if (d_ptr->m_readOnly) {
+        event->ignore();
         return;
     }
     if (!event->isAutoRepeat() && d_ptr->m_keyAction && event->key() == d_ptr->m_actionKey) {
@@ -660,6 +784,7 @@ void IndustrialKnob::keyReleaseEvent(QKeyEvent *event)
 void IndustrialKnob::focusOutEvent(QFocusEvent *event)
 {
     d_ptr->endAction(this); // #182: the release will not reach the knob
+    d_ptr->m_wheelRemainder = 0;
     QWidget::focusOutEvent(event);
 }
 
@@ -741,6 +866,49 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
         QPointF p1(center.x() + (scaleRadius - tickLen) * cosR, center.y() + (scaleRadius - tickLen) * sinR);
         QPointF p2(center.x() + scaleRadius * cosR, center.y() + scaleRadius * sinR);
         painter.drawLine(p1, p2);
+    }
+
+    // #182: outside the value limits the band of the ticks is hatched, and each limit inside the range has a radial
+    // stop mark that reaches further in than the ticks: the limits do not rely on colour
+    const double limitLow = d_ptr->limitLow();
+    const double limitHigh = d_ptr->limitHigh();
+    if (limitLow > d_ptr->m_minimum || limitHigh < d_ptr->m_maximum) {
+        const double inner = scaleRadius - tickLen;
+        const auto pointAt = [&](double r, double angle) {
+            const double rad = (angle - 90.0) * M_PI / 180.0;
+            return QPointF(center.x() + r * std::cos(rad), center.y() + r * std::sin(rad));
+        };
+        const QRectF outerRect(center.x() - scaleRadius, center.y() - scaleRadius, 2.0 * scaleRadius, 2.0 * scaleRadius);
+        const QRectF innerRect(center.x() - inner, center.y() - inner, 2.0 * inner, 2.0 * inner);
+        const double spacing = std::max(3.0, radius * 0.05); // Between the hatch lines, at the middle of the band
+        const double stepAngle = spacing / ((inner + scaleRadius) * 0.5) * 180.0 / M_PI;
+        const auto hatch = [&](double from, double to) {
+            const double a0 = valueToAngle(from);
+            const double a1 = valueToAngle(to);
+            if (a1 <= a0) return;
+            // The band between the two angles; QPainterPath angles go counter-clockwise from 3 o'clock
+            QPainterPath band;
+            band.arcMoveTo(outerRect, 90.0 - a0);
+            band.arcTo(outerRect, 90.0 - a0, -(a1 - a0));
+            band.arcTo(innerRect, 90.0 - a1, a1 - a0);
+            band.closeSubpath();
+            painter.save();
+            painter.setClipPath(band, Qt::IntersectClip);
+            painter.setPen(QPen(d_ptr->m_scaleColor, 1.0));
+            for (double a = a0 - stepAngle; a <= a1 + stepAngle; a += stepAngle) {
+                painter.drawLine(pointAt(inner, a), pointAt(scaleRadius, a + stepAngle * 1.2));
+            }
+            painter.restore();
+        };
+        if (limitLow > d_ptr->m_minimum) hatch(d_ptr->m_minimum, limitLow);
+        if (limitHigh < d_ptr->m_maximum) hatch(limitHigh, d_ptr->m_maximum);
+        painter.setPen(QPen(d_ptr->m_scaleColor, std::max(2.5, radius * 0.03), Qt::SolidLine, Qt::FlatCap));
+        for (const double limit : {limitLow, limitHigh}) {
+            if (limit > d_ptr->m_minimum && limit < d_ptr->m_maximum) {
+                const double angle = valueToAngle(limit);
+                painter.drawLine(pointAt(scaleRadius - tickLen * 1.5, angle), pointAt(scaleRadius, angle));
+            }
+        }
     }
 
     // Numeric Labels
@@ -894,12 +1062,20 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     painter.setBrush(d_ptr->m_pointerColor);
     painter.drawPolygon(ptrPoly);
 
-    // Specular center dot
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(255, 255, 255, 140));
-    painter.drawEllipse(QPointF(-1.0, -1.0), 2.5, 2.5);
+    // Specular center dot; in read-only the padlock is there instead
+    if (!d_ptr->m_readOnly) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(255, 255, 255, 140));
+        painter.drawEllipse(QPointF(-1.0, -1.0), 2.5, 2.5);
+    }
 
     painter.restore();
+
+    // #182: read-only. A padlock at the centre of the cap, inside the inner end of the pointer, so the pointer is
+    // never covered; a path, so it needs no font
+    if (d_ptr->m_readOnly) {
+        drawPadlock(painter, IndustrialKnobPrivate::padlockRect(scale), d_ptr->m_textColor);
+    }
 
     // 7. Dynamic Digital Value Readout (Bottom Pod)
     if (d_ptr->m_valueDisplayVisible) {

@@ -23,7 +23,7 @@ class IndustrialKnobTestAccess;
  * \brief Rotary knob for a continuous value or discrete steps.
  *
  * IndustrialKnob provides an interactive rotary control with a metallic face, a knurled grip ring,
- * continuous or discrete indexed stepping, mouse dragging, mouse wheel, and keyboard arrow controls.
+ * continuous or discrete indexed stepping, mouse dragging, keyboard controls and, when enabled, the mouse wheel.
  *
  * The background ticks and scale are cached in a pixmap at the device pixel ratio, so a rotation redraws only the
  * moving parts.
@@ -41,6 +41,21 @@ class IndustrialKnobTestAccess;
  *   at the release that is not an auto-repeat); a drag or a held key also ends when the knob loses focus or is
  *   hidden. setValue() never emits valueCommitted(), so an application that writes committed values to a device
  *   and shows the value read back with setValue() gets no write loop.
+ * - Mouse wheel: off by default (setWheelEnabled()); while it is off, wheel events are ignored and reach the parent,
+ *   so a scroll area around the knob scrolls. When it is on, it acts only while the knob has focus: each notch (120
+ *   units of QWheelEvent::angleDelta(), summed over the events of a high-resolution wheel or a touchpad) is one
+ *   step() and commits at once, with valueChanged() and valueCommitted(). The part of a notch not yet reached is
+ *   dropped when the knob loses focus.
+ * - Read-only (setReadOnly()): mouse, keyboard and wheel input are ignored and reach the parent; the knob can still
+ *   take focus and setValue() still works. The knob is not greyed out: a padlock is drawn at the centre of the cap,
+ *   in textColor(), inside the inner end of the pointer, so it never covers it. Turning read-only on during a drag or
+ *   a held key ends that action, with valueCommitted() if it changed the value.
+ * - Value limits (setValueLimits()): they bind the operator's input only. A drag, the keys and the wheel never take
+ *   the value outside [valueLimitLow(), valueLimitHigh()], and Home/End go to the limits; from a value outside the
+ *   limits, input towards them is applied and input that would take the value further out is ignored. setValue()
+ *   is bound by the range only, so a value read back from a device outside the limits is shown as it is. On the
+ *   scale the parts outside the limits are hatched and each limit has a radial stop mark. In Discrete mode the
+ *   operator reaches only the steps inside the limits.
  *
  * Non-finite input (#151, #182): the knob is an input control, so it has no value state (see
  * QtIndustrialWidgets::ValueState for the indicators). setValue() rejects NaN and +Inf / -Inf: the value stays
@@ -82,6 +97,8 @@ class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
     Q_PROPERTY(QColor scaleColor READ scaleColor WRITE setScaleColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor trackColor READ trackColor WRITE setTrackColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
+    Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly NOTIFY readOnlyChanged)
+    Q_PROPERTY(bool wheelEnabled READ isWheelEnabled WRITE setWheelEnabled NOTIFY appearanceChanged)
 
 public:
     /** \brief Operating mode for the knob adjustment behavior. */
@@ -143,6 +160,25 @@ public:
     [[nodiscard]] QColor trackColor() const;
     /** \brief Returns the label and numeric text color. */
     [[nodiscard]] QColor textColor() const;
+
+    /** \brief Returns true if the operator's input is ignored (#182). Default: false. */
+    [[nodiscard]] bool isReadOnly() const;
+    /** \brief Returns true if the mouse wheel steps the value while the knob has focus (#182). Default: false. */
+    [[nodiscard]] bool isWheelEnabled() const;
+    /**
+     * \brief Returns the low value limit of the operator's input (#182).
+     *
+     * The limit set with setValueLimits(), within the range: a limit below minimum() reads minimum(). Without limits,
+     * minimum().
+     */
+    [[nodiscard]] double valueLimitLow() const;
+    /**
+     * \brief Returns the high value limit of the operator's input (#182).
+     *
+     * The limit set with setValueLimits(), within the range: a limit above maximum() reads maximum(). Without limits,
+     * maximum().
+     */
+    [[nodiscard]] double valueLimitHigh() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     /**
@@ -214,6 +250,27 @@ public Q_SLOTS:
     /** \brief Sets the text labels color. */
     void setTextColor(const QColor &color);
 
+    /**
+     * \brief Ignores the operator's input while \a readOnly is true (#182).
+     *
+     * Mouse, keyboard and wheel events are ignored and reach the parent; focus and setValue() still work. A drag or a
+     * held key running when read-only is turned on ends, with valueCommitted() if it changed the value. Emits
+     * readOnlyChanged() if the state changes.
+     */
+    void setReadOnly(bool readOnly);
+    /** \brief Lets the mouse wheel step the value while the knob has focus (#182); off by default. */
+    void setWheelEnabled(bool enabled);
+    /**
+     * \brief Sets the limits of the operator's input (#182).
+     *
+     * Non-finite limits and \a low >= \a high are ignored. The limits are kept as given and read within the range
+     * (valueLimitLow(), valueLimitHigh()), so they apply again in full when the range grows back. The value is not
+     * changed: setValue() is bound by the range only. Emits valueLimitsChanged() if the limits read change.
+     */
+    void setValueLimits(double low, double high);
+    /** \brief Removes the value limits: they are the range again (#182). Emits valueLimitsChanged() if they change. */
+    void clearValueLimits();
+
 Q_SIGNALS:
     /** \brief Emitted at every change of the value, from the operator or from the application. */
     void valueChanged(double value);
@@ -224,6 +281,13 @@ Q_SIGNALS:
     void valueCommitted(double value);
     /** \brief Emitted when the scale range changes. */
     void rangeChanged(double min, double max);
+    /** \brief Emitted when isReadOnly() changes (#182). */
+    void readOnlyChanged(bool readOnly);
+    /**
+     * \brief Emitted when valueLimitLow() or valueLimitHigh() change (#182): from setValueLimits(),
+     * clearValueLimits(), or a range change that moves the limits read.
+     */
+    void valueLimitsChanged(double low, double high);
     /** \brief Emitted when the knob mode changes. */
     void modeChanged(KnobMode mode);
     /** \brief Emitted when visual styling properties change. */

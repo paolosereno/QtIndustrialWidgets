@@ -32,6 +32,11 @@ public:
         return knob.d_ptr->m_lastMinimumMeasures;
     }
 
+    // #182: where the padlock of read-only is drawn, in logical px, at the scale of the last paint
+    static QRectF padlockRect(const IndustrialKnob &knob) {
+        return IndustrialKnobPrivate::padlockRect(knob.d_ptr->m_scale.geometry);
+    }
+
     // Label texts formatted in the last computation of minimumSizeHint() (labelText() calls)
     static quint64 lastMinimumLabelFormats(const IndustrialKnob &knob) {
         return knob.d_ptr->m_lastMinimumLabelFormats;

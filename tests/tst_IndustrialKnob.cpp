@@ -18,6 +18,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QVBoxLayout>
 
 #include <algorithm>
@@ -214,6 +215,89 @@ double valueAtAngle(const IndustrialKnob &knob, double angle)
     return knob.minimum() + (angle - knob.startAngle()) / knob.spanAngle() * (knob.maximum() - knob.minimum());
 }
 
+// The angle of \a value (0 = 12 o'clock, clockwise)
+double angleOfValue(const IndustrialKnob &knob, double value)
+{
+    return knob.startAngle() + (value - knob.minimum()) / (knob.maximum() - knob.minimum()) * knob.spanAngle();
+}
+
+// #182: a parent that takes the events the knob passes on
+class RecordingParent : public QWidget
+{
+public:
+    int keyPresses{0};
+    int mousePresses{0};
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        ++keyPresses;
+        event->accept();
+    }
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        ++mousePresses;
+        event->accept();
+    }
+};
+
+// Sends one wheel event of \a delta units (120 = one notch) to the knob and returns whether the knob accepted it.
+// Qt passes an ignored wheel event from the window system on to the parent; one sent from here goes to the knob only,
+// so its acceptance is what is checked
+bool sendWheel(IndustrialKnob &knob, int delta)
+{
+    const QPointF point(knob.width() * 0.5, knob.height() * 0.5);
+    QWheelEvent wheel(point, knob.mapToGlobal(point), QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(&knob, &wheel);
+    return wheel.isAccepted();
+}
+
+// Gives \a widget the keyboard focus in its active window
+bool focusOn(QWidget &widget)
+{
+    QWidget *window = widget.window();
+    window->show();
+    window->activateWindow();
+    if (!QTest::qWaitForWindowActive(window)) {
+        return false;
+    }
+    widget.setFocus(Qt::OtherFocusReason);
+    return QTest::qWaitFor([&] { return widget.hasFocus(); });
+}
+
+// Device pixels of the pointer: those that change with pointerColor(). The value display, drawn in pointerColor() too,
+// must be hidden
+QVector<QPoint> pointerPixels(IndustrialKnob &knob)
+{
+    const QColor keep = knob.pointerColor();
+    knob.setPointerColor(QColor(10, 200, 30));
+    const QImage first = renderKnob(knob);
+    knob.setPointerColor(QColor(200, 30, 10));
+    const QVector<QPoint> out = differingPixels(first, renderKnob(knob));
+    knob.setPointerColor(keep);
+    return out;
+}
+
+// Distance of the centre of device pixel \a p from \a center, in logical px
+double distanceOf(const QPoint &p, const QPointF &center, qreal dpr)
+{
+    return std::hypot((p.x() + 0.5) / dpr - center.x(), (p.y() + 0.5) / dpr - center.y());
+}
+
+// Angle of the centre of device pixel \a p around \a center, in degrees (0 = 12 o'clock, clockwise), in (-180, 180]
+double angleOf(const QPoint &p, const QPointF &center, qreal dpr)
+{
+    return std::atan2((p.x() + 0.5) / dpr - center.x(), center.y() - (p.y() + 0.5) / dpr) * 180.0 / M_PI;
+}
+
+double lightness(QRgb p) { return (0.2126 * qRed(p) + 0.7152 * qGreen(p) + 0.0722 * qBlue(p)) / 255.0; }
+
+int colourDistance(QRgb a, const QColor &b)
+{
+    return std::max({std::abs(qRed(a) - b.red()), std::abs(qGreen(a) - b.green()), std::abs(qBlue(a) - b.blue())});
+}
+
 } // namespace
 
 class tst_IndustrialKnob : public QObject
@@ -273,6 +357,22 @@ private Q_SLOTS:
     void labelInkStaysInsideItsMeasure();
     void dprChangeOfAVisibleKnob_data();
     void dprChangeOfAVisibleKnob();
+
+    // #182, PR 2: read-only, value limits, mouse wheel
+    void readOnlyIgnoresTheOperatorInput();
+    void readOnlyEndsTheRunningAction_data();
+    void readOnlyEndsTheRunningAction();
+    void readOnlyDrawsThePadlockInsideThePointer_data();
+    void readOnlyDrawsThePadlockInsideThePointer();
+    void valueLimitsReadWithinTheRange();
+    void setValueOutsideTheLimitsIsKept();
+    void operatorInputStaysInsideTheLimits();
+    void fromOutsideTheLimitsOnlyInwardInputApplies();
+    void discreteModeReachesOnlyTheStepsInsideTheLimits();
+    void limitsAreHatchedWithStopMarks_data();
+    void limitsAreHatchedWithStopMarks();
+    void wheelIsOffByDefault();
+    void wheelStepsOnlyWithFocus();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -1684,6 +1784,636 @@ void tst_IndustrialKnob::scaleLabelsKeepMinimumGap()
         QVERIFY2(drawn.count(i) == 1, qPrintable(QStringLiteral("label %1 (\"%2\") is selected but not drawn")
                                                      .arg(i).arg(labels.texts[static_cast<size_t>(i)])));
     }
+}
+
+// #182: in read-only every key, a drag and the wheel change nothing and emit nothing; keys and presses reach the
+// parent, the wheel is ignored. The knob keeps the focus and setValue() still works. Off again, the same input acts
+void tst_IndustrialKnob::readOnlyIgnoresTheOperatorInput()
+{
+    RecordingParent parent;
+    parent.resize(300, 300);
+    auto *knob = new IndustrialKnob(&parent);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->setWheelEnabled(true);
+    knob->resize(220, 240);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    const DrawnDial dial = drawnDialOf(*knob);
+    QVERIFY(dial.radius > 20.0);
+    QVERIFY(focusOn(*knob));
+
+    knob->setValue(50.0);
+    QSignalSpy readOnly(knob, &IndustrialKnob::readOnlyChanged);
+    QVERIFY(!knob->isReadOnly());
+    knob->setReadOnly(true);
+    knob->setReadOnly(true);
+    QVERIFY(knob->isReadOnly());
+    QCOMPARE(readOnly.count(), 1);
+    QCOMPARE(readOnly.at(0).at(0).toBool(), true);
+
+    QSignalSpy changed(knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(knob, &IndustrialKnob::valueCommitted);
+    for (const Qt::Key key : {Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right, Qt::Key_PageUp, Qt::Key_PageDown,
+                              Qt::Key_Home, Qt::Key_End}) {
+        const int before = parent.keyPresses;
+        QTest::keyClick(knob, key);
+        QVERIFY2(parent.keyPresses == before + 1,
+                 qPrintable(QStringLiteral("key %1 did not reach the parent").arg(QKeySequence(key).toString())));
+    }
+    QTest::mousePress(knob, Qt::LeftButton, Qt::NoModifier, dialPoint(dial, 0.0).toPoint());
+    QCOMPARE(parent.mousePresses, 1);
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    sendMouse(*knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    QVERIFY(!sendWheel(*knob, 120));
+    QVERIFY(!sendWheel(*knob, -240));
+    QCOMPARE(knob->value(), 50.0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(committed.count(), 0);
+    QVERIFY(knob->hasFocus());
+
+    knob->setValue(60.0);
+    QCOMPARE(knob->value(), 60.0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(committed.count(), 0);
+
+    // Control: off again, the same input reaches the knob and acts
+    knob->setReadOnly(false);
+    QCOMPARE(readOnly.count(), 2);
+    const int keysBefore = parent.keyPresses;
+    QTest::keyClick(knob, Qt::Key_Up);
+    QCOMPARE(knob->value(), 61.0);
+    QCOMPARE(parent.keyPresses, keysBefore);
+    QVERIFY(sendWheel(*knob, 120));
+    QCOMPARE(knob->value(), 62.0);
+    knob->setValue(50.0);
+    QTest::mousePress(knob, Qt::LeftButton, Qt::NoModifier, dialPoint(dial, 0.0).toPoint());
+    QCOMPARE(parent.mousePresses, 1);
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    sendMouse(*knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    QVERIFY2(std::abs(knob->value() - 83.3) < 1.0, qPrintable(QString::number(knob->value())));
+}
+
+void tst_IndustrialKnob::readOnlyEndsTheRunningAction_data()
+{
+    QTest::addColumn<bool>("drag");
+    QTest::newRow("drag") << true;
+    QTest::newRow("held key") << false;
+}
+
+// #182: read-only turned on during a drag or a held key ends it there and commits once; what follows does nothing
+void tst_IndustrialKnob::readOnlyEndsTheRunningAction()
+{
+    QFETCH(bool, drag);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    knob.setValue(50.0);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+
+    if (drag) {
+        sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    } else {
+        sendKey(knob, QEvent::KeyPress, Qt::Key_PageUp, false);
+        sendKey(knob, QEvent::KeyPress, Qt::Key_PageUp, true);
+    }
+    const double moved = knob.value();
+    QVERIFY(moved > 50.0);
+    QCOMPARE(committed.count(), 0);
+
+    knob.setReadOnly(true);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), moved);
+
+    if (drag) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+        sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    } else {
+        sendKey(knob, QEvent::KeyPress, Qt::Key_PageUp, true);
+        sendKey(knob, QEvent::KeyRelease, Qt::Key_PageUp, false);
+    }
+    QCOMPARE(knob.value(), moved);
+    QCOMPARE(committed.count(), 1);
+}
+
+void tst_IndustrialKnob::readOnlyDrawsThePadlockInsideThePointer_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<double>("value");
+    struct Size { int w; int h; };
+    for (const Size size : {Size{220, 240}, Size{160, 180}}) {
+        // 63.15: the pointer towards an upper corner of the padlock (35.5 degrees)
+        for (const double value : {0.0, 33.0, 50.0, 63.15, 100.0}) {
+            QTest::addRow("%dx%d, value %g", size.w, size.h, value) << size.w << size.h << value;
+        }
+    }
+}
+
+// #182: read-only draws a padlock: a shape in textColor() that changes the lightness of the cap (not a tint), inside
+// the inner end of the pointer as it is drawn, so no pixel of the pointer changes, at every angle of the pointer. The
+// knob is not greyed out: nothing else changes, and turning read-only off gives the same pixels as before
+void tst_IndustrialKnob::readOnlyDrawsThePadlockInsideThePointer()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(double, value);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValueDisplayVisible(false);
+    knob.resize(width, height);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const QColor knobColor = knob.knobColor();
+    const QColor scaleColor = knob.scaleColor();
+    const DrawnDial dial = drawnDialOf(knob);
+    knob.setKnobColor(knobColor);
+    knob.setScaleColor(scaleColor);
+    QVERIFY(dial.radius > 20.0);
+    const qreal dpr = knob.devicePixelRatioF();
+
+    knob.setValue(value);
+    const QVector<QPoint> pointer = pointerPixels(knob);
+    QVERIFY(!pointer.isEmpty());
+    double pointerInner = std::numeric_limits<double>::max();
+    for (const QPoint &p : pointer) {
+        pointerInner = std::min(pointerInner, distanceOf(p, dial.center, dpr));
+    }
+
+    const QImage normal = renderKnob(knob);
+    knob.setReadOnly(true);
+    const QImage locked = renderKnob(knob);
+    const QVector<QPoint> changed = differingPixels(normal, locked);
+
+    int shape = 0;
+    int ink = 0;
+    const QRectF rect = internal::IndustrialKnobTestAccess::padlockRect(knob);
+    const QRectF deviceRect(rect.x() * dpr - 1.0, rect.y() * dpr - 1.0, rect.width() * dpr + 2.0, rect.height() * dpr + 2.0);
+    for (const QPoint &p : changed) {
+        const double distance = distanceOf(p, dial.center, dpr);
+        QVERIFY2(distance < pointerInner,
+                 qPrintable(QStringLiteral("read-only changes pixel (%1, %2) at %3 px from the centre; the pointer starts at %4 px")
+                                .arg(p.x()).arg(p.y()).arg(distance).arg(pointerInner)));
+        QVERIFY2(deviceRect.contains(QPointF(p) + QPointF(0.5, 0.5)),
+                 qPrintable(QStringLiteral("read-only changes pixel (%1, %2), outside the padlock").arg(p.x()).arg(p.y())));
+        shape += std::abs(lightness(locked.pixel(p)) - lightness(normal.pixel(p))) >= 0.25 ? 1 : 0;
+        ink += colourDistance(locked.pixel(p), knob.textColor()) <= 24 ? 1 : 0;
+    }
+    for (const QPoint &p : pointer) {
+        QVERIFY2(locked.pixel(p) == normal.pixel(p),
+                 qPrintable(QStringLiteral("the padlock covers the pointer at (%1, %2)").arg(p.x()).arg(p.y())));
+    }
+    const int area = static_cast<int>(std::round(dpr * dpr));
+    QVERIFY2(shape >= 25 * area, qPrintable(QStringLiteral("%1 pixels change lightness by 0.25 or more").arg(shape)));
+    QVERIFY2(ink >= 12 * area, qPrintable(QStringLiteral("%1 pixels in textColor").arg(ink)));
+
+    knob.setReadOnly(false);
+    QCOMPARE(renderKnob(knob), normal);
+}
+
+// #182: the limits read are those set, within the range; without limits, the range. valueLimitsChanged() follows
+// what is read, setRange() included. Invalid limits are ignored, and setting limits never changes the value
+void tst_IndustrialKnob::valueLimitsReadWithinTheRange()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValue(90.0);
+    QCOMPARE(knob.valueLimitLow(), 0.0);
+    QCOMPARE(knob.valueLimitHigh(), 100.0);
+    QSignalSpy limits(&knob, &IndustrialKnob::valueLimitsChanged);
+    QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+    const auto lastLimits = [&]() {
+        return std::make_pair(limits.last().at(0).toDouble(), limits.last().at(1).toDouble());
+    };
+
+    knob.setValueLimits(20.0, 80.0);
+    QCOMPARE(knob.valueLimitLow(), 20.0);
+    QCOMPARE(knob.valueLimitHigh(), 80.0);
+    QCOMPARE(limits.count(), 1);
+    QCOMPARE(lastLimits(), std::make_pair(20.0, 80.0));
+    QCOMPARE(knob.value(), 90.0);
+    QCOMPARE(changed.count(), 0);
+    knob.setValueLimits(20.0, 80.0);
+    QCOMPARE(limits.count(), 1);
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const auto &invalid : {std::make_pair(nan, 80.0), std::make_pair(20.0, inf), std::make_pair(-inf, 80.0),
+                                std::make_pair(80.0, 20.0), std::make_pair(50.0, 50.0)}) {
+        knob.setValueLimits(invalid.first, invalid.second);
+        QCOMPARE(knob.valueLimitLow(), 20.0);
+        QCOMPARE(knob.valueLimitHigh(), 80.0);
+    }
+    QCOMPARE(limits.count(), 1);
+
+    knob.setRange(30.0, 70.0);
+    QCOMPARE(knob.valueLimitLow(), 30.0);
+    QCOMPARE(knob.valueLimitHigh(), 70.0);
+    QCOMPARE(limits.count(), 2);
+    QCOMPARE(lastLimits(), std::make_pair(30.0, 70.0));
+    knob.setRange(0.0, 100.0); // The limits as set apply again in full
+    QCOMPARE(knob.valueLimitLow(), 20.0);
+    QCOMPARE(knob.valueLimitHigh(), 80.0);
+    QCOMPARE(limits.count(), 3);
+    knob.setRange(10.0, 100.0); // Moves the range, not the limits read
+    QCOMPARE(limits.count(), 3);
+
+    knob.setValueLimits(-50.0, 150.0);
+    QCOMPARE(knob.valueLimitLow(), 10.0);
+    QCOMPARE(knob.valueLimitHigh(), 100.0);
+    QCOMPARE(limits.count(), 4);
+    knob.setRange(0.0, 200.0);
+    QCOMPARE(knob.valueLimitLow(), 0.0);
+    QCOMPARE(knob.valueLimitHigh(), 150.0);
+    QCOMPARE(limits.count(), 5);
+
+    knob.clearValueLimits();
+    QCOMPARE(knob.valueLimitLow(), 0.0);
+    QCOMPARE(knob.valueLimitHigh(), 200.0);
+    QCOMPARE(limits.count(), 6);
+    knob.clearValueLimits();
+    QCOMPARE(limits.count(), 6);
+    knob.setRange(0.0, 100.0); // Without limits they are the range, and follow it
+    QCOMPARE(knob.valueLimitHigh(), 100.0);
+    QCOMPARE(limits.count(), 7);
+    QCOMPARE(lastLimits(), std::make_pair(0.0, 100.0));
+}
+
+// #182: setValue() is bound by the range only: inside the scale and outside the limits, the value is kept as it is
+// and drawn where it is, not at the limit
+void tst_IndustrialKnob::setValueOutsideTheLimitsIsKept()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setValueLimits(20.0, 80.0);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    knob.setValue(90.0);
+    QCOMPARE(knob.value(), 90.0);
+    knob.setValue(5.0);
+    QCOMPARE(knob.value(), 5.0);
+    knob.setValue(150.0);
+    QCOMPARE(knob.value(), 100.0);
+    knob.setValue(-1.0);
+    QCOMPARE(knob.value(), 0.0);
+    QCOMPARE(committed.count(), 0);
+
+    knob.setValueDisplayVisible(false);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const QColor knobColor = knob.knobColor();
+    const QColor scaleColor = knob.scaleColor();
+    const DrawnDial dial = drawnDialOf(knob);
+    knob.setKnobColor(knobColor);
+    knob.setScaleColor(scaleColor);
+    const qreal dpr = knob.devicePixelRatioF();
+    for (const double value : {90.0, 5.0}) {
+        knob.setValue(value);
+        const QVector<QPoint> pointer = pointerPixels(knob);
+        QVERIFY(!pointer.isEmpty());
+        // The tip of the pointer: its pixel farthest from the centre
+        QPoint tip = pointer.first();
+        for (const QPoint &p : pointer) {
+            if (distanceOf(p, dial.center, dpr) > distanceOf(tip, dial.center, dpr)) {
+                tip = p;
+            }
+        }
+        const double angle = angleOf(tip, dial.center, dpr);
+        QVERIFY2(std::abs(angle - angleOfValue(knob, value)) < 3.0,
+                 qPrintable(QStringLiteral("value %1: pointer at %2 degrees, expected %3")
+                                .arg(value).arg(angle).arg(angleOfValue(knob, value))));
+    }
+}
+
+// #182: keys and a drag never take the value outside the limits; Home/End go to the limits; a step that would
+// cross a limit stops on it. Past a limit a drag holds the value there until the pointer comes back
+void tst_IndustrialKnob::operatorInputStaysInsideTheLimits()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(1.0);
+    knob.setValueLimits(20.0, 80.0);
+    struct Case { double from; Qt::Key key; double to; };
+    for (const Case c : {Case{79.5, Qt::Key_Up, 80.0}, Case{80.0, Qt::Key_Up, 80.0}, Case{78.0, Qt::Key_PageUp, 80.0},
+                         Case{50.0, Qt::Key_End, 80.0}, Case{20.5, Qt::Key_Down, 20.0}, Case{22.0, Qt::Key_PageDown, 20.0},
+                         Case{50.0, Qt::Key_Home, 20.0}, Case{50.0, Qt::Key_Up, 51.0}, Case{50.0, Qt::Key_Left, 49.0}}) {
+        knob.setValue(c.from);
+        QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+        QTest::keyClick(&knob, c.key);
+        const QString what = QStringLiteral("%1 from %2").arg(QKeySequence(c.key).toString()).arg(c.from);
+        QVERIFY2(knob.value() == c.to, qPrintable(what + QStringLiteral(": %1, expected %2").arg(knob.value()).arg(c.to)));
+        QVERIFY2(committed.count() == (c.to != c.from ? 1 : 0), qPrintable(what + QStringLiteral(": commits")));
+    }
+
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    // From 50 (0 degrees) up: 66.7 at 45 degrees, the limit from 64.8 degrees on, back to 66.7
+    knob.setValue(50.0);
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    QVERIFY2(std::abs(knob.value() - 66.7) < 1.0, qPrintable(QString::number(knob.value())));
+    for (const double angle : {90.0, 120.0, 90.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+        QVERIFY2(knob.value() == 80.0, qPrintable(QStringLiteral("angle %1: %2").arg(angle).arg(knob.value())));
+    }
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    QVERIFY2(std::abs(knob.value() - 66.7) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 45.0));
+    QCOMPARE(committed.count(), 1);
+    // And down to the low limit
+    knob.setValue(50.0);
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    for (const double angle : {-45.0, -90.0, -120.0}) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle));
+    }
+    QCOMPARE(knob.value(), 20.0);
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, -120.0));
+    QCOMPARE(committed.count(), 2);
+    QCOMPARE(committed.last().at(0).toDouble(), 20.0);
+}
+
+// #182: from a value outside the limits (set with setValue()), input towards them is applied, input further out is
+// ignored and commits nothing
+void tst_IndustrialKnob::fromOutsideTheLimitsOnlyInwardInputApplies()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setStep(1.0);
+    knob.setValueLimits(20.0, 80.0);
+    struct Case { double from; Qt::Key key; double to; };
+    for (const Case c : {Case{90.0, Qt::Key_Up, 90.0}, Case{90.0, Qt::Key_PageUp, 90.0}, Case{90.0, Qt::Key_End, 90.0},
+                         Case{90.0, Qt::Key_Down, 89.0}, Case{90.0, Qt::Key_PageDown, 85.0}, Case{90.0, Qt::Key_Home, 20.0},
+                         Case{81.0, Qt::Key_PageDown, 76.0},
+                         Case{10.0, Qt::Key_Down, 10.0}, Case{10.0, Qt::Key_PageDown, 10.0}, Case{10.0, Qt::Key_Home, 10.0},
+                         Case{10.0, Qt::Key_Up, 11.0}, Case{10.0, Qt::Key_End, 80.0}}) {
+        knob.setValue(c.from);
+        QSignalSpy changed(&knob, &IndustrialKnob::valueChanged);
+        QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+        QTest::keyClick(&knob, c.key);
+        const QString what = QStringLiteral("%1 from %2").arg(QKeySequence(c.key).toString()).arg(c.from);
+        QVERIFY2(knob.value() == c.to, qPrintable(what + QStringLiteral(": %1, expected %2").arg(knob.value()).arg(c.to)));
+        QVERIFY2(committed.count() == (c.to != c.from ? 1 : 0), qPrintable(what + QStringLiteral(": commits")));
+        QVERIFY2(changed.count() == (c.to != c.from ? 1 : 0), qPrintable(what + QStringLiteral(": changes")));
+    }
+
+    knob.setStep(0.01);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    knob.setValue(90.0); // At 108 degrees
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 108.0));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 120.0)); // Further out: ignored
+    QCOMPARE(knob.value(), 90.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0)); // Back past where it was: inward, applied
+    QVERIFY2(std::abs(knob.value() - 83.3) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 0.0));
+    QVERIFY2(std::abs(knob.value() - 50.0) < 1.0, qPrintable(QString::number(knob.value())));
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, 0.0));
+    QCOMPARE(committed.count(), 1);
+}
+
+// #182: in Discrete mode the operator reaches only the steps inside the limits; setValue() keeps any step
+void tst_IndustrialKnob::discreteModeReachesOnlyTheStepsInsideTheLimits()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    knob.setMode(IndustrialKnob::KnobMode::Discrete);
+    knob.setDiscreteSteps(5); // 0, 25, 50, 75, 100
+    knob.setStep(25.0);
+    knob.setValueLimits(10.0, 60.0); // Steps inside: 25 and 50
+    struct Case { double from; Qt::Key key; double to; };
+    for (const Case c : {Case{50.0, Qt::Key_End, 50.0}, Case{50.0, Qt::Key_Up, 50.0}, Case{50.0, Qt::Key_Home, 25.0},
+                         Case{25.0, Qt::Key_Down, 25.0}, Case{100.0, Qt::Key_Home, 25.0}, Case{100.0, Qt::Key_Down, 75.0},
+                         Case{100.0, Qt::Key_Up, 100.0}, Case{0.0, Qt::Key_Up, 25.0}, Case{0.0, Qt::Key_End, 50.0}}) {
+        knob.setValue(c.from);
+        QCOMPARE(knob.value(), c.from);
+        QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+        QTest::keyClick(&knob, c.key);
+        const QString what = QStringLiteral("%1 from %2").arg(QKeySequence(c.key).toString()).arg(c.from);
+        QVERIFY2(knob.value() == c.to, qPrintable(what + QStringLiteral(": %1, expected %2").arg(knob.value()).arg(c.to)));
+        QVERIFY2(committed.count() == (c.to != c.from ? 1 : 0), qPrintable(what + QStringLiteral(": commits")));
+    }
+
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    knob.setValue(50.0);
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0)); // 83.3: the step inside below it is 50
+    QCOMPARE(knob.value(), 50.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 0.0)); // Not a half turn in one move (#175: ambiguous)
+    QCOMPARE(knob.value(), 50.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, -90.0)); // 16.7: nearest step 25
+    QCOMPARE(knob.value(), 25.0);
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, -120.0)); // 5.6: the nearest step inside is 25
+    QCOMPARE(knob.value(), 25.0);
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, -120.0));
+}
+
+void tst_IndustrialKnob::limitsAreHatchedWithStopMarks_data()
+{
+    QTest::addColumn<bool>("discrete");
+    QTest::addColumn<double>("low");
+    QTest::addColumn<double>("high");
+    QTest::newRow("continuous, 20-80") << false << 20.0 << 80.0;
+    QTest::newRow("continuous, high only (0-70)") << false << 0.0 << 70.0;
+    QTest::newRow("continuous, low only (35-100)") << false << 35.0 << 100.0;
+    QTest::newRow("discrete, 10-60") << true << 10.0 << 60.0;
+}
+
+// #182: the parts of the scale outside the limits are hatched (lines, not a fill) in the band of the ticks, and each
+// limit inside the range has a radial stop mark that reaches further in than the ticks. Nothing is drawn inside the
+// limits, and limits equal to the range, or cleared, draw nothing
+void tst_IndustrialKnob::limitsAreHatchedWithStopMarks()
+{
+    QFETCH(bool, discrete);
+    QFETCH(double, low);
+    QFETCH(double, high);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, 100.0);
+    if (discrete) {
+        knob.setMode(IndustrialKnob::KnobMode::Discrete);
+        knob.setDiscreteSteps(5);
+    }
+    knob.setValue(50.0);
+    knob.setTrackVisible(false);
+    knob.setValueDisplayVisible(false);
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const qreal dpr = knob.devicePixelRatioF();
+    const internal::KnobScaleGeometry g = drawnGeometryOf(knob, knob.width(), knob.height());
+    const QPointF center(g.centerX, g.centerY);
+    const double tickLen = g.radius * 0.12; // As renderStaticScale()
+
+    const QImage plain = renderKnob(knob);
+    knob.setValueLimits(0.0, 100.0);
+    QCOMPARE(renderKnob(knob), plain);
+    knob.setValueLimits(low, high);
+    const QImage limited = renderKnob(knob);
+
+    const double lowAngle = angleOfValue(knob, low);
+    const double highAngle = angleOfValue(knob, high);
+    struct Count { int hatch{0}; int band{0}; int stop{0}; };
+    Count below;
+    Count above;
+    for (int y = 0; y < plain.height(); ++y) {
+        for (int x = 0; x < plain.width(); ++x) {
+            const QPoint p(x, y);
+            const double r = distanceOf(p, center, dpr);
+            double a = angleOf(p, center, dpr);
+            if (a - knob.startAngle() < 0.0) {
+                a += 360.0;
+            }
+            const bool differs = plain.pixel(p) != limited.pixel(p);
+            const double margin = 2.5 / r * 180.0 / M_PI; // 2.5 px across, in degrees
+            const bool inBand = r >= g.scaleRadius - tickLen + 1.0 && r <= g.scaleRadius - 1.0;
+            const bool onScale = a >= knob.startAngle() && a <= knob.startAngle() + knob.spanAngle();
+            if (inBand && onScale && a < lowAngle - margin) {
+                ++below.band;
+                below.hatch += differs ? 1 : 0;
+            }
+            if (inBand && onScale && a > highAngle + margin) {
+                ++above.band;
+                above.hatch += differs ? 1 : 0;
+            }
+            if (!differs) {
+                continue;
+            }
+            QVERIFY2(r >= g.scaleRadius - 1.5 * tickLen - 1.5 && r <= g.scaleRadius + 1.5,
+                     qPrintable(QStringLiteral("pixel (%1, %2) at radius %3, outside the band %4-%5")
+                                    .arg(x).arg(y).arg(r).arg(g.scaleRadius - 1.5 * tickLen).arg(g.scaleRadius)));
+            QVERIFY2(a <= lowAngle + margin || a >= highAngle - margin,
+                     qPrintable(QStringLiteral("pixel (%1, %2) at %3 degrees, inside the limits %4-%5")
+                                    .arg(x).arg(y).arg(a).arg(lowAngle).arg(highAngle)));
+            if (r < g.scaleRadius - 1.1 * tickLen) {
+                (std::abs(a - lowAngle) <= margin ? below : above).stop += std::abs(a - lowAngle) <= margin
+                                                                              || std::abs(a - highAngle) <= margin ? 1 : 0;
+            }
+        }
+    }
+    const int area = static_cast<int>(std::round(dpr * dpr));
+    const auto checkSide = [&](const char *side, const Count &c, bool limited) {
+        if (!limited) {
+            QVERIFY2(c.hatch == 0 && c.stop == 0, qPrintable(QStringLiteral("%1: drawn without a limit").arg(QLatin1String(side))));
+            return;
+        }
+        QVERIFY2(c.band > 0, side);
+        const double fraction = static_cast<double>(c.hatch) / c.band;
+        QVERIFY2(c.hatch >= 30 * area && fraction >= 0.1 && fraction <= 0.8,
+                 qPrintable(QStringLiteral("%1: %2 of %3 band pixels hatched (%4)").arg(QLatin1String(side)).arg(c.hatch).arg(c.band).arg(fraction)));
+        QVERIFY2(c.stop >= 4 * area, qPrintable(QStringLiteral("%1: %2 pixels of the stop mark").arg(QLatin1String(side)).arg(c.stop)));
+    };
+    checkSide("below the low limit", below, low > knob.minimum());
+    checkSide("above the high limit", above, high < knob.maximum());
+
+    knob.clearValueLimits();
+    QCOMPARE(renderKnob(knob), plain);
+}
+
+// #182: the wheel is off by default: a wheel event changes nothing and is ignored, so it goes to the parent
+void tst_IndustrialKnob::wheelIsOffByDefault()
+{
+    QWidget window;
+    auto *knob = new IndustrialKnob(&window);
+    knob->setRange(0.0, 100.0);
+    knob->setValue(50.0);
+    knob->resize(220, 240);
+    QVERIFY(!knob->isWheelEnabled());
+    QVERIFY(focusOn(*knob));
+    QSignalSpy changed(knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(knob, &IndustrialKnob::valueCommitted);
+    QVERIFY(!sendWheel(*knob, 120));
+    QVERIFY(!sendWheel(*knob, -120));
+    QCOMPARE(knob->value(), 50.0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(committed.count(), 0);
+}
+
+// #182: with the wheel on, it acts only while the knob has focus; each notch (120 units, summed over smaller
+// events) is one step, committed at once. What is left of a notch is dropped at focus out. The limits hold
+void tst_IndustrialKnob::wheelStepsOnlyWithFocus()
+{
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *knob = new IndustrialKnob(&window);
+    auto *other = new QLineEdit(&window);
+    layout->addWidget(knob);
+    layout->addWidget(other);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->setValue(50.0);
+    QSignalSpy appearance(knob, &IndustrialKnob::appearanceChanged);
+    knob->setWheelEnabled(true);
+    knob->setWheelEnabled(true);
+    QVERIFY(knob->isWheelEnabled());
+    QCOMPARE(appearance.count(), 1);
+
+    QSignalSpy changed(knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(knob, &IndustrialKnob::valueCommitted);
+    QVERIFY(focusOn(*other));
+    QVERIFY(!sendWheel(*knob, 120));
+    QCOMPARE(knob->value(), 50.0);
+    QCOMPARE(changed.count(), 0);
+
+    QVERIFY(focusOn(*knob));
+    QVERIFY(sendWheel(*knob, 120));
+    QCOMPARE(knob->value(), 51.0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.last().at(0).toDouble(), 51.0);
+    QVERIFY(sendWheel(*knob, -240)); // Two notches: two steps, two commits
+    QCOMPARE(knob->value(), 49.0);
+    QCOMPARE(committed.count(), 3);
+    QCOMPARE(committed.at(1).at(0).toDouble(), 50.0);
+    QCOMPARE(committed.at(2).at(0).toDouble(), 49.0);
+
+    QVERIFY(sendWheel(*knob, 60)); // Half a notch, then the other half
+    QCOMPARE(knob->value(), 49.0);
+    QCOMPARE(committed.count(), 3);
+    QVERIFY(sendWheel(*knob, 60));
+    QCOMPARE(knob->value(), 50.0);
+    QCOMPARE(committed.count(), 4);
+    QVERIFY(sendWheel(*knob, 60)); // Half a notch, then back
+    QVERIFY(sendWheel(*knob, -60));
+    QCOMPARE(knob->value(), 50.0);
+    QCOMPARE(committed.count(), 4);
+
+    QVERIFY(sendWheel(*knob, 80)); // Dropped at focus out
+    QVERIFY(focusOn(*other));
+    QVERIFY(focusOn(*knob));
+    QVERIFY(sendWheel(*knob, 80));
+    QCOMPARE(knob->value(), 50.0);
+    QVERIFY(sendWheel(*knob, 40));
+    QCOMPARE(knob->value(), 51.0);
+    QCOMPARE(committed.count(), 5);
+
+    knob->setValueLimits(0.0, 52.0);
+    QVERIFY(sendWheel(*knob, 360));
+    QCOMPARE(knob->value(), 52.0);
+    QCOMPARE(committed.count(), 6);
+    QCOMPARE(committed.last().at(0).toDouble(), 52.0);
 }
 
 #include "tst_IndustrialKnob.moc"
