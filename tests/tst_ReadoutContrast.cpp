@@ -32,6 +32,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
 #include <QtTest/QSignalSpy>
+#include <QtWidgets/QLineEdit>
 
 #include <algorithm>
 #include <cmath>
@@ -298,6 +299,8 @@ private Q_SLOTS:
     void industrialKnob();
     void industrialKnobPadlock_data();
     void industrialKnobPadlock();
+    void industrialKnobFocusRing_data();
+    void industrialKnobFocusRing();
     void circularBargraph_data();
     void circularBargraph();
     void tankDisplay_data();
@@ -666,6 +669,77 @@ void tst_ReadoutContrast::compass()
     checkReading(measureReadout(img, deviceRect(QRectF(centre.x() - podW / 2.0, centre.y() - podH / 2.0, podW, podH),
                                                 img.devicePixelRatio())),
                  scaledPixels(30, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::industrialKnobFocusRing_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::newRow("dark") << true;
+    QTest::newRow("light") << false;
+}
+
+// #183: the focus indicator is a graphical object (WCAG 1.4.11, 2.4.7): its colour against what lies next to and
+// under it, at 3:1, in both gallery themes. The ring is what changes when the knob takes the focus; its colour is the
+// most frequent colour of those pixels, and each of them is compared with the same pixel without focus
+void tst_ReadoutContrast::industrialKnobFocusRing()
+{
+    QFETCH(bool, dark);
+    constexpr double kGraphicsRatio = 3.0;
+    QWidget window;
+    auto *k = new IndustrialKnob(&window);
+    auto *other = new QLineEdit(&window);
+    k->setRange(0.0, 8000.0);
+    k->setValue(2400.0);
+    style(*k, dark);
+    k->setGeometry(0, 0, 220, 240);
+    other->setGeometry(0, 250, 220, 30);
+    window.resize(220, 290);
+    QPalette background = window.palette(); // The knob is not opaque: around the grip it shows the showcase
+    background.setColor(QPalette::Window, showcaseBackground(dark));
+    window.setPalette(background);
+    window.setAutoFillBackground(true);
+    window.show();
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    other->setFocus();
+    QTRY_VERIFY(other->hasFocus());
+    const QImage plain = renderOn(*k, dark);
+    k->setFocus();
+    QTRY_VERIFY(k->hasFocus());
+    const QImage focused = renderOn(*k, dark);
+
+    QHash<QRgb, int> count;
+    QVector<QPoint> ring;
+    for (int y = 0; y < plain.height(); ++y) {
+        for (int x = 0; x < plain.width(); ++x) {
+            if (plain.pixel(x, y) != focused.pixel(x, y)) {
+                ring.push_back(QPoint(x, y));
+                ++count[focused.pixel(x, y)];
+            }
+        }
+    }
+    QVERIFY2(!ring.isEmpty(), "no focus indicator");
+    QRgb colour = 0;
+    int most = -1;
+    for (auto it = count.cbegin(); it != count.cend(); ++it) {
+        if (it.value() > most) {
+            most = it.value();
+            colour = it.key();
+        }
+    }
+    double worst = std::numeric_limits<double>::max();
+    QRgb worstNext = 0;
+    for (const QPoint &p : ring) {
+        if (contrast(colour, plain.pixel(p)) < worst) {
+            worst = contrast(colour, plain.pixel(p));
+            worstNext = plain.pixel(p);
+        }
+    }
+    QVERIFY2(worst >= kGraphicsRatio,
+             qPrintable(QStringLiteral("focus ring rgb(%1, %2, %3) against rgb(%4, %5, %6): %7:1 (target %8:1)")
+                            .arg(qRed(colour)).arg(qGreen(colour)).arg(qBlue(colour))
+                            .arg(qRed(worstNext)).arg(qGreen(worstNext)).arg(qBlue(worstNext))
+                            .arg(worst, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
 }
 
 void tst_ReadoutContrast::industrialKnobPadlock_data()

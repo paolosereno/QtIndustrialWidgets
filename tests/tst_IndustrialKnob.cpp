@@ -373,6 +373,10 @@ private Q_SLOTS:
     void limitsAreHatchedWithStopMarks();
     void wheelIsOffByDefault();
     void wheelStepsOnlyWithFocus();
+
+    // #183: focus and accessibility
+    void focusRingIsASolidRingInTextColor_data();
+    void focusRingIsASolidRingInTextColor();
 };
 
 void tst_IndustrialKnob::defaultValues()
@@ -2414,6 +2418,66 @@ void tst_IndustrialKnob::wheelStepsOnlyWithFocus()
     QCOMPARE(knob->value(), 52.0);
     QCOMPARE(committed.count(), 6);
     QCOMPARE(committed.last().at(0).toDouble(), 52.0);
+}
+
+void tst_IndustrialKnob::focusRingIsASolidRingInTextColor_data()
+{
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::newRow("220x240") << 220 << 240;
+    QTest::newRow("160x180") << 160 << 180;
+}
+
+// #183: with the focus the knob draws a solid ring in textColor() around the grip, 4 px out from it, in the gap before
+// the band of the ticks: every half degree of its centre line is in textColor() (not dashed, not translucent), and
+// nothing else changes
+void tst_IndustrialKnob::focusRingIsASolidRingInTextColor()
+{
+    QFETCH(int, width);
+    QFETCH(int, height);
+
+    QWidget window;
+    auto *knob = new IndustrialKnob(&window);
+    auto *other = new QLineEdit(&window);
+    knob->setRange(0.0, 100.0);
+    knob->setValue(30.0);
+    knob->setGeometry(0, 0, width, height);
+    other->setGeometry(0, height + 10, width, 30);
+    window.resize(width, height + 50);
+    QVERIFY(focusOn(*other));
+    const QImage plain = renderKnob(*knob);
+    QVERIFY(focusOn(*knob));
+    const QImage focused = renderKnob(*knob);
+
+    const qreal dpr = knob->devicePixelRatioF();
+    const internal::KnobScaleGeometry g = drawnGeometryOf(*knob, width, height);
+    const QPointF center(g.centerX, g.centerY);
+    const double grip = g.radius * 0.65;  // The knob, as paintEvent() draws it
+    const double band = g.radius * 0.80;  // Inner end of the ticks: scaleRadius - tickLen
+    const QVector<QPoint> changed = differingPixels(plain, focused);
+    QVERIFY2(!changed.isEmpty(), "no focus indicator");
+    for (const QPoint &p : changed) {
+        const double r = distanceOf(p, center, dpr);
+        QVERIFY2(r > grip + 0.5 && r < band - 0.5,
+                 qPrintable(QStringLiteral("pixel (%1, %2) at radius %3, outside the gap %4-%5")
+                                .arg(p.x()).arg(p.y()).arg(r).arg(grip).arg(band)));
+    }
+    const double ring = grip + 4.0;
+    int off = 0;
+    QString first;
+    for (int i = 0; i < 720; ++i) {
+        const double rad = i * 0.5 * M_PI / 180.0;
+        const QPoint p(static_cast<int>(std::floor((center.x() + ring * std::sin(rad)) * dpr)),
+                       static_cast<int>(std::floor((center.y() - ring * std::cos(rad)) * dpr)));
+        if (colourDistance(focused.pixel(p), knob->textColor()) > 48) {
+            if (off++ == 0) {
+                const QRgb c = focused.pixel(p);
+                first = QStringLiteral("%1 degrees: rgb(%2, %3, %4)").arg(i * 0.5).arg(qRed(c)).arg(qGreen(c)).arg(qBlue(c));
+            }
+        }
+    }
+    QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 of 720 points of the ring are not textColor, the first at %2")
+                                      .arg(off).arg(first)));
 }
 
 #include "tst_IndustrialKnob.moc"

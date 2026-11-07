@@ -986,9 +986,9 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
         painter.strokePath(trackPath, trackPen);
     }
 
-    // 3. Focus Highlight Ring (when widget has keyboard/tab focus)
+    // 3. Focus ring (#183): solid, in textColor, which contrasts with the background like the labels in any theme
     if (hasFocus()) {
-        painter.setPen(QPen(QColor(0, 229, 255, 140), 1.5, Qt::DashLine));
+        painter.setPen(QPen(d_ptr->m_textColor, 2.0));
         painter.setBrush(Qt::NoBrush);
         painter.drawEllipse(center, knobRadius + 4.0, knobRadius + 4.0);
     }
