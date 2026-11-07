@@ -14,6 +14,9 @@
 namespace QtIndustrialWidgets {
 
 class IndustrialSwitchPrivate;
+namespace internal {
+class IndustrialSwitchTestAccess;
+}
 
 /**
  * \class IndustrialSwitch
@@ -202,6 +205,7 @@ private:
 
     std::unique_ptr<IndustrialSwitchPrivate> d_ptr;
     Q_DECLARE_PRIVATE(IndustrialSwitch)
+    friend class internal::IndustrialSwitchTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets
