@@ -14,6 +14,9 @@
 namespace QtIndustrialWidgets {
 
 class IndustrialSwitchPrivate;
+namespace internal {
+class IndustrialSwitchTestAccess;
+}
 
 /**
  * \class IndustrialSwitch
@@ -28,6 +31,16 @@ class IndustrialSwitchPrivate;
  *   the application (setPosition(), setChecked(), toggle()) are not blocked by the guard.
  * - Animated movement with QVariantAnimation (130 ms, QEasingCurve::OutBack; the guard 180 ms, OutCubic).
  * - Optional status LED, faceplate screws, and labels.
+ * - Focus (#183): Tab, Shift+Tab and a click give the focus, also with the guard closed. While it has focus the switch
+ *   draws a solid 2 px ring in textColor() along the inside of the plate; where a label, the LED or the open guard
+ *   comes into that band the ring leaves a gap around it, so it never covers them.
+ * - Accessibility (#183): with 2 positions the role is QAccessible::CheckBox (checked in the ON position, action
+ *   toggle); with 3 the role is QAccessible::Slider (value = position(), 0 to 2, step 1; actions increase and
+ *   decrease). The value text is the label of the position. The name is accessibleName(), otherwise label(). While the
+ *   guard is closed the switch is read-only and its only action of its own is "Open guard"; open, it also has "Close
+ *   guard". Every change of position sends a state change (2 positions) or a value change (3 positions); opening,
+ *   closing or fitting the guard sends a read-only state change. The role follows positionCount(): set it before
+ *   the switch is shown.
  *
  * \code
  * auto *sw = new IndustrialSwitch(parent);
@@ -202,6 +215,7 @@ private:
 
     std::unique_ptr<IndustrialSwitchPrivate> d_ptr;
     Q_DECLARE_PRIVATE(IndustrialSwitch)
+    friend class internal::IndustrialSwitchTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

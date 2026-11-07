@@ -17,6 +17,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
@@ -82,6 +83,63 @@ QImage renderOn(QWidget &w, bool dark)
     p.end();
     return img;
 }
+
+// #183: the focus indicator of \a control is a graphical object (WCAG 1.4.11, 2.4.7): its colour against what lies
+// next to and under it, at 3:1. \a window, with the showcase background of the theme (a control that is not opaque
+// shows it), holds \a control and \a other, which takes the focus first. The ring is what changes when \a control
+// takes the focus; its colour is the most frequent colour of those pixels, and each of them is compared with the same
+// pixel without focus
+void checkFocusRingContrast(QWidget &window, QWidget &control, QWidget &other, bool dark)
+{
+    constexpr double kGraphicsRatio = 3.0;
+    QPalette background = window.palette();
+    background.setColor(QPalette::Window, showcaseBackground(dark));
+    window.setPalette(background);
+    window.setAutoFillBackground(true);
+    window.show();
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    other.setFocus();
+    QTRY_VERIFY(other.hasFocus());
+    const QImage plain = renderOn(control, dark);
+    control.setFocus();
+    QTRY_VERIFY(control.hasFocus());
+    const QImage focused = renderOn(control, dark);
+
+    QHash<QRgb, int> count;
+    QVector<QPoint> ring;
+    for (int y = 0; y < plain.height(); ++y) {
+        for (int x = 0; x < plain.width(); ++x) {
+            if (plain.pixel(x, y) != focused.pixel(x, y)) {
+                ring.push_back(QPoint(x, y));
+                ++count[focused.pixel(x, y)];
+            }
+        }
+    }
+    QVERIFY2(!ring.isEmpty(), "no focus indicator");
+    QRgb colour = 0;
+    int most = -1;
+    for (auto it = count.cbegin(); it != count.cend(); ++it) {
+        if (it.value() > most) {
+            most = it.value();
+            colour = it.key();
+        }
+    }
+    double worst = std::numeric_limits<double>::max();
+    QRgb worstNext = 0;
+    for (const QPoint &p : ring) {
+        if (contrast(colour, plain.pixel(p)) < worst) {
+            worst = contrast(colour, plain.pixel(p));
+            worstNext = plain.pixel(p);
+        }
+    }
+    QVERIFY2(worst >= kGraphicsRatio,
+             qPrintable(QStringLiteral("focus ring rgb(%1, %2, %3) against rgb(%4, %5, %6): %7:1 (target %8:1)")
+                            .arg(qRed(colour)).arg(qGreen(colour)).arg(qBlue(colour))
+                            .arg(qRed(worstNext)).arg(qGreen(worstNext)).arg(qBlue(worstNext))
+                            .arg(worst, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
+}
+
 
 struct Reading {
     double ratio = 0.0; // the most contrasting text pixel against the lightest or darkest pod row under the text
@@ -301,6 +359,8 @@ private Q_SLOTS:
     void industrialKnobPadlock();
     void industrialKnobFocusRing_data();
     void industrialKnobFocusRing();
+    void industrialSwitchFocusRing_data();
+    void industrialSwitchFocusRing();
     void circularBargraph_data();
     void circularBargraph();
     void tankDisplay_data();
@@ -671,6 +731,28 @@ void tst_ReadoutContrast::compass()
                  scaledPixels(30, img.devicePixelRatio()));
 }
 
+void tst_ReadoutContrast::industrialSwitchFocusRing_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::newRow("dark") << true;
+    QTest::newRow("light") << false;
+}
+
+// #183: the focus ring of the switch against what is under it without focus, at least 3:1, in both gallery themes
+void tst_ReadoutContrast::industrialSwitchFocusRing()
+{
+    QFETCH(bool, dark);
+    QWidget window;
+    auto *sw = new IndustrialSwitch(&window);
+    auto *other = new QLineEdit(&window);
+    sw->setAnimated(false);
+    sw->setLabel(QStringLiteral("MAIN POWER"));
+    sw->setGeometry(0, 0, 120, 190);
+    other->setGeometry(0, 200, 120, 30);
+    window.resize(120, 240);
+    checkFocusRingContrast(window, *sw, *other, dark);
+}
+
 void tst_ReadoutContrast::industrialKnobFocusRing_data()
 {
     QTest::addColumn<bool>("dark");
@@ -679,12 +761,10 @@ void tst_ReadoutContrast::industrialKnobFocusRing_data()
 }
 
 // #183: the focus indicator is a graphical object (WCAG 1.4.11, 2.4.7): its colour against what lies next to and
-// under it, at 3:1, in both gallery themes. The ring is what changes when the knob takes the focus; its colour is the
-// most frequent colour of those pixels, and each of them is compared with the same pixel without focus
+// under it, at 3:1, in both gallery themes (checkFocusRingContrast())
 void tst_ReadoutContrast::industrialKnobFocusRing()
 {
     QFETCH(bool, dark);
-    constexpr double kGraphicsRatio = 3.0;
     QWidget window;
     auto *k = new IndustrialKnob(&window);
     auto *other = new QLineEdit(&window);
@@ -694,52 +774,7 @@ void tst_ReadoutContrast::industrialKnobFocusRing()
     k->setGeometry(0, 0, 220, 240);
     other->setGeometry(0, 250, 220, 30);
     window.resize(220, 290);
-    QPalette background = window.palette(); // The knob is not opaque: around the grip it shows the showcase
-    background.setColor(QPalette::Window, showcaseBackground(dark));
-    window.setPalette(background);
-    window.setAutoFillBackground(true);
-    window.show();
-    window.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-    other->setFocus();
-    QTRY_VERIFY(other->hasFocus());
-    const QImage plain = renderOn(*k, dark);
-    k->setFocus();
-    QTRY_VERIFY(k->hasFocus());
-    const QImage focused = renderOn(*k, dark);
-
-    QHash<QRgb, int> count;
-    QVector<QPoint> ring;
-    for (int y = 0; y < plain.height(); ++y) {
-        for (int x = 0; x < plain.width(); ++x) {
-            if (plain.pixel(x, y) != focused.pixel(x, y)) {
-                ring.push_back(QPoint(x, y));
-                ++count[focused.pixel(x, y)];
-            }
-        }
-    }
-    QVERIFY2(!ring.isEmpty(), "no focus indicator");
-    QRgb colour = 0;
-    int most = -1;
-    for (auto it = count.cbegin(); it != count.cend(); ++it) {
-        if (it.value() > most) {
-            most = it.value();
-            colour = it.key();
-        }
-    }
-    double worst = std::numeric_limits<double>::max();
-    QRgb worstNext = 0;
-    for (const QPoint &p : ring) {
-        if (contrast(colour, plain.pixel(p)) < worst) {
-            worst = contrast(colour, plain.pixel(p));
-            worstNext = plain.pixel(p);
-        }
-    }
-    QVERIFY2(worst >= kGraphicsRatio,
-             qPrintable(QStringLiteral("focus ring rgb(%1, %2, %3) against rgb(%4, %5, %6): %7:1 (target %8:1)")
-                            .arg(qRed(colour)).arg(qGreen(colour)).arg(qBlue(colour))
-                            .arg(qRed(worstNext)).arg(qGreen(worstNext)).arg(qBlue(worstNext))
-                            .arg(worst, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
+    checkFocusRingContrast(window, *k, *other, dark);
 }
 
 void tst_ReadoutContrast::industrialKnobPadlock_data()

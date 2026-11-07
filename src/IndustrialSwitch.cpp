@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
+#include "internal/IndustrialSwitch_p.h"
 
+#include "internal/IndustrialSwitchAccessible.h"
 #include "internal/IndustrialSwitchLayout.h"
 
 #include <QtCore/QEvent>
@@ -23,43 +25,6 @@
 namespace QtIndustrialWidgets {
 
 
-class IndustrialSwitchPrivate {
-public:
-    // #44: size hints computed from the font metrics, cached for the inputs they depend on
-    mutable QString m_hintKey;
-    mutable QSize m_minimumHint;
-    mutable QSize m_preferredHint;
-
-    IndustrialSwitch::SwitchType m_switchType = IndustrialSwitch::SwitchType::ToggleLever;
-    int m_positionCount = 2; // 2 or 3
-    int m_position = 0;      // 0, 1 (or 2 if 3-pos)
-    double m_currentPos = 0.0; // for animation: 0.0 to 1.0 (or 2.0)
-    Qt::Orientation m_orientation = Qt::Vertical;
-
-    bool m_hasSafetyGuard = false;
-    bool m_isGuardOpen = false;
-    double m_guardOpenFactor = 0.0; // 0.0 = closed, 1.0 = fully open
-    bool m_animated = true;
-    bool m_hasLed = true;
-
-    QString m_label;
-    QString m_labelOff = QStringLiteral("OFF");
-    QString m_labelOn = QStringLiteral("ON");
-    QString m_labelCenter = QStringLiteral("AUTO");
-
-    QColor m_plateColor = QColor(42, 45, 52);
-    QColor m_leverColor = QColor(220, 225, 230);
-    QColor m_ledColor = QColor(46, 204, 113);
-    QColor m_textColor = QColor(200, 205, 215);
-    QColor m_guardColor = QColor(220, 53, 69); // Industrial crimson safety red
-
-    QVariantAnimation *m_switchAnim = nullptr;
-    QVariantAnimation *m_guardAnim = nullptr;
-
-    QPixmap m_cachedBackground;
-    bool m_cacheValid = false;
-    bool m_isDragging = false;
-};
 
 namespace {
 
@@ -83,6 +48,35 @@ internal::SwitchLayout layoutOf(const QWidget &w, const IndustrialSwitchPrivate 
     return internal::layoutSwitch(layoutInput(w, d));
 }
 
+// #183: where the focus ring may be drawn: the widget less the boxes of the texts, the glow of the LED and the guard
+// (closed, with its shadow, tab and brackets, and open), 1 px around each. The boxes are united, not added to one
+// path: with the odd-even fill of a path, two boxes that overlap would cancel out where they overlap
+QPainterPath focusRingClip(const internal::SwitchLayout &L, const QRectF &widget, bool led, bool guard)
+{
+    QPainterPath keepOut;
+    const auto leaveOut = [&keepOut](const QRectF &box) {
+        if (!box.isEmpty()) {
+            QPainterPath one;
+            one.addRect(box.adjusted(-1, -1, 1, 1));
+            keepOut = keepOut.united(one);
+        }
+    };
+    for (const QRectF &box : {L.titleBox, L.onBox, L.offBox, L.centerBox}) {
+        leaveOut(box);
+    }
+    if (led) {
+        const double r = internal::kSwitchLedGlow;
+        leaveOut(QRectF(L.led.x() - r, L.led.y() - r, 2 * r, 2 * r));
+    }
+    if (guard) {
+        leaveOut(L.guardOuter);
+        leaveOut(L.openGuard);
+    }
+    QPainterPath clip;
+    clip.addRect(widget);
+    return clip.subtracted(keepOut);
+}
+
 } // namespace
 
 IndustrialSwitch::IndustrialSwitch(QWidget *parent)
@@ -92,6 +86,7 @@ IndustrialSwitch::IndustrialSwitch(QWidget *parent)
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_Hover, true);
+    internal::IndustrialSwitchAccessible::installFactory(); // #183
 
     d_ptr->m_switchAnim = new QVariantAnimation(this);
     d_ptr->m_switchAnim->setDuration(130);
@@ -212,6 +207,7 @@ void IndustrialSwitch::setPosition(int position)
 
     Q_EMIT positionChanged(d_ptr->m_position);
     Q_EMIT toggled(isChecked());
+    d_ptr->notifyPosition(this); // #183
 }
 
 void IndustrialSwitch::setChecked(bool checked)
@@ -244,8 +240,12 @@ void IndustrialSwitch::setOrientation(Qt::Orientation orientation)
 void IndustrialSwitch::setHasSafetyGuard(bool guard)
 {
     if (d_ptr->m_hasSafetyGuard == guard) return;
+    const bool readOnlyBefore = d_ptr->accessibleReadOnly();
     d_ptr->m_hasSafetyGuard = guard;
     d_ptr->m_isGuardOpen = false;
+    if (d_ptr->accessibleReadOnly() != readOnlyBefore) {
+        d_ptr->notifyReadOnly(this); // #183
+    }
     d_ptr->m_guardOpenFactor = 0.0;
     d_ptr->m_cacheValid = false;
     updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
@@ -256,7 +256,11 @@ void IndustrialSwitch::setHasSafetyGuard(bool guard)
 void IndustrialSwitch::setGuardOpen(bool open)
 {
     if (d_ptr->m_isGuardOpen == open) return;
+    const bool readOnlyBefore = d_ptr->accessibleReadOnly();
     d_ptr->m_isGuardOpen = open;
+    if (d_ptr->accessibleReadOnly() != readOnlyBefore) {
+        d_ptr->notifyReadOnly(this); // #183
+    }
 
     if (d_ptr->m_animated) {
         d_ptr->m_guardAnim->stop();
@@ -291,6 +295,10 @@ void IndustrialSwitch::setLabel(const QString &label)
 {
     if (d_ptr->m_label == label) return;
     d_ptr->m_label = label;
+    if (accessibleName().isEmpty()) { // #183: the title is the accessible name
+        QAccessibleEvent event(this, QAccessible::NameChanged);
+        d_ptr->sendAccessible(&event);
+    }
     d_ptr->m_cacheValid = false;
     updateGeometry(); // sizeHint() depends on it with a guard and 3 positions (#44)
     Q_EMIT appearanceChanged();
@@ -941,6 +949,21 @@ void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
     // Draw Safety Guard over the switch if enabled
     if (d_ptr->m_hasSafetyGuard) {
         drawSafetyGuard(painter, switchRect);
+    }
+
+    // Focus ring (#183): solid, 2 px, in textColor (the colour of the labels on the plate), along the inside of the
+    // plate from 2.25 to 4.25 px in from its edge, between the bevel and the corner screws. It keeps 1.5 px clear of
+    // the bevel, so that at a fractional device pixel ratio no pixel holds both the bevel and the edge of the ring.
+    // The layout lets a label, the LED or the open guard come into that band, so the ring leaves out their boxes,
+    // 1 px around them: it never covers them. Its shape comes from the layout only, not from the state of the guard
+    // or from an animation
+    if (hasFocus()) {
+        const QRectF plate = QRectF(rect()).adjusted(3, 3, -3, -3);
+        painter.setClipPath(focusRingClip(layoutOf(*this, d_ptr.get()), QRectF(rect()), d_ptr->m_hasLed, d_ptr->m_hasSafetyGuard));
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(d_ptr->m_textColor, 2.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(plate.adjusted(3.25, 3.25, -3.25, -3.25), 2.75, 2.75);
     }
 }
 
