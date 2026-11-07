@@ -556,7 +556,6 @@ void LinearGauge::renderStaticScale(const QSize &targetSize)
             const internal::ScaleLabelLayout layout = internal::layoutVerticalScaleLabels(
                 metricsAt(fontSize), d_ptr->m_tubeRect.height(), internal::scaleLabelMinGap(fm.height()), room);
             painter.setPen(d_ptr->m_textColor);
-            const double dpr = devicePixelRatioF();
             for (const internal::ScaleLabelSlot &slot : layout.labels) {
                 // The baseline on a device pixel, as measureTextInk() draws it: the ink is where the layout expects it
                 const double centre = d_ptr->m_tubeRect.bottom() - (slot.start + slot.end) * 0.5;
