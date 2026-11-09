@@ -8,6 +8,9 @@ on:
   push:
     tags:
       - 'v*'
+  # A manual run checks the whole pipeline on a branch (#220). The steps with an external effect run only on a v* tag
+  # (see "Create Official GitHub Release"); everything else, packages and workflow artifacts included, runs as on a tag.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -106,7 +109,11 @@ jobs:
           name: release-assets-windows
           path: ./dist
 
+      # The only step with an external effect: it publishes the release, uploads the packages and the SBOM as its
+      # assets and creates the tag if it is missing. It runs only on a v* tag, whatever the event (#220); a manual run
+      # started on an existing v* tag therefore publishes to that tag's release.
       - name: Create Official GitHub Release
+        if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
           name: "Release ${{ github.ref_name }}"
