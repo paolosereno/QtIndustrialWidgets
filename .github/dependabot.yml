@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Paolo Sereno <pablitos1024@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+# New versions of the GitHub Actions used by the workflows arrive as pull requests, once a month (#220)
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
