@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify REUSE Compliance
         uses: fsfe/reuse-action@v6
@@ -39,7 +39,7 @@ jobs:
         run: tools/package_linux.sh --install-deps .
 
       - name: Upload Linux Packages & SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-linux
           path: |
@@ -56,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Qt
         uses: jurplel/install-qt-action@v4
@@ -80,7 +80,7 @@ jobs:
         run: cpack --config build/CPackConfig.cmake -G ZIP -C Release
 
       - name: Upload Windows Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets-windows
           path: "*.zip"
@@ -95,19 +95,19 @@ jobs:
 
     steps:
       - name: Download Linux Assets & SBOM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-assets-linux
           path: ./dist
 
       - name: Download Windows Assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-assets-windows
           path: ./dist
 
       - name: Create Official GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "Release ${{ github.ref_name }}"
           files: ./dist/*
