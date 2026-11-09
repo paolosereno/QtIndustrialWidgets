@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 
 # New versions of the GitHub Actions used by the workflows arrive as pull requests, once a month (#220)
+# The third-party actions are pinned to a commit with the version in a comment on the same line
+# (`owner/repo@<commit> # vX.Y.Z`); Dependabot updates both the commit and the comment.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
