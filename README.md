@@ -112,7 +112,8 @@ speedometer->setActiveSegmentColor(QColor(0, 229, 255));
   platform and options ([docs/gallery_images.md](docs/gallery_images.md)).
 - **Releases** ([release.yml](.github/workflows/release.yml)): a Debian package, a Linux `.tar.gz`, a Windows `.zip`
   and an SPDX SBOM are attached to each GitHub release (see
-  [v2.3.0](https://github.com/paolosereno/QtIndustrialWidgets/releases/tag/v2.3.0)).
+  [v2.3.0](https://github.com/paolosereno/QtIndustrialWidgets/releases/tag/v2.3.0)). A manual run on a branch builds
+  the same packages and SBOM without publishing anything: the release step runs only on a `v*` tag.
 - **Licensing**: REUSE compliant; `reuse lint` runs in CI.
 - **Dependencies**: none beyond Qt. The library links only Qt `Core`, `Gui` and `Widgets`; the Qt Designer plugin is
   a separate module that also needs Qt `Designer`.

@@ -98,9 +98,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -166,7 +166,7 @@ jobs:
       # its own, only when it changed the binaries (see "Keep only the binaries in use").
       - name: Restore the vcpkg binary cache
         id: restore-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
           key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -224,7 +224,7 @@ jobs:
       # Saved as soon as the packages are installed, also when a later step fails, so Qt is built only once
       - name: Save the vcpkg binary cache
         if: always() && steps.prune.outputs.changed == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
           key: ${{ steps.restore-cache.outputs.cache-primary-key }}
@@ -286,9 +286,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -319,7 +319,7 @@ jobs:
 
       # The vcpkg job saves this cache; here it is only restored
       - name: Restore the vcpkg binary cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.VCPKG_BINARY_CACHE }}
           key: vcpkg-bin-${{ runner.os }}-${{ env.VCPKG_REF }}-${{ env.TRIPLET }}-${{ hashFiles('ports/**', 'test_package/vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -413,7 +413,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Conan ${{ env.CONAN_VERSION }}
         run: |
@@ -424,7 +424,7 @@ jobs:
       - name: Restore the Conan package cache
         id: restore-cache
         if: inputs.conan-cache != 'skip'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.conan2/p
           # The lockfile fixes every package in the cache: a new lockfile starts from an empty cache (no restore key)
@@ -439,7 +439,7 @@ jobs:
 
       - name: Save the Conan package cache
         if: always() && inputs.conan-cache != 'skip' && steps.install.outcome == 'success' && steps.restore-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.conan2/p
           key: ${{ steps.restore-cache.outputs.cache-primary-key }}
