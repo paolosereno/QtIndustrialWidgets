@@ -762,7 +762,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
     // which may be dark (texts on a light panel) as the track is
     const double setpointAt = alongOf(d_ptr->m_setpoint);
     const ValueState fbState = d_ptr->m_feedbackState;
-    const QColor hatchColor = internal::tankHatchColor(d_ptr->m_trackColor);
+    const QColor hatchColor = internal::hatchColorOn(d_ptr->m_trackColor);
     if (d_ptr->m_hasFeedback) {
         if (fbState == ValueState::Invalid) {
             QPainterPath track;

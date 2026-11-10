@@ -77,7 +77,7 @@ double tankContrastRatio(const QColor &a, const QColor &b)
     return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
 }
 
-QColor tankHatchColor(const QColor &inside)
+QColor hatchColorOn(const QColor &inside)
 {
     const QColor white(255, 255, 255);
     const QColor black(0, 0, 0);

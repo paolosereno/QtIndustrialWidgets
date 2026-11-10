@@ -541,7 +541,7 @@ void TankDisplay::paintEvent(QPaintEvent *)
     painter.setBrush(inside);
     painter.drawPath(outlinePath);
     if (state == ValueState::Invalid) {
-        internal::drawInvalidHatch(painter, outlinePath, vessel.width(), internal::tankHatchColor(inside));
+        internal::drawInvalidHatch(painter, outlinePath, vessel.width(), internal::hatchColorOn(inside));
     } else {
         const double surface = levelY(d_ptr->m_value);
         if (surface < vessel.bottom()) {

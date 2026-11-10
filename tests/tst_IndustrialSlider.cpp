@@ -92,7 +92,7 @@ const QColor kWarning(255, 128, 0);
 const QColor kError(128, 0, 255);
 const QColor kBackground(0, 0, 0);
 // The hatches contrast with the track whatever the text colour: white or black mixed into the track up to 4.5:1
-const QColor kHatch = internal::tankHatchColor(kTrack);
+const QColor kHatch = internal::hatchColorOn(kTrack);
 
 int channelDistance(QRgb a, QRgb b)
 {

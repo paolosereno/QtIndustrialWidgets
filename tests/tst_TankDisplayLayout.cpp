@@ -308,7 +308,7 @@ void tst_TankDisplayLayout::hatchColourContrastsWithAnyInside()
         for (int g = 0; g <= 255; g += 15) {
             for (int b = 0; b <= 255; b += 15) {
                 const QColor inside(r, g, b);
-                const QColor hatch = tankHatchColor(inside);
+                const QColor hatch = hatchColorOn(inside);
                 const QString where = QStringLiteral("inside rgb(%1, %2, %3), hatch rgb(%4, %5, %6)")
                                           .arg(r).arg(g).arg(b).arg(hatch.red()).arg(hatch.green()).arg(hatch.blue());
                 QVERIFY2(ratio(hatch, inside) >= 4.5, qPrintable(where + QStringLiteral(": %1:1").arg(ratio(hatch, inside))));
