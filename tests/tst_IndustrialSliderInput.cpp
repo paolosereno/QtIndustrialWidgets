@@ -53,6 +53,7 @@ private Q_SLOTS:
     void readOnlyEndsTheRunningAction();
     void readOnlyDrawsThePadlockBeforeTheTag_data();
     void readOnlyDrawsThePadlockBeforeTheTag();
+    void padlockCountsInThePanelMinimum();
     void wheelIsOffByDefault();
     void wheelStepsOnlyWithFocus();
     void limitsAreReadWithinTheRange();
@@ -518,7 +519,9 @@ void tst_IndustrialSliderInput::focusOutAndHideEndTheAction()
     s->setRange(0.0, 100.0);
     s->setSetpoint(50.0);
     window.resize(320, 200);
-    QVERIFY(focusOn(*s));
+    // Hidden with the focus, the slider would lose it first and the focus out would end the action: the hide is
+    // checked on a slider without focus (the events are sent to it directly)
+    QVERIFY(focusOn(hide ? static_cast<QWidget &>(*other) : static_cast<QWidget &>(*s)));
     const internal::SliderLayout l = layoutOf(*s);
     const double length = std::abs(l.scaleMax - l.scaleMin);
     QSignalSpy committed(s, &IndustrialSlider::setpointCommitted);
@@ -534,6 +537,7 @@ void tst_IndustrialSliderInput::focusOutAndHideEndTheAction()
     QVERIFY(reached > 50.0);
     QCOMPARE(committed.count(), 0);
     if (hide) {
+        QVERIFY(!s->hasFocus());
         s->hide();
     } else {
         QVERIFY(focusOn(*other));
@@ -746,6 +750,30 @@ void tst_IndustrialSliderInput::readOnlyDrawsThePadlockBeforeTheTag()
     const auto plainRun = solidBlock(plain, internal::IndustrialSliderTestAccess::lastLayout(s).setpointPod).first;
     QVERIFY2(plainRun < std::floor(cap * 0.8) - 2,
              qPrintable(QStringLiteral("without read-only a solid run of %1 px").arg(plainRun)));
+}
+
+// #180: the padlock is never left out, so the minimum width of a panel holds it at the smallest font. Today that
+// minimum never decides minimumSizeHint() (the feedback panel, or the scale and the ticks, need more), so it is read
+// from the layout input: without the feedback panel, read-only widens it by at least the padlock
+void tst_IndustrialSliderInput::padlockCountsInThePanelMinimum()
+{
+    for (bool vertical : {false, true}) {
+        IndustrialSlider s;
+        setVertical(s, vertical);
+        s.setFeedbackReadoutVisible(false);
+        const double plain = internal::IndustrialSliderTestAccess::minimumPodWidth(s);
+        s.setReadOnly(true);
+        const double locked = internal::IndustrialSliderTestAccess::minimumPodWidth(s);
+        QFont smallest = s.font();
+        smallest.setPixelSize(internal::minimumReadoutPixelSize(s.logicalDpiY()));
+        const double padlock = QFontMetricsF(smallest).capHeight() * 0.8;
+        QVERIFY2(plain > 0.0 && locked >= plain + padlock - 0.01,
+                 qPrintable(QStringLiteral("panel minimum %1, read-only %2, padlock %3").arg(plain).arg(locked).arg(padlock)));
+        // With the feedback panel the wider of the two is kept, and read-only never makes it narrower
+        s.setFeedbackReadoutVisible(true);
+        const double withFeedback = internal::IndustrialSliderTestAccess::minimumPodWidth(s);
+        QVERIFY(withFeedback >= locked);
+    }
 }
 
 void tst_IndustrialSliderInput::wheelIsOffByDefault()

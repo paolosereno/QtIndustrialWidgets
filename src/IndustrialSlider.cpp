@@ -527,7 +527,9 @@ QSize IndustrialSlider::minimumSizeHint() const
     const double dpi = logicalDpiY();
     d_ptr->m_minimumDpi = dpi;
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), dpi);
-    const QSizeF s = internal::minimumSliderSize(d_ptr->layoutInput(0.0, 0.0, fonts));
+    const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts);
+    d_ptr->m_minimumPodWidth = in.text.podMinWidth;
+    const QSizeF s = internal::minimumSliderSize(in);
     return QSize(static_cast<int>(s.width()), static_cast<int>(s.height()));
 }
 

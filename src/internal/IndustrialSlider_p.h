@@ -55,6 +55,8 @@ public:
     QColor m_errorColor{QColor(231, 76, 60)};
     // Logical DPI of the last minimumSizeHint() (0: none since the last updateGeometry()), #177
     mutable double m_minimumDpi{0.0};
+    // Minimum width of a readout panel used by the last minimumSizeHint(), read by the tests
+    mutable double m_minimumPodWidth{0.0};
 
     // #180 part 2, the rules of #182: steps, read-only, wheel, setpoint limits
     double m_step{1.0};
