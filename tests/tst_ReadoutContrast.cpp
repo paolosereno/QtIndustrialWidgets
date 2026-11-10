@@ -377,6 +377,8 @@ private Q_SLOTS:
     void industrialSliderPanel();
     void industrialSliderHatch_data();
     void industrialSliderHatch();
+    void industrialSliderTrackOutline_data();
+    void industrialSliderTrackOutline();
     void valveStatusTag_data();
     void valveStatusTag();
     void valveStatusColours_data();
@@ -785,6 +787,71 @@ void tst_ReadoutContrast::industrialSliderHatch()
                                     .arg(qRed(base)).arg(qGreen(base)).arg(qBlue(base))
                                     .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)
                                     .arg(s.width()).arg(s.height())));
+        }
+    }
+}
+
+void tst_ReadoutContrast::industrialSliderTrackOutline_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<bool>("vertical");
+    for (const bool dark : {true, false}) {
+        QTest::addRow("%s horizontal", dark ? "dark" : "light") << dark << false;
+        QTest::addRow("%s vertical", dark ? "dark" : "light") << dark << true;
+    }
+}
+
+// #180: the outline of the track of IndustrialSlider (scaleColor().darker(160), 1 px) is what shows where the track
+// is on the panel: in the dark gallery theme the default track (30, 36, 45) is almost the background (24, 29, 39). A
+// graphical object, 3:1 against the showcase background, with the gallery styling. Measured on the two long sides of
+// the track, clear of the handle and of the ends: the most contrasting pixel within half a pixel of each side,
+// against the background. A 1 px line on a fractional coordinate covers no pixel fully, so four widths and heights
+// move the track by fractions of a pixel, and every one must reach the target
+void tst_ReadoutContrast::industrialSliderTrackOutline()
+{
+    constexpr double kGraphicsRatio = 3.0;
+    QFETCH(bool, dark);
+    QFETCH(bool, vertical);
+    for (int k = 0; k < 4; ++k) {
+        IndustrialSlider s;
+        s.setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
+        s.setSetpoint(95.0); // the handle at the far end, clear of the measured part
+        style(s, dark);
+        s.resize(vertical ? QSize(s.sizeHint().width() + k, 300 + k) : QSize(320 + k, s.sizeHint().height() + k));
+        // As the gallery export draws a showcase: onto the showcase background, without the window background
+        const qreal scale = s.devicePixelRatioF();
+        const QColor background = showcaseBackground(dark);
+        QImage img(s.size() * scale, QImage::Format_ARGB32);
+        img.setDevicePixelRatio(scale);
+        img.fill(background);
+        {
+            QPainter painter(&img);
+            s.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+        }
+        const qreal dpr = img.devicePixelRatio();
+        const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
+        // From 10 % to 80 % of the scale
+        const double a0 = std::min(l.along(0.1), l.along(0.8));
+        const double a1 = std::max(l.along(0.1), l.along(0.8));
+        for (const double side : {l.trackNear(), l.trackFar()}) {
+            const QRectF strip = vertical ? QRectF(side - 0.5, a0, 1.0, a1 - a0) : QRectF(a0, side - 0.5, a1 - a0, 1.0);
+            const QRect r = QRectF(strip.topLeft() * dpr, strip.size() * dpr).toAlignedRect().intersected(img.rect());
+            QRgb best = background.rgb();
+            for (int y = r.top(); y <= r.bottom(); ++y) {
+                for (int x = r.left(); x <= r.right(); ++x) {
+                    if (contrast(img.pixel(x, y), background.rgb()) > contrast(best, background.rgb())) {
+                        best = img.pixel(x, y);
+                    }
+                }
+            }
+            const double ratio = contrast(best, background.rgb());
+            QVERIFY2(ratio >= kGraphicsRatio,
+                     qPrintable(QStringLiteral("%1 side, %2x%3: outline (%4,%5,%6) on (%7,%8,%9): %10:1, %11:1 needed")
+                                    .arg(side == l.trackNear() ? QStringLiteral("near") : QStringLiteral("far"))
+                                    .arg(s.width()).arg(s.height())
+                                    .arg(qRed(best)).arg(qGreen(best)).arg(qBlue(best))
+                                    .arg(background.red()).arg(background.green()).arg(background.blue())
+                                    .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
         }
     }
 }

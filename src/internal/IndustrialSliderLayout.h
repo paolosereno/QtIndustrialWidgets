@@ -50,6 +50,11 @@ struct SliderLayoutInput {
     bool readoutVisible{true};          ///< The setpoint readout
     bool feedbackReadoutVisible{true};  ///< A place for the feedback readout, shown or not
     SliderTextSizes text;
+    /// > 0: the long sides of the track at the centres of device pixels, so that its 1 px outline covers a whole pixel
+    /// (in the dark theme the track is almost the background, and the outline is what shows it). The scale group moves
+    /// by less than a device pixel towards the readouts, and the track is a whole number of device pixels thick, never
+    /// thicker than kSliderTrack. 0: no snapping
+    double devicePixelRatio{0.0};
 };
 
 /**

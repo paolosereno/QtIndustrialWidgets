@@ -658,7 +658,8 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
     }
 
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
-    const internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+    internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+    in.devicePixelRatio = devicePixelRatioF();
     const internal::SliderLayout layout = internal::layoutSlider(in);
     d_ptr->m_lastLayout = layout;
     d_ptr->m_lastSetpointReadout.clear();
@@ -767,7 +768,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
         if (fbState == ValueState::Invalid) {
             QPainterPath track;
             track.addRect(layout.track);
-            internal::drawInvalidHatch(painter, track, internal::kSliderTrack, hatchColor);
+            internal::drawInvalidHatch(painter, track, layout.trackFar() - layout.trackNear(), hatchColor);
         } else {
             const double at = alongOf(d_ptr->m_feedback);
             if (d_ptr->m_deviationState == DeviationState::Deviating) {
@@ -783,7 +784,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
                 const double base = at + outward * (internal::kSliderBarWidth * 0.5 + 1.0);
                 const double tip = base + outward * internal::kSliderBeyondSign;
                 const double mid = (layout.trackNear() + layout.trackFar()) * 0.5;
-                const double half = internal::kSliderTrack * 0.5;
+                const double half = (layout.trackFar() - layout.trackNear()) * 0.5;
                 QPolygonF sign;
                 sign << point(base, mid - half) << point(base, mid + half) << point(tip, mid);
                 painter.setPen(Qt::NoPen);

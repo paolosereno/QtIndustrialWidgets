@@ -29,6 +29,7 @@ private Q_SLOTS:
     void podsFollowTheConfiguration();
     void handleAndBar();
     void nonFiniteAndTinyInputs();
+    void trackOnDevicePixels();
 };
 
 namespace {
@@ -337,6 +338,47 @@ void tst_IndustrialSliderLayout::nonFiniteAndTinyInputs()
                 QVERIFY(l.scaleLength() >= 0.0);
                 const QSizeF min = minimumSliderSize(in);
                 QVERIFY(std::isfinite(min.width()) && std::isfinite(min.height()) && min.width() > 0.0 && min.height() > 0.0);
+            }
+        }
+    }
+}
+
+// The long sides of the track at the centres of device pixels when a device pixel ratio is given, so that a 1 px
+// outline covers a whole pixel; the group moves towards the readouts by less than a device pixel, the track keeps a
+// whole number of device pixels, never more than kSliderTrack, and the parts across keep their order and gaps.
+// Without a ratio, nothing moves
+void tst_IndustrialSliderLayout::trackOnDevicePixels()
+{
+    for (bool vertical : {false, true}) {
+        for (double offset : {0.0, 0.13, 0.37, 0.5, 0.71, 0.99}) {
+            const double w = (vertical ? 120.0 : 300.0) + offset;
+            const double h = (vertical ? 300.0 : 100.0) + offset;
+            const SliderLayout plain = layoutSlider(input(vertical, typicalText(), w, h));
+            QCOMPARE(plain.trackFar() - plain.trackNear(), kSliderTrack);
+            for (double dpr : {1.0, 1.25, 1.5, 1.75, 2.0, 3.0}) {
+                SliderLayoutInput in = input(vertical, typicalText(), w, h);
+                in.devicePixelRatio = dpr;
+                const SliderLayout l = layoutSlider(in);
+                const QString where = QStringLiteral("%1, %2x%3, DPR %4")
+                                          .arg(vertical ? "vertical" : "horizontal").arg(w).arg(h).arg(dpr);
+                const auto centred = [&](double c) {
+                    const double device = c * dpr - 0.5;
+                    return std::abs(device - std::round(device)) < 1e-9;
+                };
+                QVERIFY2(centred(l.trackNear()) && centred(l.trackFar()), qPrintable(where));
+                const double thickness = (l.trackFar() - l.trackNear()) * dpr;
+                QVERIFY2(std::abs(thickness - std::round(thickness)) < 1e-9 && thickness >= 1.0
+                             && thickness <= kSliderTrack * dpr + 1e-9,
+                         qPrintable(where + QStringLiteral(": %1 device px").arg(thickness)));
+                const double moved = l.trackNear() - plain.trackNear();
+                QVERIFY2(moved <= 1e-9 && moved > -1.0 / dpr, qPrintable(where + QStringLiteral(": moved %1").arg(moved)));
+                QVERIFY(std::abs((l.handleBase - plain.handleBase) - moved) < 1e-9);
+                QVERIFY(std::abs((l.trackNear() - l.handleBase) - kSliderHandleDepth) < 1e-9);
+                QVERIFY(std::abs((l.zoneNear - l.trackFar()) - kSliderBarOverhang) < 1e-9);
+                QVERIFY(l.labelNear <= plain.labelNear + 1e-9);
+                QCOMPARE(l.scaleMin, plain.scaleMin);
+                QCOMPARE(l.scaleMax, plain.scaleMax);
+                QCOMPARE(l.setpointPod, plain.setpointPod);
             }
         }
     }
