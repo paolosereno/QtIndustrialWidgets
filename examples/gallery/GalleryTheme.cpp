@@ -7,6 +7,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
@@ -105,6 +106,20 @@ void applyGalleryTheme(ValveIndicator &valve, Theme theme)
     valve.setOpenColor(isDark(theme) ? QColor(46, 204, 113) : QColor(36, 160, 89));
     valve.setTransitColor(isDark(theme) ? QColor(241, 196, 15) : QColor(170, 138, 10));
     valve.setUnknownColor(isDark(theme) ? QColor(149, 165, 166) : QColor(125, 145, 146));
+}
+
+// IndustrialSlider (#180): the scale, the handle, the bar and the zone band are drawn on the panel; the track and the
+// readout panels are dark in both themes. On white the default handle, feedback and zone colours are below 3:1:
+// darker, with the same hues (tst_ReadoutContrast)
+void applyGalleryTheme(IndustrialSlider &slider, Theme theme)
+{
+    slider.setTextColor(isDark(theme) ? QColor(240, 244, 248) : QColor(30, 39, 46));
+    slider.setScaleColor(isDark(theme) ? QColor(200, 208, 218) : QColor(80, 90, 105));
+    slider.setHandleColor(isDark(theme) ? QColor(0, 188, 212) : QColor(0, 131, 148));
+    slider.setFeedbackColor(isDark(theme) ? QColor(255, 159, 67) : QColor(196, 98, 0));
+    slider.setNormalColor(isDark(theme) ? QColor(46, 204, 113) : QColor(36, 160, 89));
+    slider.setWarningColor(isDark(theme) ? QColor(241, 196, 15) : QColor(170, 138, 10));
+    slider.setErrorColor(QColor(231, 76, 60));
 }
 
 } // namespace GalleryShowcase
