@@ -9,6 +9,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/LevelMeter.h>
@@ -278,6 +279,36 @@ QWidget *tankInvalid(Theme theme)
     return t;
 }
 
+// IndustrialSlider (#180): a damper position command, with the actual position as feedback
+IndustrialSlider *slider(Theme theme, Qt::Orientation orientation, double setpoint, double feedback)
+{
+    auto *s = new IndustrialSlider;
+    s->setOrientation(orientation);
+    s->setWarningThreshold(80.0);
+    s->setErrorThreshold(90.0);
+    s->setDeviationThreshold(5.0);
+    s->setSetpoint(setpoint);
+    s->setFeedback(feedback);
+    applyGalleryTheme(*s, theme);
+    return s;
+}
+
+QWidget *sliderTracking(Theme theme)
+{
+    return slider(theme, Qt::Horizontal, 60.0, 58.4);
+}
+
+QWidget *sliderDeviation(Theme theme)
+{
+    return slider(theme, Qt::Vertical, 70.0, 35.2); // the actuator lags the command: cross-hatched, "Δ" mark
+}
+
+QWidget *sliderUnknown(Theme theme)
+{
+    // Position transmitter fault: hatched track, "? POS ---"
+    return slider(theme, Qt::Horizontal, 40.0, std::numeric_limits<double>::quiet_NaN());
+}
+
 // ValveIndicator (#153): colours of the theme in GalleryTheme.cpp
 ValveIndicator *valve(Theme theme, ValveIndicator::ValveType type, ValveIndicator::ValveStatus status)
 {
@@ -528,6 +559,9 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("Compass"), QStringLiteral("heading-up"), QSize(300, 300), compassHeadingUp},
         {QStringLiteral("IndustrialKnob"), QStringLiteral("continuous"), QSize(220, 240), knobContinuous},
         {QStringLiteral("IndustrialKnob"), QStringLiteral("discrete"), QSize(220, 240), knobDiscrete},
+        {QStringLiteral("IndustrialSlider"), QStringLiteral("tracking"), QSize(), sliderTracking},
+        {QStringLiteral("IndustrialSlider"), QStringLiteral("deviation"), QSize(), sliderDeviation},
+        {QStringLiteral("IndustrialSlider"), QStringLiteral("unknown"), QSize(), sliderUnknown},
         {QStringLiteral("IndustrialSwitch"), QStringLiteral("guarded-toggle"), QSize(180, 220), switchGuardedToggle},
         {QStringLiteral("IndustrialSwitch"), QStringLiteral("guarded-three-position"), QSize(), switchGuardedThreePosition},
         {QStringLiteral("IndustrialSwitch"), QStringLiteral("rocker"), QSize(120, 190), switchRocker},

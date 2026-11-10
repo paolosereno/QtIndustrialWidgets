@@ -247,6 +247,27 @@ set_target_properties(TankDisplayLayout PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(IndustrialSliderLayout OBJECT
+    internal/IndustrialSliderLayout.cpp
+    internal/IndustrialSliderLayout.h
+)
+
+target_include_directories(IndustrialSliderLayout
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(IndustrialSliderLayout
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+)
+
+set_target_properties(IndustrialSliderLayout PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(ValveIndicatorLayout OBJECT
     internal/ValveIndicatorLayout.cpp
     internal/ValveIndicatorLayout.h
@@ -319,6 +340,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     CircularBargraph.cpp
     TankDisplay.cpp
     ValveIndicator.cpp
+    IndustrialSlider.cpp
     $<TARGET_OBJECTS:NumberFormat>
     $<TARGET_OBJECTS:ValueClassification>
     $<TARGET_OBJECTS:ValueStateDrawing>
@@ -330,6 +352,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     $<TARGET_OBJECTS:LevelMeterLayout>
     $<TARGET_OBJECTS:TankDisplayLayout>
     $<TARGET_OBJECTS:ValveIndicatorLayout>
+    $<TARGET_OBJECTS:IndustrialSliderLayout>
     $<TARGET_OBJECTS:FontScale>
     $<TARGET_OBJECTS:TextMetricsTable>
     $<TARGET_OBJECTS:AnalysisChartView>
@@ -349,6 +372,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/CircularBargraph.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/TankDisplay.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/ValveIndicator.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/IndustrialSlider.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

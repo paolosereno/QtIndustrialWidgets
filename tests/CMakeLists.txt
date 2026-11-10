@@ -575,6 +575,49 @@ set_target_properties(tst_TankDisplay PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_TankDisplay)
+add_executable(tst_IndustrialSliderLayout
+    tst_IndustrialSliderLayout.cpp
+    $<TARGET_OBJECTS:IndustrialSliderLayout>
+)
+target_link_libraries(tst_IndustrialSliderLayout
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
+)
+target_include_directories(tst_IndustrialSliderLayout
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_IndustrialSliderLayout PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_IndustrialSliderLayout)
+add_executable(tst_IndustrialSlider
+    tst_IndustrialSlider.cpp
+    $<TARGET_OBJECTS:IndustrialSliderLayout>
+    $<TARGET_OBJECTS:TankDisplayLayout>
+    $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_IndustrialSlider
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_IndustrialSlider
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_IndustrialSlider PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_IndustrialSlider)
 add_executable(tst_ValveIndicatorLayout
     tst_ValveIndicatorLayout.cpp
     $<TARGET_OBJECTS:ValveIndicatorLayout>

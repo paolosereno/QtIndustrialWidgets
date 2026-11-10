@@ -17,6 +17,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
@@ -25,6 +26,7 @@
 
 #include "GalleryTheme.h"
 #include "internal/IndustrialKnobTestAccess.h"
+#include "internal/IndustrialSliderTestAccess.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/TankDisplayTestAccess.h"
 #include "internal/ValveIndicatorTestAccess.h"
@@ -369,6 +371,12 @@ private Q_SLOTS:
     void tankInterior();
     void valveIndicator_data();
     void valveIndicator();
+    void industrialSlider_data();
+    void industrialSlider();
+    void industrialSliderPanel_data();
+    void industrialSliderPanel();
+    void industrialSliderHatch_data();
+    void industrialSliderHatch();
     void valveStatusTag_data();
     void valveStatusTag();
     void valveStatusColours_data();
@@ -606,6 +614,179 @@ void tst_ReadoutContrast::valveIndicator()
     const QImage img = renderOn(v, dark);
     checkReading(measureReadout(img, deviceRect(internal::ValveIndicatorTestAccess::lastLayout(v).pod, img.devicePixelRatio())),
                  scaledPixels(15, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::industrialSlider_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<double>("feedback");
+    for (const bool dark : {true, false}) {
+        const char *theme = dark ? "dark" : "light";
+        QTest::addRow("%s tracking", theme) << dark << 58.0;
+        QTest::addRow("%s deviating (triangle)", theme) << dark << 15.0;
+        QTest::addRow("%s unknown (?)", theme) << dark << kNaN;
+        QTest::addRow("%s overrange", theme) << dark << 120.0;
+    }
+}
+
+// #180: the two readouts of IndustrialSlider on their opaque panels, with the deviation marks
+void tst_ReadoutContrast::industrialSlider()
+{
+    QFETCH(bool, dark);
+    QFETCH(double, feedback);
+    IndustrialSlider s;
+    s.setDeviationThreshold(5.0);
+    s.setSetpoint(60.0);
+    s.setFeedback(feedback);
+    style(s, dark);
+    s.resize(s.sizeHint());
+    const QImage img = renderOn(s, dark);
+    const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
+    for (const QRectF &pod : {l.setpointPod, l.feedbackPod}) {
+        checkReading(measureReadout(img, deviceRect(pod, img.devicePixelRatio())), scaledPixels(15, img.devicePixelRatio()));
+    }
+}
+
+void tst_ReadoutContrast::industrialSliderPanel_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<bool>("vertical");
+    for (const bool dark : {true, false}) {
+        QTest::addRow("%s horizontal", dark ? "dark" : "light") << dark << false;
+        QTest::addRow("%s vertical", dark ? "dark" : "light") << dark << true;
+    }
+}
+
+// #180: IndustrialSlider draws its scale labels, its handle, its feedback bar and its zone band on the background of
+// the widget, with the gallery styling: the labels are text (4.5:1), the others graphical objects (3:1), each
+// measured on a pixel it covers fully, against the showcase background
+void tst_ReadoutContrast::industrialSliderPanel()
+{
+    constexpr double kGraphicsRatio = 3.0;
+    QFETCH(bool, dark);
+    QFETCH(bool, vertical);
+    IndustrialSlider s;
+    s.setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
+    s.setWarningThreshold(80.0);
+    s.setErrorThreshold(90.0);
+    s.setSetpoint(60.0);
+    s.setFeedback(30.0);
+    style(s, dark);
+    s.resize(vertical ? QSize(s.sizeHint().width(), 300) : QSize(320, s.sizeHint().height()));
+    // As the gallery export draws a showcase: onto the showcase background, without the window background
+    const qreal scale = s.devicePixelRatioF();
+    const QColor background = showcaseBackground(dark);
+    QImage img(s.size() * scale, QImage::Format_ARGB32);
+    img.setDevicePixelRatio(scale);
+    img.fill(background);
+    {
+        QPainter painter(&img);
+        s.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+    }
+    const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
+    const qreal dpr = img.devicePixelRatio();
+    const auto pixelAt = [&](double along, double across) {
+        const QPointF p = vertical ? QPointF(across, along) : QPointF(along, across);
+        return img.pixel(static_cast<int>(std::floor(p.x() * dpr)), static_cast<int>(std::floor(p.y() * dpr)));
+    };
+    const auto alongOf = [&](double v) { return l.along(v / 100.0); };
+    const auto check = [&](const char *what, QRgb px) {
+        const double ratio = contrast(px, background.rgb());
+        QVERIFY2(ratio >= kGraphicsRatio,
+                 qPrintable(QStringLiteral("%1 (%2,%3,%4) on (%5,%6,%7): %8:1, %9:1 needed")
+                                .arg(QLatin1String(what)).arg(qRed(px)).arg(qGreen(px)).arg(qBlue(px))
+                                .arg(background.red()).arg(background.green()).arg(background.blue())
+                                .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
+    };
+    check("handle", pixelAt(alongOf(60.0), l.handleBase + 2.0));
+    check("feedback bar", pixelAt(alongOf(30.0), l.trackFar() + internal::kSliderBarOverhang * 0.5));
+    const double zone = l.zoneNear + internal::kSliderZone * 0.5;
+    check("normal zone", pixelAt(alongOf(40.0), zone));
+    check("warning zone", pixelAt(alongOf(85.0), zone));
+    check("error zone", pixelAt(alongOf(95.0), zone));
+    // The labels: the room after labelNear, whose ends are background
+    const QRectF room = vertical ? QRectF(l.labelNear, 0.0, s.width() - l.labelNear, s.height())
+                                 : QRectF(0.0, l.labelNear, s.width(), s.height() - l.labelNear);
+    const QRect box = QRectF(room.topLeft() * dpr, room.size() * dpr).toAlignedRect().intersected(img.rect());
+    checkReading(measureReadout(img, box), scaledPixels(30, dpr));
+}
+
+void tst_ReadoutContrast::industrialSliderHatch_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<QColor>("track"); // set by the user over the default; invalid: the default
+    QTest::newRow("dark") << true << QColor();
+    QTest::newRow("light") << false << QColor();
+    QTest::newRow("mid-grey track") << false << QColor(128, 128, 128);
+    QTest::newRow("near-white track") << false << QColor(235, 235, 235);
+    QTest::newRow("saturated yellow track") << false << QColor(255, 220, 0);
+}
+
+// #180: both hatches of IndustrialSlider (an invalid feedback, a deviation) are derived from trackColor(), not from
+// the text colour, and stand out on the track at 3:1 (graphical objects) for any track colour: the most contrasting
+// pixel of the hatched track against the track as drawn without a hatch (the same area with a feedback at the
+// setpoint). Whether a pixel reaches the colour of a thin line depends on where the line falls on the pixel grid:
+// four widths and four heights move the track and the lines by fractions of a pixel. Not against the most frequent colour of the hatched area: on the narrow track the hatch covers about
+// half the pixels, and an antialiased shade can be as frequent as the track
+void tst_ReadoutContrast::industrialSliderHatch()
+{
+    constexpr double kGraphicsRatio = 3.0;
+    QFETCH(bool, dark);
+    QFETCH(QColor, track);
+    for (int k = 0; k < 4; ++k) {
+        IndustrialSlider s;
+        s.setDeviationThreshold(5.0);
+        s.setSetpoint(90.0);
+        style(s, dark);
+        if (track.isValid()) {
+            s.setTrackColor(track);
+        }
+        s.resize(320 + k, s.sizeHint().height() + k);
+        const auto coloursOf = [&](double feedback) {
+            s.setFeedback(feedback);
+            const QImage img = renderOn(s, dark);
+            const qreal dpr = img.devicePixelRatio();
+            const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
+            // Between the bar (at 10) and the handle (at 90), 1 px inside the outline of the track
+            const QRectF area(l.along(0.2), l.track.top() + 1.0, l.along(0.8) - l.along(0.2), l.track.height() - 2.0);
+            const QRect r = QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect();
+            QHash<QRgb, int> count;
+            for (int y = r.top(); y <= r.bottom(); ++y) {
+                for (int x = r.left(); x <= r.right(); ++x) {
+                    ++count[img.pixel(x, y)];
+                }
+            }
+            return count;
+        };
+        const QHash<QRgb, int> plain = coloursOf(90.0);
+        QCOMPARE(s.deviationState(), IndustrialSlider::DeviationState::Normal);
+        QRgb base = 0;
+        int most = -1;
+        for (auto it = plain.cbegin(); it != plain.cend(); ++it) {
+            if (it.value() > most) {
+                most = it.value();
+                base = it.key();
+            }
+        }
+        for (const double feedback : {kNaN, 10.0}) {
+            const QHash<QRgb, int> hatched = coloursOf(feedback);
+            QRgb best = base;
+            for (auto it = hatched.cbegin(); it != hatched.cend(); ++it) {
+                if (contrast(it.key(), base) > contrast(best, base)) {
+                    best = it.key();
+                }
+            }
+            const double ratio = contrast(best, base);
+            QVERIFY2(ratio >= kGraphicsRatio,
+                     qPrintable(QStringLiteral("%1, %10x%11: hatch (%2,%3,%4) on the track (%5,%6,%7): "
+                                                    "%8:1, %9:1 needed")
+                                    .arg(std::isnan(feedback) ? QStringLiteral("invalid") : QStringLiteral("deviation"))
+                                    .arg(qRed(best)).arg(qGreen(best)).arg(qBlue(best))
+                                    .arg(qRed(base)).arg(qGreen(base)).arg(qBlue(base))
+                                    .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)
+                                    .arg(s.width()).arg(s.height())));
+        }
+    }
 }
 
 void tst_ReadoutContrast::valveStatusTag_data()

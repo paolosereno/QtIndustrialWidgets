@@ -8,6 +8,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
@@ -71,6 +72,7 @@ bool applyGalleryTheme(QWidget &w, GalleryShowcase::Theme theme)
     if (auto *x = qobject_cast<RadialGauge *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<LinearGauge *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<IndustrialKnob *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<IndustrialSlider *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<Compass *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<CircularBargraph *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<TankDisplay *>(&w)) { applyGalleryTheme(*x, theme); return true; }
@@ -83,7 +85,7 @@ const QStringList &themedClasses()
     static const QStringList classes = {
         QStringLiteral("RadialGauge"), QStringLiteral("LinearGauge"),      QStringLiteral("IndustrialKnob"),
         QStringLiteral("Compass"),     QStringLiteral("CircularBargraph"), QStringLiteral("TankDisplay"),
-        QStringLiteral("ValveIndicator"),
+        QStringLiteral("ValveIndicator"), QStringLiteral("IndustrialSlider"),
     };
     return classes;
 }

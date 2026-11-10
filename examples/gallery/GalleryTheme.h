@@ -10,6 +10,7 @@ namespace QtIndustrialWidgets {
 class CircularBargraph;
 class Compass;
 class IndustrialKnob;
+class IndustrialSlider;
 class LinearGauge;
 class RadialGauge;
 class TankDisplay;
@@ -31,6 +32,7 @@ QColor backgroundColor(Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::RadialGauge &gauge, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::LinearGauge &gauge, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::IndustrialKnob &knob, Theme theme);
+void applyGalleryTheme(QtIndustrialWidgets::IndustrialSlider &slider, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::Compass &compass, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::CircularBargraph &bargraph, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::TankDisplay &tank, Theme theme);
