@@ -725,62 +725,67 @@ void tst_ReadoutContrast::industrialSliderHatch_data()
 // #180: both hatches of IndustrialSlider (an invalid feedback, a deviation) are derived from trackColor(), not from
 // the text colour, and stand out on the track at 3:1 (graphical objects) for any track colour: the most contrasting
 // pixel of the hatched track against the track as drawn without a hatch (the same area with a feedback at the
-// setpoint). Not against the most frequent colour of the hatched area: on the narrow track the hatch covers about
+// setpoint). Whether a pixel reaches the colour of a thin line depends on where the line falls on the pixel grid:
+// four widths and four heights move the track and the lines by fractions of a pixel. Not against the most frequent colour of the hatched area: on the narrow track the hatch covers about
 // half the pixels, and an antialiased shade can be as frequent as the track
 void tst_ReadoutContrast::industrialSliderHatch()
 {
     constexpr double kGraphicsRatio = 3.0;
     QFETCH(bool, dark);
     QFETCH(QColor, track);
-    IndustrialSlider s;
-    s.setDeviationThreshold(5.0);
-    s.setSetpoint(90.0);
-    style(s, dark);
-    if (track.isValid()) {
-        s.setTrackColor(track);
-    }
-    s.resize(320, s.sizeHint().height());
-    const auto coloursOf = [&](double feedback) {
-        s.setFeedback(feedback);
-        const QImage img = renderOn(s, dark);
-        const qreal dpr = img.devicePixelRatio();
-        const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
-        // Between the bar (at 10) and the handle (at 90), 1 px inside the outline of the track
-        const QRectF area(l.along(0.2), l.track.top() + 1.0, l.along(0.8) - l.along(0.2), l.track.height() - 2.0);
-        const QRect r = QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect();
-        QHash<QRgb, int> count;
-        for (int y = r.top(); y <= r.bottom(); ++y) {
-            for (int x = r.left(); x <= r.right(); ++x) {
-                ++count[img.pixel(x, y)];
+    for (int k = 0; k < 4; ++k) {
+        IndustrialSlider s;
+        s.setDeviationThreshold(5.0);
+        s.setSetpoint(90.0);
+        style(s, dark);
+        if (track.isValid()) {
+            s.setTrackColor(track);
+        }
+        s.resize(320 + k, s.sizeHint().height() + k);
+        const auto coloursOf = [&](double feedback) {
+            s.setFeedback(feedback);
+            const QImage img = renderOn(s, dark);
+            const qreal dpr = img.devicePixelRatio();
+            const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
+            // Between the bar (at 10) and the handle (at 90), 1 px inside the outline of the track
+            const QRectF area(l.along(0.2), l.track.top() + 1.0, l.along(0.8) - l.along(0.2), l.track.height() - 2.0);
+            const QRect r = QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect();
+            QHash<QRgb, int> count;
+            for (int y = r.top(); y <= r.bottom(); ++y) {
+                for (int x = r.left(); x <= r.right(); ++x) {
+                    ++count[img.pixel(x, y)];
+                }
+            }
+            return count;
+        };
+        const QHash<QRgb, int> plain = coloursOf(90.0);
+        QCOMPARE(s.deviationState(), IndustrialSlider::DeviationState::Normal);
+        QRgb base = 0;
+        int most = -1;
+        for (auto it = plain.cbegin(); it != plain.cend(); ++it) {
+            if (it.value() > most) {
+                most = it.value();
+                base = it.key();
             }
         }
-        return count;
-    };
-    const QHash<QRgb, int> plain = coloursOf(90.0);
-    QCOMPARE(s.deviationState(), IndustrialSlider::DeviationState::Normal);
-    QRgb base = 0;
-    int most = -1;
-    for (auto it = plain.cbegin(); it != plain.cend(); ++it) {
-        if (it.value() > most) {
-            most = it.value();
-            base = it.key();
-        }
-    }
-    for (const double feedback : {kNaN, 10.0}) {
-        const QHash<QRgb, int> hatched = coloursOf(feedback);
-        QRgb best = base;
-        for (auto it = hatched.cbegin(); it != hatched.cend(); ++it) {
-            if (contrast(it.key(), base) > contrast(best, base)) {
-                best = it.key();
+        for (const double feedback : {kNaN, 10.0}) {
+            const QHash<QRgb, int> hatched = coloursOf(feedback);
+            QRgb best = base;
+            for (auto it = hatched.cbegin(); it != hatched.cend(); ++it) {
+                if (contrast(it.key(), base) > contrast(best, base)) {
+                    best = it.key();
+                }
             }
+            const double ratio = contrast(best, base);
+            QVERIFY2(ratio >= kGraphicsRatio,
+                     qPrintable(QStringLiteral("%1, %10x%11: hatch (%2,%3,%4) on the track (%5,%6,%7): "
+                                                    "%8:1, %9:1 needed")
+                                    .arg(std::isnan(feedback) ? QStringLiteral("invalid") : QStringLiteral("deviation"))
+                                    .arg(qRed(best)).arg(qGreen(best)).arg(qBlue(best))
+                                    .arg(qRed(base)).arg(qGreen(base)).arg(qBlue(base))
+                                    .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)
+                                    .arg(s.width()).arg(s.height())));
         }
-        const double ratio = contrast(best, base);
-        QVERIFY2(ratio >= kGraphicsRatio,
-                 qPrintable(QStringLiteral("%1: hatch (%2,%3,%4) on the track (%5,%6,%7): %8:1, %9:1 needed")
-                                .arg(std::isnan(feedback) ? QStringLiteral("invalid") : QStringLiteral("deviation"))
-                                .arg(qRed(best)).arg(qGreen(best)).arg(qBlue(best))
-                                .arg(qRed(base)).arg(qGreen(base)).arg(qBlue(base))
-                                .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
     }
 }
 
