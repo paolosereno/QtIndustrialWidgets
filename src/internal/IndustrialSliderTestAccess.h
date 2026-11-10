@@ -24,6 +24,11 @@ public:
     static QString lastFeedbackReadout(const IndustrialSlider &slider) { return slider.d_ptr->m_lastFeedbackReadout; }
     /// Pixel size of the setpoint readout drawn by the last paint (0 when not drawn)
     static int lastReadoutPixelSize(const IndustrialSlider &slider) { return slider.d_ptr->m_lastReadoutPx; }
+    /// Pixel size of the feedback readout drawn by the last paint (0 when not drawn)
+    static int lastFeedbackReadoutPixelSize(const IndustrialSlider &slider)
+    {
+        return slider.d_ptr->m_lastFeedbackReadoutPx;
+    }
 };
 
 } // namespace internal

@@ -59,6 +59,7 @@ public:
     QString m_lastSetpointReadout; // The texts of the setpoint panel, in order, joined by spaces; empty: not drawn
     QString m_lastFeedbackReadout; // The same for the feedback panel; "Δ" and "?" stand for the deviation marks
     int m_lastReadoutPx{0};        // Pixel size of the setpoint readout as drawn
+    int m_lastFeedbackReadoutPx{0}; // Pixel size of the feedback readout as drawn
 
     struct Changes {
         bool setpoint{false};

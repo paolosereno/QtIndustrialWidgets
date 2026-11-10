@@ -837,11 +837,27 @@ void tst_IndustrialSlider::sizeHintHoldsTheWholeReadouts_data()
 
 // At sizeHint() both readouts are whole, at their preferred size, for the widest values of the range: the end
 // values, with the unit and, for the position, the deviation mark; and a position at ±Inf, shown as the end value
-// with "?", the triangle and ">" or "<". Long values, so that the room of the texts (and not the 260 px floor of a
-// horizontal slider) sets the hint
+// with "?", the triangle and ">" or "<"; and a deviating position out of the range, with as many digits as the end
+// value (the deviation mark and the triangle together). Long values, so that the room of the texts (and not the
+// 260 px floor of a horizontal slider) sets the hint
 void tst_IndustrialSlider::sizeHintHoldsTheWholeReadouts()
 {
     QFETCH(bool, vertical);
+    {
+        IndustrialSlider s;
+        setVertical(s, vertical);
+        s.setRange(0.0, 90000.0);
+        s.setUnit(QStringLiteral("m³/h"));
+        s.setDeviationThreshold(1.0);
+        s.setFeedback(95000.0);
+        prepare(s, s.sizeHint() * 3);
+        (void)render(s);
+        const int preferred = internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s);
+        prepare(s, s.sizeHint());
+        (void)render(s);
+        QCOMPARE(internal::IndustrialSliderTestAccess::lastFeedbackReadout(s), QStringLiteral("Δ POS ▲ 95000.0 m³/h"));
+        QCOMPARE(internal::IndustrialSliderTestAccess::lastFeedbackReadoutPixelSize(s), preferred);
+    }
     for (const auto &range : {std::pair<double, double>{-99999.9, 99999.9}, {0.0, 100.0}}) {
         for (int position : {0, 1, 2, 3}) { // the setpoint at the minimum or the maximum, the position at ±Inf
             const bool atMinimum = position % 2 == 0;
@@ -861,7 +877,8 @@ void tst_IndustrialSlider::sizeHintHoldsTheWholeReadouts()
             const int preferred = internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s);
             prepare(s, s.sizeHint());
             (void)render(s);
-            const QString where = QStringLiteral("%1x%2").arg(s.width()).arg(s.height());
+            const QString where = QStringLiteral("%1x%2, setpoint %3, position %4")
+                                      .arg(s.width()).arg(s.height()).arg(setpoint).arg(feedback);
             const auto number = [](double v) { return QString::number(v, 'f', 1); };
             QCOMPARE(internal::IndustrialSliderTestAccess::lastSetpointReadout(s),
                      QStringLiteral("SP %1 m³/h").arg(number(setpoint)));
@@ -869,10 +886,11 @@ void tst_IndustrialSlider::sizeHintHoldsTheWholeReadouts()
                                      : feedback > 0 ? QStringLiteral("? POS ▲ >%1 m³/h").arg(number(range.second))
                                                     : QStringLiteral("? POS ▼ <%1 m³/h").arg(number(range.first));
             QCOMPARE(internal::IndustrialSliderTestAccess::lastFeedbackReadout(s), expected);
-            QVERIFY2(internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s) == preferred,
-                     qPrintable(where + QStringLiteral(": readout at %1 px, %2 px preferred")
-                                            .arg(internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s))
-                                            .arg(preferred)));
+            for (int px : {internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s),
+                           internal::IndustrialSliderTestAccess::lastFeedbackReadoutPixelSize(s)}) {
+                QVERIFY2(px == preferred,
+                         qPrintable(where + QStringLiteral(": readout at %1 px, %2 px preferred").arg(px).arg(preferred)));
+            }
         }
     }
 }

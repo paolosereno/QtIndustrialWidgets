@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -406,24 +407,40 @@ QColor IndustrialSlider::errorColor() const { return d_ptr->m_errorColor; }
 
 QSize IndustrialSlider::sizeHint() const
 {
-    // Room for the whole readouts at their preferred size: the widest of the end values of the scale, with the
-    // tag, the unit and, for the feedback, a deviation mark and a range triangle
+    // Room for the whole readouts at their preferred size: the setpoint at the end values of the scale, with the tag
+    // and the unit; the feedback as the widest text it can show at those values and at ±Inf (">max", "<min"), with
+    // either deviation mark and a range triangle
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
     const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts);
     double pod = 0.0;
     if (d_ptr->m_readoutVisible) {
         const QFontMetricsF fm(fonts.readout);
-        for (double v : {d_ptr->m_minimum, d_ptr->m_maximum}) {
+        const double lo = d_ptr->m_minimum;
+        const double hi = d_ptr->m_maximum;
+        const int precision = d_ptr->m_precision;
+        for (double v : {lo, hi}) {
             Readout r;
             r.tag = kSetpointTag;
-            r.number = internal::formatFixed(v, d_ptr->m_precision);
+            r.number = internal::formatFixed(v, precision);
             r.unit = d_ptr->m_unit;
             pod = std::max(pod, readoutWidth(r, fm, true, true));
-            if (d_ptr->m_feedbackReadoutVisible) {
-                r.tag = kFeedbackTag;
-                r.mark = Readout::Mark::Deviation;
-                r.triangle = 1;
-                pod = std::max(pod, readoutWidth(r, fm, true, true));
+        }
+        if (d_ptr->m_feedbackReadoutVisible) {
+            const double inf = std::numeric_limits<double>::infinity();
+            const QStringList numbers = {
+                internal::formatFixed(lo, precision), internal::formatFixed(hi, precision),
+                internal::gaugeReadoutText(internal::inputStateOf(ValueState::Overrange), inf, lo, hi, precision),
+                internal::gaugeReadoutText(internal::inputStateOf(ValueState::Underrange), -inf, lo, hi, precision)};
+            for (Readout::Mark mark : {Readout::Mark::Deviation, Readout::Mark::Unknown}) {
+                for (const QString &number : numbers) {
+                    Readout r;
+                    r.mark = mark;
+                    r.tag = kFeedbackTag;
+                    r.triangle = 1;
+                    r.number = number;
+                    r.unit = d_ptr->m_unit;
+                    pod = std::max(pod, readoutWidth(r, fm, true, true));
+                }
             }
         }
         pod += 2.0 * podSideMargin(in.text.podHeight);
@@ -647,6 +664,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
     d_ptr->m_lastSetpointReadout.clear();
     d_ptr->m_lastFeedbackReadout.clear();
     d_ptr->m_lastReadoutPx = 0;
+    d_ptr->m_lastFeedbackReadoutPx = 0;
 
     const bool vertical = layout.vertical;
     const double span = d_ptr->m_maximum - d_ptr->m_minimum;
@@ -823,6 +841,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
                                                  layout.feedbackPod.width() - 2.0 * podSideMargin(layout.feedbackPod));
             d_ptr->m_lastFeedbackReadout =
                 drawReadout(painter, layout.feedbackPod, r, fonts.readout, fit, d_ptr->m_readoutColor);
+            d_ptr->m_lastFeedbackReadoutPx = fit.px;
         }
     }
 }
