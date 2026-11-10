@@ -456,12 +456,26 @@ void tst_IndustrialSlider::deviationFollowsEveryInput()
     QCOMPARE(s.deviationState(), DeviationState::Off);
     QCOMPARE(spy.count(), 7);
     QCOMPARE(spy.last().at(0).value<DeviationState>(), DeviationState::Off);
-    // Negative and non-finite thresholds are ignored
-    for (double t : {-1.0, kNaN, kInf}) {
+    // Negative and infinite thresholds are ignored
+    for (double t : {-1.0, kInf, -kInf}) {
         s.setDeviationThreshold(t);
     }
     QCOMPARE(s.deviationThreshold(), 0.0);
     QCOMPARE(threshold.count(), 3);
+    // NaN turns the threshold off, as 0 does (#180 plan): from 5, the threshold is 0 and the deviation Off
+    s.setFeedback(10.0);
+    s.setDeviationThreshold(5.0);
+    QCOMPARE(s.deviationState(), DeviationState::Deviating);
+    threshold.clear();
+    spy.clear();
+    s.setDeviationThreshold(kNaN);
+    QCOMPARE(s.deviationThreshold(), 0.0);
+    QCOMPARE(s.deviationState(), DeviationState::Off);
+    QCOMPARE(threshold.count(), 1);
+    QCOMPARE(threshold.first().at(0).toDouble(), 0.0);
+    QCOMPARE(spy.count(), 1);
+    s.setDeviationThreshold(kNaN); // already off: nothing
+    QCOMPARE(threshold.count(), 1);
 }
 
 void tst_IndustrialSlider::withoutFeedbackNothingIsDrawn_data()

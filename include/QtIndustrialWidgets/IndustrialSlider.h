@@ -230,8 +230,8 @@ public Q_SLOTS:
      */
     void clearFeedback();
     /**
-     * \brief Sets the deviation threshold. A value above 0 turns the comparison on; 0 turns it off. Negative and
-     * non-finite values are ignored.
+     * \brief Sets the deviation threshold. A value above 0 turns the comparison on; 0 or NaN turns it off (the
+     * threshold is then 0). Negative values and ±Inf are ignored.
      */
     void setDeviationThreshold(double threshold);
     /** \brief Sets the decimals of the readouts and of the scale labels (negative values give 0). */

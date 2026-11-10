@@ -540,7 +540,10 @@ void IndustrialSlider::clearFeedback()
 
 void IndustrialSlider::setDeviationThreshold(double threshold)
 {
-    if (!std::isfinite(threshold) || threshold < 0.0 || threshold == d_ptr->m_deviationThreshold) return;
+    if (std::isnan(threshold)) {
+        threshold = 0.0; // NaN turns the comparison off, as 0 does
+    }
+    if (std::isinf(threshold) || threshold < 0.0 || threshold == d_ptr->m_deviationThreshold) return;
     d_ptr->m_deviationThreshold = threshold;
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     Q_EMIT deviationThresholdChanged(d_ptr->m_deviationThreshold);
