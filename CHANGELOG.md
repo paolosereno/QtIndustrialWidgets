@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`IndustrialKnob`: the mouse wheel is off by default** (#182). Before, the wheel stepped the value whenever the pointer was over the knob, with or without focus, so scrolling a page could change a setpoint. Now wheel events are ignored, and reach the parent (a scroll area scrolls), until `setWheelEnabled(true)`; even then the wheel acts only while the knob has focus.
 
 ### Fixed
+- **`IndustrialSwitch` guard property name in the documentation** (#222): `docs/widgets.md` called the property `guardOpen`; it is declared as `isGuardOpen` (`READ isGuardOpen WRITE setGuardOpen NOTIFY guardToggled`), which is the name `setProperty()`, `property()` and Qt Designer use. The API is unchanged; the rename to `guardOpen` follows the migration path of #203.
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.7.0` tag archive (the tagged commit still had the `v2.6.0` hash, since the hash can be computed only after the tag).
 
 ### Tests

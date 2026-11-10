@@ -242,7 +242,7 @@ Live, scrolling multi-channel chart for acquisition data (`qiw::StripChart`). Gu
 Toggle or rocker switch (`qiw::IndustrialSwitch`).
 - **Types**: `SwitchType::ToggleLever` or `SwitchType::Rocker`.
 - **Positions**: 2 (`labelOff` / `labelOn`) or 3 (`labelOff` / `labelCenter` / `labelOn`), via `positionCount`.
-- **Safety guard**: optional cover (`hasSafetyGuard`) that has to be opened (`guardOpen`, `guardToggled(bool)`)
+- **Safety guard**: optional cover (`hasSafetyGuard`) that has to be opened (`isGuardOpen`, `guardToggled(bool)`)
   before the switch can be operated.
 - **Orientation**: `Qt::Vertical` or `Qt::Horizontal`.
 - **Details**: optional status LED (`hasLed`), animated movement (`animated`), mouse click and drag, and the keys
