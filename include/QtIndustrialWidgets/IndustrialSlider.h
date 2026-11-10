@@ -62,6 +62,36 @@ class IndustrialSliderTestAccess;
  * minimumSizeHint() is computed from the font and the configuration, so that those parts and the end labels of the
  * scale fit.
  *
+ * Input (#182, the rules for controls in docs/widgets.md):
+ * - A press never changes the setpoint. A left press on the handle as it is drawn starts a drag; a press anywhere
+ *   else (the track, the scale, the readouts) starts none. The drag is relative: the setpoint moves by the distance
+ *   the pointer moves along the scale from the press, so the handle never jumps to the pointer. Past an end (or a
+ *   setpoint limit) the setpoint stays there until the pointer comes back.
+ * - Keys, with focus: Left/Down lower the setpoint by step(), Right/Up raise it; PageDown/PageUp by pageStep();
+ *   Home/End go to setpointLimitLow() / setpointLimitHigh().
+ * - setpointChanged() is emitted at every change of the setpoint: during a drag, at each key step (auto-repeat
+ *   too), from setSetpoint() and when setRange() clamps it. setpointCommitted() is emitted once at the end of an
+ *   operator action that changed the setpoint: the release of a drag, or the release of a key that is not an
+ *   auto-repeat; a drag or a held key also ends when the slider loses focus, is hidden or is made read-only.
+ *   setSetpoint() never emits setpointCommitted(), so an application that writes committed setpoints to a device
+ *   gets no write loop.
+ * - Mouse wheel: off by default (setWheelEnabled()); while it is off, wheel events are ignored and reach the parent,
+ *   so a scroll area around the slider scrolls. When it is on, it acts only while the slider has focus: each notch
+ *   (120 units of QWheelEvent::angleDelta(), summed over the events of a high-resolution wheel or a touchpad) is one
+ *   step() and commits at once. The part of a notch not yet reached is dropped when the slider loses focus.
+ * - Read-only (setReadOnly()): mouse, keyboard and wheel input are ignored and reach the parent; the slider can
+ *   still take focus and setSetpoint() still works. The slider is not greyed out: a padlock is drawn in the setpoint
+ *   readout, before "SP", in readoutColor(), and it is never left out for lack of room.
+ * - Setpoint limits (setSetpointLimits()): they bind the operator's input only. A drag, the keys and the wheel never
+ *   take the setpoint outside [setpointLimitLow(), setpointLimitHigh()], and Home/End go to the limits; from a
+ *   setpoint outside the limits, input towards them is applied and input that would take it further out is
+ *   ignored. setSetpoint() is bound by the range only. On the scale the band of the ticks is hatched outside the
+ *   limits, and each limit inside the range has a stop mark across the zone band and the ticks.
+ *
+ * Focus: the slider takes focus with Tab, Shift+Tab and a click (Qt::StrongFocus), also in read-only, and while it
+ * has focus draws a solid 2 px ring in textColor() along the edge of the widget, in the margin kept free of the
+ * drawing.
+ *
  * Text size: the sizes of the labels and of the readouts follow the size of the widget font against the
  * application font (#51, rule (b)), as in LinearGauge: the layout makes room for them.
  *
@@ -108,6 +138,10 @@ class QTINDUSTRIALWIDGETS_EXPORT IndustrialSlider : public QWidget
     Q_PROPERTY(QColor normalColor READ normalColor WRITE setNormalColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor warningColor READ warningColor WRITE setWarningColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor errorColor READ errorColor WRITE setErrorColor NOTIFY appearanceChanged)
+    Q_PROPERTY(double step READ step WRITE setStep NOTIFY appearanceChanged)
+    Q_PROPERTY(double pageStep READ pageStep WRITE setPageStep RESET resetPageStep NOTIFY appearanceChanged)
+    Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly NOTIFY readOnlyChanged)
+    Q_PROPERTY(bool wheelEnabled READ isWheelEnabled WRITE setWheelEnabled NOTIFY appearanceChanged)
 
 public:
     /// Comparison of the setpoint with the feedback (see the class description).
@@ -197,6 +231,19 @@ public:
     /** \brief Returns the colour of the error zone. Default QColor(231, 76, 60). */
     [[nodiscard]] QColor errorColor() const;
 
+    /** \brief Returns the step of the arrow keys and of a wheel notch. Default 1. */
+    [[nodiscard]] double step() const;
+    /** \brief Returns the step of PageUp / PageDown: the one set, or 5 × step() until one is set. */
+    [[nodiscard]] double pageStep() const;
+    /** \brief Returns true if operator input is ignored (see the class description). Default false. */
+    [[nodiscard]] bool isReadOnly() const;
+    /** \brief Returns true if the mouse wheel steps the setpoint while the slider has focus. Default false. */
+    [[nodiscard]] bool isWheelEnabled() const;
+    /** \brief Returns the low setpoint limit as read: the one set, within the range; without limits, minimum(). */
+    [[nodiscard]] double setpointLimitLow() const;
+    /** \brief Returns the high setpoint limit as read: the one set, within the range; without limits, maximum(). */
+    [[nodiscard]] double setpointLimitHigh() const;
+
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
 
@@ -270,9 +317,41 @@ public Q_SLOTS:
     /** \brief Sets the colour of the error zone. */
     void setErrorColor(const QColor &color);
 
+    /** \brief Sets the step of the arrow keys and of a wheel notch. Non-finite values and values <= 0 are ignored. */
+    void setStep(double step);
+    /** \brief Sets the step of PageUp / PageDown. Non-finite values and values <= 0 are ignored. */
+    void setPageStep(double step);
+    /** \brief Makes pageStep() 5 × step() again. */
+    void resetPageStep();
+    /**
+     * \brief Turns read-only on or off (see the class description). A drag or a held key running when read-only is
+     * turned on ends, with setpointCommitted() if it changed the setpoint. Emits readOnlyChanged() if the state
+     * changes.
+     */
+    void setReadOnly(bool readOnly);
+    /** \brief Turns the mouse wheel on or off (see the class description). */
+    void setWheelEnabled(bool enabled);
+    /**
+     * \brief Sets the setpoint limits, which bind the operator's input only (see the class description). Non-finite
+     * values and low >= high are ignored. The limits are kept as set and read within the range; the setpoint is not
+     * changed. Emits setpointLimitsChanged() if the limits read change.
+     */
+    void setSetpointLimits(double low, double high);
+    /** \brief Removes the setpoint limits: they are the range again. Emits setpointLimitsChanged() if they change. */
+    void clearSetpointLimits();
+
 Q_SIGNALS:
     /** \brief Emitted when setpoint() changes, whatever the source. */
     void setpointChanged(double setpoint);
+    /**
+     * \brief Emitted once at the end of an operator action that changed the setpoint (see the class description);
+     * never by setSetpoint().
+     */
+    void setpointCommitted(double setpoint);
+    /** \brief Emitted when read-only is turned on or off. */
+    void readOnlyChanged(bool readOnly);
+    /** \brief Emitted when the setpoint limits as read change, also when a new range moves them. */
+    void setpointLimitsChanged(double low, double high);
     /** \brief Emitted when the range changes. */
     void rangeChanged(double min, double max);
     /** \brief Emitted when feedback() changes. */
@@ -291,6 +370,15 @@ Q_SIGNALS:
 protected:
     void paintEvent(QPaintEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+    void focusInEvent(QFocusEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
 
 private:
     std::unique_ptr<IndustrialSliderPrivate> d_ptr;

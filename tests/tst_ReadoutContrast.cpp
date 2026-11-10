@@ -379,6 +379,8 @@ private Q_SLOTS:
     void industrialSliderHatch();
     void industrialSliderTrackOutline_data();
     void industrialSliderTrackOutline();
+    void industrialSliderFocusRing_data();
+    void industrialSliderFocusRing();
     void valveStatusTag_data();
     void valveStatusTag();
     void valveStatusColours_data();
@@ -999,6 +1001,36 @@ void tst_ReadoutContrast::industrialSwitchFocusRing()
     other->setGeometry(0, 200, 120, 30);
     window.resize(120, 240);
     checkFocusRingContrast(window, *sw, *other, dark);
+}
+
+void tst_ReadoutContrast::industrialSliderFocusRing_data()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<bool>("vertical");
+    for (const bool dark : {true, false}) {
+        QTest::addRow("%s horizontal", dark ? "dark" : "light") << dark << false;
+        QTest::addRow("%s vertical", dark ? "dark" : "light") << dark << true;
+    }
+}
+
+// #180, #183: the focus ring of IndustrialSlider (textColor(), 2 px along the edge) against what is under it without
+// focus, at least 3:1, in both gallery themes
+void tst_ReadoutContrast::industrialSliderFocusRing()
+{
+    QFETCH(bool, dark);
+    QFETCH(bool, vertical);
+    QWidget window;
+    auto *s = new IndustrialSlider(&window);
+    auto *other = new QLineEdit(&window);
+    s->setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
+    s->setSetpoint(40.0);
+    s->setFeedback(45.0);
+    style(*s, dark);
+    const QSize size = vertical ? QSize(140, 300) : QSize(300, 92);
+    s->setGeometry(0, 0, size.width(), size.height());
+    other->setGeometry(0, size.height() + 10, 120, 30);
+    window.resize(size.width(), size.height() + 50);
+    checkFocusRingContrast(window, *s, *other, dark);
 }
 
 void tst_ReadoutContrast::industrialKnobFocusRing_data()

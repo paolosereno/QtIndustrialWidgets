@@ -12,11 +12,13 @@
 
 #include "internal/IndustrialSliderLayout.h"
 
+#include <QtCore/QRectF>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
 
+#include <algorithm>
 #include <limits>
 
 namespace QtIndustrialWidgets {
@@ -54,12 +56,32 @@ public:
     // Logical DPI of the last minimumSizeHint() (0: none since the last updateGeometry()), #177
     mutable double m_minimumDpi{0.0};
 
+    // #180 part 2, the rules of #182: steps, read-only, wheel, setpoint limits
+    double m_step{1.0};
+    double m_pageStep{0.0}; // pageStep() once set; until then 5 x m_step
+    bool m_pageStepSet{false};
+    bool m_readOnly{false};
+    bool m_wheelEnabled{false};
+    int m_wheelRemainder{0}; // angleDelta() summed towards the next notch (120); dropped at focus out
+    bool m_limitsSet{false};
+    double m_limitLow{0.0}; // As given to setSetpointLimits(); read within the range
+    double m_limitHigh{0.0};
+    // An operator action (a drag or a key) runs from its start to its end, where setpointCommitted() is emitted
+    bool m_dragging{false};
+    double m_dragStartAlong{0.0}; // Along coordinate of the press
+    internal::SliderLayout m_dragLayout; // The layout at the press, used for the whole drag
+    double m_dragStartSetpoint{0.0};
+    bool m_keyAction{false};
+    int m_actionKey{0}; // The key whose release that is not an auto-repeat ends the key action
+    double m_actionStartSetpoint{0.0};
+
     // What the last paint drew, read by the tests (IndustrialSliderTestAccess)
     internal::SliderLayout m_lastLayout;
     QString m_lastSetpointReadout; // The texts of the setpoint panel, in order, joined by spaces; empty: not drawn
     QString m_lastFeedbackReadout; // The same for the feedback panel; "Δ" and "?" stand for the deviation marks
     int m_lastReadoutPx{0};        // Pixel size of the setpoint readout as drawn
     int m_lastFeedbackReadoutPx{0}; // Pixel size of the feedback readout as drawn
+    QRectF m_lastFocusRing;          // The focus ring drawn (its centre line); empty: not drawn
 
     struct Changes {
         bool setpoint{false};
@@ -74,6 +96,25 @@ public:
     void emitChanges(IndustrialSlider *q, const Changes &changes) const;
 
     [[nodiscard]] IndustrialSlider::DeviationState evaluateDeviation() const;
+
+    // The setpoint limits as read: those set, within the range; without limits, the range
+    [[nodiscard]] double limitLow() const { return m_limitsSet ? std::clamp(m_limitLow, m_minimum, m_maximum) : m_minimum; }
+    [[nodiscard]] double limitHigh() const
+    {
+        return m_limitsSet ? std::clamp(m_limitHigh, m_minimum, m_maximum) : m_maximum;
+    }
+    // Where operator input that asks for \a proposed takes the setpoint (#182): inside the limits; from a setpoint
+    // outside them (set with setSetpoint()), only towards them: the interval allowed is the limits widened to the
+    // setpoint, so input further out leaves it where it is
+    [[nodiscard]] double operatorTarget(double proposed) const
+    {
+        const double low = std::min(limitLow(), m_setpoint);
+        const double high = std::max(limitHigh(), m_setpoint);
+        return std::clamp(proposed, low, high);
+    }
+    // Ends the drag or the key action that is running, if any, and emits setpointCommitted() if the setpoint is not
+    // the one it started from
+    void endAction(IndustrialSlider *q);
     [[nodiscard]] QStringList majorLabelTexts() const;
 
     // Fonts of a widget font at a logical DPI

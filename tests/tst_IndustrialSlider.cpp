@@ -922,16 +922,19 @@ void tst_IndustrialSlider::readoutsInsideTheirPanelsNeverBelowSevenPoints_data()
 }
 
 // From the minimum width up: the readout ink of each panel stays inside it, and the setpoint readout is never below
-// 7 pt (#60), for long values and units and for the feedback states with their marks
+// 7 pt (#60), for long values and units and for the feedback states with their marks; read-only too, with the
+// padlock, which is never left out (#180)
 void tst_IndustrialSlider::readoutsInsideTheirPanelsNeverBelowSevenPoints()
 {
     QFETCH(bool, vertical);
     QFETCH(int, extra);
+    for (const bool readOnly : {false, true})
     for (double feedback : {42.0, kNaN, kInf, -1e9, 1e12}) {
         IndustrialSlider s;
         setVertical(s, vertical);
         s.setRange(-100000.0, 100000.0);
         s.setUnit(QStringLiteral("m³ (15 °C)"));
+        s.setReadOnly(readOnly);
         const QSize min = s.minimumSizeHint();
         prepare(s, QSize(min.width() + extra, min.height() + (vertical ? 40 : 0)));
         s.setDeviationThreshold(1.0);
@@ -939,7 +942,11 @@ void tst_IndustrialSlider::readoutsInsideTheirPanelsNeverBelowSevenPoints()
         s.setFeedback(feedback);
         const QImage img = render(s);
         const internal::SliderLayout l = layoutOf(s);
-        const QString where = QStringLiteral("feedback %1, %2x%3").arg(feedback).arg(s.width()).arg(s.height());
+        const QString where = QStringLiteral("%1feedback %2, %3x%4")
+                                  .arg(readOnly ? "read-only, " : "").arg(feedback).arg(s.width()).arg(s.height());
+        const QString sp = internal::IndustrialSliderTestAccess::lastSetpointReadout(s);
+        QVERIFY2(readOnly ? sp.startsWith(QStringLiteral("🔒 SP")) : (sp.startsWith(QStringLiteral("SP")) && !sp.contains(QStringLiteral("🔒"))),
+                 qPrintable(where + QStringLiteral(": ") + internal::IndustrialSliderTestAccess::lastSetpointReadout(s)));
         QVERIFY2(internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s)
                      >= internal::minimumReadoutPixelSize(s.logicalDpiY()),
                  qPrintable(where));
