@@ -17,6 +17,7 @@
 
 #include "FontTestUtils.h"
 #include "HatchTestUtils.h"
+#include "IndustrialSliderTestUtils.h"
 #include "PixelTestUtils.h"
 #include "ScreenChangeTestUtils.h"
 
@@ -77,60 +78,17 @@ private Q_SLOTS:
 
 namespace {
 
+using namespace SliderTest;
+
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 
-// Colours that no other part of the drawing uses
-const QColor kHandle(0, 0, 255);
-const QColor kFeedback(255, 0, 255);
-const QColor kTrack(0, 64, 0);
-const QColor kScale(0, 255, 0);
-const QColor kText(255, 255, 0);
-const QColor kReadout(255, 255, 255);
-const QColor kNormal(0, 128, 128);
-const QColor kWarning(255, 128, 0);
-const QColor kError(128, 0, 255);
-const QColor kBackground(0, 0, 0);
 // The hatches contrast with the track whatever the text colour: white or black mixed into the track up to 4.5:1
 const QColor kHatch = internal::hatchColorOn(kTrack);
-
-int channelDistance(QRgb a, QRgb b)
-{
-    return std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
-}
-
-bool near(QRgb p, const QColor &c, int tolerance = 8)
-{
-    return channelDistance(p, c.rgb()) <= tolerance;
-}
-
-// The slider with the test colours on an opaque black background
-void prepare(IndustrialSlider &s, QSize size = QSize(300, 90))
-{
-    s.setHandleColor(kHandle);
-    s.setFeedbackColor(kFeedback);
-    s.setTrackColor(kTrack);
-    s.setScaleColor(kScale);
-    s.setTextColor(kText);
-    s.setReadoutColor(kReadout);
-    s.setNormalColor(kNormal);
-    s.setWarningColor(kWarning);
-    s.setErrorColor(kError);
-    QPalette pal = s.palette();
-    pal.setColor(QPalette::Window, kBackground);
-    s.setPalette(pal);
-    s.setAutoFillBackground(true);
-    s.resize(size);
-}
 
 QSize sizeFor(bool vertical)
 {
     return vertical ? QSize(140, 300) : QSize(300, 90);
-}
-
-QImage render(IndustrialSlider &s)
-{
-    return s.grab().toImage().convertToFormat(QImage::Format_ARGB32);
 }
 
 internal::SliderLayout layoutOf(const IndustrialSlider &s)
@@ -196,18 +154,6 @@ QImage hatchMask(const QImage &img)
 
 using PixelTest::boundsOf;
 using PixelTest::countIn;
-
-void addOrientations()
-{
-    QTest::addColumn<bool>("vertical");
-    QTest::newRow("horizontal") << false;
-    QTest::newRow("vertical") << true;
-}
-
-void setVertical(IndustrialSlider &s, bool vertical)
-{
-    s.setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
-}
 
 // The device pixels of the readout panels that hold readout ink (near white), inside \a pod
 int readoutInk(const QImage &img, const QRectF &pod)

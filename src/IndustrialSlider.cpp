@@ -9,10 +9,12 @@
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
+#include "internal/PanelFonts.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/TankDisplayLayout.h"
 #include "internal/ValueClassification.h"
 #include "internal/ValueStateDrawing.h"
+#include "internal/WheelNotches.h"
 
 #include <QtCore/QEvent>
 #include <QtGui/QKeyEvent>
@@ -148,32 +150,6 @@ FittedReadout fitReadout(const Readout &r, QFont font, int maxPx, int minPx, dou
     return {minPx, r.numberEssential, false};
 }
 
-// #182, #180: a padlock filling \a box: a shackle (a stroked arch) on a filled body with rounded corners, as the one
-// of IndustrialKnob
-void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color)
-{
-    const double w = box.width();
-    const double h = box.height();
-    const double cx = box.center().x();
-    const double stroke = w * 0.18;
-    const double bodyTop = box.top() + h * 0.42;
-    const double arch = w * 0.70 - stroke; // Width of the centre line of the shackle
-    const QRectF archRect(cx - arch * 0.5, box.top() + stroke * 0.5, arch, arch);
-    QPainterPath shackle;
-    shackle.moveTo(cx - arch * 0.5, bodyTop + stroke * 0.5);
-    shackle.lineTo(cx - arch * 0.5, archRect.center().y());
-    shackle.arcTo(archRect, 180.0, -180.0);
-    shackle.lineTo(cx + arch * 0.5, bodyTop + stroke * 0.5);
-    painter.save();
-    painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::FlatCap));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawPath(shackle);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(color);
-    painter.drawRoundedRect(QRectF(box.left(), bodyTop, w, box.bottom() - bodyTop), w * 0.12, w * 0.12);
-    painter.restore();
-}
-
 // Draws the parts of \a r kept by \a fit, centred in \a pod. Returns them as text, joined by spaces
 QString drawReadout(QPainter &painter, const QRectF &pod, const Readout &r, QFont font, const FittedReadout &fit,
                     const QColor &color)
@@ -212,7 +188,7 @@ QString drawReadout(QPainter &painter, const QRectF &pod, const Readout &r, QFon
         advance(space);
         // #180: read-only. A padlock as tall as the capitals, standing on the baseline
         const double h = fm.capHeight();
-        drawPadlock(painter, QRectF(x, baseline - h, h * 0.8, h), color);
+        internal::drawPadlock(painter, QRectF(x, baseline - h, h * 0.8, h), color);
         x += h * 0.8;
         drawn << QStringLiteral("🔒");
     } else if (r.mark == Readout::Mark::Unknown) {
@@ -340,19 +316,7 @@ QStringList IndustrialSliderPrivate::majorLabelTexts() const
 
 IndustrialSliderPrivate::Fonts IndustrialSliderPrivate::fontsFor(const QFont &widgetFont, double logicalDpi)
 {
-    Fonts f;
-    const double scale = internal::fontScale(widgetFont, QApplication::font());
-    // #60: no text below 7 pt
-    f.minimumPx = internal::minimumReadoutPixelSize(logicalDpi);
-    f.label = widgetFont;
-    f.label.setBold(true);
-    f.label.setPixelSize(std::max(f.minimumPx, internal::scalePixelSize(kLabelPx, scale)));
-    f.readout = widgetFont;
-    f.readout.setBold(true);
-    f.readout.setPixelSize(std::max(f.minimumPx, internal::scalePixelSize(kReadoutPx, scale)));
-    // Greyscale antialiasing on the opaque panel (#159)
-    f.readout.setStyleStrategy(QFont::StyleStrategy(f.readout.styleStrategy() | QFont::NoSubpixelAntialias));
-    return f;
+    return internal::panelFonts(widgetFont, logicalDpi, kLabelPx, kReadoutPx);
 }
 
 internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, double h, const Fonts &fonts) const
@@ -897,20 +861,14 @@ void IndustrialSlider::wheelEvent(QWheelEvent *event)
         event->ignore();
         return;
     }
-    constexpr int kNotch = 120;
-    d_ptr->m_wheelRemainder += event->angleDelta().y();
-    if (std::abs(d_ptr->m_wheelRemainder) >= kNotch) {
-        d_ptr->endAction(this); // A drag or a held key running ends before the wheel steps
-    }
-    while (std::abs(d_ptr->m_wheelRemainder) >= kNotch) {
-        const int direction = d_ptr->m_wheelRemainder > 0 ? 1 : -1;
-        d_ptr->m_wheelRemainder -= direction * kNotch;
-        const double before = d_ptr->m_setpoint;
-        setSetpoint(d_ptr->operatorTarget(d_ptr->m_setpoint + direction * d_ptr->m_step));
-        if (d_ptr->m_setpoint != before) {
-            Q_EMIT setpointCommitted(d_ptr->m_setpoint);
-        }
-    }
+    internal::applyWheelNotches(d_ptr->m_wheelRemainder, event->angleDelta().y(), [this] { d_ptr->endAction(this); },
+                                [this](int direction) {
+                                    const double before = d_ptr->m_setpoint;
+                                    setSetpoint(d_ptr->operatorTarget(d_ptr->m_setpoint + direction * d_ptr->m_step));
+                                    if (d_ptr->m_setpoint != before) {
+                                        Q_EMIT setpointCommitted(d_ptr->m_setpoint);
+                                    }
+                                });
     event->accept();
 }
 

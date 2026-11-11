@@ -10,6 +10,7 @@
 
 #include <QtIndustrialWidgets/TankDisplay.h>
 
+#include "internal/PanelFonts.h"
 #include "internal/TankDisplayLayout.h"
 
 #include <QtCore/QString>
@@ -72,11 +73,7 @@ public:
     [[nodiscard]] QStringList majorLabelTexts() const;
 
     // Fonts of a widget font at a logical DPI
-    struct Fonts {
-        QFont label;
-        QFont readout;
-        int minimumPx{0};
-    };
+    using Fonts = internal::PanelFonts;
 
     static Fonts fontsFor(const QFont &widgetFont, double logicalDpi);
 

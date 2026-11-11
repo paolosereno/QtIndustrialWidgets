@@ -10,6 +10,7 @@
 
 #include <QtIndustrialWidgets/IndustrialSlider.h>
 
+#include "internal/PanelFonts.h"
 #include "internal/IndustrialSliderLayout.h"
 
 #include <QtCore/QRectF>
@@ -120,11 +121,7 @@ public:
     [[nodiscard]] QStringList majorLabelTexts() const;
 
     // Fonts of a widget font at a logical DPI
-    struct Fonts {
-        QFont label;
-        QFont readout;
-        int minimumPx{0};
-    };
+    using Fonts = internal::PanelFonts;
 
     static Fonts fontsFor(const QFont &widgetFont, double logicalDpi);
 

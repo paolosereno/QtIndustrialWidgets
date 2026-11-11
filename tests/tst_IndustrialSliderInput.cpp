@@ -14,6 +14,7 @@
 #include "internal/IndustrialSliderTestAccess.h"
 #include "internal/RadialGaugeLayout.h"
 
+#include "IndustrialSliderTestUtils.h"
 #include "PixelTestUtils.h"
 
 #include <QtGui/QImage>
@@ -67,70 +68,15 @@ private Q_SLOTS:
 
 namespace {
 
+using namespace SliderTest;
+
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
-
-// Colours that no other part of the drawing uses
-const QColor kHandle(0, 0, 255);
-const QColor kFeedback(255, 0, 255);
-const QColor kTrack(0, 64, 0);
-const QColor kScale(0, 255, 0);
-const QColor kText(255, 255, 0);
-const QColor kReadout(255, 255, 255);
-const QColor kNormal(0, 128, 128);
-const QColor kWarning(255, 128, 0);
-const QColor kError(128, 0, 255);
-const QColor kBackground(0, 0, 0);
-
-int channelDistance(QRgb a, QRgb b)
-{
-    return std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
-}
-
-bool near(QRgb p, const QColor &c, int tolerance = 8)
-{
-    return channelDistance(p, c.rgb()) <= tolerance;
-}
-
-void prepare(IndustrialSlider &s, QSize size)
-{
-    s.setHandleColor(kHandle);
-    s.setFeedbackColor(kFeedback);
-    s.setTrackColor(kTrack);
-    s.setScaleColor(kScale);
-    s.setTextColor(kText);
-    s.setReadoutColor(kReadout);
-    s.setNormalColor(kNormal);
-    s.setWarningColor(kWarning);
-    s.setErrorColor(kError);
-    QPalette pal = s.palette();
-    pal.setColor(QPalette::Window, kBackground);
-    s.setPalette(pal);
-    s.setAutoFillBackground(true);
-    s.resize(size);
-}
 
 // Sizes whose edges fall on device pixels at DPR 1, 1.25, 1.5 and 2
 QSize sizeFor(bool vertical)
 {
     return vertical ? QSize(140, 300) : QSize(300, 92);
-}
-
-void setVertical(IndustrialSlider &s, bool vertical)
-{
-    s.setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
-}
-
-void addOrientations()
-{
-    QTest::addColumn<bool>("vertical");
-    QTest::newRow("horizontal") << false;
-    QTest::newRow("vertical") << true;
-}
-
-QImage render(IndustrialSlider &s)
-{
-    return s.grab().toImage().convertToFormat(QImage::Format_ARGB32);
 }
 
 // The layout of the slider as it is drawn at its size
@@ -1101,9 +1047,12 @@ void tst_IndustrialSliderInput::focusRingIsASolidRingInTextColor()
             QVERIFY2(channelDistance(plain.pixel(x, y), kText.rgb()) > 200,
                      qPrintable(QStringLiteral("at (%1, %2) the background is too close to textColor").arg(x).arg(y)));
             ++perSide[side];
-            if (channelDistance(focused.pixel(x, y), kText.rgb()) > 48 && off++ == 0) {
-                const QRgb c = focused.pixel(x, y);
-                first = QStringLiteral("(%1, %2): rgb(%3, %4, %5)").arg(x).arg(y).arg(qRed(c)).arg(qGreen(c)).arg(qBlue(c));
+            if (channelDistance(focused.pixel(x, y), kText.rgb()) > 48) {
+                if (off == 0) {
+                    const QRgb c = focused.pixel(x, y);
+                    first = QStringLiteral("(%1, %2): rgb(%3, %4, %5)").arg(x).arg(y).arg(qRed(c)).arg(qGreen(c)).arg(qBlue(c));
+                }
+                ++off;
             }
         }
     }

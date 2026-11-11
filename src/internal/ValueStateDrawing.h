@@ -39,5 +39,12 @@ void drawStateReadout(QPainter &painter, const QRectF &podRect, QFont font, cons
  */
 void drawInvalidHatch(QPainter &painter, const QPainterPath &area, double thickness, const QColor &color);
 
+/**
+ * \brief Draws a padlock filling \a box in \a color, #182: the read-only mark of the controls (IndustrialKnob,
+ * IndustrialSlider). A path, so it needs no font: a shackle (a stroked arch) on a filled body with rounded corners.
+ * The pen and the brush of \a painter are restored.
+ */
+void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color);
+
 } // namespace internal
 } // namespace QtIndustrialWidgets

@@ -10,6 +10,8 @@
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/ValueStateDrawing.h"
+#include "internal/WheelNotches.h"
 
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -663,20 +665,14 @@ void IndustrialKnob::wheelEvent(QWheelEvent *event)
         event->ignore();
         return;
     }
-    constexpr int kNotch = 120;
-    d_ptr->m_wheelRemainder += event->angleDelta().y();
-    if (std::abs(d_ptr->m_wheelRemainder) >= kNotch) {
-        d_ptr->endAction(this); // A drag or a held key running ends before the wheel steps
-    }
-    while (std::abs(d_ptr->m_wheelRemainder) >= kNotch) {
-        const int direction = d_ptr->m_wheelRemainder > 0 ? 1 : -1;
-        d_ptr->m_wheelRemainder -= direction * kNotch;
-        const double before = d_ptr->m_value;
-        setValue(d_ptr->operatorTarget(d_ptr->m_value + direction * d_ptr->m_step));
-        if (!qFuzzyCompare(d_ptr->m_value, before)) {
-            Q_EMIT valueCommitted(d_ptr->m_value);
-        }
-    }
+    internal::applyWheelNotches(d_ptr->m_wheelRemainder, event->angleDelta().y(), [this] { d_ptr->endAction(this); },
+                                [this](int direction) {
+                                    const double before = d_ptr->m_value;
+                                    setValue(d_ptr->operatorTarget(d_ptr->m_value + direction * d_ptr->m_step));
+                                    if (!qFuzzyCompare(d_ptr->m_value, before)) {
+                                        Q_EMIT valueCommitted(d_ptr->m_value);
+                                    }
+                                });
     event->accept();
 }
 
@@ -697,29 +693,6 @@ bool isStepKey(int key)
     default:
         return false;
     }
-}
-
-// #182: a padlock filling \a box: a shackle (a stroked arch) on a filled body with rounded corners
-void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color)
-{
-    const double w = box.width();
-    const double h = box.height();
-    const double cx = box.center().x();
-    const double stroke = w * 0.18;
-    const double bodyTop = box.top() + h * 0.42;
-    const double arch = w * 0.70 - stroke; // Width of the centre line of the shackle
-    const QRectF archRect(cx - arch * 0.5, box.top() + stroke * 0.5, arch, arch);
-    QPainterPath shackle;
-    shackle.moveTo(cx - arch * 0.5, bodyTop + stroke * 0.5);
-    shackle.lineTo(cx - arch * 0.5, archRect.center().y());
-    shackle.arcTo(archRect, 180.0, -180.0);
-    shackle.lineTo(cx + arch * 0.5, bodyTop + stroke * 0.5);
-    painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::FlatCap));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawPath(shackle);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(color);
-    painter.drawRoundedRect(QRectF(box.left(), bodyTop, w, box.bottom() - bodyTop), w * 0.12, w * 0.12);
 }
 
 } // namespace
@@ -1079,7 +1052,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     // #182: read-only. A padlock at the centre of the cap, inside the inner end of the pointer, so the pointer is
     // never covered; a path, so it needs no font
     if (d_ptr->m_readOnly) {
-        drawPadlock(painter, IndustrialKnobPrivate::padlockRect(scale), d_ptr->m_textColor);
+        internal::drawPadlock(painter, IndustrialKnobPrivate::padlockRect(scale), d_ptr->m_textColor);
     }
 
     // 7. Dynamic Digital Value Readout (Bottom Pod)
