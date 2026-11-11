@@ -24,6 +24,14 @@ public:
     static QString lastFeedbackReadout(const IndustrialSlider &slider) { return slider.d_ptr->m_lastFeedbackReadout; }
     /// Pixel size of the setpoint readout drawn by the last paint (0 when not drawn)
     static int lastReadoutPixelSize(const IndustrialSlider &slider) { return slider.d_ptr->m_lastReadoutPx; }
+    /// The focus ring drawn by the last paint (the centre line of its 2 px pen); empty when not drawn
+    static QRectF lastFocusRing(const IndustrialSlider &slider) { return slider.d_ptr->m_lastFocusRing; }
+    /// Minimum width of a readout panel, as minimumSizeHint() computes it (it calls minimumSizeHint())
+    static double minimumPodWidth(const IndustrialSlider &slider)
+    {
+        (void)slider.minimumSizeHint();
+        return slider.d_ptr->m_minimumPodWidth;
+    }
     /// Pixel size of the feedback readout drawn by the last paint (0 when not drawn)
     static int lastFeedbackReadoutPixelSize(const IndustrialSlider &slider)
     {

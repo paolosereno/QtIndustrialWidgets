@@ -6,6 +6,7 @@
 
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QPainter>
+#include <QtGui/QPainterPath>
 #include <QtGui/QPen>
 #include <QtGui/QPolygonF>
 
@@ -83,6 +84,30 @@ void drawInvalidHatch(QPainter &painter, const QPainterPath &area, double thickn
     for (double x = bounds.left(); x < bounds.right() + h; x += spacing) {
         painter.drawLine(QPointF(x - h, bounds.bottom()), QPointF(x, bounds.top()));
     }
+    painter.restore();
+}
+
+void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color)
+{
+    const double w = box.width();
+    const double h = box.height();
+    const double cx = box.center().x();
+    const double stroke = w * 0.18;
+    const double bodyTop = box.top() + h * 0.42;
+    const double arch = w * 0.70 - stroke; // Width of the centre line of the shackle
+    const QRectF archRect(cx - arch * 0.5, box.top() + stroke * 0.5, arch, arch);
+    QPainterPath shackle;
+    shackle.moveTo(cx - arch * 0.5, bodyTop + stroke * 0.5);
+    shackle.lineTo(cx - arch * 0.5, archRect.center().y());
+    shackle.arcTo(archRect, 180.0, -180.0);
+    shackle.lineTo(cx + arch * 0.5, bodyTop + stroke * 0.5);
+    painter.save();
+    painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::FlatCap));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(shackle);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(color);
+    painter.drawRoundedRect(QRectF(box.left(), bodyTop, w, box.bottom() - bodyTop), w * 0.12, w * 0.12);
     painter.restore();
 }
 

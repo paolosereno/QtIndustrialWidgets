@@ -618,6 +618,34 @@ set_target_properties(tst_IndustrialSlider PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_IndustrialSlider)
+add_executable(tst_IndustrialSliderInput
+    tst_IndustrialSliderInput.cpp
+    $<TARGET_OBJECTS:IndustrialSliderLayout>
+    $<TARGET_OBJECTS:ValueStateDrawing>
+    $<TARGET_OBJECTS:ValueClassification>
+    $<TARGET_OBJECTS:NumberFormat>
+    $<TARGET_OBJECTS:TankDisplayLayout>
+    $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+    $<TARGET_OBJECTS:LinearGaugeScale>
+)
+target_link_libraries(tst_IndustrialSliderInput
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_IndustrialSliderInput
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_IndustrialSliderInput PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_IndustrialSliderInput)
 add_executable(tst_ValveIndicatorLayout
     tst_ValveIndicatorLayout.cpp
     $<TARGET_OBJECTS:ValveIndicatorLayout>

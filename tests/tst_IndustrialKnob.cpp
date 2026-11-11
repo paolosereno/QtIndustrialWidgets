@@ -413,6 +413,9 @@ private Q_SLOTS:
     void limitsAreHatchedWithStopMarks();
     void wheelIsOffByDefault();
     void wheelStepsOnlyWithFocus();
+    void wheelCountsHalfNotchesTowardsZero();
+    void wheelEndsTheRunningAction_data();
+    void wheelEndsTheRunningAction();
 
     // #183: focus and accessibility
     void focusRingIsASolidRingInTextColor_data();
@@ -2465,6 +2468,79 @@ void tst_IndustrialKnob::wheelStepsOnlyWithFocus()
     QCOMPARE(knob->value(), 52.0);
     QCOMPARE(committed.count(), 6);
     QCOMPARE(committed.last().at(0).toDouble(), 52.0);
+}
+
+// #182: a part of a notch is kept with its sign until a whole notch is reached, down as up: half a notch down does
+// not step (the notches are counted towards zero)
+void tst_IndustrialKnob::wheelCountsHalfNotchesTowardsZero()
+{
+    QWidget window;
+    auto *knob = new IndustrialKnob(&window);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->setValue(50.0);
+    knob->setWheelEnabled(true);
+    knob->resize(220, 240);
+    QVERIFY(focusOn(*knob));
+    QSignalSpy committed(knob, &IndustrialKnob::valueCommitted);
+    QVERIFY(sendWheel(*knob, -60));
+    QCOMPARE(knob->value(), 50.0);
+    QVERIFY(sendWheel(*knob, -60));
+    QCOMPARE(knob->value(), 49.0);
+    QVERIFY(sendWheel(*knob, -90));
+    QVERIFY(sendWheel(*knob, 60));
+    QCOMPARE(knob->value(), 49.0); // -30 left
+    QVERIFY(sendWheel(*knob, -90));
+    QCOMPARE(knob->value(), 48.0);
+    QCOMPARE(committed.count(), 2);
+}
+
+void tst_IndustrialKnob::wheelEndsTheRunningAction_data()
+{
+    QTest::addColumn<bool>("drag");
+    QTest::newRow("drag") << true;
+    QTest::newRow("held key") << false;
+}
+
+// #182: a wheel notch during a drag or a held key ends that action first (its commit), then steps and commits on its
+// own; the release that follows commits nothing and the drag no longer moves the value
+void tst_IndustrialKnob::wheelEndsTheRunningAction()
+{
+    QFETCH(bool, drag);
+    QWidget window;
+    auto *knob = new IndustrialKnob(&window);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->setWheelEnabled(true);
+    knob->resize(220, 240);
+    QVERIFY(focusOn(*knob));
+    const DrawnDial dial = drawnDialOf(*knob);
+    QVERIFY(dial.radius > 20.0);
+    knob->setValue(50.0);
+    QSignalSpy committed(knob, &IndustrialKnob::valueCommitted);
+    if (drag) {
+        sendMouse(*knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+        sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 45.0));
+    } else {
+        sendKey(*knob, QEvent::KeyPress, Qt::Key_PageUp, false);
+    }
+    const double reached = knob->value();
+    QVERIFY(reached > 50.0);
+    QCOMPARE(committed.count(), 0);
+    QVERIFY(sendWheel(*knob, 120));
+    QCOMPARE(committed.count(), 2);
+    QCOMPARE(committed.at(0).at(0).toDouble(), reached);
+    QCOMPARE(committed.at(1).at(0).toDouble(), knob->value());
+    const double after = knob->value();
+    QVERIFY(after > reached);
+    if (drag) {
+        sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+        sendMouse(*knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    } else {
+        sendKey(*knob, QEvent::KeyRelease, Qt::Key_PageUp, false);
+    }
+    QCOMPARE(knob->value(), after);
+    QCOMPARE(committed.count(), 2);
 }
 
 void tst_IndustrialKnob::focusRingIsASolidRingInTextColor_data()

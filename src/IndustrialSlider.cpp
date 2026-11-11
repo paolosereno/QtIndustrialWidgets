@@ -9,12 +9,17 @@
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
+#include "internal/PanelFonts.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/TankDisplayLayout.h"
 #include "internal/ValueClassification.h"
 #include "internal/ValueStateDrawing.h"
+#include "internal/WheelNotches.h"
 
 #include <QtCore/QEvent>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
+#include <QtGui/QWheelEvent>
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
@@ -33,6 +38,9 @@ namespace {
 constexpr int kLabelPx = 10;   // Scale labels, before the font scale (#51) and the 7 pt floor
 constexpr int kReadoutPx = 13; // Readouts, before the font scale and the 7 pt floor
 constexpr double kPodPadding = 3.0;
+constexpr double kLimitHatchSpacing = 3.0; // Between the hatch lines outside the setpoint limits
+constexpr double kLimitMarkWidth = 2.0;    // The stop mark of a setpoint limit
+constexpr double kLimitMarkPast = 2.5;     // How far the stop mark passes the end of a major tick (its square cap: 0.8)
 const QColor kPodColor(16, 20, 26); // Opaque: the readout contrast does not depend on the background (#159)
 
 const QString kSetpointTag = QStringLiteral("SP");
@@ -51,7 +59,7 @@ double podSideMargin(double podHeight)
 
 // The parts of one readout panel, left to right
 struct Readout {
-    enum class Mark { None, Deviation, Unknown };
+    enum class Mark { None, Deviation, Unknown, Padlock };
     Mark mark{Mark::None};      // Never left out
     QString tag;                // Never left out
     int triangle{0};            // 1 up (over range), -1 down (under range), 0 none; never left out
@@ -79,6 +87,8 @@ double markWidth(const QFontMetricsF &fm, Readout::Mark mark)
         return triangleWidth(fm);
     case Readout::Mark::Unknown:
         return fm.horizontalAdvance(QLatin1Char('?'));
+    case Readout::Mark::Padlock:
+        return fm.capHeight() * 0.8;
     case Readout::Mark::None:
         break;
     }
@@ -174,6 +184,13 @@ QString drawReadout(QPainter &painter, const QRectF &pod, const Readout &r, QFon
         painter.restore();
         x += triW;
         drawn << QStringLiteral("Δ");
+    } else if (r.mark == Readout::Mark::Padlock) {
+        advance(space);
+        // #180: read-only. A padlock as tall as the capitals, standing on the baseline
+        const double h = fm.capHeight();
+        internal::drawPadlock(painter, QRectF(x, baseline - h, h * 0.8, h), color);
+        x += h * 0.8;
+        drawn << QStringLiteral("🔒");
     } else if (r.mark == Readout::Mark::Unknown) {
         advance(space);
         painter.drawText(QPointF(x, baseline), QStringLiteral("?"));
@@ -299,19 +316,7 @@ QStringList IndustrialSliderPrivate::majorLabelTexts() const
 
 IndustrialSliderPrivate::Fonts IndustrialSliderPrivate::fontsFor(const QFont &widgetFont, double logicalDpi)
 {
-    Fonts f;
-    const double scale = internal::fontScale(widgetFont, QApplication::font());
-    // #60: no text below 7 pt
-    f.minimumPx = internal::minimumReadoutPixelSize(logicalDpi);
-    f.label = widgetFont;
-    f.label.setBold(true);
-    f.label.setPixelSize(std::max(f.minimumPx, internal::scalePixelSize(kLabelPx, scale)));
-    f.readout = widgetFont;
-    f.readout.setBold(true);
-    f.readout.setPixelSize(std::max(f.minimumPx, internal::scalePixelSize(kReadoutPx, scale)));
-    // Greyscale antialiasing on the opaque panel (#159)
-    f.readout.setStyleStrategy(QFont::StyleStrategy(f.readout.styleStrategy() | QFont::NoSubpixelAntialias));
-    return f;
+    return internal::panelFonts(widgetFont, logicalDpi, kLabelPx, kReadoutPx);
 }
 
 internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, double h, const Fonts &fonts) const
@@ -348,6 +353,9 @@ internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, doubl
         const QFontMetricsF sm(smallest);
         Readout setpoint;
         setpoint.tag = kSetpointTag;
+        if (m_readOnly) {
+            setpoint.mark = Readout::Mark::Padlock; // Never left out
+        }
         double needed = readoutWidth(setpoint, sm, false, false);
         if (m_feedbackReadoutVisible) {
             for (Readout::Mark mark : {Readout::Mark::Deviation, Readout::Mark::Unknown}) {
@@ -368,11 +376,24 @@ internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, doubl
     return in;
 }
 
+void IndustrialSliderPrivate::endAction(IndustrialSlider *q)
+{
+    if (!m_dragging && !m_keyAction) return;
+    const double start = m_dragging ? m_dragStartSetpoint : m_actionStartSetpoint;
+    m_dragging = false;
+    m_keyAction = false;
+    m_actionKey = 0;
+    if (m_setpoint != start) {
+        Q_EMIT q->setpointCommitted(m_setpoint);
+    }
+}
+
 IndustrialSlider::IndustrialSlider(QWidget *parent)
     : QWidget(parent)
     , d_ptr(std::make_unique<IndustrialSliderPrivate>())
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    setFocusPolicy(Qt::StrongFocus); // #180: the keys need focus; the ring shows it
 }
 
 IndustrialSlider::~IndustrialSlider() = default;
@@ -404,6 +425,12 @@ QColor IndustrialSlider::readoutColor() const { return d_ptr->m_readoutColor; }
 QColor IndustrialSlider::normalColor() const { return d_ptr->m_normalColor; }
 QColor IndustrialSlider::warningColor() const { return d_ptr->m_warningColor; }
 QColor IndustrialSlider::errorColor() const { return d_ptr->m_errorColor; }
+double IndustrialSlider::step() const { return d_ptr->m_step; }
+double IndustrialSlider::pageStep() const { return d_ptr->m_pageStepSet ? d_ptr->m_pageStep : d_ptr->m_step * 5.0; }
+bool IndustrialSlider::isReadOnly() const { return d_ptr->m_readOnly; }
+bool IndustrialSlider::isWheelEnabled() const { return d_ptr->m_wheelEnabled; }
+double IndustrialSlider::setpointLimitLow() const { return d_ptr->limitLow(); }
+double IndustrialSlider::setpointLimitHigh() const { return d_ptr->limitHigh(); }
 
 QSize IndustrialSlider::sizeHint() const
 {
@@ -421,6 +448,9 @@ QSize IndustrialSlider::sizeHint() const
         for (double v : {lo, hi}) {
             Readout r;
             r.tag = kSetpointTag;
+            if (d_ptr->m_readOnly) {
+                r.mark = Readout::Mark::Padlock;
+            }
             r.number = internal::formatFixed(v, precision);
             r.unit = d_ptr->m_unit;
             pod = std::max(pod, readoutWidth(r, fm, true, true));
@@ -461,7 +491,9 @@ QSize IndustrialSlider::minimumSizeHint() const
     const double dpi = logicalDpiY();
     d_ptr->m_minimumDpi = dpi;
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), dpi);
-    const QSizeF s = internal::minimumSliderSize(d_ptr->layoutInput(0.0, 0.0, fonts));
+    const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts);
+    d_ptr->m_minimumPodWidth = in.text.podMinWidth;
+    const QSizeF s = internal::minimumSliderSize(in);
     return QSize(static_cast<int>(s.width()), static_cast<int>(s.height()));
 }
 
@@ -490,11 +522,16 @@ void IndustrialSlider::setRange(double min, double max)
 {
     if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     if (min == d_ptr->m_minimum && max == d_ptr->m_maximum) return;
+    const double lowBefore = d_ptr->limitLow();
+    const double highBefore = d_ptr->limitHigh();
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     updateGeometry(); // the widths of the scale labels
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
+    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
+        Q_EMIT setpointLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh()); // the limits are read within the range
+    }
     d_ptr->emitChanges(this, changes);
     update();
 }
@@ -540,7 +577,10 @@ void IndustrialSlider::clearFeedback()
 
 void IndustrialSlider::setDeviationThreshold(double threshold)
 {
-    if (!std::isfinite(threshold) || threshold < 0.0 || threshold == d_ptr->m_deviationThreshold) return;
+    if (std::isnan(threshold)) {
+        threshold = 0.0; // NaN turns the comparison off, as 0 does
+    }
+    if (std::isinf(threshold) || threshold < 0.0 || threshold == d_ptr->m_deviationThreshold) return;
     d_ptr->m_deviationThreshold = threshold;
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     Q_EMIT deviationThresholdChanged(d_ptr->m_deviationThreshold);
@@ -619,6 +659,76 @@ void IndustrialSlider::setFeedbackReadoutVisible(bool visible)
     update();
 }
 
+void IndustrialSlider::setStep(double step)
+{
+    if (!std::isfinite(step) || step <= 0.0 || step == d_ptr->m_step) return;
+    d_ptr->m_step = step;
+    Q_EMIT appearanceChanged();
+}
+
+void IndustrialSlider::setPageStep(double step)
+{
+    if (!std::isfinite(step) || step <= 0.0) return;
+    if (d_ptr->m_pageStepSet && d_ptr->m_pageStep == step) return;
+    d_ptr->m_pageStep = step;
+    d_ptr->m_pageStepSet = true;
+    Q_EMIT appearanceChanged();
+}
+
+void IndustrialSlider::resetPageStep()
+{
+    if (!d_ptr->m_pageStepSet) return;
+    d_ptr->m_pageStepSet = false;
+    Q_EMIT appearanceChanged();
+}
+
+void IndustrialSlider::setReadOnly(bool readOnly)
+{
+    if (d_ptr->m_readOnly == readOnly) return;
+    if (readOnly) {
+        d_ptr->endAction(this); // #182: a drag or a held key running now ends, and commits if it changed the setpoint
+    }
+    d_ptr->m_readOnly = readOnly;
+    d_ptr->m_wheelRemainder = 0;
+    updateGeometry(); // the padlock is part of the minimum
+    Q_EMIT readOnlyChanged(readOnly);
+    update();
+}
+
+void IndustrialSlider::setWheelEnabled(bool enabled)
+{
+    if (d_ptr->m_wheelEnabled == enabled) return;
+    d_ptr->m_wheelEnabled = enabled;
+    d_ptr->m_wheelRemainder = 0;
+    Q_EMIT appearanceChanged();
+}
+
+void IndustrialSlider::setSetpointLimits(double low, double high)
+{
+    if (!std::isfinite(low) || !std::isfinite(high) || low >= high) return;
+    const double lowBefore = d_ptr->limitLow();
+    const double highBefore = d_ptr->limitHigh();
+    d_ptr->m_limitsSet = true;
+    d_ptr->m_limitLow = low;
+    d_ptr->m_limitHigh = high;
+    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
+        Q_EMIT setpointLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
+        update();
+    }
+}
+
+void IndustrialSlider::clearSetpointLimits()
+{
+    if (!d_ptr->m_limitsSet) return;
+    const double lowBefore = d_ptr->limitLow();
+    const double highBefore = d_ptr->limitHigh();
+    d_ptr->m_limitsSet = false;
+    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
+        Q_EMIT setpointLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
+        update();
+    }
+}
+
 #define QIW_SLIDER_COLOR_SETTER(Setter, member)                                                                        \
     void IndustrialSlider::Setter(const QColor &color)                                                                 \
     {                                                                                                                  \
@@ -649,6 +759,202 @@ void IndustrialSlider::changeEvent(QEvent *event)
     QWidget::changeEvent(event);
 }
 
+namespace {
+
+bool isStepKey(int key)
+{
+    switch (key) {
+    case Qt::Key_Left:
+    case Qt::Key_Down:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_PageDown:
+    case Qt::Key_PageUp:
+    case Qt::Key_Home:
+    case Qt::Key_End:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// The along coordinate of a point: x on a horizontal slider, y on a vertical one
+double alongOfPoint(const internal::SliderLayout &layout, const QPointF &pos)
+{
+    return layout.vertical ? pos.y() : pos.x();
+}
+
+} // namespace
+
+void IndustrialSlider::mousePressEvent(QMouseEvent *event)
+{
+    if (d_ptr->m_readOnly) {
+        event->ignore(); // #182: read-only, the press goes to the parent
+        return;
+    }
+    if (event->button() == Qt::LeftButton) {
+        // #182: a press never changes the setpoint. It starts a relative drag only on the handle as it is drawn
+        const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
+        internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+        in.devicePixelRatio = devicePixelRatioF();
+        const internal::SliderLayout layout = internal::layoutSlider(in);
+        const double fraction = (d_ptr->m_setpoint - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
+        const QPolygonF handle = internal::sliderHandlePolygon(layout, layout.along(fraction));
+        const QPointF pos = event->position();
+        if (handle.containsPoint(pos, Qt::OddEvenFill)) {
+            d_ptr->endAction(this); // A key held while the drag starts ends here
+            d_ptr->m_dragging = true;
+            d_ptr->m_dragLayout = layout;
+            d_ptr->m_dragStartAlong = alongOfPoint(layout, pos);
+            d_ptr->m_dragStartSetpoint = d_ptr->m_setpoint;
+        }
+        event->accept();
+        return;
+    }
+    QWidget::mousePressEvent(event);
+}
+
+void IndustrialSlider::mouseMoveEvent(QMouseEvent *event)
+{
+    if (d_ptr->m_readOnly) {
+        event->ignore();
+        return;
+    }
+    if (d_ptr->m_dragging && (event->buttons() & Qt::LeftButton)) {
+        // #182: relative; the scale of the press is used for the whole drag, so a relayout does not move the setpoint
+        const internal::SliderLayout &layout = d_ptr->m_dragLayout;
+        const double length = layout.scaleMax - layout.scaleMin;
+        if (length != 0.0) {
+            const double moved = alongOfPoint(layout, event->position()) - d_ptr->m_dragStartAlong;
+            const double proposed =
+                d_ptr->m_dragStartSetpoint + moved / length * (d_ptr->m_maximum - d_ptr->m_minimum);
+            setSetpoint(d_ptr->operatorTarget(proposed));
+        }
+        event->accept();
+        return;
+    }
+    QWidget::mouseMoveEvent(event);
+}
+
+void IndustrialSlider::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (d_ptr->m_readOnly) {
+        event->ignore();
+        return;
+    }
+    if (event->button() == Qt::LeftButton) {
+        if (d_ptr->m_dragging) {
+            d_ptr->endAction(this);
+        }
+        event->accept();
+        return;
+    }
+    QWidget::mouseReleaseEvent(event);
+}
+
+void IndustrialSlider::wheelEvent(QWheelEvent *event)
+{
+    // #182: off by default, and only while the slider has focus; otherwise ignored, so that the parent (a scroll
+    // area) gets it. Each notch (120 units, summed over the smaller events of a high-resolution wheel or a touchpad)
+    // is one step, committed at once
+    if (!d_ptr->m_wheelEnabled || d_ptr->m_readOnly || !hasFocus()) {
+        event->ignore();
+        return;
+    }
+    internal::applyWheelNotches(d_ptr->m_wheelRemainder, event->angleDelta().y(), [this] { d_ptr->endAction(this); },
+                                [this](int direction) {
+                                    const double before = d_ptr->m_setpoint;
+                                    setSetpoint(d_ptr->operatorTarget(d_ptr->m_setpoint + direction * d_ptr->m_step));
+                                    if (d_ptr->m_setpoint != before) {
+                                        Q_EMIT setpointCommitted(d_ptr->m_setpoint);
+                                    }
+                                });
+    event->accept();
+}
+
+void IndustrialSlider::keyPressEvent(QKeyEvent *event)
+{
+    const int key = event->key();
+    if (!isStepKey(key)) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    if (d_ptr->m_readOnly) {
+        event->ignore(); // #182: read-only, the key goes to the parent
+        return;
+    }
+    // #182: a key action starts at the first press of a key (or at an auto-repeat, when the first press was not
+    // seen) and ends at the release of that key that is not an auto-repeat
+    if (!d_ptr->m_keyAction) {
+        d_ptr->endAction(this); // A drag running when the key is pressed ends here
+        d_ptr->m_keyAction = true;
+        d_ptr->m_actionStartSetpoint = d_ptr->m_setpoint;
+    }
+    d_ptr->m_actionKey = key;
+    // #182: within the setpoint limits; Home and End ask for the ends of the range, so they stop at the limits (as on
+    // IndustrialKnob)
+    double proposed = d_ptr->m_maximum; // Qt::Key_End
+    switch (key) {
+    case Qt::Key_Left:
+    case Qt::Key_Down:
+        proposed = d_ptr->m_setpoint - d_ptr->m_step;
+        break;
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+        proposed = d_ptr->m_setpoint + d_ptr->m_step;
+        break;
+    case Qt::Key_PageDown:
+        proposed = d_ptr->m_setpoint - pageStep();
+        break;
+    case Qt::Key_PageUp:
+        proposed = d_ptr->m_setpoint + pageStep();
+        break;
+    case Qt::Key_Home:
+        proposed = d_ptr->m_minimum;
+        break;
+    default:
+        break;
+    }
+    setSetpoint(d_ptr->operatorTarget(proposed));
+    event->accept();
+}
+
+void IndustrialSlider::keyReleaseEvent(QKeyEvent *event)
+{
+    if (!isStepKey(event->key())) {
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+    if (d_ptr->m_readOnly) {
+        event->ignore();
+        return;
+    }
+    if (!event->isAutoRepeat() && d_ptr->m_keyAction && event->key() == d_ptr->m_actionKey) {
+        d_ptr->endAction(this);
+    }
+    event->accept();
+}
+
+void IndustrialSlider::focusInEvent(QFocusEvent *event)
+{
+    QWidget::focusInEvent(event);
+    update(); // the focus ring
+}
+
+void IndustrialSlider::focusOutEvent(QFocusEvent *event)
+{
+    d_ptr->endAction(this); // #182: the release will not reach the slider
+    d_ptr->m_wheelRemainder = 0;
+    QWidget::focusOutEvent(event);
+    update();
+}
+
+void IndustrialSlider::hideEvent(QHideEvent *event)
+{
+    d_ptr->endAction(this);
+    QWidget::hideEvent(event);
+}
+
 void IndustrialSlider::paintEvent(QPaintEvent *)
 {
     // #177: on a screen of another logical DPI the minimum changes (the texts at 7 pt): the layout gets it, once
@@ -658,13 +964,15 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
     }
 
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
-    const internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+    internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+    in.devicePixelRatio = devicePixelRatioF();
     const internal::SliderLayout layout = internal::layoutSlider(in);
     d_ptr->m_lastLayout = layout;
     d_ptr->m_lastSetpointReadout.clear();
     d_ptr->m_lastFeedbackReadout.clear();
     d_ptr->m_lastReadoutPx = 0;
     d_ptr->m_lastFeedbackReadoutPx = 0;
+    d_ptr->m_lastFocusRing = QRectF();
 
     const bool vertical = layout.vertical;
     const double span = d_ptr->m_maximum - d_ptr->m_minimum;
@@ -725,6 +1033,39 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
         const double length = isMajor ? internal::kSliderMajorTick : internal::kSliderMinorTick;
         painter.drawLine(point(a, layout.tickNear), point(a, layout.tickNear + length));
     }
+    // #182: outside the setpoint limits the band of the ticks is hatched, and each limit inside the range has a stop
+    // mark across the zone band and the ticks, longer than a major tick: the limits do not rely on colour
+    const double limitLow = d_ptr->limitLow();
+    const double limitHigh = d_ptr->limitHigh();
+    if (limitLow > d_ptr->m_minimum || limitHigh < d_ptr->m_maximum) {
+        const double c0 = layout.tickNear;
+        const double c1 = layout.tickNear + internal::kSliderMajorTick;
+        const auto hatch = [&](double from, double to) {
+            const QRectF area = band(alongOf(from), alongOf(to), c0, c1);
+            if (area.isEmpty()) {
+                return;
+            }
+            painter.save();
+            painter.setClipRect(area, Qt::IntersectClip);
+            painter.setPen(QPen(d_ptr->m_scaleColor, 1.2, Qt::SolidLine, Qt::FlatCap));
+            const double depth = c1 - c0;
+            const double lo = vertical ? area.top() : area.left();
+            const double hi = vertical ? area.bottom() : area.right();
+            for (double a = lo - depth; a <= hi; a += kLimitHatchSpacing) {
+                painter.drawLine(point(a, c1), point(a + depth, c0));
+            }
+            painter.restore();
+        };
+        if (limitLow > d_ptr->m_minimum) hatch(d_ptr->m_minimum, limitLow);
+        if (limitHigh < d_ptr->m_maximum) hatch(limitHigh, d_ptr->m_maximum);
+        painter.setPen(QPen(d_ptr->m_scaleColor, kLimitMarkWidth, Qt::SolidLine, Qt::FlatCap));
+        for (const double limit : {limitLow, limitHigh}) {
+            if (limit > d_ptr->m_minimum && limit < d_ptr->m_maximum) {
+                const double a = alongOf(limit);
+                painter.drawLine(point(a, layout.zoneNear), point(a, c1 + kLimitMarkPast));
+            }
+        }
+    }
     const QStringList texts = d_ptr->majorLabelTexts();
     painter.setFont(fonts.label);
     painter.setPen(d_ptr->m_textColor);
@@ -762,12 +1103,12 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
     // which may be dark (texts on a light panel) as the track is
     const double setpointAt = alongOf(d_ptr->m_setpoint);
     const ValueState fbState = d_ptr->m_feedbackState;
-    const QColor hatchColor = internal::tankHatchColor(d_ptr->m_trackColor);
+    const QColor hatchColor = internal::hatchColorOn(d_ptr->m_trackColor);
     if (d_ptr->m_hasFeedback) {
         if (fbState == ValueState::Invalid) {
             QPainterPath track;
             track.addRect(layout.track);
-            internal::drawInvalidHatch(painter, track, internal::kSliderTrack, hatchColor);
+            internal::drawInvalidHatch(painter, track, layout.trackFar() - layout.trackNear(), hatchColor);
         } else {
             const double at = alongOf(d_ptr->m_feedback);
             if (d_ptr->m_deviationState == DeviationState::Deviating) {
@@ -783,7 +1124,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
                 const double base = at + outward * (internal::kSliderBarWidth * 0.5 + 1.0);
                 const double tip = base + outward * internal::kSliderBeyondSign;
                 const double mid = (layout.trackNear() + layout.trackFar()) * 0.5;
-                const double half = internal::kSliderTrack * 0.5;
+                const double half = (layout.trackFar() - layout.trackNear()) * 0.5;
                 QPolygonF sign;
                 sign << point(base, mid - half) << point(base, mid + half) << point(tip, mid);
                 painter.setPen(Qt::NoPen);
@@ -811,6 +1152,9 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
             panel(layout.setpointPod);
             Readout r;
             r.tag = kSetpointTag;
+            if (d_ptr->m_readOnly) {
+                r.mark = Readout::Mark::Padlock;
+            }
             r.number = internal::formatFixed(d_ptr->m_setpoint, d_ptr->m_precision);
             r.unit = d_ptr->m_unit;
             const FittedReadout fit = fitReadout(r, fonts.readout, maxPx, fonts.minimumPx,
@@ -842,6 +1186,17 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
             d_ptr->m_lastFeedbackReadout =
                 drawReadout(painter, layout.feedbackPod, r, fonts.readout, fit, d_ptr->m_readoutColor);
             d_ptr->m_lastFeedbackReadoutPx = fit.px;
+        }
+    }
+
+    // 7. Focus (#183, #180): a solid 2 px ring in textColor() along the edge, in the margin kept free of the drawing
+    if (hasFocus()) {
+        const QRectF ring = QRectF(rect()).adjusted(1.0, 1.0, -1.0, -1.0);
+        if (ring.width() > 0.0 && ring.height() > 0.0) {
+            painter.setPen(QPen(d_ptr->m_textColor, 2.0, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(ring); // On whole pixels at any integer DPR: every pixel of the pen is covered in full
+            d_ptr->m_lastFocusRing = ring;
         }
     }
 }

@@ -88,10 +88,19 @@ SliderLayout layoutSlider(const SliderLayoutInput &in)
     // Across: the group centred in the space left (horizontal: below the panels; vertical: the width)
     const double acrossStart = in.vertical ? m : top;
     const double acrossEnd = in.vertical ? w - m : h - m;
-    const double start = acrossStart + std::max(0.0, (acrossEnd - acrossStart - group) * 0.5);
+    double start = acrossStart + std::max(0.0, (acrossEnd - acrossStart - group) * 0.5);
+    double track = kSliderTrack;
+    const double dpr = finiteOrZero(in.devicePixelRatio);
+    if (dpr > 0.0) {
+        // The near side at the centre of the device pixel at or before it; the thickness rounded down to whole pixels
+        const double near = start + kSliderHandleDepth;
+        const double snapped = (std::floor(near * dpr - 0.5) + 0.5) / dpr;
+        start += snapped - near;
+        track = std::max(1.0, std::floor(kSliderTrack * dpr)) / dpr;
+    }
     l.handleBase = start;
     const double trackNear = start + kSliderHandleDepth;
-    l.zoneNear = trackNear + kSliderTrack + kSliderBarOverhang;
+    l.zoneNear = trackNear + track + kSliderBarOverhang;
     l.tickNear = l.zoneNear + kSliderZone + kSliderTickGap;
     l.labelNear = l.tickNear + kSliderMajorTick + kSliderLabelGap;
 
@@ -100,12 +109,12 @@ SliderLayout layoutSlider(const SliderLayoutInput &in)
         const double room = verticalEndRoom(in.text);
         l.scaleMax = top + room;
         l.scaleMin = std::max(l.scaleMax, h - m - room);
-        l.track = QRectF(trackNear, l.scaleMax, kSliderTrack, l.scaleMin - l.scaleMax);
+        l.track = QRectF(trackNear, l.scaleMax, track, l.scaleMin - l.scaleMax);
     } else {
         const double room = endRoom();
         l.scaleMin = m + room;
         l.scaleMax = std::max(l.scaleMin, w - m - room);
-        l.track = QRectF(l.scaleMin, trackNear, l.scaleMax - l.scaleMin, kSliderTrack);
+        l.track = QRectF(l.scaleMin, trackNear, l.scaleMax - l.scaleMin, track);
     }
     return l;
 }
@@ -153,7 +162,7 @@ QPolygonF sliderHandlePolygon(const SliderLayout &layout, double at)
 
 QRectF sliderFeedbackBar(const SliderLayout &layout, double at)
 {
-    const double across = kSliderTrack + 2.0 * kSliderBarOverhang;
+    const double across = layout.trackFar() - layout.trackNear() + 2.0 * kSliderBarOverhang;
     const double near = layout.trackNear() - kSliderBarOverhang;
     if (layout.vertical) {
         return QRectF(near, at - kSliderBarWidth * 0.5, across, kSliderBarWidth);

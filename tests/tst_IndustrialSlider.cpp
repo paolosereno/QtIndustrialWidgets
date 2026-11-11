@@ -17,6 +17,7 @@
 
 #include "FontTestUtils.h"
 #include "HatchTestUtils.h"
+#include "IndustrialSliderTestUtils.h"
 #include "PixelTestUtils.h"
 #include "ScreenChangeTestUtils.h"
 
@@ -77,60 +78,17 @@ private Q_SLOTS:
 
 namespace {
 
+using namespace SliderTest;
+
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 
-// Colours that no other part of the drawing uses
-const QColor kHandle(0, 0, 255);
-const QColor kFeedback(255, 0, 255);
-const QColor kTrack(0, 64, 0);
-const QColor kScale(0, 255, 0);
-const QColor kText(255, 255, 0);
-const QColor kReadout(255, 255, 255);
-const QColor kNormal(0, 128, 128);
-const QColor kWarning(255, 128, 0);
-const QColor kError(128, 0, 255);
-const QColor kBackground(0, 0, 0);
 // The hatches contrast with the track whatever the text colour: white or black mixed into the track up to 4.5:1
-const QColor kHatch = internal::tankHatchColor(kTrack);
-
-int channelDistance(QRgb a, QRgb b)
-{
-    return std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
-}
-
-bool near(QRgb p, const QColor &c, int tolerance = 8)
-{
-    return channelDistance(p, c.rgb()) <= tolerance;
-}
-
-// The slider with the test colours on an opaque black background
-void prepare(IndustrialSlider &s, QSize size = QSize(300, 90))
-{
-    s.setHandleColor(kHandle);
-    s.setFeedbackColor(kFeedback);
-    s.setTrackColor(kTrack);
-    s.setScaleColor(kScale);
-    s.setTextColor(kText);
-    s.setReadoutColor(kReadout);
-    s.setNormalColor(kNormal);
-    s.setWarningColor(kWarning);
-    s.setErrorColor(kError);
-    QPalette pal = s.palette();
-    pal.setColor(QPalette::Window, kBackground);
-    s.setPalette(pal);
-    s.setAutoFillBackground(true);
-    s.resize(size);
-}
+const QColor kHatch = internal::hatchColorOn(kTrack);
 
 QSize sizeFor(bool vertical)
 {
     return vertical ? QSize(140, 300) : QSize(300, 90);
-}
-
-QImage render(IndustrialSlider &s)
-{
-    return s.grab().toImage().convertToFormat(QImage::Format_ARGB32);
 }
 
 internal::SliderLayout layoutOf(const IndustrialSlider &s)
@@ -196,18 +154,6 @@ QImage hatchMask(const QImage &img)
 
 using PixelTest::boundsOf;
 using PixelTest::countIn;
-
-void addOrientations()
-{
-    QTest::addColumn<bool>("vertical");
-    QTest::newRow("horizontal") << false;
-    QTest::newRow("vertical") << true;
-}
-
-void setVertical(IndustrialSlider &s, bool vertical)
-{
-    s.setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
-}
 
 // The device pixels of the readout panels that hold readout ink (near white), inside \a pod
 int readoutInk(const QImage &img, const QRectF &pod)
@@ -456,12 +402,26 @@ void tst_IndustrialSlider::deviationFollowsEveryInput()
     QCOMPARE(s.deviationState(), DeviationState::Off);
     QCOMPARE(spy.count(), 7);
     QCOMPARE(spy.last().at(0).value<DeviationState>(), DeviationState::Off);
-    // Negative and non-finite thresholds are ignored
-    for (double t : {-1.0, kNaN, kInf}) {
+    // Negative and infinite thresholds are ignored
+    for (double t : {-1.0, kInf, -kInf}) {
         s.setDeviationThreshold(t);
     }
     QCOMPARE(s.deviationThreshold(), 0.0);
     QCOMPARE(threshold.count(), 3);
+    // NaN turns the threshold off, as 0 does (#180 plan): from 5, the threshold is 0 and the deviation Off
+    s.setFeedback(10.0);
+    s.setDeviationThreshold(5.0);
+    QCOMPARE(s.deviationState(), DeviationState::Deviating);
+    threshold.clear();
+    spy.clear();
+    s.setDeviationThreshold(kNaN);
+    QCOMPARE(s.deviationThreshold(), 0.0);
+    QCOMPARE(s.deviationState(), DeviationState::Off);
+    QCOMPARE(threshold.count(), 1);
+    QCOMPARE(threshold.first().at(0).toDouble(), 0.0);
+    QCOMPARE(spy.count(), 1);
+    s.setDeviationThreshold(kNaN); // already off: nothing
+    QCOMPARE(threshold.count(), 1);
 }
 
 void tst_IndustrialSlider::withoutFeedbackNothingIsDrawn_data()
@@ -908,16 +868,19 @@ void tst_IndustrialSlider::readoutsInsideTheirPanelsNeverBelowSevenPoints_data()
 }
 
 // From the minimum width up: the readout ink of each panel stays inside it, and the setpoint readout is never below
-// 7 pt (#60), for long values and units and for the feedback states with their marks
+// 7 pt (#60), for long values and units and for the feedback states with their marks; read-only too, with the
+// padlock, which is never left out (#180)
 void tst_IndustrialSlider::readoutsInsideTheirPanelsNeverBelowSevenPoints()
 {
     QFETCH(bool, vertical);
     QFETCH(int, extra);
+    for (const bool readOnly : {false, true})
     for (double feedback : {42.0, kNaN, kInf, -1e9, 1e12}) {
         IndustrialSlider s;
         setVertical(s, vertical);
         s.setRange(-100000.0, 100000.0);
         s.setUnit(QStringLiteral("m³ (15 °C)"));
+        s.setReadOnly(readOnly);
         const QSize min = s.minimumSizeHint();
         prepare(s, QSize(min.width() + extra, min.height() + (vertical ? 40 : 0)));
         s.setDeviationThreshold(1.0);
@@ -925,7 +888,11 @@ void tst_IndustrialSlider::readoutsInsideTheirPanelsNeverBelowSevenPoints()
         s.setFeedback(feedback);
         const QImage img = render(s);
         const internal::SliderLayout l = layoutOf(s);
-        const QString where = QStringLiteral("feedback %1, %2x%3").arg(feedback).arg(s.width()).arg(s.height());
+        const QString where = QStringLiteral("%1feedback %2, %3x%4")
+                                  .arg(readOnly ? "read-only, " : "").arg(feedback).arg(s.width()).arg(s.height());
+        const QString sp = internal::IndustrialSliderTestAccess::lastSetpointReadout(s);
+        QVERIFY2(readOnly ? sp.startsWith(QStringLiteral("🔒 SP")) : (sp.startsWith(QStringLiteral("SP")) && !sp.contains(QStringLiteral("🔒"))),
+                 qPrintable(where + QStringLiteral(": ") + internal::IndustrialSliderTestAccess::lastSetpointReadout(s)));
         QVERIFY2(internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s)
                      >= internal::minimumReadoutPixelSize(s.logicalDpiY()),
                  qPrintable(where));

@@ -8,6 +8,7 @@
 #include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
+#include "internal/PanelFonts.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/TankDisplayLayout.h"
 #include "internal/ValueClassification.h"
@@ -196,19 +197,7 @@ QStringList TankDisplayPrivate::majorLabelTexts() const
 
 TankDisplayPrivate::Fonts TankDisplayPrivate::fontsFor(const QFont &widgetFont, double logicalDpi)
 {
-    Fonts f;
-    const double scale = internal::fontScale(widgetFont, QApplication::font());
-    // #60: no text below 7 pt
-    f.minimumPx = internal::minimumReadoutPixelSize(logicalDpi);
-    f.label = widgetFont;
-    f.label.setBold(true);
-    f.label.setPixelSize(std::max(f.minimumPx, internal::scalePixelSize(kLabelPx, scale)));
-    f.readout = widgetFont;
-    f.readout.setBold(true);
-    f.readout.setPixelSize(std::max(f.minimumPx, internal::scalePixelSize(kReadoutPx, scale)));
-    // Greyscale antialiasing on the opaque panel (#159)
-    f.readout.setStyleStrategy(QFont::StyleStrategy(f.readout.styleStrategy() | QFont::NoSubpixelAntialias));
-    return f;
+    return internal::panelFonts(widgetFont, logicalDpi, kLabelPx, kReadoutPx);
 }
 
 internal::TankLayoutInput TankDisplayPrivate::layoutInput(double w, double h, const Fonts &fonts) const
@@ -541,7 +530,7 @@ void TankDisplay::paintEvent(QPaintEvent *)
     painter.setBrush(inside);
     painter.drawPath(outlinePath);
     if (state == ValueState::Invalid) {
-        internal::drawInvalidHatch(painter, outlinePath, vessel.width(), internal::tankHatchColor(inside));
+        internal::drawInvalidHatch(painter, outlinePath, vessel.width(), internal::hatchColorOn(inside));
     } else {
         const double surface = levelY(d_ptr->m_value);
         if (surface < vessel.bottom()) {
