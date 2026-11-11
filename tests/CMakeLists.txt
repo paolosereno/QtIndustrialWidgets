@@ -621,6 +621,9 @@ add_dpr_tests(tst_IndustrialSlider)
 add_executable(tst_IndustrialSliderInput
     tst_IndustrialSliderInput.cpp
     $<TARGET_OBJECTS:IndustrialSliderLayout>
+    $<TARGET_OBJECTS:ValueStateDrawing>
+    $<TARGET_OBJECTS:ValueClassification>
+    $<TARGET_OBJECTS:NumberFormat>
     $<TARGET_OBJECTS:TankDisplayLayout>
     $<TARGET_OBJECTS:FontScale>
     $<TARGET_OBJECTS:RadialGaugeLayout>

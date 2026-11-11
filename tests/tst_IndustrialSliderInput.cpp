@@ -13,11 +13,13 @@
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/IndustrialSliderTestAccess.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/ValueStateDrawing.h"
 
 #include "IndustrialSliderTestUtils.h"
 #include "PixelTestUtils.h"
 
 #include <QtGui/QImage>
+#include <QtGui/QPainter>
 #include <QtTest/QSignalSpy>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QVBoxLayout>
@@ -54,9 +56,13 @@ private Q_SLOTS:
     void readOnlyEndsTheRunningAction();
     void readOnlyDrawsThePadlockBeforeTheTag_data();
     void readOnlyDrawsThePadlockBeforeTheTag();
+    void padlockHelperDrawsBodyAndShackle();
     void padlockCountsInThePanelMinimum();
     void wheelIsOffByDefault();
     void wheelStepsOnlyWithFocus();
+    void wheelCountsHalfNotchesTowardsZero();
+    void wheelEndsTheRunningAction_data();
+    void wheelEndsTheRunningAction();
     void limitsAreReadWithinTheRange();
     void limitsBindTheOperatorOnly();
     void fromOutsideTheLimitsOnlyTowardsThem();
@@ -688,6 +694,20 @@ void tst_IndustrialSliderInput::readOnlyDrawsThePadlockBeforeTheTag()
     // It is the first thing in the panel
     QVERIFY2(lockedLeft <= leftmostInk(locked, l.setpointPod) + 2,
              qPrintable(QStringLiteral("solid run at %1, first ink at %2").arg(lockedLeft).arg(leftmostInk(locked, l.setpointPod))));
+    // After it the tag (and what fits) is drawn: the padlock leaves the pen of the text as it was. Readout ink right of
+    // the padlock body, at least as much as two strokes of the capitals' height ("SP")
+    {
+        const double dpr = locked.devicePixelRatio();
+        const QRect pod = QRectF(l.setpointPod.x() * dpr, l.setpointPod.y() * dpr, l.setpointPod.width() * dpr,
+                                 l.setpointPod.height() * dpr).toAlignedRect().intersected(locked.rect());
+        int after = 0;
+        for (int y = pod.top(); y <= pod.bottom(); ++y) {
+            for (int x = lockedLeft + lockedRun + 1; x <= pod.right(); ++x) {
+                after += near(locked.pixel(x, y), kReadout, 110) ? 1 : 0;
+            }
+        }
+        QVERIFY2(after >= 2.0 * cap, qPrintable(QStringLiteral("%1 readout pixels after the padlock").arg(after)));
+    }
 
     // Control: without read-only no glyph has such a body
     s.setReadOnly(false);
@@ -719,6 +739,38 @@ void tst_IndustrialSliderInput::padlockCountsInThePanelMinimum()
         s.setFeedbackReadoutVisible(true);
         const double withFeedback = internal::IndustrialSliderTestAccess::minimumPodWidth(s);
         QVERIFY(withFeedback >= locked);
+    }
+}
+
+// #182, #180: internal::drawPadlock(), shared by IndustrialKnob and IndustrialSlider, drawn large: a filled body in
+// the colour, a shackle above it with the inside of the arch clear, nothing outside the box; the pen and the brush
+// of the painter are as they were (the slider draws its text after it)
+void tst_IndustrialSliderInput::padlockHelperDrawsBodyAndShackle()
+{
+    QImage img(200, 200, QImage::Format_ARGB32);
+    img.fill(kBackground);
+    QPainter painter(&img);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QPen pen(QColor(255, 0, 0), 3.0);
+    const QBrush brush(QColor(0, 0, 255));
+    painter.setPen(pen);
+    painter.setBrush(brush);
+    // Box 80 x 100 at (50, 40): stroke 14.4, body from y 82, arch of centre line 41.6 centred on (90, 68)
+    internal::drawPadlock(painter, QRectF(50.0, 40.0, 80.0, 100.0), kReadout);
+    QCOMPARE(painter.pen(), pen);
+    QCOMPARE(painter.brush(), brush);
+    painter.end();
+    const auto ink = [&](int x, int y) { return near(img.pixel(x, y), kReadout, 8); };
+    const auto clear = [&](int x, int y) { return near(img.pixel(x, y), kBackground, 8); };
+    for (const QPoint &p : {QPoint(56, 100), QPoint(90, 120), QPoint(124, 135), QPoint(90, 86)}) {
+        QVERIFY2(ink(p.x(), p.y()), qPrintable(QStringLiteral("body not filled at (%1, %2)").arg(p.x()).arg(p.y())));
+    }
+    for (const QPoint &p : {QPoint(90, 47), QPoint(69, 72), QPoint(111, 72), QPoint(75, 54), QPoint(105, 54)}) {
+        QVERIFY2(ink(p.x(), p.y()), qPrintable(QStringLiteral("no shackle at (%1, %2)").arg(p.x()).arg(p.y())));
+    }
+    for (const QPoint &p : {QPoint(90, 62), QPoint(90, 74), QPoint(52, 44), QPoint(128, 44), QPoint(40, 100), QPoint(140, 100),
+                            QPoint(90, 145)}) {
+        QVERIFY2(clear(p.x(), p.y()), qPrintable(QStringLiteral("ink at (%1, %2)").arg(p.x()).arg(p.y())));
     }
 }
 
@@ -788,6 +840,78 @@ void tst_IndustrialSliderInput::wheelStepsOnlyWithFocus()
     QCOMPARE(committed.count(), 6);
     QVERIFY(sendWheel(*s, 120)); // At the limit: nothing to commit
     QCOMPARE(committed.count(), 6);
+}
+
+// #182: a part of a notch is kept with its sign until a whole notch is reached, down as up: half a notch down does
+// not step (the notches are counted towards zero)
+void tst_IndustrialSliderInput::wheelCountsHalfNotchesTowardsZero()
+{
+    QWidget window;
+    auto *s = new IndustrialSlider(&window);
+    s->setRange(0.0, 100.0);
+    s->setSetpoint(50.0);
+    s->setWheelEnabled(true);
+    s->resize(300, 92);
+    QVERIFY(focusOn(*s));
+    QSignalSpy committed(s, &IndustrialSlider::setpointCommitted);
+    QVERIFY(sendWheel(*s, -60));
+    QCOMPARE(s->setpoint(), 50.0);
+    QVERIFY(sendWheel(*s, -60));
+    QCOMPARE(s->setpoint(), 49.0);
+    QVERIFY(sendWheel(*s, -90));
+    QVERIFY(sendWheel(*s, 60));
+    QCOMPARE(s->setpoint(), 49.0); // -30 left
+    QVERIFY(sendWheel(*s, -90));
+    QCOMPARE(s->setpoint(), 48.0);
+    QCOMPARE(committed.count(), 2);
+}
+
+void tst_IndustrialSliderInput::wheelEndsTheRunningAction_data()
+{
+    QTest::addColumn<bool>("drag");
+    QTest::newRow("drag") << true;
+    QTest::newRow("held key") << false;
+}
+
+// #182: a wheel notch during a drag or a held key ends that action first (its commit), then steps and commits on its
+// own; the release that follows commits nothing and the drag no longer moves the setpoint
+void tst_IndustrialSliderInput::wheelEndsTheRunningAction()
+{
+    QFETCH(bool, drag);
+    QWidget window;
+    auto *box = new QVBoxLayout(&window);
+    auto *s = new IndustrialSlider(&window);
+    box->addWidget(s);
+    s->setRange(0.0, 100.0);
+    s->setSetpoint(50.0);
+    s->setWheelEnabled(true);
+    window.resize(320, 120);
+    QVERIFY(focusOn(*s));
+    const internal::SliderLayout l = layoutOf(*s);
+    const double length = std::abs(l.scaleMax - l.scaleMin);
+    QSignalSpy committed(s, &IndustrialSlider::setpointCommitted);
+    const QPointF h = handlePoint(*s);
+    if (drag) {
+        sendMouse(*s, QEvent::MouseButtonPress, h);
+        sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.1));
+    } else {
+        sendKey(*s, QEvent::KeyPress, Qt::Key_PageUp, false);
+    }
+    const double reached = s->setpoint();
+    QVERIFY(reached > 50.0);
+    QCOMPARE(committed.count(), 0);
+    QVERIFY(sendWheel(*s, 120));
+    QCOMPARE(committed.count(), 2);
+    QCOMPARE(committed.at(0).at(0).toDouble(), reached);
+    QCOMPARE(committed.at(1).at(0).toDouble(), reached + 1.0);
+    if (drag) {
+        sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.3));
+        sendMouse(*s, QEvent::MouseButtonRelease, moved(l, h, length * 0.3));
+    } else {
+        sendKey(*s, QEvent::KeyRelease, Qt::Key_PageUp, false);
+    }
+    QCOMPARE(s->setpoint(), reached + 1.0);
+    QCOMPARE(committed.count(), 2);
 }
 
 // The limits are kept as set and read within the range; bad limits are ignored; a range that moves the limits read
