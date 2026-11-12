@@ -10,6 +10,7 @@
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtIndustrialWidgets/IndustrialSlider.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
@@ -1453,6 +1454,98 @@ QIcon IndustrialSliderPlugin::icon() const
 }
 
 // ============================================================================
+// ThumbwheelSwitchPlugin
+// ============================================================================
+
+ThumbwheelSwitchPlugin::ThumbwheelSwitchPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void ThumbwheelSwitchPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *ThumbwheelSwitchPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::ThumbwheelSwitch(parent);
+}
+
+QString ThumbwheelSwitchPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString ThumbwheelSwitchPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/ThumbwheelSwitch.h");
+}
+
+QString ThumbwheelSwitchPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::ThumbwheelSwitch");
+}
+
+QString ThumbwheelSwitchPlugin::toolTip() const
+{
+    return QStringLiteral("Push-wheel numeric selector, one drum per decade");
+}
+
+QString ThumbwheelSwitchPlugin::whatsThis() const
+{
+    return QStringLiteral("A thumbwheel switch for calibration racks and manual setpoint panels: one digit drum per "
+                          "decade with + and − buttons, a fixed decimal point, an optional sign drum, value limits, "
+                          "an overflow mark, and a pending value applied with SET or Enter.");
+}
+
+QString ThumbwheelSwitchPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::ThumbwheelSwitch\" name=\"thumbwheelSwitch\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>260</width>\n"
+        "   <height>120</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon ThumbwheelSwitchPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Three drums, each with a + button above and a − button below
+    for (int i = 0; i < 3; ++i) {
+        const double x = 2.5 + i * 9.5;
+        p.setPen(QPen(QColor(120, 134, 150), 1.0));
+        p.setBrush(QColor(30, 36, 45));
+        p.drawRect(QRectF(x, 10.5, 8, 11));
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(200, 208, 218));
+        QPolygonF up;
+        up << QPointF(x + 1.5, 8) << QPointF(x + 6.5, 8) << QPointF(x + 4, 4);
+        p.drawPolygon(up);
+        QPolygonF down;
+        down << QPointF(x + 1.5, 24) << QPointF(x + 6.5, 24) << QPointF(x + 4, 28);
+        p.drawPolygon(down);
+        // The digit, as a bar
+        p.setBrush(QColor(240, 244, 248));
+        p.drawRect(QRectF(x + 3, 13, 2, 6));
+    }
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -1474,6 +1567,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new TankDisplayPlugin(this));
     m_widgets.append(new ValveIndicatorPlugin(this));
     m_widgets.append(new IndustrialSliderPlugin(this));
+    m_widgets.append(new ThumbwheelSwitchPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const
