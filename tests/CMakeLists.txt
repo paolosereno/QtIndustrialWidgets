@@ -489,6 +489,24 @@ if(UNIX AND NOT APPLE)
     add_test(NAME tst_AnalysisChartAllocations COMMAND tst_AnalysisChartAllocations)
 endif()
 
+# The Designer plugin of the build tree: every entry, in the order of the widget box (#154)
+if(BUILD_DESIGNER_PLUGIN)
+    add_executable(tst_DesignerPlugin tst_DesignerPlugin.cpp)
+    target_link_libraries(tst_DesignerPlugin
+        PRIVATE
+            QtIndustrialWidgets::QtIndustrialWidgets
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+            Qt6::Designer
+            Qt6::Test
+    )
+    target_compile_definitions(tst_DesignerPlugin PRIVATE QIW_DESIGNER_PLUGIN="$<TARGET_FILE:QtIndustrialWidgetsPlugin>")
+    add_dependencies(tst_DesignerPlugin QtIndustrialWidgetsPlugin)
+    set_target_properties(tst_DesignerPlugin PROPERTIES AUTOMOC ON)
+    add_dpr_tests(tst_DesignerPlugin)
+endif()
+
 # CITATION.cff must carry the project() version, so that a release does not leave it behind (#130).
 add_test(NAME citation_version
     COMMAND ${CMAKE_COMMAND} -DCITATION_FILE=${PROJECT_SOURCE_DIR}/CITATION.cff
