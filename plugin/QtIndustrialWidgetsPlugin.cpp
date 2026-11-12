@@ -26,65 +26,55 @@
 #include <QtGui/QPixmap>
 
 // ============================================================================
-// IndustrialWidgetPlugin: one entry of the widget box
+// IndustrialWidgetPluginBase: what every entry does the same way
 // ============================================================================
 
-IndustrialWidgetPlugin::IndustrialWidgetPlugin(const Entry &entry, QObject *parent)
+IndustrialWidgetPluginBase::IndustrialWidgetPluginBase(QObject *parent)
     : QObject(parent)
-    , m_entry(entry)
 {
 }
 
-void IndustrialWidgetPlugin::initialize(QDesignerFormEditorInterface *)
+void IndustrialWidgetPluginBase::initialize(QDesignerFormEditorInterface *)
 {
     if (m_initialized) return;
     m_initialized = true;
 }
 
-QWidget *IndustrialWidgetPlugin::createWidget(QWidget *parent) { return m_entry.createWidget(parent); }
-QString IndustrialWidgetPlugin::group() const { return QStringLiteral("Industrial Widgets"); }
-QString IndustrialWidgetPlugin::includeFile() const { return m_entry.includeFile(); }
-QString IndustrialWidgetPlugin::name() const { return m_entry.name(); }
-QString IndustrialWidgetPlugin::toolTip() const { return m_entry.toolTip(); }
-QString IndustrialWidgetPlugin::whatsThis() const { return m_entry.whatsThis(); }
-QString IndustrialWidgetPlugin::domXml() const { return m_entry.domXml(); }
-QIcon IndustrialWidgetPlugin::icon() const { return m_entry.icon(); }
-
-// The entries: what each widget shows in Designer. Internal linkage: only the collection below uses them
-namespace {
+QString IndustrialWidgetPluginBase::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
 
 // ============================================================================
-// RadialGauge
+// RadialGaugePlugin
 // ============================================================================
 
-namespace RadialGaugeEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *RadialGaugePlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::RadialGauge(parent);
 }
 
-QString includeFile()
+QString RadialGaugePlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/RadialGauge.h");
 }
 
-QString name()
+QString RadialGaugePlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::RadialGauge");
 }
 
-QString toolTip()
+QString RadialGaugePlugin::toolTip() const
 {
     return QStringLiteral("Industrial circular dial gauge with cached scale and vector needle");
 }
 
-QString whatsThis()
+QString RadialGaugePlugin::whatsThis() const
 {
     return QStringLiteral("A circular gauge supporting custom angles, threshold bands, major/minor ticks and Hi-DPI caching.");
 }
 
-QString domXml()
+QString RadialGaugePlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::RadialGauge\" name=\"radialGauge\">\n"
@@ -100,7 +90,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon RadialGaugePlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -128,42 +118,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace RadialGaugeEntry
-
 // ============================================================================
-// LinearGauge
+// LinearGaugePlugin
 // ============================================================================
 
-namespace LinearGaugeEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *LinearGaugePlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::LinearGauge(parent);
 }
 
-QString includeFile()
+QString LinearGaugePlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/LinearGauge.h");
 }
 
-QString name()
+QString LinearGaugePlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::LinearGauge");
 }
 
-QString toolTip()
+QString LinearGaugePlugin::toolTip() const
 {
     return QStringLiteral("Industrial linear column gauge and thermometer");
 }
 
-QString whatsThis()
+QString LinearGaugePlugin::whatsThis() const
 {
     return QStringLiteral("Linear gauge supporting both vertical and horizontal layouts, thermometer bulb mode, and dynamic fluid color.");
 }
 
-QString domXml()
+QString LinearGaugePlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::LinearGauge\" name=\"linearGauge\">\n"
@@ -179,7 +163,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon LinearGaugePlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -209,42 +193,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace LinearGaugeEntry
-
 // ============================================================================
-// SevenSegmentDisplay
+// SevenSegmentDisplayPlugin
 // ============================================================================
 
-namespace SevenSegmentDisplayEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *SevenSegmentDisplayPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::SevenSegmentDisplay(parent);
 }
 
-QString includeFile()
+QString SevenSegmentDisplayPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/SevenSegmentDisplay.h");
 }
 
-QString name()
+QString SevenSegmentDisplayPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::SevenSegmentDisplay");
 }
 
-QString toolTip()
+QString SevenSegmentDisplayPlugin::toolTip() const
 {
     return QStringLiteral("Industrial vector 7-segment LED/LCD display");
 }
 
-QString whatsThis()
+QString SevenSegmentDisplayPlugin::whatsThis() const
 {
     return QStringLiteral("Scalable vector 7-segment display with italic slant, decimal point, and customizable LED colors.");
 }
 
-QString domXml()
+QString SevenSegmentDisplayPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::SevenSegmentDisplay\" name=\"sevenSegmentDisplay\">\n"
@@ -260,7 +238,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon SevenSegmentDisplayPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -295,42 +273,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace SevenSegmentDisplayEntry
-
 // ============================================================================
-// LedIndicator
+// LedIndicatorPlugin
 // ============================================================================
 
-namespace LedIndicatorEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *LedIndicatorPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::LedIndicator(parent);
 }
 
-QString includeFile()
+QString LedIndicatorPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/LedIndicator.h");
 }
 
-QString name()
+QString LedIndicatorPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::LedIndicator");
 }
 
-QString toolTip()
+QString LedIndicatorPlugin::toolTip() const
 {
     return QStringLiteral("Industrial LED panel indicator with 3D lens and blinking");
 }
 
-QString whatsThis()
+QString LedIndicatorPlugin::whatsThis() const
 {
     return QStringLiteral("A customizable LED indicator supporting circular or rectangular shapes, metallic bezel, customizable colors, and blinking.");
 }
 
-QString domXml()
+QString LedIndicatorPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::LedIndicator\" name=\"ledIndicator\">\n"
@@ -346,7 +318,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon LedIndicatorPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -374,42 +346,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace LedIndicatorEntry
-
 // ============================================================================
-// IndustrialKnob
+// IndustrialKnobPlugin
 // ============================================================================
 
-namespace IndustrialKnobEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *IndustrialKnobPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::IndustrialKnob(parent);
 }
 
-QString includeFile()
+QString IndustrialKnobPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/IndustrialKnob.h");
 }
 
-QString name()
+QString IndustrialKnobPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::IndustrialKnob");
 }
 
-QString toolTip()
+QString IndustrialKnobPlugin::toolTip() const
 {
     return QStringLiteral("Industrial rotary knob potentiometer and selector switch");
 }
 
-QString whatsThis()
+QString IndustrialKnobPlugin::whatsThis() const
 {
     return QStringLiteral("A rotary control knob with CNC knurled grip, graduated circular scale, continuous and discrete modes, mouse and keyboard input, and an optional mouse wheel.");
 }
 
-QString domXml()
+QString IndustrialKnobPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::IndustrialKnob\" name=\"industrialKnob\">\n"
@@ -425,7 +391,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon IndustrialKnobPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -453,42 +419,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace IndustrialKnobEntry
-
 // ============================================================================
-// StripChart
+// StripChartPlugin
 // ============================================================================
 
-namespace StripChartEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *StripChartPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::StripChart(parent);
 }
 
-QString includeFile()
+QString StripChartPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/StripChart.h");
 }
 
-QString name()
+QString StripChartPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::StripChart");
 }
 
-QString toolTip()
+QString StripChartPlugin::toolTip() const
 {
     return QStringLiteral("High-performance real-time telemetry strip chart and oscilloscope");
 }
 
-QString whatsThis()
+QString StripChartPlugin::whatsThis() const
 {
     return QStringLiteral("A real-time scrolling multi-channel oscilloscope / strip chart with ring buffers, a cached grid reticle and M4 min/max decimation (measured paint times: docs/benchmarks.md).");
 }
 
-QString domXml()
+QString StripChartPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::StripChart\" name=\"stripChart\">\n"
@@ -504,7 +464,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon StripChartPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -530,42 +490,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace StripChartEntry
-
 // ============================================================================
-// AnalysisChart
+// AnalysisChartPlugin
 // ============================================================================
 
-namespace AnalysisChartEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *AnalysisChartPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::AnalysisChart(parent);
 }
 
-QString includeFile()
+QString AnalysisChartPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/AnalysisChart.h");
 }
 
-QString name()
+QString AnalysisChartPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::AnalysisChart");
 }
 
-QString toolTip()
+QString AnalysisChartPlugin::toolTip() const
 {
     return QStringLiteral("Offline review chart for recorded multi-channel data");
 }
 
-QString whatsThis()
+QString AnalysisChartPlugin::whatsThis() const
 {
     return QStringLiteral("A chart for reviewing recorded multi-channel timestamp + value data, with dropouts and gaps shown as in StripChart.");
 }
 
-QString domXml()
+QString AnalysisChartPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::AnalysisChart\" name=\"analysisChart\">\n"
@@ -581,7 +535,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon AnalysisChartPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -608,42 +562,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace AnalysisChartEntry
-
 // ============================================================================
-// IndustrialSwitch
+// IndustrialSwitchPlugin
 // ============================================================================
 
-namespace IndustrialSwitchEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *IndustrialSwitchPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::IndustrialSwitch(parent);
 }
 
-QString includeFile()
+QString IndustrialSwitchPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/IndustrialSwitch.h");
 }
 
-QString name()
+QString IndustrialSwitchPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::IndustrialSwitch");
 }
 
-QString toolTip()
+QString IndustrialSwitchPlugin::toolTip() const
 {
     return QStringLiteral("Heavy-duty industrial toggle lever and rocker switch with safety guard");
 }
 
-QString whatsThis()
+QString IndustrialSwitchPlugin::whatsThis() const
 {
     return QStringLiteral("Industrial panel switch supporting bat toggle lever, rocker mode, 2 or 3 positions, and optional safety lock guard.");
 }
 
-QString domXml()
+QString IndustrialSwitchPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::IndustrialSwitch\" name=\"industrialSwitch\">\n"
@@ -659,7 +607,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon IndustrialSwitchPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -690,42 +638,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace IndustrialSwitchEntry
-
 // ============================================================================
-// LevelMeter
+// LevelMeterPlugin
 // ============================================================================
 
-namespace LevelMeterEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *LevelMeterPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::LevelMeter(parent);
 }
 
-QString includeFile()
+QString LevelMeterPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/LevelMeter.h");
 }
 
-QString name()
+QString LevelMeterPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::LevelMeter");
 }
 
-QString toolTip()
+QString LevelMeterPlugin::toolTip() const
 {
     return QStringLiteral("Multi-channel industrial VU and level meter with peak hold");
 }
 
-QString whatsThis()
+QString LevelMeterPlugin::whatsThis() const
 {
     return QStringLiteral("A high-performance multi-channel VU and level meter with discrete LED segments, smooth bar, peak hold decay, and customizable thresholds.");
 }
 
-QString domXml()
+QString LevelMeterPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::LevelMeter\" name=\"levelMeter\">\n"
@@ -741,7 +683,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon LevelMeterPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -776,42 +718,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace LevelMeterEntry
-
 // ============================================================================
-// AnnunciatorPanel
+// AnnunciatorPanelPlugin
 // ============================================================================
 
-namespace AnnunciatorPanelEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *AnnunciatorPanelPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::AnnunciatorPanel(parent);
 }
 
-QString includeFile()
+QString AnnunciatorPanelPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/AnnunciatorPanel.h");
 }
 
-QString name()
+QString AnnunciatorPanelPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::AnnunciatorPanel");
 }
 
-QString toolTip()
+QString AnnunciatorPanelPlugin::toolTip() const
 {
     return QStringLiteral("Industrial alarm annunciator window matrix");
 }
 
-QString whatsThis()
+QString AnnunciatorPanelPlugin::whatsThis() const
 {
     return QStringLiteral("A matrix of backlit alarm indicator windows with automatic-reset and manual-reset sequences and engraved legends.");
 }
 
-QString domXml()
+QString AnnunciatorPanelPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::AnnunciatorPanel\" name=\"annunciatorPanel\">\n"
@@ -827,7 +763,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon AnnunciatorPanelPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -863,42 +799,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace AnnunciatorPanelEntry
-
 // ============================================================================
-// Compass
+// CompassPlugin
 // ============================================================================
 
-namespace CompassEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *CompassPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::Compass(parent);
 }
 
-QString includeFile()
+QString CompassPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/Compass.h");
 }
 
-QString name()
+QString CompassPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::Compass");
 }
 
-QString toolTip()
+QString CompassPlugin::toolTip() const
 {
     return QStringLiteral("Marine gyrocompass and aeronautical heading indicator");
 }
 
-QString whatsThis()
+QString CompassPlugin::whatsThis() const
 {
     return QStringLiteral("A 360-degree navigational instrument with HeadingUp and NorthUp modes, target heading bug, and course deviation indicator.");
 }
 
-QString domXml()
+QString CompassPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::Compass\" name=\"compass\">\n"
@@ -914,7 +844,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon CompassPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -964,42 +894,36 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace CompassEntry
-
 // ============================================================================
-// CircularBargraph
+// CircularBargraphPlugin
 // ============================================================================
 
-namespace CircularBargraphEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *CircularBargraphPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::CircularBargraph(parent);
 }
 
-QString includeFile()
+QString CircularBargraphPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/CircularBargraph.h");
 }
 
-QString name()
+QString CircularBargraphPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::CircularBargraph");
 }
 
-QString toolTip()
+QString CircularBargraphPlugin::toolTip() const
 {
     return QStringLiteral("Circular arc bargraph indicator with discrete curved LED segments and peak hold");
 }
 
-QString whatsThis()
+QString CircularBargraphPlugin::whatsThis() const
 {
     return QStringLiteral("An industrial circular LED bargraph indicator with progressive Bar or Dot mode, threshold zones, and ballistic peak decay.");
 }
 
-QString domXml()
+QString CircularBargraphPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::CircularBargraph\" name=\"circularBargraph\">\n"
@@ -1015,7 +939,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon CircularBargraphPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -1067,44 +991,38 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace CircularBargraphEntry
-
 // ============================================================================
-// TankDisplay
+// TankDisplayPlugin
 // ============================================================================
 
-namespace TankDisplayEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *TankDisplayPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::TankDisplay(parent);
 }
 
-QString includeFile()
+QString TankDisplayPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/TankDisplay.h");
 }
 
-QString name()
+QString TankDisplayPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::TankDisplay");
 }
 
-QString toolTip()
+QString TankDisplayPlugin::toolTip() const
 {
     return QStringLiteral("Tank and silo level indicator with high/low limits");
 }
 
-QString whatsThis()
+QString TankDisplayPlugin::whatsThis() const
 {
     return QStringLiteral("A vessel (vertical or horizontal cylinder, hopper or sphere) filled with a liquid or a "
                           "granular solid up to the value, with a vertical scale, a readout and four limits "
                           "(low-low, low, high, high-high) whose crossings it reports.");
 }
 
-QString domXml()
+QString TankDisplayPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::TankDisplay\" name=\"tankDisplay\">\n"
@@ -1120,7 +1038,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon TankDisplayPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -1155,44 +1073,38 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace TankDisplayEntry
-
 // ============================================================================
-// ValveIndicator
+// ValveIndicatorPlugin
 // ============================================================================
 
-namespace ValveIndicatorEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *ValveIndicatorPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::ValveIndicator(parent);
 }
 
-QString includeFile()
+QString ValveIndicatorPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/ValveIndicator.h");
 }
 
-QString name()
+QString ValveIndicatorPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::ValveIndicator");
 }
 
-QString toolTip()
+QString ValveIndicatorPlugin::toolTip() const
 {
     return QStringLiteral("Valve symbol showing the status and the opening of a valve");
 }
 
-QString whatsThis()
+QString ValveIndicatorPlugin::whatsThis() const
 {
     return QStringLiteral("A gate, ball, butterfly or control valve symbol whose shape shows the status (unknown, "
                           "closed, open, in transit, fault), with an optional opening bar and readout. An indicator "
                           "only: it sends no command.");
 }
 
-QString domXml()
+QString ValveIndicatorPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::ValveIndicator\" name=\"valveIndicator\">\n"
@@ -1208,7 +1120,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon ValveIndicatorPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -1244,44 +1156,38 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace ValveIndicatorEntry
-
 // ============================================================================
-// IndustrialSlider
+// IndustrialSliderPlugin
 // ============================================================================
 
-namespace IndustrialSliderEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *IndustrialSliderPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::IndustrialSlider(parent);
 }
 
-QString includeFile()
+QString IndustrialSliderPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/IndustrialSlider.h");
 }
 
-QString name()
+QString IndustrialSliderPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::IndustrialSlider");
 }
 
-QString toolTip()
+QString IndustrialSliderPlugin::toolTip() const
 {
     return QStringLiteral("Linear setpoint control with actuator position feedback");
 }
 
-QString whatsThis()
+QString IndustrialSliderPlugin::whatsThis() const
 {
     return QStringLiteral("A linear control for an actuator command (a valve, a damper, a speed reference): a "
                           "setpoint handle and a feedback bar for the actual position on one scale, with readouts, "
                           "a deviation indication, setpoint limits and read-only mode.");
 }
 
-QString domXml()
+QString IndustrialSliderPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::IndustrialSlider\" name=\"industrialSlider\">\n"
@@ -1297,7 +1203,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon IndustrialSliderPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -1327,44 +1233,38 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace IndustrialSliderEntry
-
 // ============================================================================
-// ThumbwheelSwitch
+// ThumbwheelSwitchPlugin
 // ============================================================================
 
-namespace ThumbwheelSwitchEntry {
-
-QWidget *createWidget(QWidget *parent)
+QWidget *ThumbwheelSwitchPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::ThumbwheelSwitch(parent);
 }
 
-QString includeFile()
+QString ThumbwheelSwitchPlugin::includeFile() const
 {
     return QStringLiteral("QtIndustrialWidgets/ThumbwheelSwitch.h");
 }
 
-QString name()
+QString ThumbwheelSwitchPlugin::name() const
 {
     return QStringLiteral("QtIndustrialWidgets::ThumbwheelSwitch");
 }
 
-QString toolTip()
+QString ThumbwheelSwitchPlugin::toolTip() const
 {
     return QStringLiteral("Push-wheel numeric selector, one drum per decade");
 }
 
-QString whatsThis()
+QString ThumbwheelSwitchPlugin::whatsThis() const
 {
     return QStringLiteral("A thumbwheel switch for calibration racks and manual setpoint panels: one digit drum per "
                           "decade with + and − buttons, a fixed decimal point, an optional sign drum, value limits, "
                           "an overflow mark, and a pending value applied with SET or Enter.");
 }
 
-QString domXml()
+QString ThumbwheelSwitchPlugin::domXml() const
 {
     return QStringLiteral(
         "<widget class=\"QtIndustrialWidgets::ThumbwheelSwitch\" name=\"thumbwheelSwitch\">\n"
@@ -1380,7 +1280,7 @@ QString domXml()
     );
 }
 
-QIcon icon()
+QIcon ThumbwheelSwitchPlugin::icon() const
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
@@ -1409,12 +1309,6 @@ QIcon icon()
     return QIcon(pixmap);
 }
 
-const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsThis, &domXml, &icon, &createWidget};
-
-} // namespace ThumbwheelSwitchEntry
-
-} // namespace
-
 // ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
@@ -1422,28 +1316,22 @@ const IndustrialWidgetPlugin::Entry entry{&name, &includeFile, &toolTip, &whatsT
 QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     : QObject(parent)
 {
-    // The order of the Designer widget box
-    const IndustrialWidgetPlugin::Entry *entries[] = {
-        &RadialGaugeEntry::entry,
-        &LinearGaugeEntry::entry,
-        &SevenSegmentDisplayEntry::entry,
-        &LedIndicatorEntry::entry,
-        &IndustrialKnobEntry::entry,
-        &StripChartEntry::entry,
-        &AnalysisChartEntry::entry,
-        &IndustrialSwitchEntry::entry,
-        &LevelMeterEntry::entry,
-        &AnnunciatorPanelEntry::entry,
-        &CompassEntry::entry,
-        &CircularBargraphEntry::entry,
-        &TankDisplayEntry::entry,
-        &ValveIndicatorEntry::entry,
-        &IndustrialSliderEntry::entry,
-        &ThumbwheelSwitchEntry::entry,
-    };
-    for (const IndustrialWidgetPlugin::Entry *entry : entries) {
-        m_widgets.append(new IndustrialWidgetPlugin(*entry, this));
-    }
+    m_widgets.append(new RadialGaugePlugin(this));
+    m_widgets.append(new LinearGaugePlugin(this));
+    m_widgets.append(new SevenSegmentDisplayPlugin(this));
+    m_widgets.append(new LedIndicatorPlugin(this));
+    m_widgets.append(new IndustrialKnobPlugin(this));
+    m_widgets.append(new StripChartPlugin(this));
+    m_widgets.append(new AnalysisChartPlugin(this));
+    m_widgets.append(new IndustrialSwitchPlugin(this));
+    m_widgets.append(new LevelMeterPlugin(this));
+    m_widgets.append(new AnnunciatorPanelPlugin(this));
+    m_widgets.append(new CompassPlugin(this));
+    m_widgets.append(new CircularBargraphPlugin(this));
+    m_widgets.append(new TankDisplayPlugin(this));
+    m_widgets.append(new ValveIndicatorPlugin(this));
+    m_widgets.append(new IndustrialSliderPlugin(this));
+    m_widgets.append(new ThumbwheelSwitchPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

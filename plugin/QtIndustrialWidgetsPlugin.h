@@ -10,42 +10,62 @@
 #include <QtGui/QIcon>
 #include <QtUiPlugin/QDesignerCustomWidgetInterface>
 
-// One widget of the collection (#154: one class for every entry, instead of one class per widget). What differs
-// between the widgets is in its Entry, defined in QtIndustrialWidgetsPlugin.cpp
-class IndustrialWidgetPlugin : public QObject, public QDesignerCustomWidgetInterface
+// What every entry of the widget box does the same way (#154). Designer reaches an entry through
+// qobject_cast<QDesignerCustomWidgetInterface *>, which Q_INTERFACES here answers for every derived entry
+class IndustrialWidgetPluginBase : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    struct Entry {
-        QString (*name)();
-        QString (*includeFile)();
-        QString (*toolTip)();
-        QString (*whatsThis)();
-        QString (*domXml)();
-        QIcon (*icon)();
-        QWidget *(*createWidget)(QWidget *parent);
-    };
-
-    IndustrialWidgetPlugin(const Entry &entry, QObject *parent);
+    explicit IndustrialWidgetPluginBase(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
     QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
     void initialize(QDesignerFormEditorInterface *core) override;
 
 private:
-    Entry m_entry;
     bool m_initialized{false};
 };
+
+// One entry: what differs between the widgets, defined in QtIndustrialWidgetsPlugin.cpp. A macro, so that the 16
+// declarations are not 16 copies of the same block; internal to the plugin and undefined below
+#define QIW_DESIGNER_PLUGIN_ENTRY(Entry)                                                                               \
+    class Entry : public IndustrialWidgetPluginBase                                                                    \
+    {                                                                                                                  \
+    public:                                                                                                            \
+        explicit Entry(QObject *parent = nullptr)                                                                      \
+            : IndustrialWidgetPluginBase(parent)                                                                       \
+        {                                                                                                              \
+        }                                                                                                              \
+        QIcon icon() const override;                                                                                   \
+        QString domXml() const override;                                                                               \
+        QString includeFile() const override;                                                                          \
+        QString name() const override;                                                                                 \
+        QString toolTip() const override;                                                                              \
+        QString whatsThis() const override;                                                                            \
+        QWidget *createWidget(QWidget *parent) override;                                                               \
+    };
+
+QIW_DESIGNER_PLUGIN_ENTRY(RadialGaugePlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(LinearGaugePlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(SevenSegmentDisplayPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(LedIndicatorPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(IndustrialKnobPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(StripChartPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(AnalysisChartPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(IndustrialSwitchPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(LevelMeterPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(AnnunciatorPanelPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(CompassPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(CircularBargraphPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(TankDisplayPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(ValveIndicatorPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(IndustrialSliderPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(ThumbwheelSwitchPlugin)
+
+#undef QIW_DESIGNER_PLUGIN_ENTRY
 
 class QtIndustrialWidgetsPlugin : public QObject, public QDesignerCustomWidgetCollectionInterface
 {
