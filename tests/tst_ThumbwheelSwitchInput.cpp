@@ -958,14 +958,15 @@ void tst_ThumbwheelSwitchInput::pendingValueIsDrawnWithADashedOutline()
     QVERIFY(ThumbwheelSwitchTestAccess::lastPendingOutline(*rig.wheel));
     for (const QRectF &drum : l.drums) {
         // Along the middle line of the top edge (1 px below the top: the 2 px pen covers every pixel there in full at
-        // DPR 1 to 2), dashes of pendingColor with gaps of the drum face between them
+        // DPR 1 to 2, so a solid line is pendingColor there from end to end), dashes of pendingColor with gaps between
+        // them (what is under a gap depends on the DPR: the face, the background, or a blend of the two)
         const double dpr = img.devicePixelRatio();
         const int y = static_cast<int>(std::floor((drum.top() + 1.0) * dpr));
         int dash = 0;
         int gap = 0;
         for (int x = static_cast<int>(std::ceil((drum.left() + 3.0) * dpr)); x < (drum.right() - 3.0) * dpr; ++x) {
             dash += near(img.pixel(x, y), kPending, 8) ? 1 : 0;
-            gap += near(img.pixel(x, y), kDrum, 8) ? 1 : 0;
+            gap += channelDistance(img.pixel(x, y), kPending.rgb()) > 64 ? 1 : 0;
         }
         QVERIFY2(dash > 0 && gap > 0, qPrintable(QStringLiteral("%1 dash and %2 gap pixels").arg(dash).arg(gap)));
         QVERIFY(countNear(img, QRectF(drum.left(), drum.top() + 3.0, 2.0, drum.height() - 6.0), kPending, 60) > 0);
