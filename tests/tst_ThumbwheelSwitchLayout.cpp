@@ -367,5 +367,5 @@ void tst_ThumbwheelSwitchLayout::nonFiniteAndTinyInputs()
     QVERIFY(layoutThumbwheel(in).decimalPoint.isEmpty());
 }
 
-QTEST_APPLESS_MAIN(tst_ThumbwheelSwitchLayout)
+QTEST_GUILESS_MAIN(tst_ThumbwheelSwitchLayout)
 #include "tst_ThumbwheelSwitchLayout.moc"
