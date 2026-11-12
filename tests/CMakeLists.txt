@@ -513,6 +513,13 @@ add_test(NAME citation_version
             -DEXPECTED_VERSION=${PROJECT_VERSION}
             -P ${PROJECT_SOURCE_DIR}/cmake/CheckCitationVersion.cmake)
 
+# Where cmake --install puts the Designer plugin (#135): QT_INSTALL_PLUGINS, Qt's plugin directory when the install
+# prefix is Qt's prefix, or <libdir>/qt6/plugins/designer. A script test: no Qt install is needed
+add_test(NAME designer_plugin_dir
+    COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/designer_plugin_dir
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/DesignerPluginDirTest.cmake)
+
 # The installed Qt Designer plugin must load from any prefix without a library search path (#127).
 # Windows has no run path (the DLL must be on PATH or next to designer.exe), and a plugin directory
 # outside the prefix (QT_INSTALL_PLUGINS) would be written outside the temporary prefix.
