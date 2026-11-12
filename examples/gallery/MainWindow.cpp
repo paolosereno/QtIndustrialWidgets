@@ -11,6 +11,7 @@
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtIndustrialWidgets/IndustrialSlider.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LevelMeter.h>
@@ -543,6 +544,53 @@ void MainWindow::setupUi()
     sliderLayout->setColumnStretch(1, 2);
 
     controlsLayout->addWidget(sliderBox, row, 0, 1, 3);
+    row++;
+
+    // ------------------------------------------------------------------------
+    // Calibrator setpoint on push-wheels (ThumbwheelSwitch, #154)
+    // ------------------------------------------------------------------------
+    auto *wheelBox = new QGroupBox(QStringLiteral("Calibrator Setpoint (ThumbwheelSwitch)"), controlsTab);
+    auto *wheelLayout = new QGridLayout(wheelBox);
+    wheelLayout->setContentsMargins(16, 18, 16, 14);
+    wheelLayout->setHorizontalSpacing(24);
+
+    auto *calibrator = new ThumbwheelSwitch(wheelBox);
+    calibrator->setAccessibleName(QStringLiteral("Calibrator output")); // #183: the switch has no name of its own
+    calibrator->setDigitCount(5);
+    calibrator->setDecimals(1);
+    calibrator->setUnit(QStringLiteral("V"));
+    calibrator->setRange(0.0, 2500.0);
+    calibrator->setValue(125.0);
+
+    auto *calibratorOutput = new QLabel(wheelBox);
+    const auto showOutput = [calibratorOutput](double v) {
+        calibratorOutput->setText(QStringLiteral("Calibrator output: %1 V").arg(v, 0, 'f', 1));
+    };
+    showOutput(calibrator->value());
+    connect(calibrator, &ThumbwheelSwitch::valueCommitted, calibratorOutput, showOutput);
+    auto *calibratorImmediate = new QCheckBox(QStringLiteral("Apply each step at once (Immediate)"), wheelBox);
+    auto *calibratorLocal = new QCheckBox(QStringLiteral("Local mode (read-only)"), wheelBox);
+    auto *calibratorHint = new QLabel(QStringLiteral("Click + and − or use the keys (Tab to focus, Left/Right to move, "
+                                                     "Up/Down or 0–9 to set a decade). The new value is pending, "
+                                                     "with a dashed outline, until SET or Enter loads it; Escape "
+                                                     "discards it. Limits 0 to 2500 V."),
+                                      wheelBox);
+    calibratorHint->setWordWrap(true);
+    connect(calibratorImmediate, &QCheckBox::toggled, calibrator, [calibrator](bool immediate) {
+        calibrator->setApplyMode(immediate ? ThumbwheelSwitch::ApplyMode::Immediate
+                                           : ThumbwheelSwitch::ApplyMode::OnConfirm);
+    });
+    connect(calibratorLocal, &QCheckBox::toggled, calibrator, &ThumbwheelSwitch::setReadOnly);
+
+    wheelLayout->addWidget(calibrator, 0, 0, 4, 1);
+    wheelLayout->addWidget(calibratorOutput, 0, 1);
+    wheelLayout->addWidget(calibratorImmediate, 1, 1);
+    wheelLayout->addWidget(calibratorLocal, 2, 1);
+    wheelLayout->addWidget(calibratorHint, 3, 1);
+    wheelLayout->setColumnStretch(0, 3);
+    wheelLayout->setColumnStretch(1, 2);
+
+    controlsLayout->addWidget(wheelBox, row, 0, 1, 3);
     row++;
 
     // ------------------------------------------------------------------------
@@ -2099,6 +2147,9 @@ void MainWindow::applyTheme(bool dark)
     }
     for (IndustrialSlider *slider : findChildren<IndustrialSlider *>()) {
         applyGalleryTheme(*slider, theme);
+    }
+    for (ThumbwheelSwitch *wheel : findChildren<ThumbwheelSwitch *>()) {
+        applyGalleryTheme(*wheel, theme);
     }
     // The group boxes are the showcase background of the export
     const QString groupBoxBackground = GalleryShowcase::backgroundColor(theme).name();
