@@ -16,8 +16,9 @@
 #             same directory as QT_PREFIX: Qt's own plugin directory, where that Qt's Designer looks (Qt from the
 #             online installer or aqt, a distribution's Qt in /usr);
 # - "default": <LIBDIR>/qt6/plugins/designer otherwise, also when Qt does not give QT_PREFIX or QT_PLUGINS.
-# "The same directory": compared after resolving symlinks, "." and ".." and a trailing slash; IGNORE_CASE (Windows)
-# compares without letter case.
+# "The same directory": compared after resolving "." and ".." and a trailing slash, and symlinks where CMake resolves
+# them (not on Windows: a symlink or junction there gives another prefix); IGNORE_CASE (Windows) compares without
+# letter case.
 set(_qiw_designer_plugin_dir_base "${CMAKE_CURRENT_LIST_DIR}")
 function(qiw_designer_plugin_dir out_dir out_reason)
     cmake_parse_arguments(ARG "HAS_MANUAL;IGNORE_CASE" "INSTALL_PREFIX;LIBDIR;QT_PREFIX;QT_PLUGINS;MANUAL" "" ${ARGN})

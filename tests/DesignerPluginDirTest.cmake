@@ -46,8 +46,16 @@ check("same prefix, trailing slash" "${qtdir}" "qt"
       INSTALL_PREFIX "${qt}/" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
 check("same prefix, '..' segments" "${qtdir}" "qt"
       INSTALL_PREFIX "${qt}/../gcc_64" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
-check("same prefix, through a symlink" "${qtdir}" "qt"
-      INSTALL_PREFIX "${WORK_DIR}/qt-link" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
+# On Windows CMake does not resolve a symbolic link or a junction (get_filename_component(REALPATH) and
+# file(REAL_PATH), CMake 3.31.6 on windows-2022): a prefix reached through one is another prefix there, as before #135
+# (limit documented in docs/designer_plugin.md)
+if(CMAKE_HOST_WIN32)
+    check("same prefix, through a symlink: not resolved on Windows" "${default}" "default"
+          INSTALL_PREFIX "${WORK_DIR}/qt-link" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
+else()
+    check("same prefix, through a symlink" "${qtdir}" "qt"
+          INSTALL_PREFIX "${WORK_DIR}/qt-link" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
+endif()
 check("Debian layout" "lib/x86_64-linux-gnu/qt6/plugins/designer" "qt"
       INSTALL_PREFIX "/usr" LIBDIR lib/x86_64-linux-gnu QT_PREFIX "/usr" QT_PLUGINS lib/x86_64-linux-gnu/qt6/plugins)
 check("letter case, ignored when asked (Windows)" "${qtdir}" "qt"
@@ -67,8 +75,15 @@ check("other prefix" "${default}" "default"
       INSTALL_PREFIX "/opt/QtIndustrialWidgets" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
 check("prefix inside Qt's prefix" "${default}" "default"
       INSTALL_PREFIX "${qt}/sub" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins)
-check("letter case, significant elsewhere" "${default}" "default"
-      INSTALL_PREFIX "/OPT/QT" LIBDIR lib QT_PREFIX "/opt/Qt" QT_PLUGINS plugins)
+# Without IGNORE_CASE letter case is significant only where the file system makes it so: on Windows REALPATH already
+# gives one spelling for both ("D:/OPT/QT"), and the same prefix is the right answer for a case-insensitive file system
+if(CMAKE_HOST_WIN32)
+    check("letter case, without IGNORE_CASE on Windows" "${qtdir}" "qt"
+          INSTALL_PREFIX "/OPT/QT" LIBDIR lib QT_PREFIX "/opt/Qt" QT_PLUGINS plugins)
+else()
+    check("letter case, significant elsewhere" "${default}" "default"
+          INSTALL_PREFIX "/OPT/QT" LIBDIR lib QT_PREFIX "/opt/Qt" QT_PLUGINS plugins)
+endif()
 check("multiarch libdir, other prefix" "lib/x86_64-linux-gnu/qt6/plugins/designer" "default"
       INSTALL_PREFIX "/usr/local" LIBDIR lib/x86_64-linux-gnu QT_PREFIX "/usr" QT_PLUGINS lib/x86_64-linux-gnu/qt6/plugins)
 

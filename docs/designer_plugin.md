@@ -38,8 +38,11 @@ The plugin is a CMake module library written to `build/lib/`: `QtIndustrialWidge
 
 The configure step prints the destination and the reason, for example
 `QtIndustrialWidgets: Designer plugin destination: plugins/designer (Qt's plugin directory: CMAKE_INSTALL_PREFIX is
-Qt's prefix)`. The two prefixes are compared after resolving symbolic links, `.` and `..` (and without letter case on
-Windows). The decision uses the `CMAKE_INSTALL_PREFIX` of the configure step: `cmake --install build --prefix <other>`
+Qt's prefix)`. The two prefixes are compared after resolving `.` and `..`, and symbolic links on Linux and macOS (and
+without letter case on Windows). On Windows CMake does not resolve a symbolic link or a junction: a
+`CMAKE_INSTALL_PREFIX` that reaches Qt's prefix through one counts as another prefix, so the plugin goes to
+`lib/qt6/plugins/designer`; write Qt's prefix as Qt's package does, or set `QT_INSTALL_PLUGINS`. The decision uses
+the `CMAKE_INSTALL_PREFIX` of the configure step: `cmake --install build --prefix <other>`
 keeps the destination relative to the prefix, as chosen at configure time. Not checked in CI: Homebrew's Qt on macOS
 and the online installer on macOS and Windows.
 
