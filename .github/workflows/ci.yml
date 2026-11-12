@@ -240,6 +240,85 @@ jobs:
           ctest --test-dir build --output-on-failure
 
   # ============================================================
+  # 1c. Designer plugin installed into Qt's own prefix (#135)
+  # ============================================================
+  # Qt from aqt, as the online installer lays it out (plugins in <Qt>/plugins): the library installed into that
+  # Qt's prefix puts the plugin into Qt's plugin directory, and that Qt's Designer loads it with no QT_PLUGIN_PATH
+  # and no LD_LIBRARY_PATH (the plugin finds the library through its run path, #127)
+  designer-plugin-qt-prefix:
+    name: Designer plugin in Qt's prefix (aqt Qt 6.2.4)
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            libgl1-mesa-dev \
+            libxkbcommon-dev
+
+      # No cache: the job installs into this Qt's prefix, which must not be saved for the other jobs
+      - name: Setup Qt 6.2.4
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        with:
+          version: '6.2.4'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          cache: false
+
+      - name: Configure CMake with the install prefix of Qt
+        run: |
+          set -o pipefail
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$QT_ROOT_DIR" \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DESIGNER_PLUGIN=ON | tee configure.log
+          grep -q "QtIndustrialWidgets: Using Qt 6.2.4" configure.log
+          grep -F "Designer plugin destination:" configure.log
+          grep -qF "Designer plugin destination: plugins/designer (Qt's plugin directory: CMAKE_INSTALL_PREFIX is Qt's prefix)" configure.log
+
+      - name: Build and install into Qt's prefix
+        id: install
+        run: |
+          cmake --build build
+          cmake --install build
+          plugin=$(realpath "$QT_ROOT_DIR/plugins/designer/QtIndustrialWidgetsPlugin.so")
+          test -f "$plugin"
+          echo "plugin=$plugin" >> "$GITHUB_OUTPUT"
+          echo "installed plugin: $plugin"
+          echo "qtpaths --plugin-dir: $("$QT_ROOT_DIR/bin/qtpaths" --plugin-dir)"
+          readelf -d "$plugin" | grep -E 'RUNPATH|RPATH'
+
+      # Designer scans <plugin dir>/designer; QT_DEBUG_PLUGINS=1 logs every library it loads. install-qt-action sets
+      # QT_PLUGIN_PATH (and may set LD_LIBRARY_PATH): both are unset, so only Qt's own plugin directory and the
+      # plugin's run path can lead to the plugin and the library
+      - name: That Qt's Designer loads the plugin, with no QT_PLUGIN_PATH
+        env:
+          QT_DEBUG_PLUGINS: "1"
+        run: |
+          unset QT_PLUGIN_PATH LD_LIBRARY_PATH
+          status=0
+          timeout 20 "$QT_ROOT_DIR/bin/designer" > designer.log 2>&1 || status=$?
+          echo "designer exit status: $status (124: still running after 20 s, stopped by timeout)"
+          grep 'designer/.*loaded library\|loaded library.*designer/' designer.log || true
+          if ! grep -F "${{ steps.install.outputs.plugin }}" designer.log | grep -q 'loaded library'; then
+            echo "::error::Qt Designer did not load ${{ steps.install.outputs.plugin }}"
+            grep -F 'QtIndustrialWidgets' designer.log || true
+            exit 1
+          fi
+
+  # ============================================================
   # 2. Windows (MSVC 2022 & Qt 6)
   # ============================================================
   build-windows:
