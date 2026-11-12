@@ -754,6 +754,8 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds_data()
     QTest::newRow("hide") << 1;
     QTest::newRow("read-only") << 2;
     QTest::newRow("a press") << 3;
+    // A key sent to the switch itself (as QTest and automation tools do) while it has no focus: only the hide ends it
+    QTest::newRow("hide, key sent without focus") << 4;
 }
 
 // #182: a key held down when the switch loses the focus, is hidden or becomes read-only commits there, once
@@ -764,6 +766,10 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds()
     QVERIFY(rig.show());
     const internal::ThumbwheelLayout l = rig.layout();
     rig.key(Qt::Key_Right);
+    if (end == 4) {
+        rig.other->setFocus(Qt::TabFocusReason);
+        QVERIFY(QTest::qWaitFor([&] { return rig.other->hasFocus(); }));
+    }
     Spies spies(rig.wheel);
     sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false);
     QCOMPARE(spies.committed.count(), 0);
@@ -774,7 +780,8 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds()
         break;
     case 1: rig.wheel->hide(); break;
     case 2: rig.wheel->setReadOnly(true); break;
-    default: rig.press(l.drums.at(0)); break;
+    case 3: rig.press(l.drums.at(0)); break;
+    default: rig.wheel->hide(); break;
     }
     QCOMPARE(spies.committed.count(), 1);
     QCOMPARE(spies.committed.at(0).at(0).toDouble(), 225.0);
@@ -950,11 +957,17 @@ void tst_ThumbwheelSwitchInput::pendingValueIsDrawnWithADashedOutline()
     img = render(*rig.wheel);
     QVERIFY(ThumbwheelSwitchTestAccess::lastPendingOutline(*rig.wheel));
     for (const QRectF &drum : l.drums) {
-        // Along the top edge: dashes of pendingColor with gaps between them
-        const QRectF top(drum.left() + 3.0, drum.top(), drum.width() - 6.0, 2.0);
-        const int dash = countNear(img, top, kPending, 60);
-        const int all = PixelTest::countIn(img, top, [](QRgb) { return true; });
-        QVERIFY2(dash > 0 && dash < all, qPrintable(QStringLiteral("%1 of %2 edge pixels in pendingColor").arg(dash).arg(all)));
+        // Along the middle line of the top edge (1 px below the top: the 2 px pen covers every pixel there in full at
+        // DPR 1 to 2), dashes of pendingColor with gaps of the drum face between them
+        const double dpr = img.devicePixelRatio();
+        const int y = static_cast<int>(std::floor((drum.top() + 1.0) * dpr));
+        int dash = 0;
+        int gap = 0;
+        for (int x = static_cast<int>(std::ceil((drum.left() + 3.0) * dpr)); x < (drum.right() - 3.0) * dpr; ++x) {
+            dash += near(img.pixel(x, y), kPending, 8) ? 1 : 0;
+            gap += near(img.pixel(x, y), kDrum, 8) ? 1 : 0;
+        }
+        QVERIFY2(dash > 0 && gap > 0, qPrintable(QStringLiteral("%1 dash and %2 gap pixels").arg(dash).arg(gap)));
         QVERIFY(countNear(img, QRectF(drum.left(), drum.top() + 3.0, 2.0, drum.height() - 6.0), kPending, 60) > 0);
         // Inside: the digit on the face, no outline
         QCOMPARE(countNear(img, drum.adjusted(4.0, 4.0, -4.0, -4.0), kPending, 60), 0);

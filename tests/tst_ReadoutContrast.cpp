@@ -1048,7 +1048,7 @@ void tst_ReadoutContrast::thumbwheelInputMarks()
     img = renderShowcase(t, dark);
     QVERIFY(internal::ThumbwheelSwitchTestAccess::lastSetOpen(t));
     for (const QRectF &drum : l.drums) {
-        const QRgb face = pixelAt(img, drum.center() + QPointF(0.0, drum.height() * 0.3));
+        const QRgb face = t.drumColor().rgb(); // Opaque and flat (#159)
         checkGraphics("dashed outline", strongestIn(img, deviceBox(QRectF(drum.left(), drum.top(), drum.width(), 2.0), img),
                                                     face), face);
     }
