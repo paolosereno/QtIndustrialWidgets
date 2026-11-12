@@ -12,6 +12,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
@@ -77,6 +78,7 @@ bool applyGalleryTheme(QWidget &w, GalleryShowcase::Theme theme)
     if (auto *x = qobject_cast<CircularBargraph *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<TankDisplay *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     if (auto *x = qobject_cast<ValveIndicator *>(&w)) { applyGalleryTheme(*x, theme); return true; }
+    if (auto *x = qobject_cast<ThumbwheelSwitch *>(&w)) { applyGalleryTheme(*x, theme); return true; }
     return false;
 }
 
@@ -85,7 +87,7 @@ const QStringList &themedClasses()
     static const QStringList classes = {
         QStringLiteral("RadialGauge"), QStringLiteral("LinearGauge"),      QStringLiteral("IndustrialKnob"),
         QStringLiteral("Compass"),     QStringLiteral("CircularBargraph"), QStringLiteral("TankDisplay"),
-        QStringLiteral("ValveIndicator"), QStringLiteral("IndustrialSlider"),
+        QStringLiteral("ValveIndicator"), QStringLiteral("IndustrialSlider"), QStringLiteral("ThumbwheelSwitch"),
     };
     return classes;
 }

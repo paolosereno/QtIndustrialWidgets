@@ -709,3 +709,44 @@ set_target_properties(tst_TextMetricsTable PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_TextMetricsTable)
+add_executable(tst_ThumbwheelSwitchLayout
+    tst_ThumbwheelSwitchLayout.cpp
+    $<TARGET_OBJECTS:ThumbwheelSwitchLayout>
+)
+target_link_libraries(tst_ThumbwheelSwitchLayout
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Test
+)
+target_include_directories(tst_ThumbwheelSwitchLayout
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_ThumbwheelSwitchLayout PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_ThumbwheelSwitchLayout)
+add_executable(tst_ThumbwheelSwitch
+    tst_ThumbwheelSwitch.cpp
+    $<TARGET_OBJECTS:ThumbwheelSwitchLayout>
+    $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:RadialGaugeLayout>
+)
+target_link_libraries(tst_ThumbwheelSwitch
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_ThumbwheelSwitch
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_ThumbwheelSwitch PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_ThumbwheelSwitch)
