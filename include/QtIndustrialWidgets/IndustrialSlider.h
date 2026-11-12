@@ -93,6 +93,16 @@ class IndustrialSliderAccessible;
  * has focus draws a solid 2 px ring in textColor() along the edge of the widget, in the margin kept free of the
  * drawing.
  *
+ * Accessibility (#183): the accessible interface has the role QAccessible::Slider; its value interface carries the
+ * setpoint, minimum(), maximum() and step(), and read-only is a state. The value text tells the setpoint, the
+ * position and the deviation state in words, also when the readouts are hidden: "60.0 %, position 15.0 %,
+ * deviation"; "position invalid" for a NaN feedback, "position over range 120.0 %" / "position under range" outside
+ * the range, "deviation unknown"; no position without a feedback, no deviation when it is Off or Normal. Every change
+ * of the setpoint, and of the range, sends a QAccessibleValueChangeEvent with the setpoint; setReadOnly() sends a
+ * QAccessibleStateChangeEvent; a change of the feedback sends none. A setpoint set by assistive technology is
+ * operator input: bound by the setpoint limits, ignored in read-only, committed with setpointCommitted(). The slider
+ * has no accessible name of its own: set one with setAccessibleName() (or a QLabel buddy).
+ *
  * Text size: the sizes of the labels and of the readouts follow the size of the widget font against the
  * application font (#51, rule (b)), as in LinearGauge: the layout makes room for them.
  *
@@ -107,6 +117,7 @@ class IndustrialSliderAccessible;
  * valve->setDeviationThreshold(5.0);
  * valve->setSetpoint(60.0);
  * valve->setFeedback(15.0); // the position read back from the actuator
+ * valve->setAccessibleName(QStringLiteral("Damper position")); // #183: the slider has no name of its own
  * \endcode
  */
 class QTINDUSTRIALWIDGETS_EXPORT IndustrialSlider : public QWidget
