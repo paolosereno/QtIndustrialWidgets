@@ -1497,20 +1497,25 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheDeviationState()
     QCOMPARE(log.flush(), QStringLiteral("value 70"));
     s.setRange(0.0, 60.0); // Clamps the setpoint to 60; Deviating stays
     QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.setRange(0.0, 52.0); // Clamps the setpoint to 52, 2 from the position: Deviating to Normal, still one event
+    QCOMPARE(s.deviationState(), IndustrialSlider::DeviationState::Normal);
+    QCOMPARE(log.flush(), QStringLiteral("value 52"));
 
-    s.setDeviationThreshold(20.0); // Deviating to Normal
-    QCOMPARE(log.flush(), QStringLiteral("value 60"));
-    s.setDeviationThreshold(30.0); // Still Normal
+    s.setDeviationThreshold(1.0); // Normal to Deviating
+    QCOMPARE(log.flush(), QStringLiteral("value 52"));
+    s.setDeviationThreshold(30.0); // Deviating to Normal
+    QCOMPARE(log.flush(), QStringLiteral("value 52"));
+    s.setDeviationThreshold(40.0); // Still Normal
     QCOMPARE(log.flush(), QString());
     s.setDeviationThreshold(0.0); // Normal to Off
-    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(log.flush(), QStringLiteral("value 52"));
     s.setFeedback(10.0); // Off stays Off
     QCOMPARE(log.flush(), QString());
     s.setDeviationThreshold(5.0); // Off to Deviating
-    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(log.flush(), QStringLiteral("value 52"));
     s.clearFeedback(); // Deviating to Off
-    QCOMPARE(log.flush(), QStringLiteral("value 60"));
-    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("60.0 %"));
+    QCOMPARE(log.flush(), QStringLiteral("value 52"));
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("52.0 %"));
     s.clearFeedback();
     QCOMPARE(log.flush(), QString());
 }
