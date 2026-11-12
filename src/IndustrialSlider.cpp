@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/IndustrialSlider.h>
 
 #include "internal/IndustrialSlider_p.h"
+#include "internal/IndustrialSliderAccessible.h"
 #include "internal/FontScale.h"
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/LinearGaugeScale.h"
@@ -394,6 +395,7 @@ IndustrialSlider::IndustrialSlider(QWidget *parent)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     setFocusPolicy(Qt::StrongFocus); // #180: the keys need focus; the ring shows it
+    internal::IndustrialSliderAccessible::installFactory(); // #183
 }
 
 IndustrialSlider::~IndustrialSlider() = default;
@@ -533,6 +535,7 @@ void IndustrialSlider::setRange(double min, double max)
         Q_EMIT setpointLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh()); // the limits are read within the range
     }
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifySetpoint(this); // #183: the setpoint, or the range around it, changed
     update();
 }
 
@@ -549,6 +552,7 @@ void IndustrialSlider::setSetpoint(double setpoint)
     IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     changes.setpoint = true;
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifySetpoint(this); // #183
     update();
 }
 
@@ -561,6 +565,7 @@ void IndustrialSlider::setFeedback(double feedback)
     d_ptr->m_rawFeedback = feedback;
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifyDeviation(this, changes); // #183: only a change of the deviation state, not every position
     // An out-of-range input can change the readout without changing feedback()
     update();
 }
@@ -572,6 +577,7 @@ void IndustrialSlider::clearFeedback()
     d_ptr->m_rawFeedback = std::numeric_limits<double>::quiet_NaN();
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifyDeviation(this, changes); // #183
     update();
 }
 
@@ -585,6 +591,7 @@ void IndustrialSlider::setDeviationThreshold(double threshold)
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     Q_EMIT deviationThresholdChanged(d_ptr->m_deviationThreshold);
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifyDeviation(this, changes); // #183
     update();
 }
 
@@ -692,6 +699,7 @@ void IndustrialSlider::setReadOnly(bool readOnly)
     d_ptr->m_wheelRemainder = 0;
     updateGeometry(); // the padlock is part of the minimum
     Q_EMIT readOnlyChanged(readOnly);
+    d_ptr->notifyReadOnly(this); // #183
     update();
 }
 

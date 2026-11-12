@@ -16,10 +16,12 @@
 #include <QtCore/QRectF>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <QtGui/QAccessible>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 
 namespace QtIndustrialWidgets {
@@ -119,6 +121,40 @@ public:
     // the one it started from
     void endAction(IndustrialSlider *q);
     [[nodiscard]] QStringList majorLabelTexts() const;
+
+    // #183: every accessibility event of the slider goes through here. The observer is set by tests only
+    // (IndustrialSliderTestAccess): under QT_QPA_PLATFORM=offscreen Qt drops the events before any update handler
+    std::function<void(QAccessibleEvent *)> m_accessibleObserver;
+    void sendAccessible(QAccessibleEvent *event) const
+    {
+        if (m_accessibleObserver) {
+            m_accessibleObserver(event);
+        }
+        QAccessible::updateAccessibility(event); // Nothing while no assistive technology is active (#214)
+    }
+    // #183: the setpoint, or the range around it, changed
+    void notifySetpoint(IndustrialSlider *q) const
+    {
+        QAccessibleValueChangeEvent event(q, m_setpoint);
+        sendAccessible(&event);
+    }
+    // #183: the deviation state changed while the setpoint did not (setSetpoint() and setRange() send their own
+    // event). QAccessible::State has no flag for a deviation, so this is a value-change event with the setpoint: the
+    // value text, which tells the deviation, changed
+    void notifyDeviation(IndustrialSlider *q, const Changes &changes) const
+    {
+        if (changes.deviation) {
+            notifySetpoint(q);
+        }
+    }
+    // #183: the read-only state changed
+    void notifyReadOnly(IndustrialSlider *q) const
+    {
+        QAccessible::State changed;
+        changed.readOnly = true;
+        QAccessibleStateChangeEvent event(q, changed);
+        sendAccessible(&event);
+    }
 
     // Fonts of a widget font at a logical DPI
     using Fonts = internal::PanelFonts;

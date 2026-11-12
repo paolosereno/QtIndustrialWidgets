@@ -10,6 +10,9 @@
 
 #include "internal/IndustrialSlider_p.h"
 
+#include <functional>
+#include <utility>
+
 namespace QtIndustrialWidgets {
 namespace internal {
 
@@ -36,6 +39,11 @@ public:
     static int lastFeedbackReadoutPixelSize(const IndustrialSlider &slider)
     {
         return slider.d_ptr->m_lastFeedbackReadoutPx;
+    }
+    /// #183: \a observer sees every accessibility event the slider sends, before QAccessible::updateAccessibility()
+    static void setAccessibleObserver(IndustrialSlider &slider, std::function<void(QAccessibleEvent *)> observer)
+    {
+        slider.d_ptr->m_accessibleObserver = std::move(observer);
     }
 };
 

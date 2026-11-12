@@ -32,9 +32,13 @@ light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) a
 
 ## Controls {#controls}
 
-Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob` (`IndustrialSwitch` follows the
-focus and accessibility items, with the details in [its section](#industrialswitch)); the setpoint controls planned
-(#180, #154) will follow them.
+Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob` and `IndustrialSlider`
+(`IndustrialSwitch` follows the focus and accessibility items, with the details in [its section](#industrialswitch));
+the setpoint control planned in #154 will follow them.
+- **Names.** The rules use the names of `IndustrialKnob`. `IndustrialSlider` names the same things after its setpoint,
+  with the same meaning: `setpoint` and `setSetpoint()` for the value, `setpointChanged()` and `setpointCommitted()`
+  for `valueChanged()` and `valueCommitted()`, and `setSetpointLimits()`, `clearSetpointLimits()`,
+  `setpointLimitLow()`, `setpointLimitHigh()`, `setpointLimitsChanged()` for the value limits.
 - **A press never changes the value.** The value changes only by dragging or with the keyboard. `IndustrialKnob`
   starts a drag only on its dial as it is drawn, and the drag is relative: the value moves by the angle the pointer
   moves, never jumps to the point pressed.
@@ -214,6 +218,50 @@ Rotary knob (`qiw::IndustrialKnob`).
   moving parts.
 - **Non-finite input** (#151, #182): the knob is an input control and has no value state. `setValue()` rejects NaN and
   ±Inf with a warning: the knob keeps its position.
+
+## IndustrialSlider
+
+<img src="images/industrial-slider-tracking.png" alt="IndustrialSlider" width="282">
+
+Linear setpoint control with position feedback (`qiw::IndustrialSlider`, #180): the command to an actuator (a valve, a
+damper, a speed reference) and the position the actuator reports, on one scale.
+- **Scale**: `orientation` (`Qt::Horizontal` by default; vertical with the maximum at the top), `minimum` and
+  `maximum`, `majorTicks`, `minorTicks`, `precision`, `unit`, and the zones of `warningThreshold` and
+  `errorThreshold` (NaN, the default, disables a threshold). The labels follow the rules of `LinearGauge`.
+- **Setpoint**: a handle with its tip on the track. `setSetpoint()` takes a finite value and clamps it to the range;
+  NaN and ±Inf are rejected with a warning and the setpoint stays unchanged.
+- **Feedback**: a bar across the track, on the other side of it from the handle, so that the two do not rely on
+  colour. A new slider has no feedback (`hasFeedback()` is false) and draws no bar, no position readout and no
+  deviation; `setFeedback()` gives it one, `clearFeedback()` removes it. The input is classified as for the gauges
+  (#151, `feedbackState`): out of range or ±Inf the bar stops at the end of the scale with a triangle past it; NaN
+  draws no bar, hatches the track and reads `---`. The last valid position is never shown.
+- **Deviation**: with a feedback and `deviationThreshold` above 0 (0 or NaN turns it off, the default),
+  `deviationState` is `Off`, `Unknown` (the feedback is NaN or ±Inf; never `Normal`), `Normal` or `Deviating`
+  (|setpoint − feedback| above the threshold, with a feedback outside the range taken as it is). `Deviating`
+  cross-hatches the track between the handle and the bar and puts an outlined Δ in the position readout; `Unknown`
+  puts a `?` there. The feedback lags the setpoint, so every change of the setpoint larger than the threshold shows
+  `Deviating` until the actuator reaches it: an application that raises an alarm on the deviation must filter it.
+- **Readouts**: the setpoint (`SP`) and the position (`POS`, `feedbackReadoutVisible`) on opaque panels in
+  `readoutColor` (#159). Never below 7 pt; without room the unit goes first, then the number, never the tag, the Δ or
+  `?` mark, the triangle, `---` or the padlock. `minimumSizeHint()` is computed from the font and the configuration.
+- **Input** (the [rules for controls](#controls), #182): a drag of the handle, relative (a press on the track or the
+  scale does nothing); Left/Down and Right/Up by `step`, PageDown/PageUp by `pageStep`. Home/End go to the limits;
+  from outside the limits, a key that would move the setpoint further out is ignored. The mouse wheel when it is
+  enabled (`wheelEnabled`, off by default; only with focus).
+  - Read-only (`readOnly`): the padlock is drawn before `SP` in the setpoint readout.
+  - Setpoint limits (`setSetpointLimits()`): the band of the ticks is hatched outside them, and each limit inside the
+    range has a stop mark across the zone band and the ticks.
+- **Focus and accessibility** (the [rules for controls](#controls), #183): a solid 2 px focus ring in `textColor`
+  along the edge of the widget. Accessible role `Slider`; the value of the value interface is the setpoint, with the
+  range and `step`. The value text has the setpoint, the position and the deviation state, in words rather than the
+  marks of the readouts: `60.0 %, position 15.0 %, deviation`; `60.0 %, position invalid, deviation unknown` for a NaN
+  feedback; `position over range 120.0 %` or `position under range` (±Inf has no number) outside the range; the
+  position is left out without a feedback, and the deviation when it is `Off` or `Normal`. Value-change events follow
+  the setpoint, the range and the deviation state: a change of `deviationState` sends one, with the setpoint, since
+  the value text changed (`QAccessible::State` has no flag for a deviation); a new position that leaves the state as
+  it is sends none, so a position updated at a high rate does not flood assistive technology. Known limitation: assistive
+  technology reads the position and the deviation from the value text only, since the Qt value interface has a single
+  value, the setpoint.
 
 ## StripChart
 

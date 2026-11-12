@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # QtIndustrialWidgets
 
-A C++17 widget library for Qt Widgets with 14 instrumentation widgets — gauges, displays, indicators, switches, an
+A C++17 widget library for Qt Widgets with 15 instrumentation widgets — gauges, displays, indicators, switches, an
 alarm annunciator, a live strip chart and an offline analysis chart — for test benches, SCADA and telemetry
 applications.
 
@@ -32,6 +32,7 @@ applications.
 | [`SevenSegmentDisplay`](docs/widgets.md#sevensegmentdisplay)<br>Six digits, one decimal, skewed segments | <img src="docs/images/seven-segment-display-value.png" alt="SevenSegmentDisplay" width="300"> |
 | [`LedIndicator`](docs/widgets.md#ledindicator)<br>Round lens, on, with label | <img src="docs/images/led-indicator-on.png" alt="LedIndicator" width="140"> |
 | [`IndustrialKnob`](docs/widgets.md#industrialknob)<br>Continuous 0–8000 RPM with value pod | <img src="docs/images/industrial-knob-continuous.png" alt="IndustrialKnob" width="220"> |
+| [`IndustrialSlider`](docs/widgets.md#industrialslider)<br>Setpoint 60 % and actuator position 58.4 % | <img src="docs/images/industrial-slider-tracking.png" alt="IndustrialSlider" width="282"> |
 | [`StripChart`](docs/widgets.md#stripchart)<br>Three channels over 10 s with a NaN dropout | <img src="docs/images/strip-chart-channels.png" alt="StripChart" width="640"> |
 | [`IndustrialSwitch`](docs/widgets.md#industrialswitch)<br>Toggle lever under a safety guard | <img src="docs/images/industrial-switch-guarded-toggle.png" alt="IndustrialSwitch" width="180"> |
 | [`LevelMeter`](docs/widgets.md#levelmeter)<br>Stereo dB meter with held peaks | <img src="docs/images/level-meter-stereo-db.png" alt="LevelMeter" width="170"> |
@@ -157,7 +158,7 @@ The interactive gallery is built by default (`BUILD_EXAMPLES`): `./build/bin/QtI
 ## Qt Designer
 
 With `BUILD_DESIGNER_PLUGIN` (on by default, switched off when Qt `Designer` is not found), the plugin
-`QtIndustrialWidgetsPlugin` registers the 14 widgets in the **Industrial Widgets** category of Qt Designer and Qt
+`QtIndustrialWidgetsPlugin` registers the 15 widgets in the **Industrial Widgets** category of Qt Designer and Qt
 Creator. Installation: [docs/designer_plugin.md](docs/designer_plugin.md).
 
 ## Documentation
