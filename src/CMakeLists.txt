@@ -268,6 +268,27 @@ set_target_properties(IndustrialSliderLayout PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+add_library(ThumbwheelSwitchLayout OBJECT
+    internal/ThumbwheelSwitchLayout.cpp
+    internal/ThumbwheelSwitchLayout.h
+)
+
+target_include_directories(ThumbwheelSwitchLayout
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(ThumbwheelSwitchLayout
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+)
+
+set_target_properties(ThumbwheelSwitchLayout PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 add_library(ValveIndicatorLayout OBJECT
     internal/ValveIndicatorLayout.cpp
     internal/ValveIndicatorLayout.h
@@ -343,6 +364,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     TankDisplay.cpp
     ValveIndicator.cpp
     IndustrialSlider.cpp
+    ThumbwheelSwitch.cpp
     $<TARGET_OBJECTS:NumberFormat>
     $<TARGET_OBJECTS:ValueClassification>
     $<TARGET_OBJECTS:ValueStateDrawing>
@@ -355,6 +377,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     $<TARGET_OBJECTS:TankDisplayLayout>
     $<TARGET_OBJECTS:ValveIndicatorLayout>
     $<TARGET_OBJECTS:IndustrialSliderLayout>
+    $<TARGET_OBJECTS:ThumbwheelSwitchLayout>
     $<TARGET_OBJECTS:FontScale>
     $<TARGET_OBJECTS:TextMetricsTable>
     $<TARGET_OBJECTS:AnalysisChartView>
@@ -375,6 +398,7 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/TankDisplay.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/ValveIndicator.h
     ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/IndustrialSlider.h
+    ${PROJECT_SOURCE_DIR}/include/QtIndustrialWidgets/ThumbwheelSwitch.h
 )
 
 add_library(QtIndustrialWidgets::QtIndustrialWidgets ALIAS QtIndustrialWidgets)

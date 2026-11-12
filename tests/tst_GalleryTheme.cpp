@@ -14,6 +14,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
 #include "ColourPropertyTestUtils.h"
@@ -81,7 +82,7 @@ void tst_GalleryTheme::switchEqualsSecondThemeOnly_data()
         {"RadialGauge", make<RadialGauge>()},           {"LinearGauge", make<LinearGauge>()},
         {"IndustrialKnob", make<IndustrialKnob>()},     {"Compass", make<Compass>()},
         {"CircularBargraph", make<CircularBargraph>()}, {"TankDisplay", make<TankDisplay>()},
-        {"ValveIndicator", make<ValveIndicator>()},
+        {"ValveIndicator", make<ValveIndicator>()},     {"ThumbwheelSwitch", make<ThumbwheelSwitch>()},
     };
     for (const auto &[name, create] : widgets) {
         QTest::addRow("%s, light then dark", name) << create << Theme::Light << Theme::Dark;

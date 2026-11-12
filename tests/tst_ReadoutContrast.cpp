@@ -22,6 +22,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
 #include "GalleryTheme.h"
@@ -29,6 +30,7 @@
 #include "internal/IndustrialSliderTestAccess.h"
 #include "internal/LinearGaugeScale.h"
 #include "internal/TankDisplayTestAccess.h"
+#include "internal/ThumbwheelSwitchTestAccess.h"
 #include "internal/ValveIndicatorTestAccess.h"
 
 #include <QtGui/QImage>
@@ -381,6 +383,12 @@ private Q_SLOTS:
     void industrialSliderTrackOutline();
     void industrialSliderFocusRing_data();
     void industrialSliderFocusRing();
+    void thumbwheelDigits_data();
+    void thumbwheelDigits();
+    void thumbwheelArrows_data();
+    void thumbwheelArrows();
+    void thumbwheelPanelMarks_data();
+    void thumbwheelPanelMarks();
     void valveStatusTag_data();
     void valveStatusTag();
     void valveStatusColours_data();
@@ -856,6 +864,156 @@ void tst_ReadoutContrast::industrialSliderTrackOutline()
                                     .arg(ratio, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
         }
     }
+}
+
+namespace {
+
+void addThemeRows()
+{
+    QTest::addColumn<bool>("dark");
+    QTest::newRow("dark") << true;
+    QTest::newRow("light") << false;
+}
+
+// As the gallery export draws a showcase: onto the showcase background, without the window background of the widget
+QImage renderShowcase(QWidget &w, bool dark)
+{
+    const qreal scale = w.devicePixelRatioF();
+    QImage img(w.size() * scale, QImage::Format_ARGB32);
+    img.setDevicePixelRatio(scale);
+    img.fill(showcaseBackground(dark));
+    QPainter painter(&img);
+    w.render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+    return img;
+}
+
+QRect deviceBox(const QRectF &logical, const QImage &img)
+{
+    const qreal dpr = img.devicePixelRatio();
+    return QRectF(logical.topLeft() * dpr, logical.size() * dpr).toAlignedRect().intersected(img.rect());
+}
+
+QRgb pixelAt(const QImage &img, const QPointF &p)
+{
+    const qreal dpr = img.devicePixelRatio();
+    return img.pixel(std::clamp(static_cast<int>(std::floor(p.x() * dpr)), 0, img.width() - 1),
+                     std::clamp(static_cast<int>(std::floor(p.y() * dpr)), 0, img.height() - 1));
+}
+
+// The pixel of \a box (device px) of highest contrast against \a against
+QRgb strongestIn(const QImage &img, const QRect &box, QRgb against)
+{
+    QRgb best = against;
+    for (int y = box.top(); y <= box.bottom(); ++y) {
+        for (int x = box.left(); x <= box.right(); ++x) {
+            if (contrast(img.pixel(x, y), against) > contrast(best, against)) {
+                best = img.pixel(x, y);
+            }
+        }
+    }
+    return best;
+}
+
+void checkGraphics(const char *what, QRgb ink, QRgb under)
+{
+    constexpr double kGraphicsRatio = 3.0;
+    const double ratio = contrast(ink, under);
+    QVERIFY2(ratio >= kGraphicsRatio, qPrintable(QStringLiteral("%1 (%2,%3,%4) on (%5,%6,%7): %8:1, %9:1 needed")
+                                                     .arg(QLatin1String(what)).arg(qRed(ink)).arg(qGreen(ink))
+                                                     .arg(qBlue(ink)).arg(qRed(under)).arg(qGreen(under))
+                                                     .arg(qBlue(under)).arg(ratio, 0, 'f', 2)
+                                                     .arg(kGraphicsRatio, 0, 'f', 1)));
+}
+
+} // namespace
+
+void tst_ReadoutContrast::thumbwheelDigits_data() { addThemeRows(); }
+
+// #154: the digits and the sign of ThumbwheelSwitch are text on the drum faces (4.5:1), with the gallery styling
+void tst_ReadoutContrast::thumbwheelDigits()
+{
+    QFETCH(bool, dark);
+    ThumbwheelSwitch t;
+    t.setSignDrumVisible(true);
+    t.setRange(-9999.0, 9999.0);
+    t.setValue(-1250.0);
+    style(t, dark);
+    t.resize(t.sizeHint());
+    const QImage img = renderShowcase(t, dark);
+    for (const QRectF &drum : internal::ThumbwheelSwitchTestAccess::lastLayout(t).drums) {
+        checkReading(measureReadout(img, deviceRect(drum, img.devicePixelRatio())), scaledPixels(8, img.devicePixelRatio()));
+    }
+}
+
+void tst_ReadoutContrast::thumbwheelArrows_data() { addThemeRows(); }
+
+// #154: the arrows of the buttons carry whether a step is applied: graphical objects on the button face (3:1), filled
+// and outlined
+void tst_ReadoutContrast::thumbwheelArrows()
+{
+    QFETCH(bool, dark);
+    ThumbwheelSwitch t;
+    t.setValue(909.0); // + filled on the drums at 0, outlined on those at 9; − the other way round
+    style(t, dark);
+    t.resize(t.sizeHint());
+    const QImage img = renderShowcase(t, dark);
+    const internal::ThumbwheelLayout l = internal::ThumbwheelSwitchTestAccess::lastLayout(t);
+    const QVector<bool> open = internal::ThumbwheelSwitchTestAccess::lastPlusOpen(t);
+    QCOMPARE(open, (QVector<bool>{true, false, true, false}));
+    for (int i = 0; i < l.drums.size(); ++i) {
+        for (const QRectF &button : {l.plus.at(i), l.minus.at(i)}) {
+            // The face: beside the arrow, at mid height, clear of the rounded corners
+            const QRgb face = pixelAt(img, QPointF(button.left() + 3.0, button.center().y()));
+            const QRect box = deviceBox(button.adjusted(2.0, 2.0, -2.0, -2.0), img);
+            const bool filled = open.at(i) == (button == l.plus.at(i));
+            checkGraphics(filled ? "filled arrow" : "outlined arrow", strongestIn(img, box, face), face);
+            // The arrow is seen as a shape, not as a few pixels at its corners: at least half of its perimeter (a
+            // triangle of base 2a and height a, a as in drawArrow()) in pixels that reach the target
+            const double side = std::min(button.width() * 0.25, button.height() * 0.4);
+            const double perimeter = (2.0 + 2.0 * std::sqrt(2.0)) * side * img.devicePixelRatio();
+            int strong = 0;
+            for (int y = box.top(); y <= box.bottom(); ++y) {
+                for (int x = box.left(); x <= box.right(); ++x) {
+                    strong += contrast(img.pixel(x, y), face) >= 3.0 ? 1 : 0;
+                }
+            }
+            QVERIFY2(strong >= 0.5 * perimeter, qPrintable(QStringLiteral("%1 arrow: %2 pixels at 3:1, %3 needed")
+                                                                .arg(QLatin1String(filled ? "filled" : "outlined"))
+                                                                .arg(strong).arg(0.5 * perimeter, 0, 'f', 1)));
+        }
+    }
+}
+
+void tst_ReadoutContrast::thumbwheelPanelMarks_data() { addThemeRows(); }
+
+// #154: the unit and the OVF tag are text on the background of the widget (4.5:1 against the showcase background);
+// the decimal point and the ▲ / ▼ marks are graphical objects there (3:1)
+void tst_ReadoutContrast::thumbwheelPanelMarks()
+{
+    QFETCH(bool, dark);
+    ThumbwheelSwitch t;
+    t.setDigitCount(5);
+    t.setDecimals(1);
+    t.setUnit(QStringLiteral("rpm"));
+    t.setRange(0.0, 1500.0);
+    t.setValue(1820.0);
+    style(t, dark);
+    t.resize(t.sizeHint());
+    const QRgb background = showcaseBackground(dark).rgb();
+    QImage img = renderShowcase(t, dark);
+    const internal::ThumbwheelLayout l = internal::ThumbwheelSwitchTestAccess::lastLayout(t);
+    QCOMPARE(internal::ThumbwheelSwitchTestAccess::lastTag(t), QStringLiteral("▲"));
+    // The text boxes widened into the gaps around them, whose ends are background
+    checkReading(measureReadout(img, deviceBox(l.unit.adjusted(-3.0, 0.0, 3.0, 0.0), img)),
+                 scaledPixels(20, img.devicePixelRatio()));
+    checkGraphics("decimal point", pixelAt(img, l.decimalPoint.center()), background);
+    checkGraphics("▲", strongestIn(img, deviceBox(l.tag, img), background), background);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("cannot be shown")));
+    t.setValue(1e9);
+    img = renderShowcase(t, dark);
+    QCOMPARE(internal::ThumbwheelSwitchTestAccess::lastTag(t), QStringLiteral("OVF"));
+    checkReading(measureReadout(img, deviceBox(l.tag.adjusted(-3.0, 0.0, 3.0, 0.0), img)),
+                 scaledPixels(20, img.devicePixelRatio()));
 }
 
 void tst_ReadoutContrast::valveStatusTag_data()
