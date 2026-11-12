@@ -15,6 +15,7 @@
 
 #include "internal/ThumbwheelSwitchLayout.h"
 #include "internal/ThumbwheelSwitchTestAccess.h"
+#include "AccessibleEventLog.h"
 
 #include "PixelTestUtils.h"
 
@@ -245,40 +246,8 @@ struct Spies {
     }
 };
 
-// #183: what the switch sends to assistive technology, through the test hook (offscreen Qt drops the events before
-// any handler). Each event as one line: "value 125" for a value change of the switch, "readOnly" for a change of its
-// read-only state, "other" for anything else
-class A11yLog
-{
-public:
-    explicit A11yLog(ThumbwheelSwitch &w)
-        : m_wheel(w)
-    {
-        ThumbwheelSwitchTestAccess::setAccessibleObserver(w, [this](QAccessibleEvent *e) {
-            if (e->object() != &m_wheel) {
-                m_lines << QStringLiteral("other");
-            } else if (e->type() == QAccessible::ValueChanged) {
-                const double v = static_cast<QAccessibleValueChangeEvent *>(e)->value().toDouble();
-                m_lines << QStringLiteral("value %1").arg(v);
-            } else if (e->type() == QAccessible::StateChanged
-                       && static_cast<QAccessibleStateChangeEvent *>(e)->changedStates().readOnly) {
-                m_lines << QStringLiteral("readOnly");
-            } else {
-                m_lines << QStringLiteral("other");
-            }
-        });
-    }
-    ~A11yLog() { ThumbwheelSwitchTestAccess::setAccessibleObserver(m_wheel, {}); }
-    A11yLog(const A11yLog &) = delete;
-    A11yLog &operator=(const A11yLog &) = delete;
-
-    // The lines since the last call, joined by "; "
-    QString flush() { return std::exchange(m_lines, {}).join(QStringLiteral("; ")); }
-
-private:
-    ThumbwheelSwitch &m_wheel;
-    QStringList m_lines;
-};
+// #183: the events the switch sends to assistive technology (tests/AccessibleEventLog.h)
+using A11yLog = AccessibleEventLog<ThumbwheelSwitchTestAccess, ThumbwheelSwitch>;
 
 QAccessibleValueInterface *valueInterfaceOf(ThumbwheelSwitch &w)
 {
