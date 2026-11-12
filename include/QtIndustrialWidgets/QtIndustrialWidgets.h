@@ -28,3 +28,4 @@
 #include <QtIndustrialWidgets/TankDisplay.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 #include <QtIndustrialWidgets/IndustrialSlider.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
