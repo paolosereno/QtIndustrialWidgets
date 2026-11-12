@@ -157,17 +157,17 @@ QVariant ThumbwheelSwitchAccessible::minimumStepSize() const
 void ThumbwheelSwitchAccessible::setCurrentValue(const QVariant &value)
 {
     ThumbwheelSwitch *w = wheel();
-    ThumbwheelSwitchPrivate &d = *w->d_ptr;
+    ThumbwheelSwitchPrivate &priv = *w->d_ptr; // Not "d": QAccessibleWidget has a member d (MSVC C4458)
     bool ok = false;
     const double proposed = value.toDouble(&ok);
     if (!ok || !std::isfinite(proposed)) {
         return;
     }
-    const std::optional<qint64> target = d.operatorTarget(d.m_format.countOf(proposed));
-    if (!target || *target == d.shownCount()) {
+    const std::optional<qint64> target = priv.operatorTarget(priv.m_format.countOf(proposed));
+    if (!target || *target == priv.shownCount()) {
         return;
     }
-    d.setShown(w, *target);
+    priv.setShown(w, *target);
     if (w->applyMode() == ThumbwheelSwitch::ApplyMode::Immediate) {
         Q_EMIT w->valueCommitted(w->value());
     }
