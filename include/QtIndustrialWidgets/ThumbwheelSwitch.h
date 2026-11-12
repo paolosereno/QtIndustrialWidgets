@@ -47,11 +47,46 @@ class ThumbwheelSwitchTestAccess;
  * digit neither wraps around nor carries into the next decade, and when it would take the value outside the limits,
  * or further out from a value outside them; it is never rounded to the limit, which would change digits the
  * operator did not touch. On the sign drum, + and − select the sign; a change of sign is rejected for 0 and when it
- * would take the value outside the limits. In overflow every step is shown as rejected.
+ * would take the value outside the limits. In overflow and in read-only every step is shown as rejected.
+ *
+ * Operator input, under the rules for controls (#182, docs/widgets.md):
+ * - Mouse: a press on a + or − button arms it; the release on the same button makes one step, so a press alone never
+ *   changes anything. A press on a drum, or on one of its buttons, makes its decade the current one.
+ * - Keys, with focus: Left and Right move the current decade (the sign drum first when shown), Home and End move it
+ *   to the first and the last drum (#154: not to the limits, which would change digits the operator did not touch).
+ *   Up and Down step the current decade; 0–9 type its digit and move to the next decade; on the sign drum, + and −
+ *   (or Up and Down) select the sign. A digit typed or a sign selected is rejected as a step is. PageUp and PageDown
+ *   are not used and reach the parent.
+ * - Wheel: off by default (wheelEnabled); when on, it acts only with focus, on the decade under the pointer, which
+ *   becomes the current one; one step per notch. Outside the drums and their buttons it reaches the parent.
+ * - applyMode() OnConfirm (the default): the operator's input changes a pending value, shown by the drums with a
+ *   dashed outline, while the applied value stays visible on a line under them ("SET?  now 0125.0 V"). Enter, the
+ *   SET button drawn after the tag column, or applyPending() applies it: value() takes it, with valueChanged() and
+ *   valueCommitted(). Escape or discardPending() discards it. A loss of focus never applies it. A value is pending
+ *   only while it differs from value(). Unlike IndustrialKnob and IndustrialSlider, whose value moves continuously,
+ *   a decade selector reaches a value through intermediate values that can be far from the one wanted (1999, 2999,
+ *   2000, one decade at a time), and real thumbwheel panels load the value with a separate button.
+ * - applyMode() Immediate: each step is applied at once (valueChanged()), and valueCommitted() is emitted once at the
+ *   end of each operator action that changed the value: the release of a button, the release of a key (once for a key
+ *   held down), each notch of the wheel, or a loss of focus, a hide or setReadOnly(true) during a key action.
+ * - readOnly: mouse, keys and wheel input are ignored and reach the parent; a padlock is drawn under the drums. A
+ *   pending value is discarded, and a key action running ends.
+ * - Overflow: while the overflow mark is shown, every operator input that would change the value is rejected (the
+ *   steps, the digits, the sign, the wheel, Enter), until setValue() gives a value the drums can show. Turning the
+ *   mark on discards a pending value. Moving the current decade is still possible.
+ *
+ * setValue() changes the applied value and never emits valueCommitted(); a pending value stays, unless it is now
+ * equal to value() or the overflow mark turns on. A change of digitCount(), decimals() or of the sign drum discards a
+ * pending value, and so does a change of applyMode().
+ *
+ * Focus: the switch takes focus with Tab and a click (Qt::StrongFocus), also in read-only, and then draws a solid
+ * 2 px ring in textColor() along its edge and a bar under the current decade.
  *
  * Size: the drums keep the size of their digit font (the widget font scaled as in the other widgets, #51, never
  * below 7 pt) and the group is centred in the widget. minimumSizeHint() is computed from the font, the logical DPI
- * and the configuration (digits, decimal point, sign drum, unit, tag column), and follows a change of screen (#177).
+ * and the configuration (digits, decimal point, sign drum, unit, tag column, the SET button and the line under the
+ * drums in ApplyMode::OnConfirm or in read-only, the bar of the current decade), and follows a change of screen
+ * (#177). Neither a pending value nor the focus changes it.
  *
  * \code
  * auto *wheel = new ThumbwheelSwitch(parent);
@@ -78,8 +113,21 @@ class QTINDUSTRIALWIDGETS_EXPORT ThumbwheelSwitch : public QWidget
     Q_PROPERTY(QColor digitColor READ digitColor WRITE setDigitColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor buttonColor READ buttonColor WRITE setButtonColor NOTIFY appearanceChanged)
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
+    Q_PROPERTY(QColor pendingColor READ pendingColor WRITE setPendingColor NOTIFY appearanceChanged)
+    Q_PROPERTY(ApplyMode applyMode READ applyMode WRITE setApplyMode NOTIFY appearanceChanged)
+    Q_PROPERTY(bool hasPendingValue READ hasPendingValue NOTIFY pendingValueChanged)
+    Q_PROPERTY(double pendingValue READ pendingValue NOTIFY pendingValueChanged)
+    Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly NOTIFY readOnlyChanged)
+    Q_PROPERTY(bool wheelEnabled READ isWheelEnabled WRITE setWheelEnabled NOTIFY appearanceChanged)
 
 public:
+    /// When the operator's input is applied (see the class description).
+    enum class ApplyMode {
+        OnConfirm, ///< The input changes a pending value; Enter or the SET button applies it (default)
+        Immediate  ///< Each step is applied at once and committed at the end of the operator action
+    };
+    Q_ENUM(ApplyMode)
+
     /**
      * \brief Constructs a ThumbwheelSwitch of 4 digits, no decimals, no sign drum, limits 0 to 9999, value 0.
      * \param parent Optional parent widget.
@@ -111,6 +159,18 @@ public:
     [[nodiscard]] QColor buttonColor() const;
     /** \brief Returns the colour of the decimal point, of the unit and of the marks of the tag column. */
     [[nodiscard]] QColor textColor() const;
+    /** \brief Returns the colour of the dashed outline of the drums while a value is pending. */
+    [[nodiscard]] QColor pendingColor() const;
+    /** \brief Returns when the operator's input is applied. Default ApplyMode::OnConfirm. */
+    [[nodiscard]] ApplyMode applyMode() const;
+    /** \brief Returns true while a value set by the operator waits to be applied (ApplyMode::OnConfirm only). */
+    [[nodiscard]] bool hasPendingValue() const;
+    /** \brief Returns the pending value, or value() when none is pending. */
+    [[nodiscard]] double pendingValue() const;
+    /** \brief Returns whether the operator's input is ignored. Default false. */
+    [[nodiscard]] bool isReadOnly() const;
+    /** \brief Returns whether the mouse wheel steps the decade under the pointer. Default false. */
+    [[nodiscard]] bool isWheelEnabled() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -153,6 +213,24 @@ public Q_SLOTS:
     void setButtonColor(const QColor &color);
     /** \brief Sets the colour of the decimal point, of the unit and of the marks of the tag column. */
     void setTextColor(const QColor &color);
+    /** \brief Sets the colour of the dashed outline of the drums while a value is pending. */
+    void setPendingColor(const QColor &color);
+    /** \brief Sets when the operator's input is applied. A pending value is discarded. */
+    void setApplyMode(ApplyMode mode);
+    /**
+     * \brief Applies the pending value, as Enter does: value() takes it, with valueChanged() and valueCommitted().
+     * Does nothing when no value is pending.
+     */
+    void applyPending();
+    /** \brief Discards the pending value, as Escape does. Does nothing when no value is pending. */
+    void discardPending();
+    /**
+     * \brief Ignores the operator's input (true) or accepts it. Turning it on ends a key action running (with a commit
+     * if it changed the value) and discards a pending value. setValue() still works.
+     */
+    void setReadOnly(bool readOnly);
+    /** \brief Turns the mouse wheel on or off (see the class description). */
+    void setWheelEnabled(bool enabled);
 
 Q_SIGNALS:
     /** \brief Emitted when value() changes, whatever the source. */
@@ -161,12 +239,29 @@ Q_SIGNALS:
     void rangeChanged(double min, double max);
     /** \brief Emitted when the overflow mark is turned on or off. */
     void overflowChanged(bool overflow);
+    /**
+     * \brief Emitted once at the end of an operator action that changed value(): Enter, the SET button or
+     * applyPending() in ApplyMode::OnConfirm; see the class description for ApplyMode::Immediate. Never by setValue().
+     */
+    void valueCommitted(double value);
+    /** \brief Emitted when pendingValue() or hasPendingValue() changes. */
+    void pendingValueChanged(double pendingValue);
+    /** \brief Emitted when readOnly changes. */
+    void readOnlyChanged(bool readOnly);
     /** \brief Emitted when a visual property changes. */
     void appearanceChanged();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+    void focusInEvent(QFocusEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
 
 private:
     std::unique_ptr<ThumbwheelSwitchPrivate> d_ptr;

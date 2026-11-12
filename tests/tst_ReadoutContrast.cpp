@@ -389,6 +389,10 @@ private Q_SLOTS:
     void thumbwheelArrows();
     void thumbwheelPanelMarks_data();
     void thumbwheelPanelMarks();
+    void thumbwheelInputMarks_data();
+    void thumbwheelInputMarks();
+    void thumbwheelFocusRing_data();
+    void thumbwheelFocusRing();
     void valveStatusTag_data();
     void valveStatusTag();
     void valveStatusColours_data();
@@ -1014,6 +1018,68 @@ void tst_ReadoutContrast::thumbwheelPanelMarks()
     QCOMPARE(internal::ThumbwheelSwitchTestAccess::lastTag(t), QStringLiteral("OVF"));
     checkReading(measureReadout(img, deviceBox(l.tag.adjusted(-3.0, 0.0, 3.0, 0.0), img)),
                  scaledPixels(20, img.devicePixelRatio()));
+}
+
+void tst_ReadoutContrast::thumbwheelInputMarks_data() { addThemeRows(); }
+
+// #154, part 2, with the gallery styling: the dashed outline of a pending value on the drum face (a graphical object,
+// 3:1), the SET button filled (text on the button face, 4.5:1) and outlined (text on the background, 4.5:1), the status
+// line (text on the background, 4.5:1) and the padlock of read-only (a graphical object on the background, 3:1)
+void tst_ReadoutContrast::thumbwheelInputMarks()
+{
+    QFETCH(bool, dark);
+    ThumbwheelSwitch t;
+    t.setDigitCount(5);
+    t.setDecimals(1);
+    t.setUnit(QStringLiteral("V"));
+    t.setValue(125.0);
+    style(t, dark);
+    t.resize(t.sizeHint());
+    const QRgb background = showcaseBackground(dark).rgb();
+    QImage img = renderShowcase(t, dark);
+    const internal::ThumbwheelLayout l = internal::ThumbwheelSwitchTestAccess::lastLayout(t);
+    QVERIFY(!internal::ThumbwheelSwitchTestAccess::lastSetOpen(t));
+    checkReading(measureReadout(img, deviceBox(l.setButton.adjusted(2.0, 2.0, -2.0, -2.0), img)),
+                 scaledPixels(15, img.devicePixelRatio()));
+
+    QKeyEvent up(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier); // The first decade: a pending value
+    QCoreApplication::sendEvent(&t, &up);
+    QVERIFY(t.hasPendingValue());
+    img = renderShowcase(t, dark);
+    QVERIFY(internal::ThumbwheelSwitchTestAccess::lastSetOpen(t));
+    for (const QRectF &drum : l.drums) {
+        const QRgb face = t.drumColor().rgb(); // Opaque and flat (#159)
+        checkGraphics("dashed outline", strongestIn(img, deviceBox(QRectF(drum.left(), drum.top(), drum.width(), 2.0), img),
+                                                    face), face);
+    }
+    checkReading(measureReadout(img, deviceBox(l.setButton.adjusted(2.0, 2.0, -2.0, -2.0), img)),
+                 scaledPixels(15, img.devicePixelRatio()));
+    checkReading(measureReadout(img, deviceBox(l.status.adjusted(0.0, 0.0, 3.0, 0.0), img)),
+                 scaledPixels(40, img.devicePixelRatio()));
+
+    t.setReadOnly(true);
+    img = renderShowcase(t, dark);
+    QVERIFY(internal::ThumbwheelSwitchTestAccess::lastPadlock(t));
+    checkGraphics("padlock", strongestIn(img, deviceBox(l.padlock, img), background), background);
+}
+
+void tst_ReadoutContrast::thumbwheelFocusRing_data() { addThemeRows(); }
+
+// #154, #183: the focus ring and the bar of the current decade, in textColor(), against what is under them
+void tst_ReadoutContrast::thumbwheelFocusRing()
+{
+    QFETCH(bool, dark);
+    QWidget window;
+    auto *t = new ThumbwheelSwitch(&window);
+    auto *other = new QLineEdit(&window);
+    t->setDigitCount(5);
+    t->setDecimals(1);
+    t->setValue(125.0);
+    style(*t, dark);
+    t->resize(t->sizeHint());
+    other->setGeometry(0, t->height() + 10, 120, 30);
+    window.resize(std::max(t->width(), 120), t->height() + 50);
+    checkFocusRingContrast(window, *t, *other, dark);
 }
 
 void tst_ReadoutContrast::valveStatusTag_data()
