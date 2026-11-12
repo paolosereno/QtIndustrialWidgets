@@ -9,6 +9,7 @@
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
@@ -1359,6 +1360,99 @@ QIcon ValveIndicatorPlugin::icon() const
 }
 
 // ============================================================================
+// IndustrialSliderPlugin
+// ============================================================================
+
+IndustrialSliderPlugin::IndustrialSliderPlugin(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void IndustrialSliderPlugin::initialize(QDesignerFormEditorInterface *)
+{
+    if (m_initialized) return;
+    m_initialized = true;
+}
+
+QWidget *IndustrialSliderPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::IndustrialSlider(parent);
+}
+
+QString IndustrialSliderPlugin::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+QString IndustrialSliderPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/IndustrialSlider.h");
+}
+
+QString IndustrialSliderPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::IndustrialSlider");
+}
+
+QString IndustrialSliderPlugin::toolTip() const
+{
+    return QStringLiteral("Linear setpoint control with actuator position feedback");
+}
+
+QString IndustrialSliderPlugin::whatsThis() const
+{
+    return QStringLiteral("A linear control for an actuator command (a valve, a damper, a speed reference): a "
+                          "setpoint handle and a feedback bar for the actual position on one scale, with readouts, "
+                          "a deviation indication, setpoint limits and read-only mode.");
+}
+
+QString IndustrialSliderPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::IndustrialSlider\" name=\"industrialSlider\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>300</width>\n"
+        "   <height>92</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon IndustrialSliderPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Track with a scale under it
+    p.setPen(QPen(QColor(120, 134, 150), 1.0));
+    p.setBrush(QColor(30, 36, 45));
+    p.drawRect(QRectF(2.5, 14.5, 27, 5));
+    for (int i = 0; i <= 4; ++i) {
+        const double x = 3.0 + i * 6.5;
+        p.drawLine(QPointF(x, 22), QPointF(x, i % 2 == 0 ? 27 : 25));
+    }
+
+    // Feedback bar across the track, behind the setpoint
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 159, 67));
+    p.drawRect(QRectF(11, 13, 2.5, 8));
+
+    // Setpoint handle, its tip on the track
+    QPolygonF handle;
+    handle << QPointF(17, 4) << QPointF(25, 4) << QPointF(25, 10) << QPointF(21, 14) << QPointF(17, 10);
+    p.setBrush(QColor(0, 188, 212));
+    p.drawPolygon(handle);
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -1379,6 +1473,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new CircularBargraphPlugin(this));
     m_widgets.append(new TankDisplayPlugin(this));
     m_widgets.append(new ValveIndicatorPlugin(this));
+    m_widgets.append(new IndustrialSliderPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const
