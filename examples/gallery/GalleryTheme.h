@@ -14,6 +14,7 @@ class IndustrialSlider;
 class LinearGauge;
 class RadialGauge;
 class TankDisplay;
+class ThumbwheelSwitch;
 class ValveIndicator;
 } // namespace QtIndustrialWidgets
 
@@ -36,6 +37,7 @@ void applyGalleryTheme(QtIndustrialWidgets::IndustrialSlider &slider, Theme them
 void applyGalleryTheme(QtIndustrialWidgets::Compass &compass, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::CircularBargraph &bargraph, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::TankDisplay &tank, Theme theme);
+void applyGalleryTheme(QtIndustrialWidgets::ThumbwheelSwitch &wheel, Theme theme);
 void applyGalleryTheme(QtIndustrialWidgets::ValveIndicator &valve, Theme theme);
 
 } // namespace GalleryShowcase

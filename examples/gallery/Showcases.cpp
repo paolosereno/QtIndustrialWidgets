@@ -18,6 +18,7 @@
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
 
@@ -309,6 +310,43 @@ QWidget *sliderUnknown(Theme theme)
     return slider(theme, Qt::Horizontal, 40.0, std::numeric_limits<double>::quiet_NaN());
 }
 
+// ThumbwheelSwitch (#154): a calibrator voltage setpoint, a signed temperature offset, and a value read back that the
+// drums cannot show
+ThumbwheelSwitch *thumbwheel(Theme theme, int digits, int decimals, bool sign, const QString &unit)
+{
+    auto *w = new ThumbwheelSwitch;
+    w->setDigitCount(digits);
+    w->setDecimals(decimals);
+    w->setSignDrumVisible(sign);
+    w->setUnit(unit);
+    applyGalleryTheme(*w, theme);
+    return w;
+}
+
+QWidget *thumbwheelValue(Theme theme)
+{
+    ThumbwheelSwitch *w = thumbwheel(theme, 5, 1, false, QStringLiteral("V"));
+    w->setRange(0.0, 2500.0);
+    w->setValue(125.0); // 0125.0: the + of the first drum and the − of the last decade are open, the others too
+    return w;
+}
+
+QWidget *thumbwheelSigned(Theme theme)
+{
+    ThumbwheelSwitch *w = thumbwheel(theme, 4, 2, true, QStringLiteral("°C"));
+    w->setRange(-50.0, 50.0);
+    w->setValue(-12.5); // − 12.50
+    return w;
+}
+
+QWidget *thumbwheelAboveLimit(Theme theme)
+{
+    ThumbwheelSwitch *w = thumbwheel(theme, 4, 0, false, QStringLiteral("rpm"));
+    w->setRange(0.0, 1500.0);
+    w->setValue(1820.0); // Read back above the maximum: ▲, and every + step is rejected
+    return w;
+}
+
 // ValveIndicator (#153): colours of the theme in GalleryTheme.cpp
 ValveIndicator *valve(Theme theme, ValveIndicator::ValveType type, ValveIndicator::ValveStatus status)
 {
@@ -575,6 +613,9 @@ const std::vector<Showcase> &showcases()
         {QStringLiteral("RadialGauge"), QStringLiteral("invalid"), QSize(300, 300), radialGaugeInvalid},
         {QStringLiteral("SevenSegmentDisplay"), QStringLiteral("value"), QSize(300, 110), sevenSegmentValue},
         {QStringLiteral("StripChart"), QStringLiteral("channels"), QSize(640, 300), stripChartChannels},
+        {QStringLiteral("ThumbwheelSwitch"), QStringLiteral("value"), QSize(), thumbwheelValue},
+        {QStringLiteral("ThumbwheelSwitch"), QStringLiteral("signed"), QSize(), thumbwheelSigned},
+        {QStringLiteral("ThumbwheelSwitch"), QStringLiteral("above-limit"), QSize(), thumbwheelAboveLimit},
         {QStringLiteral("TankDisplay"), QStringLiteral("vertical-cylinder"), QSize(160, 260), tankVerticalCylinder},
         {QStringLiteral("TankDisplay"), QStringLiteral("horizontal-cylinder"), QSize(260, 200), tankHorizontalCylinder},
         {QStringLiteral("TankDisplay"), QStringLiteral("limits"), QSize(160, 260), tankLimits},

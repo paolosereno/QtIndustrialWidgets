@@ -11,6 +11,7 @@
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/ValveIndicator.h>
 
 using namespace QtIndustrialWidgets;
@@ -120,6 +121,13 @@ void applyGalleryTheme(IndustrialSlider &slider, Theme theme)
     slider.setNormalColor(isDark(theme) ? QColor(46, 204, 113) : QColor(36, 160, 89));
     slider.setWarningColor(isDark(theme) ? QColor(241, 196, 15) : QColor(170, 138, 10));
     slider.setErrorColor(QColor(231, 76, 60));
+}
+
+// ThumbwheelSwitch (#154): the drums and the buttons are dark in both themes (#159), so the digits and the arrows keep
+// their colours; the decimal point, the unit and the tags are drawn on the panel and follow the theme
+void applyGalleryTheme(ThumbwheelSwitch &wheel, Theme theme)
+{
+    wheel.setTextColor(isDark(theme) ? QColor(240, 244, 248) : QColor(30, 39, 46));
 }
 
 } // namespace GalleryShowcase
