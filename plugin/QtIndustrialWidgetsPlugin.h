@@ -10,365 +10,62 @@
 #include <QtGui/QIcon>
 #include <QtUiPlugin/QDesignerCustomWidgetInterface>
 
-class RadialGaugePlugin : public QObject, public QDesignerCustomWidgetInterface
+// What every entry of the widget box does the same way (#154). Designer reaches an entry through
+// qobject_cast<QDesignerCustomWidgetInterface *>, which Q_INTERFACES here answers for every derived entry
+class IndustrialWidgetPluginBase : public QObject, public QDesignerCustomWidgetInterface
 {
     Q_OBJECT
     Q_INTERFACES(QDesignerCustomWidgetInterface)
 
 public:
-    explicit RadialGaugePlugin(QObject *parent = nullptr);
+    explicit IndustrialWidgetPluginBase(QObject *parent = nullptr);
 
     bool isContainer() const override { return false; }
     bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
     QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
     void initialize(QDesignerFormEditorInterface *core) override;
 
 private:
     bool m_initialized{false};
 };
 
-class LinearGaugePlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
+// One entry: what differs between the widgets, defined in QtIndustrialWidgetsPlugin.cpp. A macro, so that the 16
+// declarations are not 16 copies of the same block; internal to the plugin and undefined below
+#define QIW_DESIGNER_PLUGIN_ENTRY(Entry)                                                                               \
+    class Entry : public IndustrialWidgetPluginBase                                                                    \
+    {                                                                                                                  \
+    public:                                                                                                            \
+        explicit Entry(QObject *parent = nullptr)                                                                      \
+            : IndustrialWidgetPluginBase(parent)                                                                       \
+        {                                                                                                              \
+        }                                                                                                              \
+        QIcon icon() const override;                                                                                   \
+        QString domXml() const override;                                                                               \
+        QString includeFile() const override;                                                                          \
+        QString name() const override;                                                                                 \
+        QString toolTip() const override;                                                                              \
+        QString whatsThis() const override;                                                                            \
+        QWidget *createWidget(QWidget *parent) override;                                                               \
+    };
 
-public:
-    explicit LinearGaugePlugin(QObject *parent = nullptr);
+QIW_DESIGNER_PLUGIN_ENTRY(RadialGaugePlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(LinearGaugePlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(SevenSegmentDisplayPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(LedIndicatorPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(IndustrialKnobPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(StripChartPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(AnalysisChartPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(IndustrialSwitchPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(LevelMeterPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(AnnunciatorPanelPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(CompassPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(CircularBargraphPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(TankDisplayPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(ValveIndicatorPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(IndustrialSliderPlugin)
+QIW_DESIGNER_PLUGIN_ENTRY(ThumbwheelSwitchPlugin)
 
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class SevenSegmentDisplayPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit SevenSegmentDisplayPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class LedIndicatorPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit LedIndicatorPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class IndustrialKnobPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit IndustrialKnobPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class StripChartPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit StripChartPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class AnalysisChartPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit AnalysisChartPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class IndustrialSwitchPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit IndustrialSwitchPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class LevelMeterPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit LevelMeterPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class AnnunciatorPanelPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit AnnunciatorPanelPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class CompassPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit CompassPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class CircularBargraphPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit CircularBargraphPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class TankDisplayPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit TankDisplayPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class ValveIndicatorPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit ValveIndicatorPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
-
-class IndustrialSliderPlugin : public QObject, public QDesignerCustomWidgetInterface
-{
-    Q_OBJECT
-    Q_INTERFACES(QDesignerCustomWidgetInterface)
-
-public:
-    explicit IndustrialSliderPlugin(QObject *parent = nullptr);
-
-    bool isContainer() const override { return false; }
-    bool isInitialized() const override { return m_initialized; }
-    QIcon icon() const override;
-    QString domXml() const override;
-    QString group() const override;
-    QString includeFile() const override;
-    QString name() const override;
-    QString toolTip() const override;
-    QString whatsThis() const override;
-    QWidget *createWidget(QWidget *parent) override;
-    void initialize(QDesignerFormEditorInterface *core) override;
-
-private:
-    bool m_initialized{false};
-};
+#undef QIW_DESIGNER_PLUGIN_ENTRY
 
 class QtIndustrialWidgetsPlugin : public QObject, public QDesignerCustomWidgetCollectionInterface
 {

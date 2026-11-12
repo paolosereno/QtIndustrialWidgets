@@ -54,7 +54,9 @@ Only the dark theme at DPR 2 is committed. CI exports both themes and uploads th
 - **One image per widget showcase**, each widget rendered on its own at a fixed logical size (or at its `sizeHint()`) on the gallery's
   group-box colour: `<widget>-<variant>[-light].png`, e.g. `radial-gauge-warning.png`,
   `circular-bargraph-overrange.png`.
-- **One image per gallery tab** at 1200×820: `tab-<name>[-light].png`, e.g. `tab-daq.png`.
+- **One image per gallery tab** at 1200×820: `tab-<name>[-light].png`, e.g. `tab-daq.png`. A tab that scrolls
+  (Manual Controls) is exported whole: the window is made taller for its image only, by what the scroll area lacks,
+  so no group is cut off (#154).
 
 ## On GitHub Pages
 

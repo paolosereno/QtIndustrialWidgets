@@ -16,6 +16,7 @@ namespace QtIndustrialWidgets {
 class ThumbwheelSwitchPrivate;
 namespace internal {
 class ThumbwheelSwitchTestAccess;
+class ThumbwheelSwitchAccessible;
 }
 
 /**
@@ -82,6 +83,19 @@ class ThumbwheelSwitchTestAccess;
  * Focus: the switch takes focus with Tab and a click (Qt::StrongFocus), also in read-only, and then draws a solid
  * 2 px ring in textColor() along its edge and a bar under the current decade.
  *
+ * Accessibility (#183): the accessible interface has the role QAccessible::SpinBox; its value interface carries
+ * value(), minimum(), maximum() and the resolution 10^-decimals() as the step, and read-only is a state. The value
+ * text is the value as the drums show it, with the sign, the decimal point and the unit ("0125.0 V"); outside the
+ * limits it adds "above maximum" or "below minimum" (the triangle of the tag column); while a value is pending it is
+ * "pending 0130.0 V, set 0125.0 V"; in overflow it is "overflow". A value set by assistive technology is operator
+ * input: rounded to the resolution and rejected as a typed digit is (outside the limits, further out from a value
+ * outside them, a value the drums cannot show, in read-only, in overflow); ApplyMode::Immediate applies it and emits
+ * valueCommitted(), ApplyMode::OnConfirm makes it the pending value. While a value is pending, the actions "Apply" and
+ * "Discard" do what Enter and Escape do. Every change of value(), of the pending value, of the overflow mark or of the
+ * limits sends one QAccessibleValueChangeEvent with value(); setReadOnly() sends a QAccessibleStateChangeEvent. Known
+ * limitation: the current decade is not exposed to assistive technology. The switch has no accessible name of its
+ * own: set one with setAccessibleName() (or a QLabel buddy).
+ *
  * Size: the drums keep the size of their digit font (the widget font scaled as in the other widgets, #51, never
  * below 7 pt) and the group is centred in the widget. minimumSizeHint() is computed from the font, the logical DPI
  * and the configuration (digits, decimal point, sign drum, unit, tag column, the SET button and the line under the
@@ -95,6 +109,7 @@ class ThumbwheelSwitchTestAccess;
  * wheel->setRange(0.0, 2500.0);
  * wheel->setUnit(QStringLiteral("V"));
  * wheel->setValue(125.0); // the drums show 0125.0
+ * wheel->setAccessibleName(QStringLiteral("Test voltage")); // #183: the switch has no name of its own
  * \endcode
  */
 class QTINDUSTRIALWIDGETS_EXPORT ThumbwheelSwitch : public QWidget
@@ -267,6 +282,7 @@ private:
     std::unique_ptr<ThumbwheelSwitchPrivate> d_ptr;
     Q_DECLARE_PRIVATE(ThumbwheelSwitch)
     friend class internal::ThumbwheelSwitchTestAccess;
+    friend class internal::ThumbwheelSwitchAccessible; // accessible interface (#183); defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

@@ -12,6 +12,7 @@
 
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/IndustrialSliderTestAccess.h"
+#include "AccessibleEventLog.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/ValueStateDrawing.h"
 
@@ -191,40 +192,8 @@ void showSlider(IndustrialSlider &s, bool vertical, double setpoint)
     s.setSetpoint(setpoint);
 }
 
-// #183: what the slider sends to assistive technology, through the test hook (offscreen Qt drops the events before
-// any handler). Each event as one line: "value 40" for a value change of the slider, "readOnly" for a change of its
-// read-only state, "other" for anything else
-class A11yLog
-{
-public:
-    explicit A11yLog(IndustrialSlider &s)
-        : m_slider(s)
-    {
-        internal::IndustrialSliderTestAccess::setAccessibleObserver(s, [this](QAccessibleEvent *e) {
-            if (e->object() != &m_slider) {
-                m_lines << QStringLiteral("other");
-            } else if (e->type() == QAccessible::ValueChanged) {
-                const double v = static_cast<QAccessibleValueChangeEvent *>(e)->value().toDouble();
-                m_lines << QStringLiteral("value %1").arg(v);
-            } else if (e->type() == QAccessible::StateChanged
-                       && static_cast<QAccessibleStateChangeEvent *>(e)->changedStates().readOnly) {
-                m_lines << QStringLiteral("readOnly");
-            } else {
-                m_lines << QStringLiteral("other");
-            }
-        });
-    }
-    ~A11yLog() { internal::IndustrialSliderTestAccess::setAccessibleObserver(m_slider, {}); }
-    A11yLog(const A11yLog &) = delete;
-    A11yLog &operator=(const A11yLog &) = delete;
-
-    // The lines since the last call, joined by "; "
-    QString flush() { return std::exchange(m_lines, {}).join(QStringLiteral("; ")); }
-
-private:
-    IndustrialSlider &m_slider;
-    QStringList m_lines;
-};
+// #183: the events the slider sends to assistive technology (tests/AccessibleEventLog.h)
+using A11yLog = AccessibleEventLog<internal::IndustrialSliderTestAccess, IndustrialSlider>;
 
 } // namespace
 

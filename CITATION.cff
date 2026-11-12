@@ -7,7 +7,7 @@ message: "If you use this software, please cite it using the metadata from this 
 type: software
 title: QtIndustrialWidgets
 abstract: >-
-  A C++17 widget library for Qt Widgets with 15 instrumentation widgets — gauges, displays, indicators, switches, an
+  A C++17 widget library for Qt Widgets with 16 instrumentation widgets — gauges, displays, indicators, switches, an
   alarm annunciator, a live strip chart and an offline analysis chart — for test benches, SCADA and telemetry
   applications.
 authors:

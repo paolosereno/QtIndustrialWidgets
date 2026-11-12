@@ -10,6 +10,9 @@
 
 #include "internal/ThumbwheelSwitch_p.h"
 
+#include <functional>
+#include <utility>
+
 namespace QtIndustrialWidgets {
 namespace internal {
 
@@ -40,6 +43,11 @@ public:
     static QRectF lastFocusRing(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastFocusRing; }
     /// The current decade (an index of the drums), drawn or not
     static int currentDrum(const ThumbwheelSwitch &w) { return w.d_ptr->m_current; }
+    /// #183: \a observer sees every accessibility event the switch sends, before QAccessible::updateAccessibility()
+    static void setAccessibleObserver(ThumbwheelSwitch &w, std::function<void(QAccessibleEvent *)> observer)
+    {
+        w.d_ptr->m_accessibleObserver = std::move(observer);
+    }
 };
 
 } // namespace internal

@@ -10,6 +10,7 @@
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include <QtIndustrialWidgets/IndustrialSlider.h>
+#include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/AnalysisChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
@@ -25,28 +26,32 @@
 #include <QtGui/QPixmap>
 
 // ============================================================================
-// RadialGaugePlugin
+// IndustrialWidgetPluginBase: what every entry does the same way
 // ============================================================================
 
-RadialGaugePlugin::RadialGaugePlugin(QObject *parent)
+IndustrialWidgetPluginBase::IndustrialWidgetPluginBase(QObject *parent)
     : QObject(parent)
 {
 }
 
-void RadialGaugePlugin::initialize(QDesignerFormEditorInterface *)
+void IndustrialWidgetPluginBase::initialize(QDesignerFormEditorInterface *)
 {
     if (m_initialized) return;
     m_initialized = true;
 }
 
+QString IndustrialWidgetPluginBase::group() const
+{
+    return QStringLiteral("Industrial Widgets");
+}
+
+// ============================================================================
+// RadialGaugePlugin
+// ============================================================================
+
 QWidget *RadialGaugePlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::RadialGauge(parent);
-}
-
-QString RadialGaugePlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString RadialGaugePlugin::includeFile() const
@@ -117,25 +122,9 @@ QIcon RadialGaugePlugin::icon() const
 // LinearGaugePlugin
 // ============================================================================
 
-LinearGaugePlugin::LinearGaugePlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void LinearGaugePlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *LinearGaugePlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::LinearGauge(parent);
-}
-
-QString LinearGaugePlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString LinearGaugePlugin::includeFile() const
@@ -208,25 +197,9 @@ QIcon LinearGaugePlugin::icon() const
 // SevenSegmentDisplayPlugin
 // ============================================================================
 
-SevenSegmentDisplayPlugin::SevenSegmentDisplayPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void SevenSegmentDisplayPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *SevenSegmentDisplayPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::SevenSegmentDisplay(parent);
-}
-
-QString SevenSegmentDisplayPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString SevenSegmentDisplayPlugin::includeFile() const
@@ -304,25 +277,9 @@ QIcon SevenSegmentDisplayPlugin::icon() const
 // LedIndicatorPlugin
 // ============================================================================
 
-LedIndicatorPlugin::LedIndicatorPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void LedIndicatorPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *LedIndicatorPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::LedIndicator(parent);
-}
-
-QString LedIndicatorPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString LedIndicatorPlugin::includeFile() const
@@ -393,25 +350,9 @@ QIcon LedIndicatorPlugin::icon() const
 // IndustrialKnobPlugin
 // ============================================================================
 
-IndustrialKnobPlugin::IndustrialKnobPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void IndustrialKnobPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *IndustrialKnobPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::IndustrialKnob(parent);
-}
-
-QString IndustrialKnobPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString IndustrialKnobPlugin::includeFile() const
@@ -482,25 +423,9 @@ QIcon IndustrialKnobPlugin::icon() const
 // StripChartPlugin
 // ============================================================================
 
-StripChartPlugin::StripChartPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void StripChartPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *StripChartPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::StripChart(parent);
-}
-
-QString StripChartPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString StripChartPlugin::includeFile() const
@@ -569,25 +494,9 @@ QIcon StripChartPlugin::icon() const
 // AnalysisChartPlugin
 // ============================================================================
 
-AnalysisChartPlugin::AnalysisChartPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void AnalysisChartPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *AnalysisChartPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::AnalysisChart(parent);
-}
-
-QString AnalysisChartPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString AnalysisChartPlugin::includeFile() const
@@ -657,25 +566,9 @@ QIcon AnalysisChartPlugin::icon() const
 // IndustrialSwitchPlugin
 // ============================================================================
 
-IndustrialSwitchPlugin::IndustrialSwitchPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void IndustrialSwitchPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *IndustrialSwitchPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::IndustrialSwitch(parent);
-}
-
-QString IndustrialSwitchPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString IndustrialSwitchPlugin::includeFile() const
@@ -749,25 +642,9 @@ QIcon IndustrialSwitchPlugin::icon() const
 // LevelMeterPlugin
 // ============================================================================
 
-LevelMeterPlugin::LevelMeterPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void LevelMeterPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *LevelMeterPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::LevelMeter(parent);
-}
-
-QString LevelMeterPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString LevelMeterPlugin::includeFile() const
@@ -845,25 +722,9 @@ QIcon LevelMeterPlugin::icon() const
 // AnnunciatorPanelPlugin
 // ============================================================================
 
-AnnunciatorPanelPlugin::AnnunciatorPanelPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void AnnunciatorPanelPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *AnnunciatorPanelPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::AnnunciatorPanel(parent);
-}
-
-QString AnnunciatorPanelPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString AnnunciatorPanelPlugin::includeFile() const
@@ -942,25 +803,9 @@ QIcon AnnunciatorPanelPlugin::icon() const
 // CompassPlugin
 // ============================================================================
 
-CompassPlugin::CompassPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void CompassPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *CompassPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::Compass(parent);
-}
-
-QString CompassPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString CompassPlugin::includeFile() const
@@ -1053,25 +898,9 @@ QIcon CompassPlugin::icon() const
 // CircularBargraphPlugin
 // ============================================================================
 
-CircularBargraphPlugin::CircularBargraphPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void CircularBargraphPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *CircularBargraphPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::CircularBargraph(parent);
-}
-
-QString CircularBargraphPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString CircularBargraphPlugin::includeFile() const
@@ -1166,25 +995,9 @@ QIcon CircularBargraphPlugin::icon() const
 // TankDisplayPlugin
 // ============================================================================
 
-TankDisplayPlugin::TankDisplayPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void TankDisplayPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *TankDisplayPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::TankDisplay(parent);
-}
-
-QString TankDisplayPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString TankDisplayPlugin::includeFile() const
@@ -1264,25 +1077,9 @@ QIcon TankDisplayPlugin::icon() const
 // ValveIndicatorPlugin
 // ============================================================================
 
-ValveIndicatorPlugin::ValveIndicatorPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void ValveIndicatorPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *ValveIndicatorPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::ValveIndicator(parent);
-}
-
-QString ValveIndicatorPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString ValveIndicatorPlugin::includeFile() const
@@ -1363,25 +1160,9 @@ QIcon ValveIndicatorPlugin::icon() const
 // IndustrialSliderPlugin
 // ============================================================================
 
-IndustrialSliderPlugin::IndustrialSliderPlugin(QObject *parent)
-    : QObject(parent)
-{
-}
-
-void IndustrialSliderPlugin::initialize(QDesignerFormEditorInterface *)
-{
-    if (m_initialized) return;
-    m_initialized = true;
-}
-
 QWidget *IndustrialSliderPlugin::createWidget(QWidget *parent)
 {
     return new QtIndustrialWidgets::IndustrialSlider(parent);
-}
-
-QString IndustrialSliderPlugin::group() const
-{
-    return QStringLiteral("Industrial Widgets");
 }
 
 QString IndustrialSliderPlugin::includeFile() const
@@ -1453,6 +1234,82 @@ QIcon IndustrialSliderPlugin::icon() const
 }
 
 // ============================================================================
+// ThumbwheelSwitchPlugin
+// ============================================================================
+
+QWidget *ThumbwheelSwitchPlugin::createWidget(QWidget *parent)
+{
+    return new QtIndustrialWidgets::ThumbwheelSwitch(parent);
+}
+
+QString ThumbwheelSwitchPlugin::includeFile() const
+{
+    return QStringLiteral("QtIndustrialWidgets/ThumbwheelSwitch.h");
+}
+
+QString ThumbwheelSwitchPlugin::name() const
+{
+    return QStringLiteral("QtIndustrialWidgets::ThumbwheelSwitch");
+}
+
+QString ThumbwheelSwitchPlugin::toolTip() const
+{
+    return QStringLiteral("Push-wheel numeric selector, one drum per decade");
+}
+
+QString ThumbwheelSwitchPlugin::whatsThis() const
+{
+    return QStringLiteral("A thumbwheel switch for calibration racks and manual setpoint panels: one digit drum per "
+                          "decade with + and − buttons, a fixed decimal point, an optional sign drum, value limits, "
+                          "an overflow mark, and a pending value applied with SET or Enter.");
+}
+
+QString ThumbwheelSwitchPlugin::domXml() const
+{
+    return QStringLiteral(
+        "<widget class=\"QtIndustrialWidgets::ThumbwheelSwitch\" name=\"thumbwheelSwitch\">\n"
+        " <property name=\"geometry\">\n"
+        "  <rect>\n"
+        "   <x>0</x>\n"
+        "   <y>0</y>\n"
+        "   <width>260</width>\n"
+        "   <height>120</height>\n"
+        "  </rect>\n"
+        " </property>\n"
+        "</widget>\n"
+    );
+}
+
+QIcon ThumbwheelSwitchPlugin::icon() const
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // Three drums, each with a + button above and a − button below
+    for (int i = 0; i < 3; ++i) {
+        const double x = 2.5 + i * 9.5;
+        p.setPen(QPen(QColor(120, 134, 150), 1.0));
+        p.setBrush(QColor(30, 36, 45));
+        p.drawRect(QRectF(x, 10.5, 8, 11));
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(200, 208, 218));
+        QPolygonF up;
+        up << QPointF(x + 1.5, 8) << QPointF(x + 6.5, 8) << QPointF(x + 4, 4);
+        p.drawPolygon(up);
+        QPolygonF down;
+        down << QPointF(x + 1.5, 24) << QPointF(x + 6.5, 24) << QPointF(x + 4, 28);
+        p.drawPolygon(down);
+        // The digit, as a bar
+        p.setBrush(QColor(240, 244, 248));
+        p.drawRect(QRectF(x + 3, 13, 2, 6));
+    }
+
+    return QIcon(pixmap);
+}
+
+// ============================================================================
 // QtIndustrialWidgetsPlugin Collection
 // ============================================================================
 
@@ -1474,6 +1331,7 @@ QtIndustrialWidgetsPlugin::QtIndustrialWidgetsPlugin(QObject *parent)
     m_widgets.append(new TankDisplayPlugin(this));
     m_widgets.append(new ValveIndicatorPlugin(this));
     m_widgets.append(new IndustrialSliderPlugin(this));
+    m_widgets.append(new ThumbwheelSwitchPlugin(this));
 }
 
 QList<QDesignerCustomWidgetInterface *> QtIndustrialWidgetsPlugin::customWidgets() const

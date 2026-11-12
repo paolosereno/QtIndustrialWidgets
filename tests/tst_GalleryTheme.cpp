@@ -11,6 +11,7 @@
 #include <QtIndustrialWidgets/CircularBargraph.h>
 #include <QtIndustrialWidgets/Compass.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/LinearGauge.h>
 #include <QtIndustrialWidgets/RadialGauge.h>
 #include <QtIndustrialWidgets/TankDisplay.h>
@@ -83,6 +84,7 @@ void tst_GalleryTheme::switchEqualsSecondThemeOnly_data()
         {"IndustrialKnob", make<IndustrialKnob>()},     {"Compass", make<Compass>()},
         {"CircularBargraph", make<CircularBargraph>()}, {"TankDisplay", make<TankDisplay>()},
         {"ValveIndicator", make<ValveIndicator>()},     {"ThumbwheelSwitch", make<ThumbwheelSwitch>()},
+        {"IndustrialSlider", make<IndustrialSlider>()},
     };
     for (const auto &[name, create] : widgets) {
         QTest::addRow("%s, light then dark", name) << create << Theme::Light << Theme::Dark;

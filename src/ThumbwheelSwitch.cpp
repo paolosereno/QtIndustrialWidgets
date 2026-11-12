@@ -5,6 +5,7 @@
 #include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 
 #include "internal/ThumbwheelSwitch_p.h"
+#include "internal/ThumbwheelSwitchAccessible.h"
 #include "internal/PanelFonts.h"
 #include "internal/ThumbwheelSwitchLayout.h"
 #include "internal/ValueStateDrawing.h"
@@ -176,18 +177,25 @@ public:
         if (m_d->m_pending && (m_d->overflow() || *m_d->m_pending == m_d->m_count)) {
             m_d->m_pending.reset();
         }
-        if (m_d->value() != m_value) {
+        const bool value = m_d->value() != m_value;
+        if (value) {
             Q_EMIT m_q->valueChanged(m_d->value());
         }
-        if (m_d->m_pending.has_value() != m_hasPending || m_d->shownValue() != m_pendingValue) {
+        const bool pending = m_d->m_pending.has_value() != m_hasPending || m_d->shownValue() != m_pendingValue;
+        if (pending) {
             Q_EMIT m_q->pendingValueChanged(m_d->shownValue());
         }
-        if (m_d->overflow() != m_overflow) {
+        const bool overflow = m_d->overflow() != m_overflow;
+        if (overflow) {
             Q_EMIT m_q->overflowChanged(m_d->overflow());
         }
         const internal::ThumbwheelLimits now = m_d->limits();
-        if (now.low != m_limits.low || now.high != m_limits.high) {
+        const bool limits = now.low != m_limits.low || now.high != m_limits.high;
+        if (limits) {
             Q_EMIT m_q->rangeChanged(now.low, now.high);
+        }
+        if (value || pending || overflow || limits) {
+            m_d->notifyValue(m_q); // #183: one event, whatever changed of what the value text tells
         }
         m_q->update();
     }
@@ -330,6 +338,7 @@ ThumbwheelSwitch::ThumbwheelSwitch(QWidget *parent)
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     setFocusPolicy(Qt::StrongFocus); // #182, #183: the keys need focus; the ring shows it
+    internal::ThumbwheelSwitchAccessible::installFactory(); // #183
 }
 
 ThumbwheelSwitch::~ThumbwheelSwitch() = default;
@@ -514,6 +523,7 @@ void ThumbwheelSwitch::setReadOnly(bool readOnly)
     d_ptr->m_wheelRemainder = 0;
     updateGeometry(); // In Immediate, the status line holds the padlock
     Q_EMIT readOnlyChanged(readOnly);
+    d_ptr->notifyReadOnly(this); // #183
     scope.emitChanges();
 }
 
