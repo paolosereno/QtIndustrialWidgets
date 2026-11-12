@@ -83,6 +83,9 @@ void tst_DesignerPlugin::entries()
     QCOMPARE(w->includeFile(), QStringLiteral("QtIndustrialWidgets/%1.h").arg(widgetClass));
     QCOMPARE(w->group(), QStringLiteral("Industrial Widgets"));
     QVERIFY(!w->isContainer());
+    QVERIFY(!w->isInitialized());
+    w->initialize(nullptr); // Designer passes its core; the entries do not use it
+    QVERIFY(w->isInitialized());
     QVERIFY(!w->toolTip().isEmpty());
     QVERIFY(!w->whatsThis().isEmpty());
     QVERIFY2(w->domXml().contains(QStringLiteral("<widget class=\"%1\"").arg(qualified)), qPrintable(w->domXml()));
