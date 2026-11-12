@@ -53,6 +53,14 @@ check("Debian layout" "lib/x86_64-linux-gnu/qt6/plugins/designer" "qt"
 check("letter case, ignored when asked (Windows)" "${qtdir}" "qt"
       INSTALL_PREFIX "C:/QT/6.6.3/MSVC2019_64" LIBDIR lib QT_PREFIX "C:/Qt/6.6.3/msvc2019_64" QT_PLUGINS plugins
       IGNORE_CASE)
+# Qt's plugin directory as Qt's package writes it, normalized (an install() DESTINATION with "." segments raises the
+# CMP0177 warning): aqt's Qt 6.2.4 gives "./plugins"
+check("Qt plugins './plugins' (aqt)" "${qtdir}" "qt"
+      INSTALL_PREFIX "${qt}" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS ./plugins)
+check("Qt plugins with a trailing slash" "${qtdir}" "qt"
+      INSTALL_PREFIX "${qt}" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS plugins/)
+check("Qt plugins with '..' segments" "${qtdir}" "qt"
+      INSTALL_PREFIX "${qt}" LIBDIR lib QT_PREFIX "${qt}" QT_PLUGINS lib/../plugins)
 
 # Another prefix: as before #135
 check("other prefix" "${default}" "default"

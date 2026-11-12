@@ -12,11 +12,13 @@
 # <out_dir> is, in this order:
 # - "manual": <MANUAL>/designer, with HAS_MANUAL (QT_INSTALL_PLUGINS defined by hand, even empty, as before #135: it
 #             takes precedence; a separate flag, since an empty one-value argument depends on policy CMP0174);
-# - "qt":     <QT_PLUGINS>/designer, when INSTALL_PREFIX is the same directory as QT_PREFIX: Qt's own plugin directory,
-#             where that Qt's Designer looks (Qt from the online installer or aqt, a distribution's Qt in /usr);
+# - "qt":     <QT_PLUGINS>/designer, normalized ("./plugins" gives "plugins/designer"), when INSTALL_PREFIX is the
+#             same directory as QT_PREFIX: Qt's own plugin directory, where that Qt's Designer looks (Qt from the
+#             online installer or aqt, a distribution's Qt in /usr);
 # - "default": <LIBDIR>/qt6/plugins/designer otherwise, also when Qt does not give QT_PREFIX or QT_PLUGINS.
 # "The same directory": compared after resolving symlinks, "." and ".." and a trailing slash; IGNORE_CASE (Windows)
 # compares without letter case.
+set(_qiw_designer_plugin_dir_base "${CMAKE_CURRENT_LIST_DIR}")
 function(qiw_designer_plugin_dir out_dir out_reason)
     cmake_parse_arguments(ARG "HAS_MANUAL;IGNORE_CASE" "INSTALL_PREFIX;LIBDIR;QT_PREFIX;QT_PLUGINS;MANUAL" "" ${ARGN})
     if(ARG_HAS_MANUAL)
@@ -32,7 +34,14 @@ function(qiw_designer_plugin_dir out_dir out_reason)
             string(TOLOWER "${qt_prefix}" qt_prefix)
         endif()
         if(install_prefix STREQUAL qt_prefix)
-            set(${out_dir} "${ARG_QT_PLUGINS}/designer" PARENT_SCOPE)
+            # Qt's package may write it "./plugins" (aqt's Qt 6.2.4): normalized, since a DESTINATION with "." or ".."
+            # segments raises the CMP0177 warning; relative stays relative, absolute stays absolute. Lexical only: the
+            # base is any directory that is absolute on this host
+            get_filename_component(plugins "${ARG_QT_PLUGINS}" ABSOLUTE BASE_DIR "${_qiw_designer_plugin_dir_base}")
+            if(NOT IS_ABSOLUTE "${ARG_QT_PLUGINS}")
+                file(RELATIVE_PATH plugins "${_qiw_designer_plugin_dir_base}" "${plugins}")
+            endif()
+            set(${out_dir} "${plugins}/designer" PARENT_SCOPE)
             set(${out_reason} "qt" PARENT_SCOPE)
             return()
         endif()
