@@ -750,3 +750,26 @@ set_target_properties(tst_ThumbwheelSwitch PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_ThumbwheelSwitch)
+
+# #154, part 2: ThumbwheelSwitch operator input (mouse, keys, wheel, OnConfirm / Immediate, read-only, focus)
+add_executable(tst_ThumbwheelSwitchInput
+    tst_ThumbwheelSwitchInput.cpp
+    $<TARGET_OBJECTS:ThumbwheelSwitchLayout>
+)
+target_link_libraries(tst_ThumbwheelSwitchInput
+    PRIVATE
+        QtIndustrialWidgets::QtIndustrialWidgets
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+target_include_directories(tst_ThumbwheelSwitchInput
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(tst_ThumbwheelSwitchInput PROPERTIES
+    AUTOMOC ON
+)
+add_dpr_tests(tst_ThumbwheelSwitchInput)

@@ -34,6 +34,10 @@ private Q_SLOTS:
     void minimumSizeKeepsEveryPartInside();
     void largerSizeCentresTheGroup();
     void nonFiniteAndTinyInputs();
+    void typedDigitKeepsTheSign();
+    void textShowsEveryDigit();
+    void inputPartsInOrderAndInside_data();
+    void inputPartsInOrderAndInside();
 };
 
 namespace {
@@ -56,6 +60,8 @@ ThumbwheelTextSizes typicalText()
     t.unitWidth = 18.6;
     t.tagWidth = 24.3;
     t.tagHeight = 14.1;
+    t.setWidth = 22.7;
+    t.statusWidth = 120.4;
     return t;
 }
 
@@ -348,11 +354,16 @@ void tst_ThumbwheelSwitchLayout::nonFiniteAndTinyInputs()
         in.text.unitWidth = v;
         in.text.tagWidth = v;
         in.text.tagHeight = v;
+        in.text.setWidth = v;
+        in.text.statusWidth = v;
+        in.setButton = true;
+        in.statusLine = true;
         const ThumbwheelLayout l = layoutThumbwheel(in);
         const QSizeF min = minimumThumbwheelSize(in);
         QVERIFY(std::isfinite(min.width()) && std::isfinite(min.height()));
         QVector<QRectF> parts = l.drums + l.plus + l.minus;
-        parts << l.tag << l.unit << l.decimalPoint << l.group;
+        parts += l.cursors;
+        parts << l.tag << l.unit << l.decimalPoint << l.group << l.setButton << l.status << l.padlock;
         for (const QRectF &r : parts) {
             QVERIFY2(std::isfinite(r.x()) && std::isfinite(r.y()) && std::isfinite(r.width())
                          && std::isfinite(r.height()) && r.width() >= 0.0 && r.height() >= 0.0,
@@ -365,6 +376,113 @@ void tst_ThumbwheelSwitchLayout::nonFiniteAndTinyInputs()
     in.format.digitCount = -3;
     QCOMPARE(layoutThumbwheel(in).drums.size(), 1);
     QVERIFY(layoutThumbwheel(in).decimalPoint.isEmpty());
+}
+
+// #154, part 2: a typed digit replaces the digit of its decade in the magnitude and keeps the sign
+void tst_ThumbwheelSwitchLayout::typedDigitKeepsTheSign()
+{
+    const ThumbwheelFormat f = format(4, 0, true);
+    QCOMPARE(f.withDigit(1250, 0, 7).value(), qint64(7250));
+    QCOMPARE(f.withDigit(1250, 3, 9).value(), qint64(1259));
+    QCOMPARE(f.withDigit(-1250, 1, 0).value(), qint64(-1050));
+    QCOMPARE(f.withDigit(-1000, 0, 0).value(), qint64(0)); // A magnitude of 0 is 0: no -0
+    QCOMPARE(f.withDigit(0, 2, 4).value(), qint64(40));
+    QVERIFY(!f.withDigit(1250, 4, 1)); // No such decade
+    QVERIFY(!f.withDigit(1250, -1, 1));
+    QVERIFY(!f.withDigit(1250, 0, 10));
+    QVERIFY(!f.withDigit(1250, 0, -1));
+}
+
+// The text of a value as the drums show it (the status line): every digit, the point, the sign with the sign drum
+void tst_ThumbwheelSwitchLayout::textShowsEveryDigit()
+{
+    QCOMPARE(format(5, 1).text(1250), QStringLiteral("0125.0"));
+    QCOMPARE(format(4, 2, true).text(-1250), QStringLiteral("−12.50"));
+    QCOMPARE(format(4, 2, true).text(0), QStringLiteral("+00.00"));
+    QCOMPARE(format(4).text(7), QStringLiteral("0007"));
+    QCOMPARE(format(1).text(9), QStringLiteral("9"));
+    QCOMPARE(format(3, 1, true).text(-5, QLatin1Char('8')), QStringLiteral("−88.8"));
+}
+
+void tst_ThumbwheelSwitchLayout::inputPartsInOrderAndInside_data()
+{
+    QTest::addColumn<bool>("setButton");
+    QTest::addColumn<bool>("statusLine");
+    QTest::addColumn<double>("statusWidth");
+    QTest::newRow("OnConfirm") << true << true << 120.4;
+    QTest::newRow("OnConfirm, status wider than the row") << true << true << 900.3;
+    QTest::newRow("Immediate") << false << false << 0.0;
+    QTest::newRow("Immediate, read-only") << false << true << 0.0;
+}
+
+// #154, part 2: the bar of the current decade under each − button, always reserved; the SET button after the tag
+// column, as high as the drums; the status line under the bars, as wide as its widest text, with the padlock at its
+// start. At the minimum size all of it is inside the margin, and one pixel less does not hold the group
+void tst_ThumbwheelSwitchLayout::inputPartsInOrderAndInside()
+{
+    QFETCH(bool, setButton);
+    QFETCH(bool, statusLine);
+    QFETCH(double, statusWidth);
+    ThumbwheelLayoutInput in = input(format(5, 1, true));
+    in.setButton = setButton;
+    in.statusLine = statusLine;
+    in.text.statusWidth = statusWidth;
+    const QSizeF min = minimumThumbwheelSize(in);
+    QVERIFY(whole(min.width()) && whole(min.height()));
+    in.width = min.width();
+    in.height = min.height();
+    const ThumbwheelLayout l = layoutThumbwheel(in);
+    QCOMPARE(l.cursors.size(), l.drums.size());
+    for (int i = 0; i < l.drums.size(); ++i) {
+        const QRectF c = l.cursors.at(i);
+        QVERIFY2(onWholePixels(c), qPrintable(rectText(c)));
+        QCOMPARE(c.top(), l.minus.at(i).bottom() + kThumbwheelCursorGap);
+        QCOMPARE(c.height(), kThumbwheelCursorBar);
+        QVERIFY(c.left() >= l.drums.at(i).left() && c.right() <= l.drums.at(i).right());
+        QVERIFY(c.width() >= l.drums.at(i).width() * 0.5);
+    }
+    QVector<QRectF> parts = l.drums + l.plus + l.minus + l.cursors;
+    parts << l.tag << l.unit;
+    if (setButton) {
+        QVERIFY2(onWholePixels(l.setButton), qPrintable(rectText(l.setButton)));
+        QCOMPARE(l.setButton.left(), l.tag.right() + kThumbwheelSetGap);
+        QVERIFY(l.setButton.width() >= typicalText().setWidth + 2.0 * kThumbwheelSetPadX);
+        QCOMPARE(l.setButton.top(), l.drums.first().top());
+        QCOMPARE(l.setButton.height(), l.drums.first().height());
+        parts << l.setButton;
+    } else {
+        QVERIFY(l.setButton.isEmpty());
+    }
+    if (statusLine) {
+        QCOMPARE(l.status.top(), l.cursors.first().bottom() + kThumbwheelStatusGap);
+        QCOMPARE(l.status.left(), l.group.left());
+        QVERIFY(l.status.height() >= typicalText().tagHeight);
+        QVERIFY(l.status.width() >= statusWidth);
+        QVERIFY(l.status.contains(l.padlock));
+        QCOMPARE(l.padlock.left(), l.status.left());
+        QVERIFY(l.padlock.width() > 0.0 && l.padlock.height() > 0.0);
+        parts << l.status;
+    } else {
+        QVERIFY(l.status.isEmpty());
+        QVERIFY(l.padlock.isEmpty());
+    }
+    const QRectF inner(kThumbwheelMargin, kThumbwheelMargin, min.width() - 2.0 * kThumbwheelMargin,
+                       min.height() - 2.0 * kThumbwheelMargin);
+    for (const QRectF &r : parts) {
+        QVERIFY2(l.group.contains(r), qPrintable(rectText(r) + QStringLiteral(" outside the group ") + rectText(l.group)));
+        QVERIFY2(inner.contains(r), qPrintable(rectText(r) + QStringLiteral(" outside ") + rectText(inner)));
+    }
+    // Nothing overlapping: the bars below the buttons, the status line below the bars
+    QVERIFY(l.cursors.first().top() > l.minus.first().bottom());
+    for (const QSizeF &smaller : {QSizeF(min.width() - 1.0, min.height()), QSizeF(min.width(), min.height() - 1.0)}) {
+        in.width = smaller.width();
+        in.height = smaller.height();
+        const ThumbwheelLayout s = layoutThumbwheel(in);
+        const QRectF box(kThumbwheelMargin, kThumbwheelMargin, smaller.width() - 2.0 * kThumbwheelMargin,
+                         smaller.height() - 2.0 * kThumbwheelMargin);
+        QVERIFY2(!box.contains(s.group), qPrintable(QStringLiteral("the group fits in %1 x %2, below the minimum")
+                                                        .arg(smaller.width()).arg(smaller.height())));
+    }
 }
 
 QTEST_GUILESS_MAIN(tst_ThumbwheelSwitchLayout)
