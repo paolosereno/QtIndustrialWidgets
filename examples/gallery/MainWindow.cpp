@@ -10,6 +10,7 @@
 #include <QtIndustrialWidgets/SevenSegmentDisplay.h>
 #include <QtIndustrialWidgets/LedIndicator.h>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtIndustrialWidgets/StripChart.h>
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 #include <QtIndustrialWidgets/LevelMeter.h>
@@ -43,6 +44,7 @@
 #include <QtCore/QMetaEnum>
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QTimeZone>
+#include <QtCore/QTimer>
 #include <QtGui/QPalette>
 #include <QtGui/QPainter>
 #include <QtGui/QImageWriter>
@@ -488,6 +490,59 @@ void MainWindow::setupUi()
     knobLayout->addWidget(m_modeSelectorKnob, 1);
 
     controlsLayout->addWidget(knobBox, row, 0, 1, 3);
+    row++;
+
+    // ------------------------------------------------------------------------
+    // Actuator setpoint with position feedback (IndustrialSlider, #180)
+    // ------------------------------------------------------------------------
+    auto *sliderBox = new QGroupBox(QStringLiteral("Actuator Setpoint && Position (IndustrialSlider)"), controlsTab);
+    auto *sliderLayout = new QGridLayout(sliderBox);
+    sliderLayout->setContentsMargins(16, 18, 16, 14);
+    sliderLayout->setHorizontalSpacing(24);
+
+    auto *damper = new IndustrialSlider(sliderBox);
+    damper->setAccessibleName(QStringLiteral("Damper position")); // #183: the slider has no name of its own
+    damper->setWarningThreshold(80.0);
+    damper->setErrorThreshold(90.0);
+    damper->setDeviationThreshold(5.0);
+    damper->setSetpointLimits(10.0, 90.0);
+    damper->setSetpoint(40.0);
+    damper->setFeedback(40.0);
+
+    auto *damperFault = new QCheckBox(QStringLiteral("Position transmitter fault"), sliderBox);
+    auto *damperLocal = new QCheckBox(QStringLiteral("Local mode (read-only)"), sliderBox);
+    auto *damperHint = new QLabel(QStringLiteral("Drag the handle or use the keys (Tab to focus). The damper follows "
+                                                 "the setpoint at 10 %/s: the cross-hatched band and the Δ mark "
+                                                 "show the deviation while it moves."),
+                                  sliderBox);
+    damperHint->setWordWrap(true);
+
+    // A simulated actuator: the position moves towards the setpoint at 10 %/s, as a damper drive would
+    auto *actuator = new QTimer(sliderBox);
+    actuator->setInterval(50);
+    connect(actuator, &QTimer::timeout, damper, [damper, damperFault] {
+        if (damperFault->isChecked()) {
+            return;
+        }
+        const double step = 10.0 * 0.05;
+        const double position = damper->rawFeedback();
+        const double target = damper->setpoint();
+        damper->setFeedback(std::abs(target - position) <= step ? target : position + (target > position ? step : -step));
+    });
+    actuator->start();
+    connect(damperFault, &QCheckBox::toggled, damper, [damper](bool fault) {
+        damper->setFeedback(fault ? std::numeric_limits<double>::quiet_NaN() : damper->setpoint());
+    });
+    connect(damperLocal, &QCheckBox::toggled, damper, &IndustrialSlider::setReadOnly);
+
+    sliderLayout->addWidget(damper, 0, 0, 3, 1);
+    sliderLayout->addWidget(damperFault, 0, 1);
+    sliderLayout->addWidget(damperLocal, 1, 1);
+    sliderLayout->addWidget(damperHint, 2, 1);
+    sliderLayout->setColumnStretch(0, 3);
+    sliderLayout->setColumnStretch(1, 2);
+
+    controlsLayout->addWidget(sliderBox, row, 0, 1, 3);
     row++;
 
     // ------------------------------------------------------------------------
@@ -2041,6 +2096,9 @@ void MainWindow::applyTheme(bool dark)
     }
     for (ValveIndicator *valve : findChildren<ValveIndicator *>()) {
         applyGalleryTheme(*valve, theme);
+    }
+    for (IndustrialSlider *slider : findChildren<IndustrialSlider *>()) {
+        applyGalleryTheme(*slider, theme);
     }
     // The group boxes are the showcase background of the export
     const QString groupBoxBackground = GalleryShowcase::backgroundColor(theme).name();
