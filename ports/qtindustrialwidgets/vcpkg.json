@@ -1,6 +1,6 @@
 {
   "name": "qtindustrialwidgets",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "A C++17 Qt Widgets library of industrial instrumentation widgets for test benches, SCADA and telemetry applications",
   "homepage": "https://github.com/paolosereno/QtIndustrialWidgets",
   "license": "MIT",
