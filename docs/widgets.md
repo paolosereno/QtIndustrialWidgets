@@ -32,13 +32,28 @@ light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) a
 
 ## Controls {#controls}
 
-Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob` and `IndustrialSlider`
-(`IndustrialSwitch` follows the focus and accessibility items, with the details in [its section](#industrialswitch));
-the setpoint control planned in #154 will follow them.
+Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob`, `IndustrialSlider` and
+`ThumbwheelSwitch` (`IndustrialSwitch` follows the focus and accessibility items, with the details in
+[its section](#industrialswitch)).
 - **Names.** The rules use the names of `IndustrialKnob`. `IndustrialSlider` names the same things after its setpoint,
   with the same meaning: `setpoint` and `setSetpoint()` for the value, `setpointChanged()` and `setpointCommitted()`
   for `valueChanged()` and `valueCommitted()`, and `setSetpointLimits()`, `clearSetpointLimits()`,
   `setpointLimitLow()`, `setpointLimitHigh()`, `setpointLimitsChanged()` for the value limits.
+- **ThumbwheelSwitch** (#154) follows the rules with these differences, since a decade selector changes one digit at a
+  time (see [its section](#thumbwheelswitch)):
+  - the value limits are `minimum` and `maximum` (`setRange()`, `rangeChanged()`), with the meaning of the value
+    limits below; a step, a digit or a sign that would take the value outside them, or further out from a value
+    outside them, is rejected, never stopped on the limit, which would change digits the operator did not touch;
+  - there is no drag: a press on a + or − button arms it and its release on the same button makes one step;
+  - the arrows Up/Down step the current decade and Left/Right move it; Home/End move the current decade to the first
+    and the last drum, not the value to the limits; PageUp/PageDown are not used; 0–9 type the digit of the current
+    decade;
+  - `applyMode` is `OnConfirm` by default: the operator's input changes a pending value, applied with Enter or the
+    SET button (`valueChanged()` and `valueCommitted()` then) and discarded with Escape. Intermediate values can be
+    far from the one wanted (1999, 2999, 2000, one decade at a time), and real thumbwheel panels load the value with a
+    separate button. In `Immediate` each step is applied at once and committed as in the rules;
+  - a value the drums cannot show is rejected by `setValue()` with a warning and shows an overflow mark; while it is
+    shown, every operator input that would change the value is rejected.
 - **A press never changes the value.** The value changes only by dragging or with the keyboard. `IndustrialKnob`
   starts a drag only on its dial as it is drawn, and the drag is relative: the value moves by the angle the pointer
   moves, never jumps to the point pressed.
@@ -262,6 +277,50 @@ damper, a speed reference) and the position the actuator reports, on one scale.
   it is sends none, so a position updated at a high rate does not flood assistive technology. Known limitation: assistive
   technology reads the position and the deviation from the value text only, since the Qt value interface has a single
   value, the setpoint.
+
+## ThumbwheelSwitch
+
+<img src="images/thumbwheel-switch-value.png" alt="ThumbwheelSwitch" width="239">
+
+Push-wheel numeric selector (`qiw::ThumbwheelSwitch`, #154), as the thumbwheel switches of calibration racks and manual
+setpoint panels: one digit drum per decade, each with a + button above it and a − button below it.
+- **Value**: `digitCount` drums (1 to 9) and a fixed decimal point, `decimals` digits after it, so the resolution is
+  10^−`decimals`. The value is kept as an integer count of the resolution, so no rounding error builds up between
+  decades; `setValue()` rounds a finite value to the resolution. Every drum shows its digit, leading zeros included.
+  With `signDrumVisible` the value can be negative: the first drum shows + or −, and 0 is always +.
+- **Rejected input**: NaN and ±Inf (#182), and a value the drums cannot show (more digits than `digitCount`, or a
+  negative value without the sign drum), with a warning; `value` stays unchanged. A value the drums cannot show turns
+  on the overflow mark, a dash on every drum and an `OVF` tag (`overflow`, `overflowChanged()`), until `setValue()`
+  gives a value they can show.
+- **Limits** (`minimum`, `maximum`, `setRange()`): they bind the operator's input, not `setValue()`. A value outside
+  them that the drums can show is kept and shown with a filled triangle in the tag column, ▲ above the maximum and ▼
+  below the minimum, so that it does not rely on colour.
+- **Buttons**: a filled arrow when its step would be applied, an outlined arrow when it would be rejected. A digit
+  neither wraps around nor carries into the next decade: + on a 9 and − on a 0 are rejected, as is a step that would
+  take the value outside the limits or further out from a value outside them.
+- **Input** (the [rules for controls](#controls), with the differences listed there): a click on a + or − button
+  (the release acts); with focus, Left/Right and Home/End move the current decade, shown by a bar under its drum,
+  Up/Down step it, 0–9 type its digit and move to the next decade, and on the sign drum + and − select the sign. The
+  mouse wheel when it is enabled (`wheelEnabled`, off by default; only with focus, on the decade under the pointer).
+  - `applyMode` `OnConfirm` (default): the drums show the pending value with a dashed outline in `pendingColor`, the
+    applied value stays on a line under them (`SET?  now 0125.0 V`), and the SET button after the tag column is
+    filled. Enter, SET or `applyPending()` apply it; Escape or `discardPending()` discard it; a loss of focus never
+    applies it. `hasPendingValue`, `pendingValue` and `pendingValueChanged()` follow it.
+  - `applyMode` `Immediate`: each step is applied at once, and `valueCommitted()` comes at the end of the action.
+  - Read-only (`readOnly`): the input is ignored and a padlock is drawn under the drums; a pending value is discarded.
+  - Overflow: every operator input that would change the value is rejected, and turning the mark on discards a
+    pending value; the current decade can still be moved.
+- **Focus and accessibility** (the [rules for controls](#controls), #183): a solid 2 px focus ring in `textColor`
+  along the edge of the widget. Accessible role `SpinBox`; the value interface has `value`, `minimum`, `maximum` and
+  the resolution as the step. The value text is the value as the drums show it, with the sign, the decimal point and
+  the unit, and tells in words what the marks show: `0125.0 V`; `3000.0 V, above maximum` or `below minimum`;
+  `pending 0130.0 V, set 0125.0 V` while a value is pending; `overflow`. A value set by assistive technology is
+  operator input, rounded to the resolution and rejected as a typed digit is (outside the limits, a value the drums
+  cannot show, read-only, overflow); in `OnConfirm` it becomes the pending value, and the actions `Apply` and
+  `Discard` do what Enter and Escape do. Value-change events follow the value, the pending value, the overflow mark
+  and the limits. Known limitation: the current decade is not exposed to assistive technology.
+- **Size**: the drums keep the size of their digit font (never below 7 pt) and the group is centred in the widget;
+  `minimumSizeHint()` is computed from the font and the configuration and follows a change of screen (#177).
 
 ## StripChart
 
