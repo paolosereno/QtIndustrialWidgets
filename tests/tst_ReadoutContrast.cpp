@@ -964,8 +964,22 @@ void tst_ReadoutContrast::thumbwheelArrows()
         for (const QRectF &button : {l.plus.at(i), l.minus.at(i)}) {
             // The face: beside the arrow, at mid height, clear of the rounded corners
             const QRgb face = pixelAt(img, QPointF(button.left() + 3.0, button.center().y()));
-            checkGraphics(open.at(i) == (button == l.plus.at(i)) ? "filled arrow" : "outlined arrow",
-                          strongestIn(img, deviceBox(button.adjusted(2.0, 2.0, -2.0, -2.0), img), face), face);
+            const QRect box = deviceBox(button.adjusted(2.0, 2.0, -2.0, -2.0), img);
+            const bool filled = open.at(i) == (button == l.plus.at(i));
+            checkGraphics(filled ? "filled arrow" : "outlined arrow", strongestIn(img, box, face), face);
+            // The arrow is seen as a shape, not as a few pixels at its corners: at least half of its perimeter (a
+            // triangle of base 2a and height a, a as in drawArrow()) in pixels that reach the target
+            const double side = std::min(button.width() * 0.25, button.height() * 0.4);
+            const double perimeter = (2.0 + 2.0 * std::sqrt(2.0)) * side * img.devicePixelRatio();
+            int strong = 0;
+            for (int y = box.top(); y <= box.bottom(); ++y) {
+                for (int x = box.left(); x <= box.right(); ++x) {
+                    strong += contrast(img.pixel(x, y), face) >= 3.0 ? 1 : 0;
+                }
+            }
+            QVERIFY2(strong >= 0.5 * perimeter, qPrintable(QStringLiteral("%1 arrow: %2 pixels at 3:1, %3 needed")
+                                                                .arg(QLatin1String(filled ? "filled" : "outlined"))
+                                                                .arg(strong).arg(0.5 * perimeter, 0, 'f', 1)));
         }
     }
 }
