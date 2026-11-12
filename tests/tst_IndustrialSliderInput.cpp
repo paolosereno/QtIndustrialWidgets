@@ -1231,8 +1231,8 @@ void tst_IndustrialSliderInput::focusRingIsASolidRingInTextColor()
     QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 pixels of the ring not in textColor, first %2").arg(off).arg(first)));
 }
 
-// #183: role Slider; the value interface carries the setpoint, the range and step(); read-only is a state. The value
-// text does not depend on the readouts being drawn
+// #183: role Slider; the value interface carries the setpoint, the range (not the setpoint limits) and step();
+// read-only is a state. The value text does not depend on the readouts being drawn
 void tst_IndustrialSliderInput::accessibleInterfaceDescribesTheSlider()
 {
     IndustrialSlider s;
@@ -1241,6 +1241,7 @@ void tst_IndustrialSliderInput::accessibleInterfaceDescribesTheSlider()
     s.setUnit(QStringLiteral("rpm"));
     s.setStep(2.5);
     s.setSetpoint(60.0);
+    s.setSetpointLimits(20.0, 180.0); // Known limitation: the value interface has the range, not the limits
     s.setAccessibleName(QStringLiteral("Fan speed"));
     s.setAccessibleDescription(QStringLiteral("Speed reference of fan F-101"));
 
