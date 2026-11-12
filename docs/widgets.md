@@ -257,7 +257,9 @@ damper, a speed reference) and the position the actuator reports, on one scale.
   marks of the readouts: `60.0 %, position 15.0 %, deviation`; `60.0 %, position invalid, deviation unknown` for a NaN
   feedback; `position over range 120.0 %` or `position under range` (±Inf has no number) outside the range; the
   position is left out without a feedback, and the deviation when it is `Off` or `Normal`. Value-change events follow
-  the setpoint and the range; a change of the feedback or of the deviation sends none. Known limitation: assistive
+  the setpoint, the range and the deviation state: a change of `deviationState` sends one, with the setpoint, since
+  the value text changed (`QAccessible::State` has no flag for a deviation); a new position that leaves the state as
+  it is sends none, so a position updated at a high rate does not flood assistive technology. Known limitation: assistive
   technology reads the position and the deviation from the value text only, since the Qt value interface has a single
   value, the setpoint.
 

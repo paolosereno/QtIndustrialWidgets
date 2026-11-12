@@ -138,6 +138,15 @@ public:
         QAccessibleValueChangeEvent event(q, m_setpoint);
         sendAccessible(&event);
     }
+    // #183: the deviation state changed while the setpoint did not (setSetpoint() and setRange() send their own
+    // event). QAccessible::State has no flag for a deviation, so this is a value-change event with the setpoint: the
+    // value text, which tells the deviation, changed
+    void notifyDeviation(IndustrialSlider *q, const Changes &changes) const
+    {
+        if (changes.deviation) {
+            notifySetpoint(q);
+        }
+    }
     // #183: the read-only state changed
     void notifyReadOnly(IndustrialSlider *q) const
     {

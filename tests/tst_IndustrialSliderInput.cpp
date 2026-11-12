@@ -80,6 +80,7 @@ private Q_SLOTS:
     void accessibleFocusState();
     void accessibleSetValueIsOperatorInput();
     void accessibleEventsFollowTheSetpoint();
+    void accessibleEventsFollowTheDeviationState();
 };
 
 namespace {
@@ -1396,8 +1397,8 @@ void tst_IndustrialSliderInput::accessibleSetValueIsOperatorInput()
 
 // #183: one value-change event, with the setpoint, at every change of the setpoint from every source (key, wheel,
 // drag, assistive technology, setSetpoint(), the clamping of setRange()); none when it does not change; one at a
-// range change; a state-change event when read-only changes. A change of the feedback sends none: the value of the
-// event is the setpoint
+// range change; a state-change event when read-only changes. A change of the feedback that leaves the deviation
+// state as it is sends none: the value of the event is the setpoint
 void tst_IndustrialSliderInput::accessibleEventsFollowTheSetpoint()
 {
     QWidget window;
@@ -1440,9 +1441,10 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheSetpoint()
     QAccessible::queryAccessibleInterface(s)->valueInterface()->setCurrentValue(40.0);
     QCOMPARE(log.flush(), QStringLiteral("value 40"));
 
-    s->setFeedback(12.0);
-    s->setDeviationThreshold(5.0);
+    s->setFeedback(12.0); // Deviation Off before and after: no event
     QCOMPARE(log.flush(), QString());
+    s->setDeviationThreshold(5.0); // Off to Deviating: the value text changed (accessibleEventsFollowTheDeviationState)
+    QCOMPARE(log.flush(), QStringLiteral("value 40"));
 
     s->setRange(0.0, 30.0); // Clamps the setpoint
     QCOMPARE(log.flush(), QStringLiteral("value 30"));
@@ -1457,6 +1459,60 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheSetpoint()
     QCOMPARE(log.flush(), QString());
     s->setReadOnly(false);
     QCOMPARE(log.flush(), QStringLiteral("readOnly"));
+}
+
+// #183: a change of the deviation state (Off, Normal, Deviating, Unknown) sends one value-change event, with the
+// setpoint, since the value text that tells it changed; QAccessible::State has no flag for it. A new position that
+// leaves the state as it is sends none. When the setpoint changes too, there is one event, not two
+void tst_IndustrialSliderInput::accessibleEventsFollowTheDeviationState()
+{
+    IndustrialSlider s;
+    s.setSetpoint(50.0);
+    s.setDeviationThreshold(5.0);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&s);
+    QVERIFY(iface);
+    A11yLog log(s);
+
+    s.setFeedback(49.0); // Off to Normal
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+    s.setFeedback(48.0);
+    s.setFeedback(46.0);
+    QCOMPARE(log.flush(), QString());
+    s.setFeedback(40.0); // Normal to Deviating
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("50.0 %, position 40.0 %, deviation"));
+    s.setFeedback(30.0);
+    s.setFeedback(130.0); // Over range, still Deviating
+    QCOMPARE(log.flush(), QString());
+    s.setFeedback(kNaN); // Deviating to Unknown
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+    s.setFeedback(kInf); // Still Unknown
+    s.setFeedback(kNaN);
+    QCOMPARE(log.flush(), QString());
+    s.setFeedback(50.0); // Unknown to Normal
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+
+    s.setSetpoint(70.0); // The setpoint and the state change: one event
+    QCOMPARE(s.deviationState(), IndustrialSlider::DeviationState::Deviating);
+    QCOMPARE(log.flush(), QStringLiteral("value 70"));
+    s.setRange(0.0, 60.0); // Clamps the setpoint to 60; Deviating stays
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+
+    s.setDeviationThreshold(20.0); // Deviating to Normal
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.setDeviationThreshold(30.0); // Still Normal
+    QCOMPARE(log.flush(), QString());
+    s.setDeviationThreshold(0.0); // Normal to Off
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.setFeedback(10.0); // Off stays Off
+    QCOMPARE(log.flush(), QString());
+    s.setDeviationThreshold(5.0); // Off to Deviating
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.clearFeedback(); // Deviating to Off
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("60.0 %"));
+    s.clearFeedback();
+    QCOMPARE(log.flush(), QString());
 }
 
 QTEST_MAIN(tst_IndustrialSliderInput)

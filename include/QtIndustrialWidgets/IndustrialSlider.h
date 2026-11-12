@@ -99,8 +99,10 @@ class IndustrialSliderAccessible;
  * deviation"; "position invalid" for a NaN feedback, "position over range 120.0 %" / "position under range" outside
  * the range, "deviation unknown"; no position without a feedback, no deviation when it is Off or Normal. Every change
  * of the setpoint, and of the range, sends a QAccessibleValueChangeEvent with the setpoint; setReadOnly() sends a
- * QAccessibleStateChangeEvent; a change of the feedback sends none. A setpoint set by assistive technology is
- * operator input: bound by the setpoint limits, ignored in read-only, committed with setpointCommitted(). The slider
+ * QAccessibleStateChangeEvent. A change of deviationState() also sends a QAccessibleValueChangeEvent with the
+ * setpoint (QAccessible::State has no flag for a deviation; the value text changed), one only when the setpoint
+ * changes too; a new feedback that leaves deviationState() as it is sends none, so a position updated at a high
+ * rate does not flood assistive technology. A setpoint set by assistive technology is operator input: bound by the setpoint limits, ignored in read-only, committed with setpointCommitted(). The slider
  * has no accessible name of its own: set one with setAccessibleName() (or a QLabel buddy).
  *
  * Text size: the sizes of the labels and of the readouts follow the size of the widget font against the

@@ -565,6 +565,7 @@ void IndustrialSlider::setFeedback(double feedback)
     d_ptr->m_rawFeedback = feedback;
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifyDeviation(this, changes); // #183: only a change of the deviation state, not every position
     // An out-of-range input can change the readout without changing feedback()
     update();
 }
@@ -576,6 +577,7 @@ void IndustrialSlider::clearFeedback()
     d_ptr->m_rawFeedback = std::numeric_limits<double>::quiet_NaN();
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifyDeviation(this, changes); // #183
     update();
 }
 
@@ -589,6 +591,7 @@ void IndustrialSlider::setDeviationThreshold(double threshold)
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
     Q_EMIT deviationThresholdChanged(d_ptr->m_deviationThreshold);
     d_ptr->emitChanges(this, changes);
+    d_ptr->notifyDeviation(this, changes); // #183
     update();
 }
 
