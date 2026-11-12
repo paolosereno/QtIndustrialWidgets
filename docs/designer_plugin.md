@@ -24,8 +24,24 @@ The plugin is a CMake module library written to `build/lib/`: `QtIndustrialWidge
 
 ## Install
 
-`cmake --install build` copies the plugin to `<prefix>/lib/qt6/plugins/designer/` (`lib` is `CMAKE_INSTALL_LIBDIR`;
-setting `QT_INSTALL_PLUGINS` at configure time changes the destination to `${QT_INSTALL_PLUGINS}/designer`).
+`cmake --install build` copies the plugin to a directory chosen at configure time (#135), in this order:
+
+1. **`QT_INSTALL_PLUGINS` set by hand**: `${QT_INSTALL_PLUGINS}/designer`. It always takes precedence.
+2. **Installing into Qt's own prefix** (`CMAKE_INSTALL_PREFIX` is the same directory as the prefix of the Qt the
+   library is built with, `QT6_INSTALL_PREFIX`): Qt's plugin directory, `<prefix>/${QT6_INSTALL_PLUGINS}/designer`.
+   This is where that Qt's Designer looks, so it loads the plugin with no further setting. Examples:
+   `<Qt>/plugins/designer/` for Qt from the online installer or `aqt` (checked in CI with `aqt`'s Qt 6.2.4), and
+   `/usr/lib/x86_64-linux-gnu/qt6/plugins/designer/` for Ubuntu's Qt with the prefix `/usr`.
+3. **Otherwise**, for example `/usr/local` or `/opt/QtIndustrialWidgets`: `<prefix>/lib/qt6/plugins/designer/`
+   (`lib` is `CMAKE_INSTALL_LIBDIR`), a directory Designer does not scan; start Designer with
+   `QT_PLUGIN_PATH=<prefix>/lib/qt6/plugins`, or set `QT_INSTALL_PLUGINS`.
+
+The configure step prints the destination and the reason, for example
+`QtIndustrialWidgets: Designer plugin destination: plugins/designer (Qt's plugin directory: CMAKE_INSTALL_PREFIX is
+Qt's prefix)`. The two prefixes are compared after resolving symbolic links, `.` and `..` (and without letter case on
+Windows). The decision uses the `CMAKE_INSTALL_PREFIX` of the configure step: `cmake --install build --prefix <other>`
+keeps the destination relative to the prefix, as chosen at configure time. Not checked in CI: Homebrew's Qt on macOS
+and the online installer on macOS and Windows.
 
 The plugin links the library, `libQtIndustrialWidgets`. On Linux and macOS the installed plugin finds it through its
 run path: first the library directory relative to the plugin (`$ORIGIN/…`, `@loader_path/…`), so the installed
