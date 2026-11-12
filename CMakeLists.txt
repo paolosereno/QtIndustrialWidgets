@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(QtIndustrialWidgets
-    VERSION 2.7.0
+    VERSION 2.8.0
     DESCRIPTION "A C++17 Qt Widgets library of industrial instrumentation widgets for test benches, SCADA and telemetry applications"
     HOMEPAGE_URL "https://github.com/paolosereno/QtIndustrialWidgets"
     LANGUAGES CXX
