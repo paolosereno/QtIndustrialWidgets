@@ -17,6 +17,7 @@ namespace QtIndustrialWidgets {
 class IndustrialSliderPrivate;
 namespace internal {
 class IndustrialSliderTestAccess;
+class IndustrialSliderAccessible;
 }
 
 /**
@@ -384,6 +385,7 @@ private:
     std::unique_ptr<IndustrialSliderPrivate> d_ptr;
     Q_DECLARE_PRIVATE(IndustrialSlider)
     friend class internal::IndustrialSliderTestAccess;
+    friend class internal::IndustrialSliderAccessible; // accessible interface (#183); defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

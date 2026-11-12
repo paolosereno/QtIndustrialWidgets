@@ -18,6 +18,7 @@
 #include "IndustrialSliderTestUtils.h"
 #include "PixelTestUtils.h"
 
+#include <QtGui/QAccessible>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtTest/QSignalSpy>
@@ -27,6 +28,8 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <utility>
+#include <vector>
 
 using namespace QtIndustrialWidgets;
 
@@ -70,6 +73,13 @@ private Q_SLOTS:
     void limitsAreHatchedWithStopMarks();
     void focusRingIsASolidRingInTextColor_data();
     void focusRingIsASolidRingInTextColor();
+    void accessibleInterfaceDescribesTheSlider();
+    void accessibleValueText_data();
+    void accessibleValueText();
+    void accessibleNameHasNoFallback();
+    void accessibleFocusState();
+    void accessibleSetValueIsOperatorInput();
+    void accessibleEventsFollowTheSetpoint();
 };
 
 namespace {
@@ -179,6 +189,41 @@ void showSlider(IndustrialSlider &s, bool vertical, double setpoint)
     s.setRange(0.0, 100.0);
     s.setSetpoint(setpoint);
 }
+
+// #183: what the slider sends to assistive technology, through the test hook (offscreen Qt drops the events before
+// any handler). Each event as one line: "value 40" for a value change of the slider, "readOnly" for a change of its
+// read-only state, "other" for anything else
+class A11yLog
+{
+public:
+    explicit A11yLog(IndustrialSlider &s)
+        : m_slider(s)
+    {
+        internal::IndustrialSliderTestAccess::setAccessibleObserver(s, [this](QAccessibleEvent *e) {
+            if (e->object() != &m_slider) {
+                m_lines << QStringLiteral("other");
+            } else if (e->type() == QAccessible::ValueChanged) {
+                const double v = static_cast<QAccessibleValueChangeEvent *>(e)->value().toDouble();
+                m_lines << QStringLiteral("value %1").arg(v);
+            } else if (e->type() == QAccessible::StateChanged
+                       && static_cast<QAccessibleStateChangeEvent *>(e)->changedStates().readOnly) {
+                m_lines << QStringLiteral("readOnly");
+            } else {
+                m_lines << QStringLiteral("other");
+            }
+        });
+    }
+    ~A11yLog() { internal::IndustrialSliderTestAccess::setAccessibleObserver(m_slider, {}); }
+    A11yLog(const A11yLog &) = delete;
+    A11yLog &operator=(const A11yLog &) = delete;
+
+    // The lines since the last call, joined by "; "
+    QString flush() { return std::exchange(m_lines, {}).join(QStringLiteral("; ")); }
+
+private:
+    IndustrialSlider &m_slider;
+    QStringList m_lines;
+};
 
 } // namespace
 
@@ -1184,6 +1229,233 @@ void tst_IndustrialSliderInput::focusRingIsASolidRingInTextColor()
         QVERIFY2(perSide[side] > 20, qPrintable(QStringLiteral("side %1: %2 pixels checked").arg(side).arg(perSide[side])));
     }
     QVERIFY2(off == 0, qPrintable(QStringLiteral("%1 pixels of the ring not in textColor, first %2").arg(off).arg(first)));
+}
+
+// #183: role Slider; the value interface carries the setpoint, the range and step(); read-only is a state. The value
+// text does not depend on the readouts being drawn
+void tst_IndustrialSliderInput::accessibleInterfaceDescribesTheSlider()
+{
+    IndustrialSlider s;
+    s.setRange(0.0, 200.0);
+    s.setPrecision(0);
+    s.setUnit(QStringLiteral("rpm"));
+    s.setStep(2.5);
+    s.setSetpoint(60.0);
+    s.setAccessibleName(QStringLiteral("Fan speed"));
+    s.setAccessibleDescription(QStringLiteral("Speed reference of fan F-101"));
+
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&s);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::Slider);
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("Fan speed"));
+    QCOMPARE(iface->text(QAccessible::Description), QStringLiteral("Speed reference of fan F-101"));
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("60 rpm"));
+    QAccessibleValueInterface *value = iface->valueInterface();
+    QVERIFY(value);
+    QCOMPARE(value->currentValue().toDouble(), 60.0);
+    QCOMPARE(value->minimumValue().toDouble(), 0.0);
+    QCOMPARE(value->maximumValue().toDouble(), 200.0);
+    QCOMPARE(value->minimumStepSize().toDouble(), 2.5);
+    QVERIFY(!iface->state().readOnly);
+
+    s.setReadoutVisible(false);
+    s.setFeedback(55.0);
+    s.setSetpoint(75.0);
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("75 rpm, position 55 rpm"));
+    QCOMPARE(value->currentValue().toDouble(), 75.0);
+
+    s.setReadOnly(true);
+    QVERIFY(iface->state().readOnly);
+    s.setReadOnly(false);
+    QVERIFY(!iface->state().readOnly);
+}
+
+// #180 decision 4: the setpoint, the position of the feedback and the deviation state, in words. -1 for the feedback
+// means none (clearFeedback())
+void tst_IndustrialSliderInput::accessibleValueText_data()
+{
+    QTest::addColumn<double>("feedback");
+    QTest::addColumn<double>("threshold");
+    QTest::addColumn<QString>("unit");
+    QTest::addColumn<QString>("expected");
+
+    const QString pct = QStringLiteral("%");
+    QTest::newRow("no feedback") << -1.0 << 5.0 << pct << QStringLiteral("60.0 %");
+    QTest::newRow("normal") << 58.0 << 5.0 << pct << QStringLiteral("60.0 %, position 58.0 %");
+    QTest::newRow("threshold off") << 15.0 << 0.0 << pct << QStringLiteral("60.0 %, position 15.0 %");
+    QTest::newRow("deviating") << 15.0 << 5.0 << pct << QStringLiteral("60.0 %, position 15.0 %, deviation");
+    QTest::newRow("NaN") << kNaN << 5.0 << pct << QStringLiteral("60.0 %, position invalid, deviation unknown");
+    QTest::newRow("NaN, threshold off") << kNaN << 0.0 << pct << QStringLiteral("60.0 %, position invalid");
+    QTest::newRow("+Inf") << kInf << 5.0 << pct << QStringLiteral("60.0 %, position over range, deviation unknown");
+    QTest::newRow("-Inf") << -kInf << 5.0 << pct << QStringLiteral("60.0 %, position under range, deviation unknown");
+    QTest::newRow("over range") << 120.0 << 5.0 << pct
+                                << QStringLiteral("60.0 %, position over range 120.0 %, deviation");
+    QTest::newRow("under range") << -5.0 << 5.0 << pct
+                                 << QStringLiteral("60.0 %, position under range -5.0 %, deviation");
+    QTest::newRow("no unit") << 15.0 << 5.0 << QString() << QStringLiteral("60.0, position 15.0, deviation");
+}
+
+void tst_IndustrialSliderInput::accessibleValueText()
+{
+    QFETCH(double, feedback);
+    QFETCH(double, threshold);
+    QFETCH(QString, unit);
+    QFETCH(QString, expected);
+    IndustrialSlider s;
+    s.setUnit(unit);
+    s.setDeviationThreshold(threshold);
+    s.setSetpoint(60.0);
+    s.setFeedback(42.0);
+    if (feedback == -1.0) {
+        s.clearFeedback();
+    } else {
+        s.setFeedback(feedback);
+    }
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&s);
+    QVERIFY(iface);
+    QCOMPARE(iface->text(QAccessible::Value), expected);
+}
+
+// #183: without an accessible name the slider has none: the tags or the unit are not made into a name
+void tst_IndustrialSliderInput::accessibleNameHasNoFallback()
+{
+    IndustrialSlider s;
+    s.setFeedback(10.0);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&s);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::Slider);
+    QCOMPARE(iface->text(QAccessible::Name), QString());
+}
+
+// #183: the slider is focusable, and focused while it has the focus
+void tst_IndustrialSliderInput::accessibleFocusState()
+{
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *s = new IndustrialSlider(&window);
+    auto *other = new QLineEdit(&window);
+    layout->addWidget(s);
+    layout->addWidget(other);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(s);
+    QVERIFY(iface);
+    QVERIFY(iface->state().focusable);
+    QVERIFY(focusOn(*other));
+    QVERIFY(!iface->state().focused);
+    QVERIFY(focusOn(*s));
+    QVERIFY(iface->state().focused);
+}
+
+// #183: a setpoint set by assistive technology is operator input: bound by the setpoint limits (from outside them,
+// only towards them), ignored in read-only, and committed; a value that changes nothing or is not a finite number
+// commits nothing
+void tst_IndustrialSliderInput::accessibleSetValueIsOperatorInput()
+{
+    IndustrialSlider s;
+    s.setSetpoint(40.0);
+    QAccessibleValueInterface *value = QAccessible::queryAccessibleInterface(&s)->valueInterface();
+    QVERIFY(value);
+    QSignalSpy changed(&s, &IndustrialSlider::setpointChanged);
+    QSignalSpy committed(&s, &IndustrialSlider::setpointCommitted);
+
+    value->setCurrentValue(55.0);
+    QCOMPARE(s.setpoint(), 55.0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.last().at(0).toDouble(), 55.0);
+
+    value->setCurrentValue(55.0);
+    value->setCurrentValue(kNaN);
+    value->setCurrentValue(kInf);
+    value->setCurrentValue(QStringLiteral("not a number"));
+    QCOMPARE(s.setpoint(), 55.0);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(committed.count(), 1);
+
+    s.setSetpointLimits(20.0, 80.0);
+    value->setCurrentValue(95.0);
+    QCOMPARE(s.setpoint(), 80.0);
+    QCOMPARE(committed.count(), 2);
+    QCOMPARE(committed.last().at(0).toDouble(), 80.0);
+
+    s.setSetpoint(90.0); // Outside the limits, as read back from a device
+    value->setCurrentValue(97.0); // Further out: ignored
+    QCOMPARE(s.setpoint(), 90.0);
+    QCOMPARE(committed.count(), 2);
+    value->setCurrentValue(85.0); // Towards the limits: applied
+    QCOMPARE(s.setpoint(), 85.0);
+    QCOMPARE(committed.count(), 3);
+
+    s.setReadOnly(true);
+    const int changes = changed.count();
+    value->setCurrentValue(50.0);
+    QCOMPARE(s.setpoint(), 85.0);
+    QCOMPARE(changed.count(), changes);
+    QCOMPARE(committed.count(), 3);
+}
+
+// #183: one value-change event, with the setpoint, at every change of the setpoint from every source (key, wheel,
+// drag, assistive technology, setSetpoint(), the clamping of setRange()); none when it does not change; one at a
+// range change; a state-change event when read-only changes. A change of the feedback sends none: the value of the
+// event is the setpoint
+void tst_IndustrialSliderInput::accessibleEventsFollowTheSetpoint()
+{
+    QWidget window;
+    auto *layout = new QVBoxLayout(&window);
+    auto *s = new IndustrialSlider(&window);
+    layout->addWidget(s);
+    s->setMinimumSize(sizeFor(false));
+    s->setRange(0.0, 100.0);
+    s->setSetpoint(50.0);
+    s->setWheelEnabled(true);
+    QVERIFY(focusOn(*s));
+
+    A11yLog log(*s);
+    s->setSetpoint(10.0);
+    QCOMPARE(log.flush(), QStringLiteral("value 10"));
+    s->setSetpoint(10.0);
+    QCOMPARE(log.flush(), QString());
+
+    QTest::keyClick(s, Qt::Key_Right);
+    QCOMPARE(log.flush(), QStringLiteral("value 11"));
+    QTest::keyClick(s, Qt::Key_Home);
+    QCOMPARE(log.flush(), QStringLiteral("value 0"));
+    QTest::keyClick(s, Qt::Key_Home); // Already there
+    QCOMPARE(log.flush(), QString());
+
+    QVERIFY(sendWheel(*s, 120));
+    QCOMPARE(log.flush(), QStringLiteral("value 1"));
+
+    s->setSetpoint(50.0);
+    log.flush();
+    const internal::SliderLayout l = layoutOf(*s);
+    const double length = std::abs(l.scaleMax - l.scaleMin);
+    const QPointF h = handlePoint(*s);
+    sendMouse(*s, QEvent::MouseButtonPress, h);
+    sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.1));
+    sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.2));
+    sendMouse(*s, QEvent::MouseButtonRelease, moved(l, h, length * 0.2));
+    QCOMPARE(log.flush(), QStringLiteral("value 60; value 70"));
+
+    QAccessible::queryAccessibleInterface(s)->valueInterface()->setCurrentValue(40.0);
+    QCOMPARE(log.flush(), QStringLiteral("value 40"));
+
+    s->setFeedback(12.0);
+    s->setDeviationThreshold(5.0);
+    QCOMPARE(log.flush(), QString());
+
+    s->setRange(0.0, 30.0); // Clamps the setpoint
+    QCOMPARE(log.flush(), QStringLiteral("value 30"));
+    s->setRange(0.0, 200.0); // Keeps the setpoint; the range changed
+    QCOMPARE(log.flush(), QStringLiteral("value 30"));
+    s->setRange(0.0, 200.0); // No change
+    QCOMPARE(log.flush(), QString());
+
+    s->setReadOnly(true);
+    QCOMPARE(log.flush(), QStringLiteral("readOnly"));
+    s->setReadOnly(true);
+    QCOMPARE(log.flush(), QString());
+    s->setReadOnly(false);
+    QCOMPARE(log.flush(), QStringLiteral("readOnly"));
 }
 
 QTEST_MAIN(tst_IndustrialSliderInput)
