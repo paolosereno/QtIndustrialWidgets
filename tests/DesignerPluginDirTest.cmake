@@ -7,6 +7,10 @@
 # prefix is Qt's prefix; otherwise <libdir>/qt6/plugins/designer, as before #135.
 #
 # Usage: cmake -DSOURCE_DIR=<repository> -DWORK_DIR=<empty scratch directory> -P DesignerPluginDirTest.cmake
+
+# The policies of the project (CMakeLists.txt), under which plugin/CMakeLists.txt calls the function; without this a
+# script runs with the CMake 2.x policies (if(TRUE) would read a variable named TRUE, CMP0012)
+cmake_minimum_required(VERSION 3.16)
 foreach(var SOURCE_DIR WORK_DIR)
     if(NOT DEFINED ${var})
         message(FATAL_ERROR "${var} is required")
