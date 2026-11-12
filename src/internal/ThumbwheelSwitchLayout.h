@@ -10,6 +10,7 @@
 
 #include <QtCore/QRectF>
 #include <QtCore/QSizeF>
+#include <QtCore/QString>
 #include <QtCore/QVector>
 #include <QtCore/QtGlobal>
 
@@ -51,6 +52,13 @@ struct ThumbwheelFormat {
     /// The count with the sign \a negative. None for 0 (no -0) or without the sign drum; \a count itself when it
     /// already has that sign.
     [[nodiscard]] std::optional<qint64> withSign(qint64 count, bool negative) const;
+    /// The count with the digit of decade \a decade set to \a newDigit (0–9), the sign kept (a magnitude of 0 is 0).
+    /// None for a decade or a digit out of range.
+    [[nodiscard]] std::optional<qint64> withDigit(qint64 count, int decade, int newDigit) const;
+    /// \a count as the drums show it: every digit, leading zeros included, the decimal point, and with the sign drum
+    /// "+" or "−" first ("0125.0", "−0012.50"). \a digitChar, when given, replaces every digit (to measure the widest
+    /// text).
+    [[nodiscard]] QString text(qint64 count, QChar digitChar = QChar()) const;
 };
 
 /// Where a value is against the limits.
@@ -79,6 +87,11 @@ inline constexpr double kThumbwheelButtonGap = 2.0;   ///< Between a drum and it
 inline constexpr double kThumbwheelMinButton = 12.0;  ///< Smallest height of a button
 inline constexpr double kThumbwheelUnitGap = 6.0;     ///< Between the last drum and the unit
 inline constexpr double kThumbwheelTagGap = 6.0;      ///< Before the tag column
+inline constexpr double kThumbwheelSetGap = 6.0;      ///< Between the tag column and the SET button
+inline constexpr double kThumbwheelSetPadX = 6.0;     ///< Padding of the SET button around its text
+inline constexpr double kThumbwheelCursorGap = 2.0;   ///< Between a − button and the bar of the current decade
+inline constexpr double kThumbwheelCursorBar = 3.0;   ///< Thickness of the bar of the current decade
+inline constexpr double kThumbwheelStatusGap = 3.0;   ///< Between the bar of the current decade and the status line
 
 /// Sizes of the texts of a ThumbwheelSwitch, measured by the widget with its fonts.
 struct ThumbwheelTextSizes {
@@ -88,6 +101,8 @@ struct ThumbwheelTextSizes {
     double unitWidth{0.0};   ///< Width of the unit (0 without a unit)
     double tagWidth{0.0};    ///< Width of the widest mark of the tag column ("OVF", a triangle)
     double tagHeight{0.0};   ///< Line height of the tag font
+    double setWidth{0.0};    ///< Width of "SET" in the tag font
+    double statusWidth{0.0}; ///< Width of the widest text of the status line, in the tag font
 };
 
 /// Input of layoutThumbwheel().
@@ -96,14 +111,18 @@ struct ThumbwheelLayoutInput {
     double height{0.0};
     ThumbwheelFormat format;
     ThumbwheelTextSizes text;
+    bool setButton{false};  ///< The SET button is drawn (ApplyMode::OnConfirm)
+    bool statusLine{false}; ///< The status line is kept (ApplyMode::OnConfirm, or read-only for the padlock)
 };
 
 /**
  * \brief Geometry of a ThumbwheelSwitch.
  *
  * Left to right: the sign drum (when shown), the digit drums, most significant first, with the decimal point in a
- * wider gap, the unit, and the tag column, which is always reserved so that a mark never moves the drums. Top to
- * bottom: the + buttons, the drums, the − buttons. The group is centred in the widget.
+ * wider gap, the unit, the tag column, which is always reserved so that a mark never moves the drums, and the SET
+ * button when there is one. Top to bottom: the + buttons, the drums, the − buttons, the row of the bar of the current
+ * decade (always reserved, so that the focus never moves anything), and the status line when there is one. The group
+ * is centred in the widget.
  */
 struct ThumbwheelLayout {
     QVector<QRectF> drums; ///< Every drum, left to right: the sign drum first when shown
@@ -113,6 +132,10 @@ struct ThumbwheelLayout {
     QRectF decimalPoint;   ///< The dot (empty without decimals)
     QRectF unit;           ///< The unit (empty without a unit)
     QRectF tag;            ///< The tag column, as high as the drums
+    QVector<QRectF> cursors; ///< The bar of the current decade under each drum, same order as drums
+    QRectF setButton;      ///< The SET button, as high as the drums (empty without it)
+    QRectF status;         ///< The status line, left-aligned under the drums (empty without it)
+    QRectF padlock;        ///< The padlock of read-only, at the start of the status line (empty without it)
     QRectF group;          ///< Everything above
 
     /// Index in drums of the digit drum of decade \a decade (0 = most significant).

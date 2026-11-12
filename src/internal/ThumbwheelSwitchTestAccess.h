@@ -27,6 +27,19 @@ public:
     static QVector<bool> lastMinusOpen(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastMinusOpen; }
     /// Pixel size of the digits drawn by the last paint
     static int lastDigitPixelSize(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastDigitPx; }
+    /// The drums had the dashed outline of a pending value
+    static bool lastPendingOutline(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastPendingOutline; }
+    /// The text of the status line ("SET?  now …"), empty without one or when it held the padlock
+    static QString lastStatus(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastStatus; }
+    static bool lastPadlock(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastPadlock; }
+    /// The SET button was drawn, and drawn filled (a value was pending)
+    static bool lastSetDrawn(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastSetDrawn; }
+    static bool lastSetOpen(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastSetOpen; }
+    /// The drum whose bar of the current decade was drawn, -1 for none
+    static int lastCursor(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastCursor; }
+    static QRectF lastFocusRing(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastFocusRing; }
+    /// The current decade (an index of the drums), drawn or not
+    static int currentDrum(const ThumbwheelSwitch &w) { return w.d_ptr->m_current; }
 };
 
 } // namespace internal

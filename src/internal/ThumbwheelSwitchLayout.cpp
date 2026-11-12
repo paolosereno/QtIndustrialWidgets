@@ -106,6 +106,34 @@ std::optional<qint64> ThumbwheelFormat::withSign(qint64 count, bool negative) co
     return negative ? -magnitude : magnitude;
 }
 
+std::optional<qint64> ThumbwheelFormat::withDigit(qint64 count, int decade, int newDigit) const
+{
+    const int n = std::clamp(digitCount, 1, kThumbwheelMaxDigits);
+    if (decade < 0 || decade >= n || newDigit < 0 || newDigit > 9) {
+        return std::nullopt;
+    }
+    const qint64 unit = power10(n - 1 - decade);
+    const qint64 magnitude = (count < 0 ? -count : count) + (newDigit - digit(count, decade)) * unit;
+    return count < 0 ? -magnitude : magnitude;
+}
+
+QString ThumbwheelFormat::text(qint64 count, QChar digitChar) const
+{
+    const int n = std::clamp(digitCount, 1, kThumbwheelMaxDigits);
+    const int d = std::clamp(decimals, 0, n - 1);
+    QString s;
+    if (signDrum) {
+        s += count < 0 ? QChar(0x2212) : QLatin1Char('+');
+    }
+    for (int i = 0; i < n; ++i) {
+        if (i == n - d) {
+            s += QLatin1Char('.');
+        }
+        s += digitChar.isNull() ? QChar(QLatin1Char(static_cast<char>('0' + digit(count, i)))) : digitChar;
+    }
+    return s;
+}
+
 ThumbwheelLimitState ThumbwheelLimits::stateOf(double value) const
 {
     if (value < low) {
@@ -156,6 +184,9 @@ struct Sizes {
     double dot{0.0};      // Diameter of the decimal point
     double unitW{0.0};
     double tagW{0.0};
+    double setW{0.0};     // 0 without the SET button
+    double statusH{0.0};  // 0 without the status line
+    double rowsH{0.0};    // The buttons and the drums
     int drums{0};
     double groupW{0.0};
     double groupH{0.0};
@@ -184,8 +215,19 @@ Sizes sizesOf(const ThumbwheelLayoutInput &in)
         w += kThumbwheelUnitGap + s.unitW;
     }
     w += kThumbwheelTagGap + s.tagW;
+    if (in.setButton) {
+        s.setW = std::ceil(nonNegative(t.setWidth) + 2.0 * kThumbwheelSetPadX);
+        w += kThumbwheelSetGap + s.setW;
+    }
+    s.rowsH = std::max(s.drumH + 2.0 * (kThumbwheelButtonGap + s.buttonH), nonNegative(t.tagHeight));
+    double h = s.rowsH + kThumbwheelCursorGap + kThumbwheelCursorBar;
+    if (in.statusLine) {
+        s.statusH = std::ceil(std::max(nonNegative(t.tagHeight), 1.0));
+        h += kThumbwheelStatusGap + s.statusH;
+        w = std::max(w, std::ceil(nonNegative(t.statusWidth)));
+    }
     s.groupW = w;
-    s.groupH = std::max(s.drumH + 2.0 * (kThumbwheelButtonGap + s.buttonH), nonNegative(t.tagHeight));
+    s.groupH = h;
     return s;
 }
 
@@ -201,8 +243,9 @@ ThumbwheelLayout layoutThumbwheel(const ThumbwheelLayoutInput &in)
     // Centred, on whole pixels; never left of or above the margin
     const double x0 = std::max(kThumbwheelMargin, std::floor((w - s.groupW) * 0.5));
     const double y0 = std::max(kThumbwheelMargin, std::floor((h - s.groupH) * 0.5));
-    const double drumTop = y0 + std::floor((s.groupH - (s.drumH + 2.0 * (kThumbwheelButtonGap + s.buttonH))) * 0.5)
+    const double drumTop = y0 + std::floor((s.rowsH - (s.drumH + 2.0 * (kThumbwheelButtonGap + s.buttonH))) * 0.5)
                            + s.buttonH + kThumbwheelButtonGap;
+    const double cursorTop = y0 + s.rowsH + kThumbwheelCursorGap;
     const int digits = std::clamp(in.format.digitCount, 1, kThumbwheelMaxDigits);
     const int decimals = std::clamp(in.format.decimals, 0, digits - 1);
     // The decimal point follows the drum of this decade
@@ -214,6 +257,7 @@ ThumbwheelLayout layoutThumbwheel(const ThumbwheelLayoutInput &in)
         l.drums.push_back(drum);
         l.plus.push_back(QRectF(x, drumTop - kThumbwheelButtonGap - s.buttonH, s.drumW, s.buttonH));
         l.minus.push_back(QRectF(x, drum.bottom() + kThumbwheelButtonGap, s.drumW, s.buttonH));
+        l.cursors.push_back(QRectF(x + 2.0, cursorTop, std::max(1.0, s.drumW - 4.0), kThumbwheelCursorBar));
         x += s.drumW;
         if (i + 1 < s.drums) {
             const int decade = i - (in.format.signDrum ? 1 : 0);
@@ -236,6 +280,15 @@ ThumbwheelLayout layoutThumbwheel(const ThumbwheelLayoutInput &in)
     }
     x += kThumbwheelTagGap;
     l.tag = QRectF(x, drumTop, s.tagW, s.drumH);
+    x += s.tagW;
+    if (s.setW > 0.0) {
+        l.setButton = QRectF(x + kThumbwheelSetGap, drumTop, s.setW, s.drumH);
+    }
+    if (s.statusH > 0.0) {
+        l.status = QRectF(x0, cursorTop + kThumbwheelCursorBar + kThumbwheelStatusGap, s.groupW, s.statusH);
+        // The proportions of drawPadlock() in the other controls: as high as the line, 0.8 of it wide
+        l.padlock = QRectF(x0, l.status.top(), std::max(1.0, std::round(s.statusH * 0.8)), s.statusH);
+    }
     l.group = QRectF(x0, y0, s.groupW, s.groupH);
     return l;
 }
