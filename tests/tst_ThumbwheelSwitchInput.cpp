@@ -10,6 +10,7 @@
 // and without installed fonts.
 
 #include <QtTest/QtTest>
+#include <QtGui/QAccessible>
 #include <QtIndustrialWidgets/ThumbwheelSwitch.h>
 
 #include "internal/ThumbwheelSwitchLayout.h"
@@ -23,6 +24,7 @@
 
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -77,6 +79,14 @@ private Q_SLOTS:
     void minimumSizeHoldsTheInputParts();
     void everythingInsideWithAPendingValue_data();
     void everythingInsideWithAPendingValue();
+    void accessibleInterface();
+    void accessibleNameHasNoFallback();
+    void accessibleValueText_data();
+    void accessibleValueText();
+    void accessibleSetValueIsOperatorInput();
+    void accessibleSetValueImmediateCommits();
+    void accessibleActionsWhileAValueIsPending();
+    void accessibleEventsFollowTheValueText();
 };
 
 namespace {
@@ -234,6 +244,47 @@ struct Spies {
     {
     }
 };
+
+// #183: what the switch sends to assistive technology, through the test hook (offscreen Qt drops the events before
+// any handler). Each event as one line: "value 125" for a value change of the switch, "readOnly" for a change of its
+// read-only state, "other" for anything else
+class A11yLog
+{
+public:
+    explicit A11yLog(ThumbwheelSwitch &w)
+        : m_wheel(w)
+    {
+        ThumbwheelSwitchTestAccess::setAccessibleObserver(w, [this](QAccessibleEvent *e) {
+            if (e->object() != &m_wheel) {
+                m_lines << QStringLiteral("other");
+            } else if (e->type() == QAccessible::ValueChanged) {
+                const double v = static_cast<QAccessibleValueChangeEvent *>(e)->value().toDouble();
+                m_lines << QStringLiteral("value %1").arg(v);
+            } else if (e->type() == QAccessible::StateChanged
+                       && static_cast<QAccessibleStateChangeEvent *>(e)->changedStates().readOnly) {
+                m_lines << QStringLiteral("readOnly");
+            } else {
+                m_lines << QStringLiteral("other");
+            }
+        });
+    }
+    ~A11yLog() { ThumbwheelSwitchTestAccess::setAccessibleObserver(m_wheel, {}); }
+    A11yLog(const A11yLog &) = delete;
+    A11yLog &operator=(const A11yLog &) = delete;
+
+    // The lines since the last call, joined by "; "
+    QString flush() { return std::exchange(m_lines, {}).join(QStringLiteral("; ")); }
+
+private:
+    ThumbwheelSwitch &m_wheel;
+    QStringList m_lines;
+};
+
+QAccessibleValueInterface *valueInterfaceOf(ThumbwheelSwitch &w)
+{
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&w);
+    return iface ? iface->valueInterface() : nullptr;
+}
 
 } // namespace
 
@@ -1126,6 +1177,283 @@ void tst_ThumbwheelSwitchInput::everythingInsideWithAPendingValue()
     QVERIFY(countNear(img, l.status, kText, 60) > 0);
     const QRectF below(l.group.left(), l.status.bottom() + 1.0, l.group.width(), ringBand.bottom() - l.status.bottom() - 1.0);
     QCOMPARE(countNear(img, below, kText, 60), 0);
+}
+
+// #183: role SpinBox; the value interface has value(), the limits and the resolution; read-only is a state; name and
+// description are the widget's own
+void tst_ThumbwheelSwitchInput::accessibleInterface()
+{
+    ThumbwheelSwitch w;
+    w.setDigitCount(5);
+    w.setDecimals(2);
+    w.setRange(10.0, 250.0);
+    w.setValue(125.5);
+    w.setAccessibleName(QStringLiteral("Test voltage"));
+    w.setAccessibleDescription(QStringLiteral("Output of calibrator CAL-3"));
+
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&w);
+    QVERIFY(iface);
+    QCOMPARE(iface->role(), QAccessible::SpinBox);
+    QCOMPARE(iface->text(QAccessible::Name), QStringLiteral("Test voltage"));
+    QCOMPARE(iface->text(QAccessible::Description), QStringLiteral("Output of calibrator CAL-3"));
+    QAccessibleValueInterface *value = iface->valueInterface();
+    QVERIFY(value);
+    QCOMPARE(value->currentValue().toDouble(), 125.5);
+    QCOMPARE(value->minimumValue().toDouble(), 10.0);
+    QCOMPARE(value->maximumValue().toDouble(), 250.0);
+    QCOMPARE(value->minimumStepSize().toDouble(), 0.01);
+    w.setDecimals(0);
+    QCOMPARE(value->minimumStepSize().toDouble(), 1.0);
+    w.setRange(0.0, 1e9); // Read within what the drums show
+    QCOMPARE(value->maximumValue().toDouble(), 99999.0);
+
+    QVERIFY(!iface->state().readOnly);
+    QVERIFY(iface->state().focusable);
+    w.setReadOnly(true);
+    QVERIFY(iface->state().readOnly);
+    w.setReadOnly(false);
+    QVERIFY(!iface->state().readOnly);
+}
+
+// #183: without an accessible name the switch has none: the unit is not made into a name
+void tst_ThumbwheelSwitchInput::accessibleNameHasNoFallback()
+{
+    ThumbwheelSwitch w;
+    w.setUnit(QStringLiteral("V"));
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&w);
+    QVERIFY(iface);
+    QCOMPARE(iface->text(QAccessible::Name), QString());
+}
+
+// #183: the value as the drums show it, with the limit state, the pending value and the overflow in words. The switch:
+// 5 drums, 1 decimal, limits 0 to 2500. "pending" is a value set by assistive technology in OnConfirm (NaN: none);
+// "value" larger than the drums show is the overflow
+void tst_ThumbwheelSwitchInput::accessibleValueText_data()
+{
+    QTest::addColumn<double>("value");
+    QTest::addColumn<double>("pending");
+    QTest::addColumn<bool>("sign");
+    QTest::addColumn<QString>("unit");
+    QTest::addColumn<QString>("expected");
+
+    const double none = std::nan("");
+    const QString v = QStringLiteral("V");
+    QTest::newRow("value") << 125.0 << none << false << v << QStringLiteral("0125.0 V");
+    QTest::newRow("no unit") << 125.0 << none << false << QString() << QStringLiteral("0125.0");
+    QTest::newRow("rounded") << 0.04 << none << false << v << QStringLiteral("0000.0 V");
+    QTest::newRow("sign +") << 12.5 << none << true << v << QStringLiteral("+0012.5 V");
+    QTest::newRow("sign −, below minimum") << -12.5 << none << true << v
+                                           << QStringLiteral("−0012.5 V, below minimum");
+    QTest::newRow("above maximum") << 3000.0 << none << false << v << QStringLiteral("3000.0 V, above maximum");
+    QTest::newRow("pending") << 125.0 << 130.0 << false << v << QStringLiteral("pending 0130.0 V, set 0125.0 V");
+    QTest::newRow("pending above maximum") << 3000.0 << 2999.9 << false << v
+                                           << QStringLiteral("pending 2999.9 V, above maximum, set 3000.0 V");
+    QTest::newRow("pending inside, value above") << 3000.0 << 2000.0 << false << v
+                                                 << QStringLiteral("pending 2000.0 V, set 3000.0 V");
+    QTest::newRow("overflow") << 125.0 << none << false << v << QStringLiteral("overflow");
+}
+
+void tst_ThumbwheelSwitchInput::accessibleValueText()
+{
+    QFETCH(double, value);
+    QFETCH(double, pending);
+    QFETCH(bool, sign);
+    QFETCH(QString, unit);
+    QFETCH(QString, expected);
+    ThumbwheelSwitch w;
+    w.setDigitCount(5);
+    w.setDecimals(1);
+    w.setSignDrumVisible(sign);
+    w.setUnit(unit);
+    w.setRange(0.0, 2500.0);
+    w.setValue(value);
+    if (!std::isnan(pending)) {
+        valueInterfaceOf(w)->setCurrentValue(pending);
+        QVERIFY(w.hasPendingValue());
+    }
+    if (expected == QLatin1String("overflow")) {
+        w.setValue(123456.0);
+        QVERIFY(w.isOverflow());
+    }
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&w);
+    QVERIFY(iface);
+    QCOMPARE(iface->text(QAccessible::Value), expected);
+}
+
+// #183: a value set by assistive technology is operator input. OnConfirm: it becomes the pending value, rounded to
+// the resolution; value() stays and nothing is committed. Rejected, never bound to a limit: outside the limits, further
+// out from a value outside them, more than the drums show, NaN, ±Inf, not a number; ignored in read-only and in
+// overflow
+void tst_ThumbwheelSwitchInput::accessibleSetValueIsOperatorInput()
+{
+    Rig rig;
+    ThumbwheelSwitch &w = *rig.wheel;
+    QAccessibleValueInterface *value = valueInterfaceOf(w);
+    QVERIFY(value);
+    Spies spies(&w);
+
+    value->setCurrentValue(130.04);
+    QVERIFY(w.hasPendingValue());
+    QCOMPARE(w.pendingValue(), 130.0);
+    QCOMPARE(w.value(), 125.0);
+    QCOMPARE(value->currentValue().toDouble(), 125.0);
+    QCOMPARE(spies.pending.count(), 1);
+    QCOMPARE(spies.changed.count(), 0);
+    QCOMPARE(spies.committed.count(), 0);
+
+    value->setCurrentValue(125.0); // Back to the value: nothing pending
+    QVERIFY(!w.hasPendingValue());
+    QCOMPARE(spies.pending.count(), 2);
+
+    for (const QVariant &v : {QVariant(2500.1), QVariant(-1.0), QVariant(123456.0), QVariant(std::nan("")),
+                              QVariant(std::numeric_limits<double>::infinity()), QVariant(QStringLiteral("abc"))}) {
+        value->setCurrentValue(v);
+        QVERIFY2(!w.hasPendingValue(), qPrintable(v.toString()));
+    }
+    QCOMPARE(spies.pending.count(), 2);
+    QVERIFY(!w.isOverflow()); // A rejected operator value is not the overflow of setValue()
+
+    w.setValue(3000.0); // Above the maximum, as read back from a device
+    value->setCurrentValue(3100.0); // Further out: rejected
+    QVERIFY(!w.hasPendingValue());
+    value->setCurrentValue(2800.0); // Towards the limits: taken as it is, not bound to 2500
+    QCOMPARE(w.pendingValue(), 2800.0);
+    w.discardPending();
+    w.setValue(125.0);
+    const int changes = spies.changed.count(); // Those of setValue()
+
+    w.setReadOnly(true);
+    value->setCurrentValue(130.0);
+    QVERIFY(!w.hasPendingValue());
+    w.setReadOnly(false);
+
+    w.setValue(123456.0);
+    QVERIFY(w.isOverflow());
+    value->setCurrentValue(130.0);
+    QVERIFY(!w.hasPendingValue());
+    QCOMPARE(w.value(), 125.0);
+    QCOMPARE(spies.changed.count(), changes);
+    QCOMPARE(spies.committed.count(), 0);
+}
+
+// #183: in Immediate a value set by assistive technology is applied and committed once; one that changes nothing
+// commits nothing
+void tst_ThumbwheelSwitchInput::accessibleSetValueImmediateCommits()
+{
+    Rig rig(Mode::Immediate);
+    ThumbwheelSwitch &w = *rig.wheel;
+    QAccessibleValueInterface *value = valueInterfaceOf(w);
+    QVERIFY(value);
+    Spies spies(&w);
+    value->setCurrentValue(200.0);
+    QCOMPARE(w.value(), 200.0);
+    QVERIFY(!w.hasPendingValue());
+    QCOMPARE(spies.changed.count(), 1);
+    QCOMPARE(spies.committed.count(), 1);
+    QCOMPARE(spies.committed.last().at(0).toDouble(), 200.0);
+    value->setCurrentValue(200.0);
+    value->setCurrentValue(2600.0);
+    QCOMPARE(w.value(), 200.0);
+    QCOMPARE(spies.changed.count(), 1);
+    QCOMPARE(spies.committed.count(), 1);
+}
+
+// #183: Apply and Discard are offered while a value is pending, and do what Enter and Escape do
+void tst_ThumbwheelSwitchInput::accessibleActionsWhileAValueIsPending()
+{
+    Rig rig;
+    ThumbwheelSwitch &w = *rig.wheel;
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&w);
+    QVERIFY(iface);
+    QAccessibleActionInterface *actions = iface->actionInterface();
+    QVERIFY(actions);
+    const QString apply = QStringLiteral("Apply");
+    const QString discard = QStringLiteral("Discard");
+    Spies spies(&w);
+
+    QVERIFY(!actions->actionNames().contains(apply));
+    QVERIFY(!actions->actionNames().contains(discard));
+    actions->doAction(apply);
+    QCOMPARE(spies.committed.count(), 0);
+
+    iface->valueInterface()->setCurrentValue(130.0);
+    QVERIFY(actions->actionNames().contains(apply));
+    QVERIFY(actions->actionNames().contains(discard));
+    QVERIFY(!actions->localizedActionDescription(apply).isEmpty());
+    actions->doAction(discard);
+    QVERIFY(!w.hasPendingValue());
+    QCOMPARE(w.value(), 125.0);
+    QCOMPARE(spies.committed.count(), 0);
+    QVERIFY(!actions->actionNames().contains(apply));
+
+    iface->valueInterface()->setCurrentValue(140.0);
+    actions->doAction(apply);
+    QVERIFY(!w.hasPendingValue());
+    QCOMPARE(w.value(), 140.0);
+    QCOMPARE(spies.committed.count(), 1);
+    QCOMPARE(spies.committed.last().at(0).toDouble(), 140.0);
+
+    w.setApplyMode(Mode::Immediate); // Never a pending value
+    iface->valueInterface()->setCurrentValue(150.0);
+    QVERIFY(!actions->actionNames().contains(apply));
+}
+
+// #183: one value-change event, with value(), at every change of what the value text tells: value(), the pending
+// value (keys, Escape, Enter), the overflow, the limits; none when nothing changes; a state-change event when
+// read-only changes
+void tst_ThumbwheelSwitchInput::accessibleEventsFollowTheValueText()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    ThumbwheelSwitch &w = *rig.wheel;
+    A11yLog log(w);
+
+    w.setValue(130.0);
+    QCOMPARE(log.flush(), QStringLiteral("value 130"));
+    w.setValue(130.0);
+    QCOMPARE(log.flush(), QString());
+
+    rig.key(Qt::Key_End);
+    QCOMPARE(log.flush(), QString()); // The current decade is not exposed
+    rig.key(Qt::Key_Up); // Pending 130.1
+    QCOMPARE(log.flush(), QStringLiteral("value 130"));
+    rig.key(Qt::Key_Escape);
+    QCOMPARE(log.flush(), QStringLiteral("value 130"));
+    rig.key(Qt::Key_Up);
+    log.flush();
+    rig.key(Qt::Key_Return);
+    QCOMPARE(log.flush(), QStringLiteral("value 130.1"));
+
+    w.setRange(0.0, 100.0); // The value is now above the maximum
+    QCOMPARE(log.flush(), QStringLiteral("value 130.1"));
+    w.setRange(0.0, 100.0);
+    QCOMPARE(log.flush(), QString());
+
+    w.setValue(123456.0);
+    QCOMPARE(log.flush(), QStringLiteral("value 130.1"));
+    w.setValue(123456.0); // Still in overflow
+    QCOMPARE(log.flush(), QString());
+    w.setValue(50.0);
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+
+    w.setReadOnly(true);
+    QCOMPARE(log.flush(), QStringLiteral("readOnly"));
+    w.setReadOnly(true);
+    QCOMPARE(log.flush(), QString());
+    w.setReadOnly(false);
+    QCOMPARE(log.flush(), QStringLiteral("readOnly"));
+
+    rig.key(Qt::Key_Up); // Pending, then read-only discards it: the state, then the value text
+    log.flush();
+    w.setReadOnly(true);
+    QCOMPARE(log.flush(), QStringLiteral("readOnly; value 50"));
+    w.setReadOnly(false);
+    log.flush();
+
+    w.setApplyMode(Mode::Immediate);
+    log.flush();
+    rig.key(Qt::Key_Up);
+    QCOMPARE(log.flush(), QStringLiteral("value 50.1"));
 }
 
 QTEST_MAIN(tst_ThumbwheelSwitchInput)

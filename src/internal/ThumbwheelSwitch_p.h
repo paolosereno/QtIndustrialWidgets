@@ -16,9 +16,11 @@
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QVector>
+#include <QtGui/QAccessible>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
 
+#include <functional>
 #include <optional>
 
 namespace QtIndustrialWidgets {
@@ -104,6 +106,31 @@ public:
     [[nodiscard]] internal::ThumbwheelLayoutInput layoutInput(double w, double h, const Fonts &fonts) const;
     /// The text of the status line while a value is pending: "SET?  now " and the applied value with its unit
     [[nodiscard]] QString statusText(QChar digitChar = QChar()) const;
+
+    // #183: every accessibility event of the switch goes through here. The observer is set by tests only
+    // (ThumbwheelSwitchTestAccess): under QT_QPA_PLATFORM=offscreen Qt drops the events before any update handler
+    std::function<void(QAccessibleEvent *)> m_accessibleObserver;
+    void sendAccessible(QAccessibleEvent *event) const
+    {
+        if (m_accessibleObserver) {
+            m_accessibleObserver(event);
+        }
+        QAccessible::updateAccessibility(event); // Nothing while no assistive technology is active (#214)
+    }
+    // #183: the value, the pending value, the overflow or the limits changed: the value text changed
+    void notifyValue(ThumbwheelSwitch *q) const
+    {
+        QAccessibleValueChangeEvent event(q, value());
+        sendAccessible(&event);
+    }
+    // #183: the read-only state changed
+    void notifyReadOnly(ThumbwheelSwitch *q) const
+    {
+        QAccessible::State changed;
+        changed.readOnly = true;
+        QAccessibleStateChangeEvent event(q, changed);
+        sendAccessible(&event);
+    }
 };
 
 } // namespace QtIndustrialWidgets

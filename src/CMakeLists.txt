@@ -352,6 +352,8 @@ add_library(QtIndustrialWidgets ${QTINDUSTRIALWIDGETS_LIBRARY_TYPE}
     internal/IndustrialKnobAccessible.h
     internal/IndustrialSliderAccessible.cpp
     internal/IndustrialSliderAccessible.h
+    internal/ThumbwheelSwitchAccessible.cpp
+    internal/ThumbwheelSwitchAccessible.h
     StripChart.cpp
     AnalysisChart.cpp
     IndustrialSwitch.cpp
