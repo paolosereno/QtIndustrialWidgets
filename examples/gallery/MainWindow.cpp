@@ -2403,6 +2403,17 @@ bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStri
         }
         QCoreApplication::sendPostedEvents();
 
+        // A tab that scrolls (Manual Controls) is exported whole (#154): the window grows, for this image only, by
+        // what its viewport lacks, so no group is cut off and no scroll bar is drawn
+        const QSize windowSize = size();
+        if (auto *scroll = qobject_cast<QScrollArea *>(m_tabWidget->currentWidget()); scroll && scroll->widget()) {
+            const int missing = scroll->widget()->sizeHint().height() - scroll->viewport()->height();
+            if (missing > 0) {
+                resize(width(), height() + missing);
+                QCoreApplication::sendPostedEvents();
+            }
+        }
+
         QImage image(size() * dpr, QImage::Format_ARGB32_Premultiplied);
         image.setDevicePixelRatio(dpr);
         image.fill(Qt::black);
@@ -2419,6 +2430,10 @@ bool MainWindow::exportTabImages(const QString &dir, qreal dpr, bool dark, QStri
             return false;
         }
         written->append(path);
+        if (size() != windowSize) {
+            resize(windowSize);
+            QCoreApplication::sendPostedEvents();
+        }
     }
     return true;
 }
