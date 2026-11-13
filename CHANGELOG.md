@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`IndustrialSlider`: an accessibility event at a change of `feedbackState`** (#240), and when a feedback appears or
+  goes, also with the deviation off. Before, the value text changed without an event. See
+  [IndustrialSlider](docs/widgets.md#industrialslider).
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.0` tag archive (the tagged commit still had the `v2.7.0` hash, since the hash can be computed only after the tag).
 
 ---
