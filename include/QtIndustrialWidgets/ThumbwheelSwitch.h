@@ -77,8 +77,8 @@ class ThumbwheelSwitchAccessible;
  *   mark on discards a pending value. Moving the current decade is still possible.
  *
  * setValue() changes the applied value and never emits valueCommitted(); a pending value stays, unless it is now
- * equal to value() or the overflow mark turns on. A change of digitCount(), decimals() or of the sign drum discards a
- * pending value, and so does a change of applyMode().
+ * equal to value() or the overflow mark turns on. A change of digitCount(), decimals(), of the sign drum or of the
+ * limits discards a pending value, and so does a change of applyMode().
  *
  * Focus: the switch takes focus with Tab and a click (Qt::StrongFocus), also in read-only, and then draws a solid
  * 2 px ring in textColor() along its edge and a bar under the current decade.
@@ -215,7 +215,7 @@ public Q_SLOTS:
     void setMaximum(double max);
     /**
      * \brief Sets the limits of the operator's input. Non-finite values and min >= max are ignored. value() is not
-     * changed. Emits rangeChanged() if the limits as read change.
+     * changed. Emits rangeChanged() if the limits as read change; such a change also discards a pending value.
      */
     void setRange(double min, double max);
     /** \brief Sets the unit drawn after the drums. */

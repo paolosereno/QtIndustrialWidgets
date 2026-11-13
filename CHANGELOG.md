@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`ThumbwheelSwitch`: a change of the limits discards the pending value** (#239). Before, Enter could apply a value
+  made under the old limits, outside the new ones. See [ThumbwheelSwitch](docs/widgets.md#thumbwheelswitch).
 - **`IndustrialSlider`: an accessibility event at a change of `feedbackState`** (#240), and when a feedback appears or
   goes, also with the deviation off. Before, the value text changed without an event. See
   [IndustrialSlider](docs/widgets.md#industrialslider).

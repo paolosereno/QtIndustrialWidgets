@@ -53,6 +53,8 @@ private Q_SLOTS:
     void lossOfFocusNeverApplies();
     void configurationChangeDiscardsThePendingValue_data();
     void configurationChangeDiscardsThePendingValue();
+    void rangeChangeNeverAppliesAPendingValueOutsideTheLimits();
+    void sameRangeKeepsThePendingValue();
     void overflowRejectsEveryOperatorInput_data();
     void overflowRejectsEveryOperatorInput();
     void keysMoveTheCurrentDecade();
@@ -534,6 +536,11 @@ void tst_ThumbwheelSwitchInput::configurationChangeDiscardsThePendingValue_data(
     QTest::newRow("sign drum") << 2;
     QTest::newRow("applyMode") << 3;
     QTest::newRow("readOnly") << 4;
+    // #239: the limits are configuration too, whether the pending value (135.0) is inside the new ones or not
+    QTest::newRow("range, pending inside") << 5;
+    QTest::newRow("range, pending outside") << 6;
+    QTest::newRow("minimum") << 7;
+    QTest::newRow("maximum") << 8;
 }
 
 void tst_ThumbwheelSwitchInput::configurationChangeDiscardsThePendingValue()
@@ -549,13 +556,61 @@ void tst_ThumbwheelSwitchInput::configurationChangeDiscardsThePendingValue()
     case 1: rig.wheel->setDecimals(2); break;
     case 2: rig.wheel->setSignDrumVisible(true); break;
     case 3: rig.wheel->setApplyMode(Mode::Immediate); break;
-    default: rig.wheel->setReadOnly(true); break;
+    case 4: rig.wheel->setReadOnly(true); break;
+    case 5: rig.wheel->setRange(0.0, 1000.0); break;
+    case 6: rig.wheel->setRange(0.0, 100.0); break;
+    case 7: rig.wheel->setMinimum(10.0); break;
+    default: rig.wheel->setMaximum(130.0); break;
     }
     QVERIFY(!rig.wheel->hasPendingValue());
     QCOMPARE(rig.wheel->pendingValue(), rig.wheel->value());
     QCOMPARE(spies.pending.count(), 1);
     QCOMPARE(spies.committed.count(), 0);
     QCOMPARE(rig.wheel->value(), 125.0);
+}
+
+// #239: a pending value made under the old limits is never applied under the new ones. Before the fix setRange() kept it,
+// and Enter applied 135.0 with the maximum at 100.0
+void tst_ThumbwheelSwitchInput::rangeChangeNeverAppliesAPendingValueOutsideTheLimits()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    rig.click(rig.layout().plus.at(2));
+    QCOMPARE(rig.wheel->pendingValue(), 135.0);
+    rig.wheel->setRange(0.0, 100.0);
+    Spies spies(rig.wheel);
+    rig.key(Qt::Key_Return);
+    rig.click(rig.layout().setButton); // The SET button too
+    rig.wheel->applyPending();
+    QCOMPARE(spies.committed.count(), 0);
+    QCOMPARE(spies.changed.count(), 0);
+    QCOMPARE(rig.wheel->value(), 125.0); // value() is kept outside the new limits, marked, as before
+    QVERIFY(!rig.wheel->hasPendingValue());
+}
+
+// #239: a call that leaves the limits as read as they are is no configuration change, and keeps the pending value. The
+// limits are read within what the drums show (0 to 9999.9 here), as rangeChanged() reads them
+void tst_ThumbwheelSwitchInput::sameRangeKeepsThePendingValue()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    rig.click(rig.layout().plus.at(2));
+    Spies spies(rig.wheel);
+    QSignalSpy range(rig.wheel, &ThumbwheelSwitch::rangeChanged);
+    rig.wheel->setRange(0.0, 2500.0);
+    rig.wheel->setMinimum(0.0);
+    rig.wheel->setMaximum(2500.0);
+    QVERIFY(rig.wheel->hasPendingValue());
+    rig.wheel->setMaximum(20000.0); // Read as 9999.9: a change, which discards
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QCOMPARE(range.count(), 1);
+    rig.click(rig.layout().plus.at(2));
+    QVERIFY(rig.wheel->hasPendingValue());
+    rig.wheel->setMaximum(30000.0); // Still read as 9999.9
+    QCOMPARE(range.count(), 1);
+    QVERIFY(rig.wheel->hasPendingValue());
+    QCOMPARE(rig.wheel->pendingValue(), 135.0);
+    QCOMPARE(spies.pending.count(), 2); // Discarded once, made again once
 }
 
 void tst_ThumbwheelSwitchInput::overflowRejectsEveryOperatorInput_data()
