@@ -97,7 +97,11 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
   Grep for the old version string afterwards (README `GIT_TAG`, package names in docs).
   In `ports/qtindustrialwidgets/vcpkg.json` a new version resets the port version to 0: remove `"port-version"`
   (0 is the default), since `port-version` counts only the changes of the port within one version.
-- `CHANGELOG.md` follows Keep a Changelog: Added / Changed / Deprecated / Removed / Fixed / Performance / Tests.
+- `CHANGELOG.md` follows Keep a Changelog: Upgrade notes / Added / Changed / Deprecated / Removed / Fixed /
+  Performance / Tests. **Upgrade notes** opens a release section when the release has behaviour changes that can reach
+  code using the library: one bullet per change, saying what to do.
+- A new CHANGELOG entry is two or three lines: what changed, the issue number, and a link to the section of
+  `docs/widgets.md` (or the relevant doc) that gives the details. Do not rewrite past entries.
 - Do not bump the version or tag a release unless the issue asks for it.
 
 ## vcpkg port and registry
