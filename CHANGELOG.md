@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`ThumbwheelSwitch`: a change of the limits discards the pending value** (#239). Before, Enter could apply a value
+  made under the old limits, outside the new ones. See [ThumbwheelSwitch](docs/widgets.md#thumbwheelswitch).
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.0` tag archive (the tagged commit still had the `v2.7.0` hash, since the hash can be computed only after the tag).
 
 ---

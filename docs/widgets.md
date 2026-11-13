@@ -305,7 +305,8 @@ setpoint panels: one digit drum per decade, each with a + button above it and a 
   - `applyMode` `OnConfirm` (default): the drums show the pending value with a dashed outline in `pendingColor`, the
     applied value stays on a line under them (`SET?  now 0125.0 V`), and the SET button after the tag column is
     filled. Enter, SET or `applyPending()` apply it; Escape or `discardPending()` discard it; a loss of focus never
-    applies it. `hasPendingValue`, `pendingValue` and `pendingValueChanged()` follow it.
+    applies it. A change of `digitCount`, `decimals`, the sign drum, the limits or `applyMode` discards it (#239).
+    `hasPendingValue`, `pendingValue` and `pendingValueChanged()` follow it.
   - `applyMode` `Immediate`: each step is applied at once, and `valueCommitted()` comes at the end of the action.
   - Read-only (`readOnly`): the input is ignored and a padlock is drawn under the drums; a pending value is discarded.
   - Overflow: every operator input that would change the value is rejected, and turning the mark on discards a
