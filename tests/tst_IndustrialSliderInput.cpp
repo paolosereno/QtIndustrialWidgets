@@ -82,6 +82,7 @@ private Q_SLOTS:
     void accessibleSetValueIsOperatorInput();
     void accessibleEventsFollowTheSetpoint();
     void accessibleEventsFollowTheDeviationState();
+    void accessibleEventsFollowTheFeedbackState();
 };
 
 namespace {
@@ -1410,7 +1411,9 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheSetpoint()
     QAccessible::queryAccessibleInterface(s)->valueInterface()->setCurrentValue(40.0);
     QCOMPARE(log.flush(), QStringLiteral("value 40"));
 
-    s->setFeedback(12.0); // Deviation Off before and after: no event
+    s->setFeedback(12.0); // Deviation Off before and after, but the first feedback adds the position (#240)
+    QCOMPARE(log.flush(), QStringLiteral("value 40"));
+    s->setFeedback(14.0); // A new position in the same state: no event
     QCOMPARE(log.flush(), QString());
     s->setDeviationThreshold(5.0); // Off to Deviating: the value text changed (accessibleEventsFollowTheDeviationState)
     QCOMPARE(log.flush(), QStringLiteral("value 40"));
@@ -1450,14 +1453,16 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheDeviationState()
     s.setFeedback(40.0); // Normal to Deviating
     QCOMPARE(log.flush(), QStringLiteral("value 50"));
     QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("50.0 %, position 40.0 %, deviation"));
-    s.setFeedback(30.0);
-    s.setFeedback(130.0); // Over range, still Deviating
+    s.setFeedback(30.0); // Still Deviating, still Valid: a new position sends none
     QCOMPARE(log.flush(), QString());
-    s.setFeedback(kNaN); // Deviating to Unknown
+    s.setFeedback(130.0); // Still Deviating, Valid to Overrange: one event for the feedback state (#240)
     QCOMPARE(log.flush(), QStringLiteral("value 50"));
-    s.setFeedback(kInf); // Still Unknown
-    s.setFeedback(kNaN);
-    QCOMPARE(log.flush(), QString());
+    s.setFeedback(kNaN); // Deviating to Unknown and Overrange to Invalid: one event, not two
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+    s.setFeedback(kInf); // Still Unknown, Invalid to Overrange (#240)
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
+    s.setFeedback(kNaN); // Still Unknown, Overrange to Invalid (#240)
+    QCOMPARE(log.flush(), QStringLiteral("value 50"));
     s.setFeedback(50.0); // Unknown to Normal
     QCOMPARE(log.flush(), QStringLiteral("value 50"));
 
@@ -1487,6 +1492,60 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheDeviationState()
     QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("52.0 %"));
     s.clearFeedback();
     QCOMPARE(log.flush(), QString());
+}
+
+// #240: with the deviation off, a change of feedbackState, or a feedback that appears or goes, changes the value text
+// (the position part) and sends one value-change event with the setpoint. A new position in the same state sends none.
+// With the deviation on, a call that changes both states sends one event
+void tst_IndustrialSliderInput::accessibleEventsFollowTheFeedbackState()
+{
+    IndustrialSlider s;
+    s.setRange(0.0, 100.0);
+    s.setSetpoint(60.0);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&s);
+    QVERIFY(iface);
+    A11yLog log(s);
+    const auto text = [&] { return iface->text(QAccessible::Value); };
+
+    s.setFeedback(15.0); // No feedback to Valid
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(text(), QStringLiteral("60.0 %, position 15.0 %"));
+    s.setFeedback(20.0);
+    s.setFeedback(15.0);
+    QCOMPARE(log.flush(), QString());
+
+    s.setFeedback(kNaN); // Valid to Invalid
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(text(), QStringLiteral("60.0 %, position invalid"));
+    s.setFeedback(15.0); // Invalid to Valid
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.setFeedback(120.0); // Valid to Overrange
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(text(), QStringLiteral("60.0 %, position over range 120.0 %"));
+    s.setFeedback(130.0); // Still Overrange: the number in the text changes, the state does not
+    QCOMPARE(log.flush(), QString());
+    s.setFeedback(-5.0); // Overrange to Underrange
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.setFeedback(15.0); // Underrange to Valid
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+
+    s.clearFeedback(); // Valid to no feedback
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(text(), QStringLiteral("60.0 %"));
+    s.setFeedback(kNaN); // No feedback to NaN: feedbackState is Invalid before and after, the position appears
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    QCOMPARE(text(), QStringLiteral("60.0 %, position invalid"));
+    s.clearFeedback(); // NaN to no feedback: Invalid before and after, the position goes
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.clearFeedback();
+    QCOMPARE(log.flush(), QString());
+
+    s.setDeviationThreshold(5.0); // No feedback: Off stays
+    QCOMPARE(log.flush(), QString());
+    s.setFeedback(58.0); // No feedback to Valid, Off to Normal: one event
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
+    s.setFeedback(kNaN); // Valid to Invalid, Normal to Unknown: one event
+    QCOMPARE(log.flush(), QStringLiteral("value 60"));
 }
 
 QTEST_MAIN(tst_IndustrialSliderInput)
