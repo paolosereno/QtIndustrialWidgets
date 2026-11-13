@@ -138,12 +138,13 @@ public:
         QAccessibleValueChangeEvent event(q, m_setpoint);
         sendAccessible(&event);
     }
-    // #183: the deviation state changed while the setpoint did not (setSetpoint() and setRange() send their own
-    // event). QAccessible::State has no flag for a deviation, so this is a value-change event with the setpoint: the
-    // value text, which tells the deviation, changed
-    void notifyDeviation(IndustrialSlider *q, const Changes &changes) const
+    // #183, #240: the deviation state, the feedback state or the presence of a feedback changed while the setpoint did
+    // not (setSetpoint() and setRange() send their own event). QAccessible::State has no flag for them, so this is one
+    // value-change event with the setpoint: the value text, which tells the position and the deviation, changed. A
+    // new position in the same state sends none
+    void notifyFeedback(IndustrialSlider *q, const Changes &changes, bool presenceChanged) const
     {
-        if (changes.deviation) {
+        if (changes.deviation || changes.feedbackState || presenceChanged) {
             notifySetpoint(q);
         }
     }
