@@ -454,8 +454,13 @@ void ThumbwheelSwitch::setRange(double min, double max)
 {
     if (!std::isfinite(min) || !std::isfinite(max) || min >= max) return;
     ChangeScope scope(this, d_ptr.get());
+    const internal::ThumbwheelLimits before = d_ptr->limits();
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
+    const internal::ThumbwheelLimits after = d_ptr->limits();
+    if (after.low != before.low || after.high != before.high) {
+        d_ptr->m_pending.reset(); // #239: made under the old limits, it is never applied under the new ones
+    }
     scope.emitChanges();
 }
 
