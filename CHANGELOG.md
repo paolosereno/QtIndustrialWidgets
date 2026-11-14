@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [2.8.1] - 2026-11-14
 
 ### Fixed
 - **`ThumbwheelSwitch`: a change of the limits discards the pending value** (#239). Before, Enter could apply a value
