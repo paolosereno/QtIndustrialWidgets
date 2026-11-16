@@ -343,7 +343,10 @@ QWidget *thumbwheelAboveLimit(Theme theme)
 {
     ThumbwheelSwitch *w = thumbwheel(theme, 4, 0, false, QStringLiteral("rpm"));
     w->setRange(0.0, 1500.0);
-    w->setValue(1820.0); // Read back above the maximum: ▲, and every + step is rejected
+    // Read back above the maximum: ▲.
+    // OnConfirm: the + and − steps are taken into the pending value; SET applies it only if it is inside the limits or
+    // closer to them than the current value (#242).
+    w->setValue(1820.0);
     return w;
 }
 
