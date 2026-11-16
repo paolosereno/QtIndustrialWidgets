@@ -318,6 +318,24 @@ struct ActionKnob {
     void release(double angle) { sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, angle)); }
 };
 
+// #241: valueChanged(), valueCommitted() and operatorActiveChanged() in the order they come, each with
+// isOperatorActive() as read in the slot: "changed 51 (on)", "committed 52 (off)", "active true (on)"
+struct ActionLog {
+    QStringList lines;
+    explicit ActionLog(IndustrialKnob &knob)
+    {
+        auto add = [this, &knob](const char *what, const QString &arg) {
+            lines << QStringLiteral("%1 %2 (%3)").arg(QLatin1String(what), arg,
+                                                     knob.isOperatorActive() ? QStringLiteral("on") : QStringLiteral("off"));
+        };
+        QObject::connect(&knob, &IndustrialKnob::valueChanged, [add](double v) { add("changed", QString::number(v)); });
+        QObject::connect(&knob, &IndustrialKnob::valueCommitted, [add](double v) { add("committed", QString::number(v)); });
+        QObject::connect(&knob, &IndustrialKnob::operatorActiveChanged,
+                         [add](bool a) { add("active", a ? QStringLiteral("true") : QStringLiteral("false")); });
+    }
+    QString take() { return std::exchange(lines, {}).join(QStringLiteral("; ")); }
+};
+
 class AccessibleEvents
 {
 public:
@@ -394,6 +412,9 @@ private Q_SLOTS:
     void setRangeDuringADragClampsAndTheDragGoesOn();
     void heldValueIsClampedWhenApplied();
     void heldValueSendsNoAccessibilityEventUntilApplied();
+    void operatorActiveSignalsInOrder();
+    void setValueFromTheCommitSlotIsApplied();
+    void wheelAndAssistiveTechnologyAreNotActions();
     void pressOutsideTheDrawnDialStartsNoDrag();
     void dragCommitsOnceAtTheRelease();
     void keyStepCommitsAtTheRelease();
@@ -2917,7 +2938,12 @@ void tst_IndustrialKnob::setValueDuringADragIsHeld()
     QCOMPARE(changed.count(), 0);
     k.move(60.0);
     const double after = k.knob.value();
-    QCOMPARE(after, valueAtAngle(k.knob, 60.0));
+    ActionKnob reference; // The same drag with no setValue()
+    QVERIFY(reference.show());
+    reference.press(0.0);
+    reference.move(30.0);
+    reference.move(60.0);
+    QVERIFY2(after == reference.knob.value(), qPrintable(QString::number(after, 'g', 17)));
     k.release(60.0);
     QCOMPARE(committed.count(), 1);
     QCOMPARE(committed.at(0).at(0).toDouble(), after);
@@ -3043,10 +3069,17 @@ void tst_IndustrialKnob::setRangeDuringADragClampsAndTheDragGoesOn()
     k.knob.setRange(0.0, 60.0);
     QCOMPARE(k.knob.value(), 60.0);
     QCOMPARE(changed.count(), 1);
-    k.move(0.0); // 30 degrees back from 60, on the scale 0-60
-    const double expected = 60.0 - 30.0 / k.knob.spanAngle() * 60.0;
-    QVERIFY2(std::abs(k.knob.value() - expected) < 1e-9,
-             qPrintable(QStringLiteral("%1, expected %2").arg(k.knob.value(), 0, 'g', 17).arg(expected, 0, 'g', 17)));
+    k.move(0.0); // Back by the same turn of the pointer, on the scale 0-60
+    // The reference: a drag that starts at 60 on the scale 0-60, with the pointer where the first one last was
+    ActionKnob reference;
+    QVERIFY(reference.show());
+    reference.knob.setRange(0.0, 60.0);
+    reference.knob.setValue(60.0);
+    reference.press(30.0);
+    reference.move(0.0);
+    QVERIFY(reference.knob.value() < 55.0);
+    QVERIFY2(k.knob.value() == reference.knob.value(),
+             qPrintable(QStringLiteral("%1, reference %2").arg(k.knob.value(), 0, 'g', 17).arg(reference.knob.value(), 0, 'g', 17)));
 }
 
 // #241: a held value is clamped to the range in force when it is applied, not when it arrives
@@ -3079,6 +3112,79 @@ void tst_IndustrialKnob::heldValueSendsNoAccessibilityEventUntilApplied()
     QCOMPARE(applied.at(0).value, 20.0);
 }
 
+
+// #241: operatorActiveChanged(true) before the first valueChanged() of the action, at the press (or the first key
+// press, even when it changes nothing); at the end isOperatorActive() is already false in the slots, and
+// operatorActiveChanged(false) comes after the commit or after the held value applied. The property follows
+void tst_IndustrialKnob::operatorActiveSignalsInOrder()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    k.knob.setStep(1.0);
+    ActionLog log(k.knob);
+    QVERIFY(!k.knob.isOperatorActive());
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Right, false);
+    QVERIFY(k.knob.isOperatorActive());
+    QCOMPARE(k.knob.property("operatorActive").toBool(), true);
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Right, true);
+    sendKey(k.knob, QEvent::KeyRelease, Qt::Key_Right, false);
+    QCOMPARE(log.take(), QStringLiteral("active true (on); changed 51 (on); changed 52 (on); committed 52 (off); "
+                                        "active false (off)"));
+    QCOMPARE(k.knob.property("operatorActive").toBool(), false);
+
+    // A drag back to its start, with a value held: applied after the end, before operatorActiveChanged(false)
+    k.press(0.0);
+    QCOMPARE(log.take(), QStringLiteral("active true (on)"));
+    k.knob.setValue(20.0);
+    k.release(0.0);
+    QCOMPARE(log.take(), QStringLiteral("changed 20 (off); active false (off)"));
+
+    // A key at the end that changes nothing is still an action
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Home, false);
+    sendKey(k.knob, QEvent::KeyRelease, Qt::Key_Home, false);
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Home, false);
+    sendKey(k.knob, QEvent::KeyRelease, Qt::Key_Home, false);
+    QCOMPARE(log.take(), QStringLiteral("active true (on); changed 0 (on); committed 0 (off); active false (off); "
+                                        "active true (on); active false (off)"));
+}
+
+// #241: a slot of valueCommitted() that writes the value and sets what the device reports sees the knob idle: its
+// setValue() is applied at once
+void tst_IndustrialKnob::setValueFromTheCommitSlotIsApplied()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    ActionLog log(k.knob); // Connected first, so that it logs the commit before what the slot does
+    QObject::connect(&k.knob, &IndustrialKnob::valueCommitted, &k.knob, [&k] { k.knob.setValue(40.0); });
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Right, false);
+    sendKey(k.knob, QEvent::KeyRelease, Qt::Key_Right, false);
+    QCOMPARE(k.knob.value(), 40.0);
+    QCOMPARE(log.take(), QStringLiteral("active true (on); changed 51 (on); committed 51 (off); changed 40 (off); "
+                                        "active false (off)"));
+}
+
+// #241: a wheel notch and a value set by assistive technology are applied and committed at once: no action, and an
+// action running ends first, with its commit
+void tst_IndustrialKnob::wheelAndAssistiveTechnologyAreNotActions()
+{
+    ActionKnob k;
+    k.knob.setWheelEnabled(true);
+    QVERIFY(k.show());
+    QVERIFY(focusOn(k.knob));
+    ActionLog log(k.knob);
+    QVERIFY(sendWheel(k.knob, 120));
+    QCOMPARE(log.take(), QStringLiteral("changed 51 (off); committed 51 (off)"));
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&k.knob);
+    QVERIFY(iface && iface->valueInterface());
+    iface->valueInterface()->setCurrentValue(40.0);
+    QCOMPARE(log.take(), QStringLiteral("changed 40 (off); committed 40 (off)"));
+
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Right, false); // 41, the key held
+    iface->valueInterface()->setCurrentValue(60.0);
+    QVERIFY(!k.knob.isOperatorActive());
+    QCOMPARE(log.take(), QStringLiteral("active true (on); changed 41 (on); committed 41 (off); active false (off); "
+                                        "changed 60 (off); committed 60 (off)"));
+}
 
 #include "tst_IndustrialKnob.moc"
 

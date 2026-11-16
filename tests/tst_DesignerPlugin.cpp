@@ -15,6 +15,7 @@
 #include <QtUiPlugin/QDesignerCustomWidgetInterface>
 #include <QtWidgets/QWidget>
 
+#include <algorithm>
 #include <memory>
 
 class tst_DesignerPlugin : public QObject
@@ -26,6 +27,8 @@ private Q_SLOTS:
     void entries_data();
     void entries();
     void entriesAreDistinct();
+    void operatorActiveIsNotDesignable_data();
+    void operatorActiveIsNotDesignable();
 
 private:
     QList<QDesignerCustomWidgetInterface *> m_widgets;
@@ -159,4 +162,35 @@ void tst_DesignerPlugin::entriesAreDistinct()
 }
 
 QTEST_MAIN(tst_DesignerPlugin)
+void tst_DesignerPlugin::operatorActiveIsNotDesignable_data()
+{
+    QTest::addColumn<QString>("widgetClass");
+    for (const char *c : {"IndustrialKnob", "IndustrialSlider", "ThumbwheelSwitch"}) {
+        QTest::newRow(c) << QString::fromLatin1(c);
+    }
+}
+
+// #241: operatorActive is a state of the running widget, read-only, that Designer does not show in the property editor
+void tst_DesignerPlugin::operatorActiveIsNotDesignable()
+{
+    QFETCH(QString, widgetClass);
+    const QString qualified = QStringLiteral("QtIndustrialWidgets::") + widgetClass;
+    const auto it = std::find_if(m_widgets.cbegin(), m_widgets.cend(),
+                                 [&](QDesignerCustomWidgetInterface *w) { return w->name() == qualified; });
+    QVERIFY(it != m_widgets.cend());
+    QWidget parent;
+    const std::unique_ptr<QWidget> created((*it)->createWidget(&parent));
+    QVERIFY(created);
+    const QMetaObject *mo = created->metaObject();
+    const int index = mo->indexOfProperty("operatorActive");
+    QVERIFY(index >= 0);
+    const QMetaProperty p = mo->property(index);
+    QVERIFY(p.isReadable());
+    QVERIFY(!p.isWritable());
+    QVERIFY(!p.isDesignable());
+    QVERIFY(p.hasNotifySignal());
+    QCOMPARE(p.notifySignal().name(), QByteArray("operatorActiveChanged"));
+    QCOMPARE(p.read(created.get()).toBool(), false);
+}
+
 #include "tst_DesignerPlugin.moc"
