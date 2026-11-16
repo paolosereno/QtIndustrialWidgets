@@ -296,6 +296,28 @@ double angleOf(const QPoint &p, const QPointF &center, qreal dpr)
 
 // #183: the accessibility events a knob sends while the recorder lives, seen through the test hook: under
 // QT_QPA_PLATFORM=offscreen there is no accessibility backend, and Qt drops the events before any update handler
+// #241: a shown knob, 0-100, value 50, step 1, with the dial as drawn
+struct ActionKnob {
+    IndustrialKnob knob;
+    DrawnDial dial;
+
+    bool show()
+    {
+        knob.setRange(0.0, 100.0);
+        knob.resize(220, 240);
+        knob.show();
+        if (!QTest::qWaitForWindowExposed(&knob)) {
+            return false;
+        }
+        dial = drawnDialOf(knob);
+        knob.setValue(50.0);
+        return dial.radius > 20.0;
+    }
+    void press(double angle) { sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, angle)); }
+    void move(double angle) { sendMouse(knob, QEvent::MouseMove, dialPoint(dial, angle)); }
+    void release(double angle) { sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, angle)); }
+};
+
 class AccessibleEvents
 {
 public:
@@ -363,6 +385,15 @@ private Q_SLOTS:
     void scaleLabelsStayInsideTheWidget();
     void dragOnTheDrawnDialMovesByTheAngle_data();
     void dragOnTheDrawnDialMovesByTheAngle();
+    void setValueDuringADragIsHeld();
+    void readBackBeforeTheReleaseKeepsTheCommit();
+    void setValueDuringAHeldKeyIsHeld();
+    void heldValueAtTheEndOfTheAction_data();
+    void heldValueAtTheEndOfTheAction();
+    void latestHeldValueWinsAndNaNKeepsIt();
+    void setRangeDuringADragClampsAndTheDragGoesOn();
+    void heldValueIsClampedWhenApplied();
+    void heldValueSendsNoAccessibilityEventUntilApplied();
     void pressOutsideTheDrawnDialStartsNoDrag();
     void dragCommitsOnceAtTheRelease();
     void keyStepCommitsAtTheRelease();
@@ -2867,6 +2898,187 @@ void tst_IndustrialKnob::accessibleEventsFollowTheValue()
     knob->setReadOnly(false);
     QCOMPARE(events.take().size(), 1);
 }
+
+// #241: setValue() from the application during a drag is held: the pointer stays where the operator has it, the
+// drag goes on from there, and the release commits the operator's value and drops the held one. Before, the pointer
+// jumped to the value set and back at the next move
+void tst_IndustrialKnob::setValueDuringADragIsHeld()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    k.press(0.0);
+    k.move(30.0);
+    const double during = k.knob.value();
+    QVERIFY(during > 55.0);
+    QSignalSpy changed(&k.knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&k.knob, &IndustrialKnob::valueCommitted);
+    k.knob.setValue(10.0); // A value read back from the device
+    QCOMPARE(k.knob.value(), during);
+    QCOMPARE(changed.count(), 0);
+    k.move(60.0);
+    const double after = k.knob.value();
+    QCOMPARE(after, valueAtAngle(k.knob, 60.0));
+    k.release(60.0);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), after);
+    QCOMPARE(k.knob.value(), after);
+    QCOMPARE(changed.count(), 1); // The move only: the held value is dropped after the commit
+}
+
+// #241: a read-back of the value the drag started from, between the last move and the release, no longer cancels
+// the commit. Before, the release saw the start value again and committed nothing
+void tst_IndustrialKnob::readBackBeforeTheReleaseKeepsTheCommit()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    QSignalSpy committed(&k.knob, &IndustrialKnob::valueCommitted);
+    k.press(0.0);
+    k.move(30.0);
+    const double during = k.knob.value();
+    k.knob.setValue(50.0); // The device still reports the old value
+    k.release(30.0);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), during);
+    QCOMPARE(k.knob.value(), during);
+}
+
+// #241: the same for a held key: the next auto-repeat steps from the operator's value, not from the held one
+void tst_IndustrialKnob::setValueDuringAHeldKeyIsHeld()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    QSignalSpy committed(&k.knob, &IndustrialKnob::valueCommitted);
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Right, false);
+    QCOMPARE(k.knob.value(), 51.0);
+    k.knob.setValue(10.0);
+    QCOMPARE(k.knob.value(), 51.0);
+    sendKey(k.knob, QEvent::KeyPress, Qt::Key_Right, true);
+    QCOMPARE(k.knob.value(), 52.0);
+    sendKey(k.knob, QEvent::KeyRelease, Qt::Key_Right, false);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), 52.0);
+    QCOMPARE(k.knob.value(), 52.0);
+}
+
+void tst_IndustrialKnob::heldValueAtTheEndOfTheAction_data()
+{
+    QTest::addColumn<int>("ending"); // 0 release, 1 focus out, 2 hide, 3 setReadOnly(true)
+    QTest::addColumn<bool>("changed"); // Whether the action changed the value
+    const char *names[] = {"release", "focus out", "hide", "read-only"};
+    for (int ending = 0; ending < 4; ++ending) {
+        QTest::newRow(qPrintable(QStringLiteral("%1, committed").arg(QLatin1String(names[ending])))) << ending << true;
+        QTest::newRow(qPrintable(QStringLiteral("%1, unchanged").arg(QLatin1String(names[ending])))) << ending << false;
+    }
+}
+
+// #241: however the action ends, the held value is dropped when the action commits, and applied (valueChanged(), no
+// commit) when the action left the value where it started: then the read-back is news from the device
+void tst_IndustrialKnob::heldValueAtTheEndOfTheAction()
+{
+    QFETCH(int, ending);
+    QFETCH(bool, changed);
+    ActionKnob k;
+    if (ending == 2) {
+        k.knob.setFocusPolicy(Qt::NoFocus); // A focused knob that is hidden also loses the focus
+    }
+    QVERIFY(k.show());
+    k.press(0.0);
+    k.move(30.0);
+    if (!changed) {
+        k.move(0.0); // Back to where it started
+        QCOMPARE(k.knob.value(), 50.0);
+    }
+    const double operatorValue = k.knob.value();
+    k.knob.setValue(20.0);
+    QSignalSpy valueSpy(&k.knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(&k.knob, &IndustrialKnob::valueCommitted);
+    switch (ending) {
+    case 0: k.release(changed ? 30.0 : 0.0); break;
+    case 1: {
+        QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+        QCoreApplication::sendEvent(&k.knob, &focusOut);
+        break;
+    }
+    case 2: k.knob.hide(); break;
+    default: k.knob.setReadOnly(true); break;
+    }
+    if (changed) {
+        QCOMPARE(committed.count(), 1);
+        QCOMPARE(committed.at(0).at(0).toDouble(), operatorValue);
+        QCOMPARE(valueSpy.count(), 0);
+        QCOMPARE(k.knob.value(), operatorValue);
+    } else {
+        QCOMPARE(committed.count(), 0);
+        QCOMPARE(valueSpy.count(), 1);
+        QCOMPARE(valueSpy.at(0).at(0).toDouble(), 20.0);
+        QCOMPARE(k.knob.value(), 20.0);
+    }
+}
+
+// #241: the latest call wins; a NaN is rejected with its warning and leaves the held value as it was
+void tst_IndustrialKnob::latestHeldValueWinsAndNaNKeepsIt()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    k.press(0.0);
+    k.knob.setValue(20.0);
+    k.knob.setValue(30.0);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("non-finite")));
+    k.knob.setValue(std::numeric_limits<double>::quiet_NaN());
+    QCOMPARE(k.knob.value(), 50.0);
+    k.release(0.0); // The press alone changed nothing
+    QCOMPARE(k.knob.value(), 30.0);
+}
+
+// #241: setRange() during a drag is applied at once and clamps the operator's value; the drag goes on from the
+// clamped value, on the new scale. Before, the next move took the angle of the drag on the old scale
+void tst_IndustrialKnob::setRangeDuringADragClampsAndTheDragGoesOn()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    k.press(0.0);
+    k.move(30.0);
+    QVERIFY(k.knob.value() > 60.0);
+    QSignalSpy changed(&k.knob, &IndustrialKnob::valueChanged);
+    k.knob.setRange(0.0, 60.0);
+    QCOMPARE(k.knob.value(), 60.0);
+    QCOMPARE(changed.count(), 1);
+    k.move(0.0); // 30 degrees back from 60, on the scale 0-60
+    const double expected = 60.0 - 30.0 / k.knob.spanAngle() * 60.0;
+    QVERIFY2(std::abs(k.knob.value() - expected) < 1e-9,
+             qPrintable(QStringLiteral("%1, expected %2").arg(k.knob.value(), 0, 'g', 17).arg(expected, 0, 'g', 17)));
+}
+
+// #241: a held value is clamped to the range in force when it is applied, not when it arrives
+void tst_IndustrialKnob::heldValueIsClampedWhenApplied()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    QSignalSpy committed(&k.knob, &IndustrialKnob::valueCommitted);
+    k.press(0.0);
+    k.knob.setValue(150.0); // Above the maximum of 100 when it arrives
+    k.knob.setRange(0.0, 200.0);
+    k.release(0.0);
+    QCOMPARE(committed.count(), 0);
+    QCOMPARE(k.knob.value(), 150.0);
+}
+
+// #241: a held value sends no accessibility event, since nothing shown changed; applied at the end, it sends one
+void tst_IndustrialKnob::heldValueSendsNoAccessibilityEventUntilApplied()
+{
+    ActionKnob k;
+    QVERIFY(k.show());
+    AccessibleEvents events(k.knob);
+    k.press(0.0);
+    k.knob.setValue(20.0);
+    QCOMPARE(events.take().size(), 0);
+    k.release(0.0);
+    const QList<AccessibleEvents::Event> applied = events.take();
+    QCOMPARE(applied.size(), 1);
+    QCOMPARE(applied.at(0).type, QAccessible::ValueChanged);
+    QCOMPARE(applied.at(0).value, 20.0);
+}
+
 
 #include "tst_IndustrialKnob.moc"
 

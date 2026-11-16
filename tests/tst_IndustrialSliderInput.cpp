@@ -83,6 +83,15 @@ private Q_SLOTS:
     void accessibleEventsFollowTheSetpoint();
     void accessibleEventsFollowTheDeviationState();
     void accessibleEventsFollowTheFeedbackState();
+    void setSetpointDuringADragIsHeld();
+    void readBackBeforeTheReleaseKeepsTheCommit();
+    void setSetpointDuringAHeldKeyIsHeld();
+    void heldSetpointAtTheEndOfTheAction_data();
+    void heldSetpointAtTheEndOfTheAction();
+    void latestHeldSetpointWinsAndNaNKeepsIt();
+    void setRangeDuringADragClampsAndTheDragGoesOn();
+    void heldSetpointIsClampedWhenApplied();
+    void heldSetpointSendsNoAccessibilityEventUntilApplied();
 };
 
 namespace {
@@ -195,6 +204,26 @@ void showSlider(IndustrialSlider &s, bool vertical, double setpoint)
 
 // #183: the events the slider sends to assistive technology (tests/AccessibleEventLog.h)
 using A11yLog = AccessibleEventLog<internal::IndustrialSliderTestAccess, IndustrialSlider>;
+
+// #241: a shown slider 0-100 at 50, with the layout and the handle of the press
+struct ActionSlider {
+    IndustrialSlider s;
+    internal::SliderLayout l;
+    QPointF h;
+    double length{0.0};
+
+    void show()
+    {
+        showSlider(s, false, 50.0);
+        l = layoutOf(s);
+        h = handlePoint(s);
+        length = std::abs(l.scaleMax - l.scaleMin);
+    }
+    QPointF at(double fraction) const { return moved(l, h, length * fraction); } // Along the scale from the press
+    void press() { sendMouse(s, QEvent::MouseButtonPress, h); }
+    void move(double fraction) { sendMouse(s, QEvent::MouseMove, at(fraction)); }
+    void release(double fraction) { sendMouse(s, QEvent::MouseButtonRelease, at(fraction)); }
+};
 
 } // namespace
 
@@ -1547,6 +1576,182 @@ void tst_IndustrialSliderInput::accessibleEventsFollowTheFeedbackState()
     s.setFeedback(kNaN); // Valid to Invalid, Normal to Unknown: one event
     QCOMPARE(log.flush(), QStringLiteral("value 60"));
 }
+
+// #241: setSetpoint() from the application during a drag is held: the handle stays where the operator has it, the
+// drag goes on from there, and the release commits the operator's setpoint and drops the held one. Before, the handle
+// jumped to the setpoint set and back at the next move
+void tst_IndustrialSliderInput::setSetpointDuringADragIsHeld()
+{
+    ActionSlider a;
+    a.show();
+    a.press();
+    a.move(0.10);
+    const double during = a.s.setpoint();
+    QCOMPARE(during, 60.0);
+    QSignalSpy changed(&a.s, &IndustrialSlider::setpointChanged);
+    QSignalSpy committed(&a.s, &IndustrialSlider::setpointCommitted);
+    a.s.setSetpoint(10.0); // A value read back from the device
+    QCOMPARE(a.s.setpoint(), during);
+    QCOMPARE(changed.count(), 0);
+    a.move(0.20);
+    QCOMPARE(a.s.setpoint(), 70.0);
+    a.release(0.20);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), 70.0);
+    QCOMPARE(a.s.setpoint(), 70.0);
+    QCOMPARE(changed.count(), 1); // The move only: the held setpoint is dropped after the commit
+}
+
+// #241: a read-back of the setpoint the drag started from, between the last move and the release, no longer cancels
+// the commit (measured on main for #241: release -> 50, committed nothing)
+void tst_IndustrialSliderInput::readBackBeforeTheReleaseKeepsTheCommit()
+{
+    ActionSlider a;
+    a.show();
+    QSignalSpy committed(&a.s, &IndustrialSlider::setpointCommitted);
+    a.press();
+    a.move(0.10);
+    a.s.setSetpoint(50.0); // The device still reports the old value
+    a.release(0.10);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), 60.0);
+    QCOMPARE(a.s.setpoint(), 60.0);
+}
+
+// #241: the same for a held key: the next auto-repeat steps from the operator's setpoint, not from the held one
+void tst_IndustrialSliderInput::setSetpointDuringAHeldKeyIsHeld()
+{
+    ActionSlider a;
+    a.show();
+    QSignalSpy committed(&a.s, &IndustrialSlider::setpointCommitted);
+    sendKey(a.s, QEvent::KeyPress, Qt::Key_Right, false);
+    QCOMPARE(a.s.setpoint(), 51.0);
+    a.s.setSetpoint(10.0);
+    QCOMPARE(a.s.setpoint(), 51.0);
+    sendKey(a.s, QEvent::KeyPress, Qt::Key_Right, true);
+    QCOMPARE(a.s.setpoint(), 52.0);
+    sendKey(a.s, QEvent::KeyRelease, Qt::Key_Right, false);
+    QCOMPARE(committed.count(), 1);
+    QCOMPARE(committed.at(0).at(0).toDouble(), 52.0);
+    QCOMPARE(a.s.setpoint(), 52.0);
+}
+
+void tst_IndustrialSliderInput::heldSetpointAtTheEndOfTheAction_data()
+{
+    QTest::addColumn<int>("ending"); // 0 release, 1 focus out, 2 hide, 3 setReadOnly(true)
+    QTest::addColumn<bool>("changed"); // Whether the action changed the setpoint
+    const char *names[] = {"release", "focus out", "hide", "read-only"};
+    for (int ending = 0; ending < 4; ++ending) {
+        QTest::newRow(qPrintable(QStringLiteral("%1, committed").arg(QLatin1String(names[ending])))) << ending << true;
+        QTest::newRow(qPrintable(QStringLiteral("%1, unchanged").arg(QLatin1String(names[ending])))) << ending << false;
+    }
+}
+
+// #241: however the action ends, the held setpoint is dropped when the action commits, and applied (setpointChanged(),
+// no commit) when the action left the setpoint where it started: then the read-back is news from the device
+void tst_IndustrialSliderInput::heldSetpointAtTheEndOfTheAction()
+{
+    QFETCH(int, ending);
+    QFETCH(bool, changed);
+    ActionSlider a;
+    if (ending == 2) {
+        a.s.setFocusPolicy(Qt::NoFocus); // A focused slider that is hidden also loses the focus
+    }
+    a.show();
+    a.press();
+    a.move(0.10);
+    if (!changed) {
+        a.move(0.0); // Back to where it started
+        QCOMPARE(a.s.setpoint(), 50.0);
+    }
+    const double operatorSetpoint = a.s.setpoint();
+    a.s.setSetpoint(20.0);
+    QSignalSpy setpointSpy(&a.s, &IndustrialSlider::setpointChanged);
+    QSignalSpy committed(&a.s, &IndustrialSlider::setpointCommitted);
+    switch (ending) {
+    case 0: a.release(changed ? 0.10 : 0.0); break;
+    case 1: {
+        QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+        QCoreApplication::sendEvent(&a.s, &focusOut);
+        break;
+    }
+    case 2: a.s.hide(); break;
+    default: a.s.setReadOnly(true); break;
+    }
+    if (changed) {
+        QCOMPARE(committed.count(), 1);
+        QCOMPARE(committed.at(0).at(0).toDouble(), operatorSetpoint);
+        QCOMPARE(setpointSpy.count(), 0);
+        QCOMPARE(a.s.setpoint(), operatorSetpoint);
+    } else {
+        QCOMPARE(committed.count(), 0);
+        QCOMPARE(setpointSpy.count(), 1);
+        QCOMPARE(setpointSpy.at(0).at(0).toDouble(), 20.0);
+        QCOMPARE(a.s.setpoint(), 20.0);
+    }
+}
+
+// #241: the latest call wins; a NaN is rejected with its warning and leaves the held setpoint as it was
+void tst_IndustrialSliderInput::latestHeldSetpointWinsAndNaNKeepsIt()
+{
+    ActionSlider a;
+    a.show();
+    a.press();
+    a.s.setSetpoint(20.0);
+    a.s.setSetpoint(30.0);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("non-finite")));
+    a.s.setSetpoint(kNaN);
+    QCOMPARE(a.s.setpoint(), 50.0);
+    a.release(0.0); // The press alone changed nothing
+    QCOMPARE(a.s.setpoint(), 30.0);
+}
+
+// #241: setRange() during a drag is applied at once and clamps the operator's setpoint; the drag goes on from the
+// clamped setpoint, on the new range. Before, the next move started again from the setpoint of the press
+void tst_IndustrialSliderInput::setRangeDuringADragClampsAndTheDragGoesOn()
+{
+    ActionSlider a;
+    a.show();
+    a.press();
+    a.move(0.10);
+    QCOMPARE(a.s.setpoint(), 60.0);
+    QSignalSpy changed(&a.s, &IndustrialSlider::setpointChanged);
+    a.s.setRange(0.0, 55.0);
+    QCOMPARE(a.s.setpoint(), 55.0);
+    QCOMPARE(changed.count(), 1);
+    a.move(0.0); // A tenth of the scale back from 55, on the range 0-55
+    const double expected = 55.0 - 0.10 * 55.0;
+    QVERIFY2(std::abs(a.s.setpoint() - expected) < 1e-9,
+             qPrintable(QStringLiteral("%1, expected %2").arg(a.s.setpoint(), 0, 'g', 17).arg(expected, 0, 'g', 17)));
+}
+
+// #241: a held setpoint is clamped to the range in force when it is applied, not when it arrives
+void tst_IndustrialSliderInput::heldSetpointIsClampedWhenApplied()
+{
+    ActionSlider a;
+    a.show();
+    QSignalSpy committed(&a.s, &IndustrialSlider::setpointCommitted);
+    a.press();
+    a.s.setSetpoint(150.0); // Above the maximum of 100 when it arrives
+    a.s.setRange(0.0, 200.0);
+    a.release(0.0);
+    QCOMPARE(committed.count(), 0);
+    QCOMPARE(a.s.setpoint(), 150.0);
+}
+
+// #241: a held setpoint sends no accessibility event, since nothing shown changed; applied at the end, it sends one
+void tst_IndustrialSliderInput::heldSetpointSendsNoAccessibilityEventUntilApplied()
+{
+    ActionSlider a;
+    a.show();
+    A11yLog log(a.s);
+    a.press();
+    a.s.setSetpoint(20.0);
+    QCOMPARE(log.flush(), QString());
+    a.release(0.0);
+    QCOMPARE(log.flush(), QStringLiteral("value 20"));
+}
+
 
 QTEST_MAIN(tst_IndustrialSliderInput)
 #include "tst_IndustrialSliderInput.moc"

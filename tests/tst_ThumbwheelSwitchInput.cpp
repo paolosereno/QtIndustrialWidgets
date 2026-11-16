@@ -38,6 +38,12 @@ class tst_ThumbwheelSwitchInput : public QObject
 
 private Q_SLOTS:
     void defaults();
+    void setValueDuringAHeldKeyIsHeldInImmediate();
+    void heldValueAtTheEndOfTheAction_data();
+    void heldValueAtTheEndOfTheAction();
+    void heldValueTheDrumsCannotShowIsCheckedWhenApplied();
+    void setValueDuringAHeldKeyIsAppliedInOnConfirm();
+    void heldValueSendsNoAccessibilityEventUntilApplied();
     void pressAloneChangesNothing();
     void clickMakesOneStepAtTheRelease_data();
     void clickMakesOneStepAtTheRelease();
@@ -1479,6 +1485,141 @@ void tst_ThumbwheelSwitchInput::accessibleEventsFollowTheValueText()
     rig.key(Qt::Key_Up);
     QCOMPARE(log.flush(), QStringLiteral("value 50.1"));
 }
+
+// #241: in Immediate, setValue() during a held key is held: the drums stay as the operator has them, the next
+// auto-repeat steps from there, and the release commits the operator's value and drops the held one
+void tst_ThumbwheelSwitchInput::setValueDuringAHeldKeyIsHeldInImmediate()
+{
+    Rig rig(Mode::Immediate);
+    QVERIFY(rig.show());
+    Spies spies(rig.wheel);
+    sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false); // The thousands: 125.0 -> 1125.0
+    QCOMPARE(rig.wheel->value(), 1125.0);
+    rig.wheel->setValue(500.0); // A value read back from the device
+    QCOMPARE(rig.wheel->value(), 1125.0);
+    QCOMPARE(spies.changed.count(), 1);
+    sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, true);
+    QCOMPARE(rig.wheel->value(), 2125.0);
+    sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Up, false);
+    QCOMPARE(spies.committed.count(), 1);
+    QCOMPARE(spies.committed.at(0).at(0).toDouble(), 2125.0);
+    QCOMPARE(rig.wheel->value(), 2125.0);
+    QCOMPARE(spies.changed.count(), 2); // The two steps only: the held value is dropped after the commit
+}
+
+void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction_data()
+{
+    QTest::addColumn<int>("ending"); // 0 release, 1 focus out, 2 hide, 3 setReadOnly(true)
+    QTest::addColumn<bool>("changed"); // Whether the action changed the value
+    const char *names[] = {"release", "focus out", "hide", "read-only"};
+    for (int ending = 0; ending < 4; ++ending) {
+        QTest::newRow(qPrintable(QStringLiteral("%1, committed").arg(QLatin1String(names[ending])))) << ending << true;
+        QTest::newRow(qPrintable(QStringLiteral("%1, unchanged").arg(QLatin1String(names[ending])))) << ending << false;
+    }
+}
+
+// #241, Immediate: however the action ends, the held value is dropped when the action commits, and applied
+// (valueChanged(), no commit) when the action left the value where it started
+void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction()
+{
+    QFETCH(int, ending);
+    QFETCH(bool, changed);
+    Rig rig(Mode::Immediate);
+    QVERIFY(rig.show());
+    sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false); // 1125.0
+    int key = Qt::Key_Up;
+    if (!changed) {
+        sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Down, false); // Back to 125.0, in the same action
+        key = Qt::Key_Down;
+        QCOMPARE(rig.wheel->value(), 125.0);
+    }
+    const double operatorValue = rig.wheel->value();
+    rig.wheel->setValue(500.0);
+    Spies spies(rig.wheel);
+    switch (ending) {
+    case 0: sendKey(*rig.wheel, QEvent::KeyRelease, key, false); break;
+    case 1: {
+        QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+        QCoreApplication::sendEvent(rig.wheel, &focusOut);
+        break;
+    }
+    case 2: rig.wheel->hide(); break;
+    default: rig.wheel->setReadOnly(true); break;
+    }
+    if (changed) {
+        QCOMPARE(spies.committed.count(), 1);
+        QCOMPARE(spies.committed.at(0).at(0).toDouble(), operatorValue);
+        QCOMPARE(spies.changed.count(), 0);
+        QCOMPARE(rig.wheel->value(), operatorValue);
+    } else {
+        QCOMPARE(spies.committed.count(), 0);
+        QCOMPARE(spies.changed.count(), 1);
+        QCOMPARE(spies.changed.at(0).at(0).toDouble(), 500.0);
+        QCOMPARE(rig.wheel->value(), 500.0);
+    }
+}
+
+// #241, Immediate: a held value goes through the checks of setValue() when it is applied: one the drums cannot show
+// turns the overflow mark on then, with its warning; dropped after a commit, it does neither
+void tst_ThumbwheelSwitchInput::heldValueTheDrumsCannotShowIsCheckedWhenApplied()
+{
+    {
+        Rig rig(Mode::Immediate);
+        QVERIFY(rig.show());
+        sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false);
+        sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Down, false); // Back to 125.0
+        rig.wheel->setValue(123456.0);
+        QVERIFY(!rig.wheel->isOverflow());
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("cannot be shown")));
+        sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Down, false);
+        QVERIFY(rig.wheel->isOverflow());
+        QCOMPARE(rig.wheel->value(), 125.0);
+    }
+    {
+        Rig rig(Mode::Immediate);
+        QVERIFY(rig.show());
+        sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false); // 1125.0, committed at the release
+        rig.wheel->setValue(123456.0);
+        sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Up, false);
+        QVERIFY(!rig.wheel->isOverflow());
+        QCOMPARE(rig.wheel->value(), 1125.0);
+    }
+}
+
+// #241: in OnConfirm the drums show the pending value, so setValue() during a held key is not held: the applied
+// value takes it at once, as before, and the pending value stays
+void tst_ThumbwheelSwitchInput::setValueDuringAHeldKeyIsAppliedInOnConfirm()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false);
+    QCOMPARE(rig.wheel->pendingValue(), 1125.0);
+    Spies spies(rig.wheel);
+    rig.wheel->setValue(500.0);
+    QCOMPARE(rig.wheel->value(), 500.0);
+    QCOMPARE(spies.changed.count(), 1);
+    QVERIFY(rig.wheel->hasPendingValue());
+    QCOMPARE(rig.wheel->pendingValue(), 1125.0);
+    sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Up, false);
+    QCOMPARE(rig.wheel->value(), 500.0);
+    QCOMPARE(spies.committed.count(), 0);
+    QCOMPARE(spies.changed.count(), 1);
+}
+
+// #241, Immediate: a held value sends no accessibility event, since nothing shown changed; applied, it sends one
+void tst_ThumbwheelSwitchInput::heldValueSendsNoAccessibilityEventUntilApplied()
+{
+    Rig rig(Mode::Immediate);
+    QVERIFY(rig.show());
+    sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false);
+    sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Down, false); // Back to 125.0
+    A11yLog log(*rig.wheel);
+    rig.wheel->setValue(500.0);
+    QCOMPARE(log.flush(), QString());
+    sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Down, false);
+    QCOMPARE(log.flush(), QStringLiteral("value 500"));
+}
+
 
 QTEST_MAIN(tst_ThumbwheelSwitchInput)
 #include "tst_ThumbwheelSwitchInput.moc"
