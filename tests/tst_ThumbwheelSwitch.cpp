@@ -362,26 +362,30 @@ void tst_ThumbwheelSwitch::buttonsShowWhetherTheirStepIsApplied_data()
     QTest::addColumn<double>("minimum");
     QTest::addColumn<double>("maximum");
     QTest::addColumn<double>("value");
-    QTest::addColumn<QString>("plus");  // Per drum, 1: the + step would be applied
+    QTest::addColumn<QString>("plus");  // Per drum, 1: the + step would be applied (in Immediate)
     QTest::addColumn<QString>("minus"); // The same for −
+    // #242: the same in OnConfirm, where the steps follow only what the drums can show (the limits are checked when the
+    // pending value is applied): rejected only + on a 9, − on a 0, and a sign change of 0 or to the sign it has
+    QTest::addColumn<QString>("plusOnConfirm");
+    QTest::addColumn<QString>("minusOnConfirm");
 
-    QTest::newRow("0000") << 4 << 0 << false << 0.0 << 9999.0 << 0.0 << "1111" << "0000";
-    QTest::newRow("9999") << 4 << 0 << false << 0.0 << 9999.0 << 9999.0 << "0000" << "1111";
-    QTest::newRow("0909: 9 and 0 saturate") << 4 << 0 << false << 0.0 << 9999.0 << 909.0 << "1010" << "0101";
+    QTest::newRow("0000") << 4 << 0 << false << 0.0 << 9999.0 << 0.0 << "1111" << "0000" << "1111" << "0000";
+    QTest::newRow("9999") << 4 << 0 << false << 0.0 << 9999.0 << 9999.0 << "0000" << "1111" << "0000" << "1111";
+    QTest::newRow("0909: 9 and 0 saturate") << 4 << 0 << false << 0.0 << 9999.0 << 909.0 << "1010" << "0101" << "1010" << "0101";
     // Limits 0 to 1500 at 1450: thousands + (2450), hundreds + (1550) rejected; tens + (1460) applied
-    QTest::newRow("1450 below 1500") << 4 << 0 << false << 0.0 << 1500.0 << 1450.0 << "0011" << "1110";
+    QTest::newRow("1450 below 1500") << 4 << 0 << false << 0.0 << 1500.0 << 1450.0 << "0011" << "1110" << "1111" << "1110";
     // At 1500: every + rejected
-    QTest::newRow("1500 at the maximum") << 4 << 0 << false << 0.0 << 1500.0 << 1500.0 << "0000" << "1100";
+    QTest::newRow("1500 at the maximum") << 4 << 0 << false << 0.0 << 1500.0 << 1500.0 << "0000" << "1100" << "1111" << "1100";
     // 1820 above the maximum 1500: only steps towards it; 0820 inside, 1720 closer, 1810 closer; + all further out
-    QTest::newRow("1820 above") << 4 << 0 << false << 0.0 << 1500.0 << 1820.0 << "0000" << "1110";
+    QTest::newRow("1820 above") << 4 << 0 << false << 0.0 << 1500.0 << 1820.0 << "0000" << "1110" << "1111" << "1110";
     // 40 below the minimum 100: + all closer (1040 and 140 inside, 50 and 41 closer); − further out (30) or at 0
-    QTest::newRow("0040 below") << 4 << 0 << false << 100.0 << 1500.0 << 40.0 << "1111" << "0000";
+    QTest::newRow("0040 below") << 4 << 0 << false << 100.0 << 1500.0 << 40.0 << "1111" << "0000" << "1111" << "0010";
     // Sign drum first. −12.50 in −50..50: to + applied, − already negative; magnitude up (−22.50) still inside
-    QTest::newRow("-12.50") << 4 << 2 << true << -50.0 << 50.0 << -12.5 << "11111" << "01110";
-    QTest::newRow("-45.00: tens + would be -55") << 4 << 2 << true << -50.0 << 50.0 << -45.0 << "10111" << "01100";
-    QTest::newRow("0: no sign change") << 4 << 2 << true << -50.0 << 50.0 << 0.0 << "01111" << "00000";
+    QTest::newRow("-12.50") << 4 << 2 << true << -50.0 << 50.0 << -12.5 << "11111" << "01110" << "11111" << "01110";
+    QTest::newRow("-45.00: tens + would be -55") << 4 << 2 << true << -50.0 << 50.0 << -45.0 << "10111" << "01100" << "11111" << "01100";
+    QTest::newRow("0: no sign change") << 4 << 2 << true << -50.0 << 50.0 << 0.0 << "01111" << "00000" << "01111" << "00000";
     // +30 in −20..50: to − would be −30, outside
-    QTest::newRow("30: sign change out of the limits") << 4 << 0 << true << -20.0 << 50.0 << 30.0 << "00011" << "00010";
+    QTest::newRow("30: sign change out of the limits") << 4 << 0 << true << -20.0 << 50.0 << 30.0 << "00011" << "00010" << "01111" << "10010";
 }
 
 void tst_ThumbwheelSwitch::buttonsShowWhetherTheirStepIsApplied()
@@ -394,16 +398,22 @@ void tst_ThumbwheelSwitch::buttonsShowWhetherTheirStepIsApplied()
     QFETCH(double, value);
     QFETCH(QString, plus);
     QFETCH(QString, minus);
-    ThumbwheelSwitch w;
-    w.setDigitCount(digits);
-    w.setDecimals(decimals);
-    w.setSignDrumVisible(sign);
-    w.setRange(minimum, maximum);
-    w.setValue(value);
-    prepare(w);
-    (void)render(w);
-    QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(w)), plus);
-    QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastMinusOpen(w)), minus);
+    QFETCH(QString, plusOnConfirm);
+    QFETCH(QString, minusOnConfirm);
+    for (const auto mode : {ThumbwheelSwitch::ApplyMode::Immediate, ThumbwheelSwitch::ApplyMode::OnConfirm}) {
+        const bool immediate = mode == ThumbwheelSwitch::ApplyMode::Immediate;
+        ThumbwheelSwitch w;
+        w.setApplyMode(mode);
+        w.setDigitCount(digits);
+        w.setDecimals(decimals);
+        w.setSignDrumVisible(sign);
+        w.setRange(minimum, maximum);
+        w.setValue(value);
+        prepare(w);
+        (void)render(w);
+        QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(w)), immediate ? plus : plusOnConfirm);
+        QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastMinusOpen(w)), immediate ? minus : minusOnConfirm);
+    }
 }
 
 // Each digit drum shows its digit in digitColor on the drum colour

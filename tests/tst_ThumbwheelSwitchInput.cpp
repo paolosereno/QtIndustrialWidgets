@@ -376,7 +376,9 @@ void tst_ThumbwheelSwitchInput::rejectedClickChangesNothing_data()
     clickMakesOneStepAtTheRelease_data();
 }
 
-// A step drawn with an outlined arrow is rejected: a digit at 9 or 0, a step out of the limits
+// A step drawn with an outlined arrow is rejected: a digit at 9 or 0, and in Immediate a step out of the limits (#242:
+// in OnConfirm the limits are checked when the pending value is applied, so the + of the thousands and hundreds are
+// filled there; onConfirmStepsFollowTheCapacityOnly takes them)
 void tst_ThumbwheelSwitchInput::rejectedClickChangesNothing()
 {
     QFETCH(bool, immediate);
@@ -384,9 +386,10 @@ void tst_ThumbwheelSwitchInput::rejectedClickChangesNothing()
     QVERIFY(rig.show());
     rig.wheel->setValue(2499.9); // + of the thousands and hundreds beyond 2500, the others at 9
     const internal::ThumbwheelLayout l = rig.layout();
-    QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(*rig.wheel)), QStringLiteral("00000"));
+    QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(*rig.wheel)),
+             immediate ? QStringLiteral("00000") : QStringLiteral("11000"));
     Spies spies(rig.wheel);
-    for (int i = 0; i < l.drums.size(); ++i) {
+    for (int i = immediate ? 0 : 2; i < l.drums.size(); ++i) {
         rig.click(l.plus.at(i));
     }
     QCOMPARE(rig.wheel->value(), 2499.9);
@@ -754,13 +757,15 @@ void tst_ThumbwheelSwitchInput::upAndDownStepTheCurrentDecade()
     rig.key(Qt::Key_Home); // Thousands
     rig.key(Qt::Key_Up);
     rig.key(Qt::Key_Up);
-    rig.key(Qt::Key_Up); // 3325 > 2500: rejected, not rounded to the limit
-    QCOMPARE(rig.wheel->pendingValue(), 2325.0);
+    rig.key(Qt::Key_Up); // #242: 3325 > 2500 is pending (before #242 it was rejected); it cannot be applied
+    QCOMPARE(rig.wheel->pendingValue(), 3325.0);
+    rig.key(Qt::Key_Return);
+    QCOMPARE(rig.wheel->pendingValue(), 3325.0);
     QCOMPARE(rig.wheel->value(), 125.0);
 }
 
-// 0–9 type the digit of the current decade and move to the next one; a digit that would leave the limits is rejected
-// and the decade stays; the same digit only moves on
+// 0–9 type the digit of the current decade and move to the next one; the same digit only moves on. #242: in OnConfirm
+// a digit that takes the pending value outside the limits is taken (before #242 it was rejected and the decade stayed)
 void tst_ThumbwheelSwitchInput::digitsTypeTheCurrentDecadeAndMoveOn()
 {
     Rig rig;
@@ -774,12 +779,12 @@ void tst_ThumbwheelSwitchInput::digitsTypeTheCurrentDecadeAndMoveOn()
     rig.key(Qt::Key_7);
     QCOMPARE(rig.wheel->pendingValue(), 1234.7);
     rig.key(Qt::Key_Home);
-    rig.key(Qt::Key_3); // 3234.7 > 2500: rejected
-    QCOMPARE(rig.wheel->pendingValue(), 1234.7);
-    QCOMPARE(current(), 0);
-    rig.key(Qt::Key_1); // The same digit: on to the next decade
+    rig.key(Qt::Key_3); // 3234.7 > 2500: pending, not applicable
+    QCOMPARE(rig.wheel->pendingValue(), 3234.7);
     QCOMPARE(current(), 1);
-    QCOMPARE(rig.wheel->pendingValue(), 1234.7);
+    rig.key(Qt::Key_2); // The same digit: on to the next decade
+    QCOMPARE(current(), 2);
+    QCOMPARE(rig.wheel->pendingValue(), 3234.7);
     QCOMPARE(rig.wheel->value(), 125.0);
 }
 
