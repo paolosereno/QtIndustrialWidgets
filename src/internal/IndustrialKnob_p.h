@@ -80,6 +80,9 @@ public:
     bool m_keyAction{false};
     int m_actionKey{0};           // The key whose release that is not an auto-repeat ends the key action
     double m_actionStartValue{0.0};
+    // #241: a setValue() from the application during an action, as given (finite); clamped when it is applied
+    bool m_heldSet{false};
+    double m_held{0.0};
 
     // #182, PR 2: read-only, mouse wheel and value limits
     bool m_readOnly{false};
@@ -151,17 +154,35 @@ public:
     // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
     double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr);
 
-    // #182: ends the drag or the key action that is running, if any, and emits valueCommitted() if the value is not
-    // the one it started from
+    // #241: a drag or a held key is running
+    [[nodiscard]] bool operatorActive() const { return m_isDragging || m_keyAction; }
+    // #241: the value set, clamped to the range (and to the nearest step in Discrete mode), with valueChanged() and
+    // the accessibility event if it changes. Operator input and configuration changes come here directly; setValue()
+    // from the application comes here when no action runs
+    void applyValue(IndustrialKnob *knob, double value);
+    // #182, #241: an action starts; the caller has set m_isDragging or m_keyAction
+    void startAction(IndustrialKnob *knob)
+    {
+        m_actionStartValue = m_value;
+        m_heldSet = false;
+        Q_EMIT knob->operatorActiveChanged(true);
+    }
+    // #182, #241: ends the drag or the key action that is running, if any. valueCommitted() if the value is not the
+    // one it started from, and then the held value is dropped; otherwise the held value, if any, is applied. Then
+    // operatorActiveChanged(false). isOperatorActive() is already false in the slots of these signals
     void endAction(IndustrialKnob *knob)
     {
-        if (!m_isDragging && !m_keyAction) return;
+        if (!operatorActive()) return;
         m_isDragging = false;
         m_keyAction = false;
         m_actionKey = 0;
+        const bool held = std::exchange(m_heldSet, false);
         if (!qFuzzyCompare(m_value, m_actionStartValue)) {
             Q_EMIT knob->valueCommitted(m_value);
+        } else if (held) {
+            applyValue(knob, m_held);
         }
+        Q_EMIT knob->operatorActiveChanged(false);
     }
 
     // #182: inner end of the pointer, as paintEvent() draws it: no angle of the pointer reaches inside this radius

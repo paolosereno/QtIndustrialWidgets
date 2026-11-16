@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`operatorActive` on `IndustrialKnob`, `IndustrialSlider` and `ThumbwheelSwitch`** (#241): `isOperatorActive()` and
+  `operatorActiveChanged()` tell the application when a drag or a held key is running. See
+  [Controls](docs/widgets.md#controls).
+
+### Changed
+- **`setValue()` / `setSetpoint()` during an operator action is held** (#241), so a value read back from the device no
+  longer moves the control under the operator or cancels the commit. At the end it is dropped after a commit and
+  applied without one. See [Controls](docs/widgets.md#controls).
+
 ### Fixed
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.1` tag archive (the hash exists only after the tag).
 

@@ -75,7 +75,9 @@ class IndustrialSliderAccessible;
  *   operator action that changed the setpoint: the release of a drag, or the release of a key that is not an
  *   auto-repeat; a drag or a held key also ends when the slider loses focus, is hidden or is made read-only.
  *   setSetpoint() never emits setpointCommitted(), so an application that writes committed setpoints to a device
- *   gets no write loop.
+ *   gets no write loop. During an action (isOperatorActive(), operatorActiveChanged()) setSetpoint() is held, so a
+ *   value read back meanwhile does not move the handle under the operator: dropped if the action commits, applied at
+ *   its end if it does not (#241).
  * - Mouse wheel: off by default (setWheelEnabled()); while it is off, wheel events are ignored and reach the parent,
  *   so a scroll area around the slider scrolls. When it is on, it acts only while the slider has focus: each notch
  *   (120 units of QWheelEvent::angleDelta(), summed over the events of a high-resolution wheel or a touchpad) is one
@@ -156,6 +158,7 @@ class QTINDUSTRIALWIDGETS_EXPORT IndustrialSlider : public QWidget
     Q_PROPERTY(double pageStep READ pageStep WRITE setPageStep RESET resetPageStep NOTIFY appearanceChanged)
     Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly NOTIFY readOnlyChanged)
     Q_PROPERTY(bool wheelEnabled READ isWheelEnabled WRITE setWheelEnabled NOTIFY appearanceChanged)
+    Q_PROPERTY(bool operatorActive READ isOperatorActive NOTIFY operatorActiveChanged DESIGNABLE false)
 
 public:
     /// Comparison of the setpoint with the feedback (see the class description).
@@ -253,6 +256,12 @@ public:
     [[nodiscard]] bool isReadOnly() const;
     /** \brief Returns true if the mouse wheel steps the setpoint while the slider has focus. Default false. */
     [[nodiscard]] bool isWheelEnabled() const;
+    /**
+     * \brief Returns true while an operator action runs: a drag, from the press on the handle to its end, or a held
+     * key, from its first press to its end (#241). A wheel notch and a setpoint set by assistive technology are not
+     * actions. While it is true, setSetpoint() is held (see setSetpoint()).
+     */
+    [[nodiscard]] bool isOperatorActive() const;
     /** \brief Returns the low setpoint limit as read: the one set, within the range; without limits, minimum(). */
     [[nodiscard]] double setpointLimitLow() const;
     /** \brief Returns the high setpoint limit as read: the one set, within the range; without limits, maximum(). */
@@ -276,6 +285,11 @@ public Q_SLOTS:
     /**
      * \brief Sets the setpoint, clamped to [minimum, maximum]. NaN and ±Inf are rejected: the setpoint stays
      * unchanged and a qWarning() is printed. setpointChanged() is emitted when the setpoint changes.
+     *
+     * During an operator action (isOperatorActive()), the setpoint is held, not applied: the slider stays as the
+     * operator has it, with no setpointChanged(), and a later call replaces the held setpoint. When the action ends,
+     * the held setpoint is dropped if the action emitted setpointCommitted(), and applied as by this function if it
+     * did not (#241).
      */
     void setSetpoint(double setpoint);
     /**
@@ -364,6 +378,11 @@ Q_SIGNALS:
     void setpointCommitted(double setpoint);
     /** \brief Emitted when read-only is turned on or off. */
     void readOnlyChanged(bool readOnly);
+    /**
+     * \brief Emitted when isOperatorActive() changes (#241): true at the start of an action, before its first
+     * setpointChanged(); false at its end, after setpointCommitted() or the held setpoint of setSetpoint().
+     */
+    void operatorActiveChanged(bool active);
     /** \brief Emitted when the setpoint limits as read change, also when a new range moves them. */
     void setpointLimitsChanged(double low, double high);
     /** \brief Emitted when the range changes. */

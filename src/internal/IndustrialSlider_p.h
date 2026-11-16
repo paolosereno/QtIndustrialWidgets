@@ -73,12 +73,16 @@ public:
     double m_limitHigh{0.0};
     // An operator action (a drag or a key) runs from its start to its end, where setpointCommitted() is emitted
     bool m_dragging{false};
-    double m_dragStartAlong{0.0}; // Along coordinate of the press
+    double m_dragStartAlong{0.0}; // Along coordinate of the anchor of the drag: the press, or the last move (#241)
+    double m_dragLastAlong{0.0};  // Along coordinate of the last press or move
     internal::SliderLayout m_dragLayout; // The layout at the press, used for the whole drag
-    double m_dragStartSetpoint{0.0};
+    double m_dragStartSetpoint{0.0};     // The setpoint at the anchor of the drag
     bool m_keyAction{false};
     int m_actionKey{0}; // The key whose release that is not an auto-repeat ends the key action
-    double m_actionStartSetpoint{0.0};
+    double m_actionStartSetpoint{0.0}; // The setpoint at the start of the action, drag or key: the commit compares it
+    // #241: a setSetpoint() from the application during an action, as given (finite); clamped when it is applied
+    bool m_heldSet{false};
+    double m_held{0.0};
 
     // What the last paint drew, read by the tests (IndustrialSliderTestAccess)
     internal::SliderLayout m_lastLayout;
@@ -120,6 +124,13 @@ public:
     // Ends the drag or the key action that is running, if any, and emits setpointCommitted() if the setpoint is not
     // the one it started from
     void endAction(IndustrialSlider *q);
+    // #241: a drag or a held key is running
+    [[nodiscard]] bool operatorActive() const { return m_dragging || m_keyAction; }
+    // #182, #241: an action starts; the caller has set m_dragging or m_keyAction
+    void startAction(IndustrialSlider *q);
+    // #241: the setpoint set, clamped to the range, with its signals and the accessibility event if it changes.
+    // Operator input comes here directly; setSetpoint() from the application comes here when no action runs
+    void applySetpoint(IndustrialSlider *q, double setpoint);
     [[nodiscard]] QStringList majorLabelTexts() const;
 
     // #183: every accessibility event of the slider goes through here. The observer is set by tests only

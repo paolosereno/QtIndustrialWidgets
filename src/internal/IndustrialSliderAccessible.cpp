@@ -128,8 +128,9 @@ void IndustrialSliderAccessible::setCurrentValue(const QVariant &value)
     if (!ok || !std::isfinite(proposed)) {
         return;
     }
+    s->d_ptr->endAction(s); // #241: operator input applied at once, not an action; a running action ends first
     const double before = s->setpoint();
-    s->setSetpoint(s->d_ptr->operatorTarget(proposed));
+    s->d_ptr->applySetpoint(s, s->d_ptr->operatorTarget(proposed));
     if (s->setpoint() != before) {
         Q_EMIT s->setpointCommitted(s->setpoint());
     }

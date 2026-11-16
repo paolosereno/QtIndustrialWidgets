@@ -163,6 +163,7 @@ void ThumbwheelSwitchAccessible::setCurrentValue(const QVariant &value)
     if (!ok || !std::isfinite(proposed)) {
         return;
     }
+    priv.endAction(w); // #241: operator input applied at once, not an action; a running action ends first
     const std::optional<qint64> target = priv.operatorTarget(priv.m_format.countOf(proposed));
     if (!target || *target == priv.shownCount()) {
         return;

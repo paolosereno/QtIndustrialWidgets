@@ -68,6 +68,23 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
 
   A programmatic `setValue()` emits `valueChanged()`, never `valueCommitted()`. An application can therefore write
   the committed value to a PLC and show the value read back with `setValue()` without a write loop.
+- **A value set during an operator action is held** (#241). An action is a drag, from the press to its end, or a
+  held key, from its first press to its end; `isOperatorActive()` is true meanwhile, and `operatorActiveChanged()`
+  is emitted at its start and at its end. A wheel notch, a button of `ThumbwheelSwitch` and a value set by assistive
+  technology are not actions. During an action, `setValue()` (`setSetpoint()` on `IndustrialSlider`) does not move
+  the control under the operator: the value is checked (NaN and ±Inf are rejected as always) and held, with no
+  `valueChanged()` and no accessibility event, and a later call replaces it. When the action ends, however it ends:
+  - if it changed the value, `valueCommitted()` is emitted and the held value is dropped: the application writes the
+    committed value, and the read-back that follows the write shows the device;
+  - if it did not, the held value is applied as `setValue()` would apply it, clamped to the range in force then,
+    with `valueChanged()` and no `valueCommitted()`: the operator changed nothing, so the read-back is news from the
+    device.
+
+  `isOperatorActive()` is already false in the slots of `valueCommitted()`, so a `setValue()` made there is applied
+  at once; `operatorActiveChanged(false)` comes last. A change of configuration during an action (`setRange()`, the
+  limits) is applied at once and acts on the operator's value, from which the action goes on. `ThumbwheelSwitch`
+  holds only in `applyMode` `Immediate`: in `OnConfirm` its drums show the pending value, and `setValue()` changes
+  the applied value at once, as before.
 - **Non-finite input:** `setValue()` with NaN or ±Inf is rejected. The value stays unchanged and a warning is printed
   (`qWarning()`).
 - **Mouse wheel: off by default** (`wheelEnabled`). While it is off, a wheel event is ignored and goes to the parent,

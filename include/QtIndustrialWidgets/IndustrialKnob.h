@@ -41,7 +41,9 @@ class IndustrialKnobAccessible;
  *   operator action that changed the value: the release of a drag, or the release of a key (for a held key, once,
  *   at the release that is not an auto-repeat); a drag or a held key also ends when the knob loses focus or is
  *   hidden. setValue() never emits valueCommitted(), so an application that writes committed values to a device
- *   and shows the value read back with setValue() gets no write loop.
+ *   and shows the value read back with setValue() gets no write loop. During an action (isOperatorActive(),
+ *   operatorActiveChanged()) setValue() is held, so a value read back meanwhile does not move the knob under the
+ *   operator: dropped if the action commits, applied at its end if it does not (#241).
  * - Mouse wheel: off by default (setWheelEnabled()); while it is off, wheel events are ignored and reach the parent,
  *   so a scroll area around the knob scrolls. When it is on, it acts only while the knob has focus: each notch (120
  *   units of QWheelEvent::angleDelta(), summed over the events of a high-resolution wheel or a touchpad) is one
@@ -111,6 +113,7 @@ class QTINDUSTRIALWIDGETS_EXPORT IndustrialKnob : public QWidget
     Q_PROPERTY(QColor textColor READ textColor WRITE setTextColor NOTIFY appearanceChanged)
     Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly NOTIFY readOnlyChanged)
     Q_PROPERTY(bool wheelEnabled READ isWheelEnabled WRITE setWheelEnabled NOTIFY appearanceChanged)
+    Q_PROPERTY(bool operatorActive READ isOperatorActive NOTIFY operatorActiveChanged DESIGNABLE false)
 
 public:
     /** \brief Operating mode for the knob adjustment behavior. */
@@ -178,6 +181,12 @@ public:
     /** \brief Returns true if the mouse wheel steps the value while the knob has focus (#182). Default: false. */
     [[nodiscard]] bool isWheelEnabled() const;
     /**
+     * \brief Returns true while an operator action runs: a drag, from the press on the dial to its end, or a held
+     * key, from its first press to its end (#241). A wheel notch and a value set by assistive technology are not
+     * actions. While it is true, setValue() is held (see setValue()).
+     */
+    [[nodiscard]] bool isOperatorActive() const;
+    /**
      * \brief Returns the low value limit of the operator's input (#182).
      *
      * The limit set with setValueLimits(), within the range: a limit below minimum() reads minimum(). Without limits,
@@ -216,6 +225,10 @@ public Q_SLOTS:
      *
      * Emits valueChanged() if the value changes, never valueCommitted(). NaN and +Inf / -Inf are rejected: the value
      * stays unchanged and a warning is printed (#182).
+     *
+     * During an operator action (isOperatorActive()), the value is held, not applied: the knob stays as the operator
+     * has it, with no valueChanged(), and a later call replaces the held value. When the action ends, the held value
+     * is dropped if the action emitted valueCommitted(), and applied as by this function if it did not (#241).
      */
     void setValue(double value);
     /** \brief Sets the minimum value. */
@@ -295,6 +308,11 @@ Q_SIGNALS:
     void rangeChanged(double min, double max);
     /** \brief Emitted when isReadOnly() changes (#182). */
     void readOnlyChanged(bool readOnly);
+    /**
+     * \brief Emitted when isOperatorActive() changes (#241): true at the start of an action, before its first
+     * valueChanged(); false at its end, after valueCommitted() or the held value of setValue().
+     */
+    void operatorActiveChanged(bool active);
     /**
      * \brief Emitted when valueLimitLow() or valueLimitHigh() change (#182): from setValueLimits(),
      * clearValueLimits(), or a range change that moves the limits read.

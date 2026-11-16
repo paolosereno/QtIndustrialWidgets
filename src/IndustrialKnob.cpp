@@ -261,21 +261,31 @@ void IndustrialKnob::setValue(double val)
         return;
     }
 
-    double clamped = std::clamp(val, d_ptr->m_minimum, d_ptr->m_maximum);
-    if (d_ptr->m_mode == KnobMode::Discrete && d_ptr->m_discreteSteps > 1) {
-        double stepSize = (d_ptr->m_maximum - d_ptr->m_minimum) / (d_ptr->m_discreteSteps - 1);
-        int nearestIndex = static_cast<int>(std::round((clamped - d_ptr->m_minimum) / stepSize));
-        clamped = d_ptr->m_minimum + nearestIndex * stepSize;
+    if (d_ptr->operatorActive()) {
+        d_ptr->m_held = val; // #241: held, not applied, so the knob does not move under the operator
+        d_ptr->m_heldSet = true;
+        return;
+    }
+    d_ptr->applyValue(this, val);
+}
+
+void IndustrialKnobPrivate::applyValue(IndustrialKnob *knob, double val)
+{
+    double clamped = std::clamp(val, m_minimum, m_maximum);
+    if (m_mode == IndustrialKnob::KnobMode::Discrete && m_discreteSteps > 1) {
+        double stepSize = (m_maximum - m_minimum) / (m_discreteSteps - 1);
+        int nearestIndex = static_cast<int>(std::round((clamped - m_minimum) / stepSize));
+        clamped = m_minimum + nearestIndex * stepSize;
     }
 
-    if (qFuzzyCompare(clamped, d_ptr->m_value)) {
+    if (qFuzzyCompare(clamped, m_value)) {
         return;
     }
 
-    d_ptr->m_value = clamped;
-    Q_EMIT valueChanged(d_ptr->m_value);
-    d_ptr->notifyValue(this); // #183
-    update();
+    m_value = clamped;
+    Q_EMIT knob->valueChanged(m_value);
+    notifyValue(knob); // #183
+    knob->update();
 }
 
 void IndustrialKnob::setMinimum(double min)
@@ -298,6 +308,11 @@ void IndustrialKnob::setRange(double min, double max)
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
     d_ptr->m_value = std::clamp(d_ptr->m_value, d_ptr->m_minimum, d_ptr->m_maximum);
+    if (d_ptr->m_isDragging) {
+        // #241: a drag running goes on from the value, clamped, on the new scale: the angle of the drag is that of the
+        // value now, and the next move adds the pointer's turn from its last position
+        d_ptr->m_dragAngle = d_ptr->angleOf(d_ptr->m_value) - d_ptr->m_startAngle;
+    }
 
     invalidateCache();
     d_ptr->minimumSizeChanged(this);
@@ -404,7 +419,7 @@ void IndustrialKnob::setMode(KnobMode mode)
     d_ptr->m_mode = mode;
     invalidateCache();
     d_ptr->minimumSizeChanged(this);
-    setValue(d_ptr->m_value); // Re-clamp if discrete
+    d_ptr->applyValue(this, d_ptr->m_value); // Re-clamp if discrete; a configuration change, applied at once (#241)
     Q_EMIT modeChanged(d_ptr->m_mode);
     Q_EMIT appearanceChanged();
     update();
@@ -418,7 +433,7 @@ void IndustrialKnob::setDiscreteSteps(int steps)
     invalidateCache();
     d_ptr->minimumSizeChanged(this);
     if (d_ptr->m_mode == KnobMode::Discrete) {
-        setValue(d_ptr->m_value);
+        d_ptr->applyValue(this, d_ptr->m_value);
     }
     Q_EMIT appearanceChanged();
     update();
@@ -485,6 +500,8 @@ void IndustrialKnob::setTextColor(const QColor &color)
 
 bool IndustrialKnob::isReadOnly() const { Q_D(const IndustrialKnob); return d->m_readOnly; }
 bool IndustrialKnob::isWheelEnabled() const { Q_D(const IndustrialKnob); return d->m_wheelEnabled; }
+
+bool IndustrialKnob::isOperatorActive() const { return d_ptr->operatorActive(); }
 
 double IndustrialKnob::valueLimitLow() const { Q_D(const IndustrialKnob); return d->limitLow(); }
 double IndustrialKnob::valueLimitHigh() const { Q_D(const IndustrialKnob); return d->limitHigh(); }
@@ -597,7 +614,7 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
     }
     d_ptr->m_dragAngle = dragAngle;
     // #182: within the value limits; past one, the value stays there until the pointer comes back, as at an end
-    setValue(d_ptr->operatorTarget(d_ptr->valueAtScaleAngle(dragAngle)));
+    d_ptr->applyValue(this, d_ptr->operatorTarget(d_ptr->valueAtScaleAngle(dragAngle)));
 }
 
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
@@ -620,7 +637,7 @@ void IndustrialKnob::mousePressEvent(QMouseEvent *event)
             d_ptr->m_lastMousePos = pos;
             d_ptr->m_dragAngle = d_ptr->angleOf(d_ptr->m_value) - d_ptr->m_startAngle;
             d_ptr->m_lastPointerAngle = angle;
-            d_ptr->m_actionStartValue = d_ptr->m_value;
+            d_ptr->startAction(this);
         }
         event->accept();
         return;
@@ -668,7 +685,7 @@ void IndustrialKnob::wheelEvent(QWheelEvent *event)
     internal::applyWheelNotches(d_ptr->m_wheelRemainder, event->angleDelta().y(), [this] { d_ptr->endAction(this); },
                                 [this](int direction) {
                                     const double before = d_ptr->m_value;
-                                    setValue(d_ptr->operatorTarget(d_ptr->m_value + direction * d_ptr->m_step));
+                                    d_ptr->applyValue(this, d_ptr->operatorTarget(d_ptr->m_value + direction * d_ptr->m_step));
                                     if (!qFuzzyCompare(d_ptr->m_value, before)) {
                                         Q_EMIT valueCommitted(d_ptr->m_value);
                                     }
@@ -713,7 +730,7 @@ void IndustrialKnob::keyPressEvent(QKeyEvent *event)
     if (!d_ptr->m_keyAction) {
         d_ptr->endAction(this); // A drag running when the key is pressed ends here
         d_ptr->m_keyAction = true;
-        d_ptr->m_actionStartValue = d_ptr->m_value;
+        d_ptr->startAction(this);
     }
     d_ptr->m_actionKey = key;
     // #182: within the value limits; Home and End go to them
@@ -739,7 +756,7 @@ void IndustrialKnob::keyPressEvent(QKeyEvent *event)
     default:
         break;
     }
-    setValue(d_ptr->operatorTarget(proposed));
+    d_ptr->applyValue(this, d_ptr->operatorTarget(proposed));
     event->accept();
 }
 

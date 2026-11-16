@@ -92,8 +92,9 @@ void IndustrialKnobAccessible::setCurrentValue(const QVariant &value)
     if (!ok || !std::isfinite(proposed)) {
         return;
     }
+    k->d_ptr->endAction(k); // #241: operator input applied at once, not an action; a running action ends first
     const double before = k->value();
-    k->setValue(k->d_ptr->operatorTarget(proposed));
+    k->d_ptr->applyValue(k, k->d_ptr->operatorTarget(proposed));
     if (!qFuzzyCompare(k->value(), before)) {
         Q_EMIT k->valueCommitted(k->value());
     }

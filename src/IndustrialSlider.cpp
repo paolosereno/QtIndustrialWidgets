@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace QtIndustrialWidgets {
@@ -377,16 +378,41 @@ internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, doubl
     return in;
 }
 
+void IndustrialSliderPrivate::startAction(IndustrialSlider *q)
+{
+    m_actionStartSetpoint = m_setpoint;
+    m_heldSet = false;
+    Q_EMIT q->operatorActiveChanged(true);
+}
+
+// #182, #241: setpointCommitted() if the setpoint is not the one the action started from, and then the held setpoint is
+// dropped; otherwise the held setpoint, if any, is applied. Then operatorActiveChanged(false). isOperatorActive() is
+// already false in the slots of these signals
 void IndustrialSliderPrivate::endAction(IndustrialSlider *q)
 {
-    if (!m_dragging && !m_keyAction) return;
-    const double start = m_dragging ? m_dragStartSetpoint : m_actionStartSetpoint;
+    if (!operatorActive()) return;
     m_dragging = false;
     m_keyAction = false;
     m_actionKey = 0;
-    if (m_setpoint != start) {
+    const bool held = std::exchange(m_heldSet, false);
+    if (m_setpoint != m_actionStartSetpoint) {
         Q_EMIT q->setpointCommitted(m_setpoint);
+    } else if (held) {
+        applySetpoint(q, m_held);
     }
+    Q_EMIT q->operatorActiveChanged(false);
+}
+
+void IndustrialSliderPrivate::applySetpoint(IndustrialSlider *q, double setpoint)
+{
+    const double clamped = std::clamp(setpoint, m_minimum, m_maximum);
+    if (clamped == m_setpoint) return;
+    m_setpoint = clamped;
+    Changes changes = apply();
+    changes.setpoint = true;
+    emitChanges(q, changes);
+    notifySetpoint(q); // #183
+    q->update();
 }
 
 IndustrialSlider::IndustrialSlider(QWidget *parent)
@@ -431,6 +457,8 @@ double IndustrialSlider::step() const { return d_ptr->m_step; }
 double IndustrialSlider::pageStep() const { return d_ptr->m_pageStepSet ? d_ptr->m_pageStep : d_ptr->m_step * 5.0; }
 bool IndustrialSlider::isReadOnly() const { return d_ptr->m_readOnly; }
 bool IndustrialSlider::isWheelEnabled() const { return d_ptr->m_wheelEnabled; }
+
+bool IndustrialSlider::isOperatorActive() const { return d_ptr->operatorActive(); }
 double IndustrialSlider::setpointLimitLow() const { return d_ptr->limitLow(); }
 double IndustrialSlider::setpointLimitHigh() const { return d_ptr->limitHigh(); }
 
@@ -529,6 +557,11 @@ void IndustrialSlider::setRange(double min, double max)
     d_ptr->m_minimum = min;
     d_ptr->m_maximum = max;
     const IndustrialSliderPrivate::Changes changes = d_ptr->apply();
+    if (d_ptr->m_dragging) {
+        // #241: a drag running goes on from the setpoint, clamped, on the new range, from where the pointer last was
+        d_ptr->m_dragStartSetpoint = d_ptr->m_setpoint;
+        d_ptr->m_dragStartAlong = d_ptr->m_dragLastAlong;
+    }
     updateGeometry(); // the widths of the scale labels
     Q_EMIT rangeChanged(d_ptr->m_minimum, d_ptr->m_maximum);
     if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
@@ -546,14 +579,12 @@ void IndustrialSlider::setSetpoint(double setpoint)
         qWarning("IndustrialSlider::setSetpoint: non-finite value %s ignored", qPrintable(QString::number(setpoint)));
         return;
     }
-    const double clamped = std::clamp(setpoint, d_ptr->m_minimum, d_ptr->m_maximum);
-    if (clamped == d_ptr->m_setpoint) return;
-    d_ptr->m_setpoint = clamped;
-    IndustrialSliderPrivate::Changes changes = d_ptr->apply();
-    changes.setpoint = true;
-    d_ptr->emitChanges(this, changes);
-    d_ptr->notifySetpoint(this); // #183
-    update();
+    if (d_ptr->operatorActive()) {
+        d_ptr->m_held = setpoint; // #241: held, not applied, so the handle does not move under the operator
+        d_ptr->m_heldSet = true;
+        return;
+    }
+    d_ptr->applySetpoint(this, setpoint);
 }
 
 void IndustrialSlider::setFeedback(double feedback)
@@ -815,7 +846,9 @@ void IndustrialSlider::mousePressEvent(QMouseEvent *event)
             d_ptr->m_dragging = true;
             d_ptr->m_dragLayout = layout;
             d_ptr->m_dragStartAlong = alongOfPoint(layout, pos);
+            d_ptr->m_dragLastAlong = d_ptr->m_dragStartAlong;
             d_ptr->m_dragStartSetpoint = d_ptr->m_setpoint;
+            d_ptr->startAction(this);
         }
         event->accept();
         return;
@@ -834,10 +867,11 @@ void IndustrialSlider::mouseMoveEvent(QMouseEvent *event)
         const internal::SliderLayout &layout = d_ptr->m_dragLayout;
         const double length = layout.scaleMax - layout.scaleMin;
         if (length != 0.0) {
-            const double moved = alongOfPoint(layout, event->position()) - d_ptr->m_dragStartAlong;
+            d_ptr->m_dragLastAlong = alongOfPoint(layout, event->position());
+            const double moved = d_ptr->m_dragLastAlong - d_ptr->m_dragStartAlong;
             const double proposed =
                 d_ptr->m_dragStartSetpoint + moved / length * (d_ptr->m_maximum - d_ptr->m_minimum);
-            setSetpoint(d_ptr->operatorTarget(proposed));
+            d_ptr->applySetpoint(this, d_ptr->operatorTarget(proposed));
         }
         event->accept();
         return;
@@ -873,7 +907,7 @@ void IndustrialSlider::wheelEvent(QWheelEvent *event)
     internal::applyWheelNotches(d_ptr->m_wheelRemainder, event->angleDelta().y(), [this] { d_ptr->endAction(this); },
                                 [this](int direction) {
                                     const double before = d_ptr->m_setpoint;
-                                    setSetpoint(d_ptr->operatorTarget(d_ptr->m_setpoint + direction * d_ptr->m_step));
+                                    d_ptr->applySetpoint(this, d_ptr->operatorTarget(d_ptr->m_setpoint + direction * d_ptr->m_step));
                                     if (d_ptr->m_setpoint != before) {
                                         Q_EMIT setpointCommitted(d_ptr->m_setpoint);
                                     }
@@ -897,7 +931,7 @@ void IndustrialSlider::keyPressEvent(QKeyEvent *event)
     if (!d_ptr->m_keyAction) {
         d_ptr->endAction(this); // A drag running when the key is pressed ends here
         d_ptr->m_keyAction = true;
-        d_ptr->m_actionStartSetpoint = d_ptr->m_setpoint;
+        d_ptr->startAction(this);
     }
     d_ptr->m_actionKey = key;
     // #182: within the setpoint limits; Home and End ask for the ends of the range, so they stop at the limits (as on
@@ -924,7 +958,7 @@ void IndustrialSlider::keyPressEvent(QKeyEvent *event)
     default:
         break;
     }
-    setSetpoint(d_ptr->operatorTarget(proposed));
+    d_ptr->applySetpoint(this, d_ptr->operatorTarget(proposed));
     event->accept();
 }
 

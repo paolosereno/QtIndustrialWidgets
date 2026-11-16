@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace QtIndustrialWidgets {
 
@@ -278,14 +279,21 @@ bool ThumbwheelSwitchPrivate::apply(ThumbwheelSwitch *q)
     return true;
 }
 
+// #182, #241: in Immediate, valueCommitted() if the value is not the one the action started from, and then the held
+// value is dropped; otherwise the held value, if any, is applied by setValue(). Then operatorActiveChanged(false).
+// isOperatorActive() is already false in the slots of these signals
 void ThumbwheelSwitchPrivate::endAction(ThumbwheelSwitch *q)
 {
     if (!m_keyAction) return;
     m_keyAction = false;
     m_actionKey = 0;
+    const bool held = std::exchange(m_heldSet, false);
     if (m_applyMode == ThumbwheelSwitch::ApplyMode::Immediate && m_count != m_actionStartCount) {
         Q_EMIT q->valueCommitted(value());
+    } else if (held) {
+        q->setValue(m_held);
     }
+    Q_EMIT q->operatorActiveChanged(false);
 }
 
 ThumbwheelSwitchPrivate::Fonts ThumbwheelSwitchPrivate::fontsFor(const QFont &widgetFont, double logicalDpi)
@@ -361,6 +369,7 @@ bool ThumbwheelSwitch::hasPendingValue() const { return d_ptr->m_pending.has_val
 double ThumbwheelSwitch::pendingValue() const { return d_ptr->shownValue(); }
 bool ThumbwheelSwitch::isReadOnly() const { return d_ptr->m_readOnly; }
 bool ThumbwheelSwitch::isWheelEnabled() const { return d_ptr->m_wheelEnabled; }
+bool ThumbwheelSwitch::isOperatorActive() const { return d_ptr->m_keyAction; }
 
 QSize ThumbwheelSwitch::sizeHint() const
 {
@@ -382,6 +391,11 @@ void ThumbwheelSwitch::setValue(double value)
     if (!std::isfinite(value)) {
         qWarning("ThumbwheelSwitch::setValue: non-finite value %s ignored", qPrintable(QString::number(value)));
         return; // #182: a control has no invalid state; the overflow mark is for values the drums cannot show
+    }
+    if (d_ptr->m_keyAction && d_ptr->m_applyMode == ApplyMode::Immediate) {
+        d_ptr->m_held = value; // #241: held, not applied, so the drums do not move under the operator
+        d_ptr->m_heldSet = true;
+        return;
     }
     const std::optional<qint64> count = d_ptr->m_format.countOf(value);
     if (!count || !d_ptr->m_format.canShow(*count)) {
@@ -676,6 +690,8 @@ void ThumbwheelSwitch::keyPressEvent(QKeyEvent *event)
     if (!d_ptr->m_keyAction) {
         d_ptr->m_keyAction = true;
         d_ptr->m_actionStartCount = d_ptr->m_count;
+        d_ptr->m_heldSet = false;
+        Q_EMIT operatorActiveChanged(true); // #241
     }
     d_ptr->m_actionKey = key;
     const int current = d_ptr->m_current;

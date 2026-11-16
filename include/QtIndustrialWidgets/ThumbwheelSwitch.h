@@ -77,7 +77,10 @@ class ThumbwheelSwitchAccessible;
  *   mark on discards a pending value. Moving the current decade is still possible.
  *
  * setValue() changes the applied value and never emits valueCommitted(); a pending value stays, unless it is now
- * equal to value() or the overflow mark turns on. A change of digitCount(), decimals(), of the sign drum or of the
+ * equal to value() or the overflow mark turns on. In ApplyMode::Immediate, during a key action (isOperatorActive(),
+ * operatorActiveChanged()) setValue() is held, so a value read back meanwhile does not move the drums under the
+ * operator: dropped if the action commits, applied at its end if it does not, with the checks of setValue() then
+ * (#241). In ApplyMode::OnConfirm it is applied at once, since the drums show the pending value, not value(). A change of digitCount(), decimals(), of the sign drum or of the
  * limits discards a pending value, and so does a change of applyMode().
  *
  * Focus: the switch takes focus with Tab and a click (Qt::StrongFocus), also in read-only, and then draws a solid
@@ -134,6 +137,7 @@ class QTINDUSTRIALWIDGETS_EXPORT ThumbwheelSwitch : public QWidget
     Q_PROPERTY(double pendingValue READ pendingValue NOTIFY pendingValueChanged)
     Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly NOTIFY readOnlyChanged)
     Q_PROPERTY(bool wheelEnabled READ isWheelEnabled WRITE setWheelEnabled NOTIFY appearanceChanged)
+    Q_PROPERTY(bool operatorActive READ isOperatorActive NOTIFY operatorActiveChanged DESIGNABLE false)
 
 public:
     /// When the operator's input is applied (see the class description).
@@ -186,6 +190,12 @@ public:
     [[nodiscard]] bool isReadOnly() const;
     /** \brief Returns whether the mouse wheel steps the decade under the pointer. Default false. */
     [[nodiscard]] bool isWheelEnabled() const;
+    /**
+     * \brief Returns true while a key action runs, from the first press of a key to its release that is not an
+     * auto-repeat, in both apply modes (#241). The buttons, a wheel notch and a value set by assistive technology are
+     * not actions. While it is true in ApplyMode::Immediate, setValue() is held (see the class description).
+     */
+    [[nodiscard]] bool isOperatorActive() const;
 
     [[nodiscard]] QSize sizeHint() const override;
     [[nodiscard]] QSize minimumSizeHint() const override;
@@ -194,7 +204,8 @@ public Q_SLOTS:
     /**
      * \brief Sets the value (see the class description). NaN, ±Inf and values the drums cannot show are rejected
      * with a qWarning(); a value the drums cannot show also turns the overflow mark on. Emits valueChanged() when
-     * value() changes.
+     * value() changes. In ApplyMode::Immediate, during a key action the value is held and these checks are made when
+     * it is applied (#241, see the class description).
      */
     void setValue(double value);
     /**
@@ -263,6 +274,11 @@ Q_SIGNALS:
     void pendingValueChanged(double pendingValue);
     /** \brief Emitted when readOnly changes. */
     void readOnlyChanged(bool readOnly);
+    /**
+     * \brief Emitted when isOperatorActive() changes (#241): true at the first press of a key action, before its first
+     * valueChanged(); false at its end, after valueCommitted() or the held value of setValue().
+     */
+    void operatorActiveChanged(bool active);
     /** \brief Emitted when a visual property changes. */
     void appearanceChanged();
 

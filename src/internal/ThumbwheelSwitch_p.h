@@ -55,6 +55,10 @@ public:
     bool m_keyAction{false};
     int m_actionKey{0};
     qint64 m_actionStartCount{0};
+    // #241: a setValue() from the application during a key action in ApplyMode::Immediate, as given (finite); the
+    // other checks of setValue() are made when it is applied
+    bool m_heldSet{false};
+    double m_held{0.0};
     // Logical DPI of the last minimumSizeHint() (0: none since the last updateGeometry()), #177
     mutable double m_minimumDpi{0.0};
 
