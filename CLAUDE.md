@@ -73,6 +73,10 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
 3. **Tests check behaviour.** "It rendered and the pixmap is not null" is not a test. Assert vertices, segments,
    windows, labels or pixels that would change if the feature were broken. For new tests, show that a deliberate
    sabotage of the feature makes them fail (do not commit the sabotage).
+   A test that an operator action ends when the control is hidden uses a control without focus (the focus on another
+   widget, or `Qt::NoFocus`, with the events sent to the control directly) and hides it with
+   `ActionTest::hideWithoutFocus()` (`tests/ActionTestUtils.h`): a focused widget that is hidden loses the focus
+   first, so such a test checks the loss of focus, not the hide (#205, #233, #241).
 4. **No public API change** (additions, removals, signature or semantic changes) without explicit approval.
    Behaviour changes that users can see must be listed in the CHANGELOG under **Changed**.
 5. **Never move a target.** If a performance or quality target is missed, report the measured number and the
