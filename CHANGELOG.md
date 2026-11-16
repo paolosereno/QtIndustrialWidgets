@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`setValue()` / `setSetpoint()` during an operator action is held** (#241), so a value read back from the device no
   longer moves the control under the operator or cancels the commit. At the end it is dropped after a commit and
   applied without one. See [Controls](docs/widgets.md#controls).
+- **`ThumbwheelSwitch` in `OnConfirm`: the limits are checked when the pending value is applied, not at each step**
+  (#242), so the operator can pass through values outside them (1999, 2999, 2000). Until it can be applied, SET is
+  empty and Enter is consumed without effect. See [ThumbwheelSwitch](docs/widgets.md#thumbwheelswitch).
 
 ### Fixed
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.1` tag archive (the hash exists only after the tag).

@@ -106,13 +106,15 @@ QAccessible::State ThumbwheelSwitchAccessible::state() const
     return s;
 }
 
-// Apply and Discard while a value is pending (never in read-only or in overflow, where none is), then those of
-// QAccessibleWidget (setFocus)
+// Apply and Discard while a value is pending (never in read-only or in overflow, where none is); Apply only while it
+// can be applied (#242); then those of QAccessibleWidget (setFocus)
 QStringList ThumbwheelSwitchAccessible::actionNames() const
 {
     QStringList names;
-    if (wheel()->hasPendingValue()) {
+    if (wheel()->d_ptr->pendingCanBeApplied()) {
         names = QStringList{applyAction(), discardAction()};
+    } else if (wheel()->hasPendingValue()) {
+        names = QStringList{discardAction()}; // #242: a pending value the limits do not allow from value()
     }
     return names + QAccessibleWidget::actionNames();
 }
@@ -152,7 +154,7 @@ QVariant ThumbwheelSwitchAccessible::minimumStepSize() const
 }
 
 // Operator input, as the drums take it: rounded to the resolution, rejected (never bound to a limit) when the drums
-// cannot show it or when it is outside the limits or further out from a value outside them, ignored in read-only and
+// cannot show it or when it could not be applied (outside the limits or further out from a value() outside them), ignored in read-only and
 // in overflow. Immediate applies and commits it; OnConfirm makes it the pending value
 void ThumbwheelSwitchAccessible::setCurrentValue(const QVariant &value)
 {
@@ -165,7 +167,9 @@ void ThumbwheelSwitchAccessible::setCurrentValue(const QVariant &value)
     }
     priv.endAction(w); // #241: operator input applied at once, not an action; a running action ends first
     const std::optional<qint64> target = priv.operatorTarget(priv.m_format.countOf(proposed));
-    if (!target || *target == priv.shownCount()) {
+    // #242: the whole value comes at once, so it is rejected when it could not be applied (in Immediate value() is the
+    // value shown, which operatorTarget() has already checked)
+    if (!target || *target == priv.shownCount() || !priv.canApply(*target)) {
         return;
     }
     priv.setShown(w, *target);

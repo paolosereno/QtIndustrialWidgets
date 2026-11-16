@@ -42,8 +42,9 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
 - **ThumbwheelSwitch** (#154) follows the rules with these differences, since a decade selector changes one digit at a
   time (see [its section](#thumbwheelswitch)):
   - the value limits are `minimum` and `maximum` (`setRange()`, `rangeChanged()`), with the meaning of the value
-    limits below; a step, a digit or a sign that would take the value outside them, or further out from a value
-    outside them, is rejected, never stopped on the limit, which would change digits the operator did not touch;
+    limits below. In `Immediate` a step, a digit or a sign that would take the value outside them, or further out
+    from a value outside them, is rejected, never stopped on the limit, which would change digits the operator did not
+    touch. In `OnConfirm` they are checked when the pending value is applied, not at each step (#242);
   - there is no drag: a press on a + or − button arms it and its release on the same button makes one step;
   - the arrows Up/Down step the current decade and Left/Right move it; Home/End move the current decade to the first
     and the last drum, not the value to the limits; PageUp/PageDown are not used; 0–9 type the digit of the current
@@ -51,7 +52,9 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
   - `applyMode` is `OnConfirm` by default: the operator's input changes a pending value, applied with Enter or the
     SET button (`valueChanged()` and `valueCommitted()` then) and discarded with Escape. Intermediate values can be
     far from the one wanted (1999, 2999, 2000, one decade at a time), and real thumbwheel panels load the value with a
-    separate button. In `Immediate` each step is applied at once and committed as in the rules;
+    separate button. So in `OnConfirm` the pending value can go outside the limits on the way, and it can be applied
+    when it is inside them, or closer to them from a value outside them. In `Immediate` each step is applied at once
+    and committed as in the rules;
   - a value the drums cannot show is rejected by `setValue()` with a warning and shows an overflow mark; while it is
     shown, every operator input that would change the value is rejected.
 - **A press never changes the value.** The value changes only by dragging or with the keyboard. `IndustrialKnob`
@@ -314,8 +317,9 @@ setpoint panels: one digit drum per decade, each with a + button above it and a 
   them that the drums can show is kept and shown with a filled triangle in the tag column, ▲ above the maximum and ▼
   below the minimum, so that it does not rely on colour.
 - **Buttons**: a filled arrow when its step would be applied, an outlined arrow when it would be rejected. A digit
-  neither wraps around nor carries into the next decade: + on a 9 and − on a 0 are rejected, as is a step that would
-  take the value outside the limits or further out from a value outside them.
+  neither wraps around nor carries into the next decade: + on a 9 and − on a 0 are rejected. In `Immediate` a step that
+  would take the value outside the limits or further out from a value outside them is rejected too; in `OnConfirm`
+  the limits are checked when the pending value is applied (#242), so those arrows are filled.
 - **Input** (the [rules for controls](#controls), with the differences listed there): a click on a + or − button
   (the release acts); with focus, Left/Right and Home/End move the current decade, shown by a bar under its drum,
   Up/Down step it, 0–9 type its digit and move to the next decade, and on the sign drum + and − select the sign. The
@@ -323,7 +327,11 @@ setpoint panels: one digit drum per decade, each with a + button above it and a 
   - `applyMode` `OnConfirm` (default): the drums show the pending value with a dashed outline in `pendingColor`, the
     applied value stays on a line under them (`SET?  now 0125.0 V`), and the SET button after the tag column is
     filled. Enter, SET or `applyPending()` apply it; Escape or `discardPending()` discard it; a loss of focus never
-    applies it. A change of `digitCount`, `decimals`, the sign drum, the limits or `applyMode` discards it (#239).
+    applies it. The limits are checked then, not at each step (#242): the pending value can be applied when it is
+    inside them, or closer to them from a value outside them, so that a value read back outside the limits can be
+    brought back towards them and confirmed. Until then the tag column marks it (▲ / ▼), SET is an outline, Enter is
+    consumed without effect (it does not reach the parent), SET and `applyPending()` do nothing, and Escape still
+    discards it. A change of `digitCount`, `decimals`, the sign drum, the limits or `applyMode` discards it (#239).
     `hasPendingValue`, `pendingValue` and `pendingValueChanged()` follow it.
   - `applyMode` `Immediate`: each step is applied at once, and `valueCommitted()` comes at the end of the action.
   - Read-only (`readOnly`): the input is ignored and a padlock is drawn under the drums; a pending value is discarded.
@@ -334,9 +342,10 @@ setpoint panels: one digit drum per decade, each with a + button above it and a 
   the resolution as the step. The value text is the value as the drums show it, with the sign, the decimal point and
   the unit, and tells in words what the marks show: `0125.0 V`; `3000.0 V, above maximum` or `below minimum`;
   `pending 0130.0 V, set 0125.0 V` while a value is pending; `overflow`. A value set by assistive technology is
-  operator input, rounded to the resolution and rejected as a typed digit is (outside the limits, a value the drums
-  cannot show, read-only, overflow); in `OnConfirm` it becomes the pending value, and the actions `Apply` and
-  `Discard` do what Enter and Escape do. Value-change events follow the value, the pending value, the overflow mark
+  operator input, rounded to the resolution and rejected when it could not be applied (outside the limits, further out
+  from a value outside them), when the drums cannot show it, in read-only and in overflow; in `OnConfirm` it becomes
+  the pending value, and the actions `Apply` and `Discard` do what Enter and Escape do. `Apply` is offered only while
+  the pending value can be applied (#242). Value-change events follow the value, the pending value, the overflow mark
   and the limits. Known limitation: the current decade is not exposed to assistive technology.
 - **Size**: the drums keep the size of their digit font (never below 7 pt) and the group is centred in the widget;
   `minimumSizeHint()` is computed from the font and the configuration and follows a change of screen (#177).

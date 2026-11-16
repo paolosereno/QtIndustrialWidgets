@@ -91,13 +91,20 @@ public:
     [[nodiscard]] std::optional<qint64> stepOf(int drum, int direction) const;
     /// The count with the digit of drum \a drum typed as \a digit; none when it is rejected as a step would be
     [[nodiscard]] std::optional<qint64> digitOf(int drum, int digit) const;
-    /// The count after an operator change to \a next is checked (shown, inside the limits or closer to them); none
-    /// when it is rejected, in read-only and in overflow
+    /// The count after an operator change to \a next is checked: one the drums can show; in Immediate also inside the
+    /// limits or closer to them from the value shown (in OnConfirm the limits are checked when the pending value is
+    /// applied, #242). None when it is rejected, in read-only and in overflow
     [[nodiscard]] std::optional<qint64> operatorTarget(std::optional<qint64> next) const;
+    /// #242: whether \a count can be applied from value(): inside the limits, or closer to them from a value() outside
+    /// them (the rule of the steps, ThumbwheelLimits::allows())
+    [[nodiscard]] bool canApply(qint64 count) const { return limits().allows(value(), m_format.valueOf(count)); }
+    /// #242: a value is pending and can be applied (Enter, SET, applyPending(), the accessible action Apply)
+    [[nodiscard]] bool pendingCanBeApplied() const { return m_pending && canApply(*m_pending); }
 
     /// Operator input: the drums take \a count; applied at once (Immediate) or pending (OnConfirm)
     void setShown(ThumbwheelSwitch *q, qint64 count);
-    /// Applies the pending value, with valueChanged() and valueCommitted(); false when none is pending
+    /// Applies the pending value, with valueChanged() and valueCommitted(); false when none is pending or it cannot be
+    /// applied (#242: then it stays pending)
     bool apply(ThumbwheelSwitch *q);
     /// Ends a key action running; in Immediate, commits if it changed the value
     void endAction(ThumbwheelSwitch *q);

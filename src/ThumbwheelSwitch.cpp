@@ -225,7 +225,13 @@ std::optional<qint64> ThumbwheelSwitchPrivate::operatorTarget(std::optional<qint
     if (m_readOnly || overflow() || !next) {
         return std::nullopt; // #154: in overflow the drums show no value to change
     }
-    if (!m_format.canShow(*next) || !limits().allows(shownValue(), m_format.valueOf(*next))) {
+    if (!m_format.canShow(*next)) {
+        return std::nullopt;
+    }
+    // #242: in OnConfirm the limits are checked when the pending value is applied, so that the operator can go through
+    // values outside them on the way to the one wanted (1999, 2999, 2000)
+    if (m_applyMode == ThumbwheelSwitch::ApplyMode::Immediate
+        && !limits().allows(shownValue(), m_format.valueOf(*next))) {
         return std::nullopt;
     }
     return next;
@@ -268,8 +274,8 @@ void ThumbwheelSwitchPrivate::setShown(ThumbwheelSwitch *q, qint64 count)
 
 bool ThumbwheelSwitchPrivate::apply(ThumbwheelSwitch *q)
 {
-    if (!m_pending) {
-        return false;
+    if (!pendingCanBeApplied()) {
+        return false; // #242: none pending, or one the limits do not allow from value(): it stays pending
     }
     ChangeScope scope(q, this);
     m_count = *m_pending;
@@ -882,7 +888,8 @@ void ThumbwheelSwitch::paintEvent(QPaintEvent *)
     // 5. The SET button (OnConfirm): filled when a value is pending, an outline when there is nothing to apply
     if (!layout.setButton.isEmpty()) {
         const QRectF &set = layout.setButton;
-        if (pending) {
+        const bool applicable = d_ptr->pendingCanBeApplied(); // #242: empty while the pending value cannot be applied
+        if (applicable) {
             painter.setPen(Qt::NoPen);
             painter.setBrush(d_ptr->m_buttonColor);
             painter.drawRoundedRect(set, 2.0, 2.0);
@@ -895,7 +902,7 @@ void ThumbwheelSwitch::paintEvent(QPaintEvent *)
         }
         painter.drawText(set, Qt::AlignCenter, kSetText);
         d_ptr->m_lastSetDrawn = true;
-        d_ptr->m_lastSetOpen = pending;
+        d_ptr->m_lastSetOpen = applicable;
     }
 
     // 6. The status line: the padlock of read-only, or the applied value while a value is pending

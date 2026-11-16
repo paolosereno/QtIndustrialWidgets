@@ -45,10 +45,12 @@ class ThumbwheelSwitchAccessible;
  *
  * Buttons: the + and − buttons of each drum show whether their step would be applied: a filled arrow when it would,
  * an outlined arrow when it would be rejected. A step is rejected when the digit is already 9 (+) or 0 (−), since a
- * digit neither wraps around nor carries into the next decade, and when it would take the value outside the limits,
- * or further out from a value outside them; it is never rounded to the limit, which would change digits the
- * operator did not touch. On the sign drum, + and − select the sign; a change of sign is rejected for 0 and when it
- * would take the value outside the limits. In overflow and in read-only every step is shown as rejected.
+ * digit neither wraps around nor carries into the next decade, and, in ApplyMode::Immediate, when it would take the
+ * value outside the limits, or further out from a value outside them; it is never rounded to the limit, which would
+ * change digits the operator did not touch. In ApplyMode::OnConfirm the limits are checked when the pending value is
+ * applied, not at each step (#242, see below). On the sign drum, + and − select the sign; a change of sign is rejected
+ * for 0 and, in Immediate, when it would take the value outside the limits. In overflow and in read-only every step is
+ * shown as rejected.
  *
  * Operator input, under the rules for controls (#182, docs/widgets.md):
  * - Mouse: a press on a + or − button arms it; the release on the same button makes one step, so a press alone never
@@ -66,7 +68,11 @@ class ThumbwheelSwitchAccessible;
  *   valueCommitted(). Escape or discardPending() discards it. A loss of focus never applies it. A value is pending
  *   only while it differs from value(). Unlike IndustrialKnob and IndustrialSlider, whose value moves continuously,
  *   a decade selector reaches a value through intermediate values that can be far from the one wanted (1999, 2999,
- *   2000, one decade at a time), and real thumbwheel panels load the value with a separate button.
+ *   2000, one decade at a time), and real thumbwheel panels load the value with a separate button. So the steps
+ *   check only what the drums can show, and the limits are checked when the pending value is applied (#242): it can
+ *   be applied when it is inside them, or closer to them from a value() outside them (a value read back from a device
+ *   can be brought back towards the limits and confirmed). Until then the tag column marks it, the SET button is an
+ *   outline, Enter is consumed without effect (it does not reach the parent), and SET and applyPending() do nothing.
  * - applyMode() Immediate: each step is applied at once (valueChanged()), and valueCommitted() is emitted once at the
  *   end of each operator action that changed the value: the release of a button, the release of a key (once for a key
  *   held down), each notch of the wheel, or a loss of focus, a hide or setReadOnly(true) during a key action.
@@ -91,10 +97,10 @@ class ThumbwheelSwitchAccessible;
  * text is the value as the drums show it, with the sign, the decimal point and the unit ("0125.0 V"); outside the
  * limits it adds "above maximum" or "below minimum" (the triangle of the tag column); while a value is pending it is
  * "pending 0130.0 V, set 0125.0 V"; in overflow it is "overflow". A value set by assistive technology is operator
- * input: rounded to the resolution and rejected as a typed digit is (outside the limits, further out from a value
- * outside them, a value the drums cannot show, in read-only, in overflow); ApplyMode::Immediate applies it and emits
- * valueCommitted(), ApplyMode::OnConfirm makes it the pending value. While a value is pending, the actions "Apply" and
- * "Discard" do what Enter and Escape do. Every change of value(), of the pending value, of the overflow mark or of the
+ * input: rounded to the resolution and rejected when it could not be applied (outside the limits, further out from a
+ * value() outside them), when the drums cannot show it, in read-only and in overflow; ApplyMode::Immediate applies it
+ * and emits valueCommitted(), ApplyMode::OnConfirm makes it the pending value. While a value is pending, the actions "Apply" (only while it
+ * can be applied, #242) and "Discard" do what Enter and Escape do. Every change of value(), of the pending value, of the overflow mark or of the
  * limits sends one QAccessibleValueChangeEvent with value(); setReadOnly() sends a QAccessibleStateChangeEvent. Known
  * limitation: the current decade is not exposed to assistive technology. The switch has no accessible name of its
  * own: set one with setAccessibleName() (or a QLabel buddy).
@@ -245,7 +251,7 @@ public Q_SLOTS:
     void setApplyMode(ApplyMode mode);
     /**
      * \brief Applies the pending value, as Enter does: value() takes it, with valueChanged() and valueCommitted().
-     * Does nothing when no value is pending.
+     * Does nothing when no value is pending, or when the limits do not allow it from value() (#242: it stays pending).
      */
     void applyPending();
     /** \brief Discards the pending value, as Escape does. Does nothing when no value is pending. */
