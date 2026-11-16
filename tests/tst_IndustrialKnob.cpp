@@ -5,6 +5,7 @@
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
+#include "ActionTestUtils.h"
 #include "FontTestUtils.h"
 #include "LabelInkTestUtils.h"
 #include "TextMetricsTestUtils.h"
@@ -322,15 +323,20 @@ struct ActionKnob {
 // isOperatorActive() as read in the slot: "changed 51 (on)", "committed 52 (off)", "active true (on)"
 struct ActionLog {
     QStringList lines;
+    // The context of the connections: destroyed with the log, it disconnects them, so a signal emitted after the log
+    // (by the widget's destructor, which ends an action still running) reaches no dangling lambda
+    QObject context;
     explicit ActionLog(IndustrialKnob &knob)
     {
         auto add = [this, &knob](const char *what, const QString &arg) {
             lines << QStringLiteral("%1 %2 (%3)").arg(QLatin1String(what), arg,
                                                      knob.isOperatorActive() ? QStringLiteral("on") : QStringLiteral("off"));
         };
-        QObject::connect(&knob, &IndustrialKnob::valueChanged, [add](double v) { add("changed", QString::number(v)); });
-        QObject::connect(&knob, &IndustrialKnob::valueCommitted, [add](double v) { add("committed", QString::number(v)); });
-        QObject::connect(&knob, &IndustrialKnob::operatorActiveChanged,
+        QObject::connect(&knob, &IndustrialKnob::valueChanged, &context,
+                         [add](double v) { add("changed", QString::number(v)); });
+        QObject::connect(&knob, &IndustrialKnob::valueCommitted, &context,
+                         [add](double v) { add("committed", QString::number(v)); });
+        QObject::connect(&knob, &IndustrialKnob::operatorActiveChanged, &context,
                          [add](bool a) { add("active", a ? QStringLiteral("true") : QStringLiteral("false")); });
     }
     QString take() { return std::exchange(lines, {}).join(QStringLiteral("; ")); }
@@ -1028,7 +1034,7 @@ void tst_IndustrialKnob::focusOutOrHideEndsTheAction()
     QCOMPARE(committed.count(), 0);
 
     if (hide) {
-        knob.hide();
+        QVERIFY(ActionTest::hideWithoutFocus(knob));
     } else {
         QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
         QCoreApplication::sendEvent(&knob, &focusOut);
@@ -3025,7 +3031,7 @@ void tst_IndustrialKnob::heldValueAtTheEndOfTheAction()
         QCoreApplication::sendEvent(&k.knob, &focusOut);
         break;
     }
-    case 2: k.knob.hide(); break;
+    case 2: QVERIFY(ActionTest::hideWithoutFocus(k.knob)); break;
     default: k.knob.setReadOnly(true); break;
     }
     if (changed) {

@@ -16,6 +16,7 @@
 #include "internal/ThumbwheelSwitchLayout.h"
 #include "internal/ThumbwheelSwitchTestAccess.h"
 #include "AccessibleEventLog.h"
+#include "ActionTestUtils.h"
 
 #include "PixelTestUtils.h"
 
@@ -264,15 +265,20 @@ using A11yLog = AccessibleEventLog<ThumbwheelSwitchTestAccess, ThumbwheelSwitch>
 // isOperatorActive() as read in the slot
 struct ActionLog {
     QStringList lines;
+    // The context of the connections: destroyed with the log, it disconnects them, so a signal emitted after the log
+    // (by the widget's destructor, which ends an action still running) reaches no dangling lambda
+    QObject context;
     explicit ActionLog(ThumbwheelSwitch &w)
     {
         auto add = [this, &w](const char *what, const QString &arg) {
             lines << QStringLiteral("%1 %2 (%3)").arg(QLatin1String(what), arg,
                                                      w.isOperatorActive() ? QStringLiteral("on") : QStringLiteral("off"));
         };
-        QObject::connect(&w, &ThumbwheelSwitch::valueChanged, [add](double v) { add("changed", QString::number(v)); });
-        QObject::connect(&w, &ThumbwheelSwitch::valueCommitted, [add](double v) { add("committed", QString::number(v)); });
-        QObject::connect(&w, &ThumbwheelSwitch::operatorActiveChanged,
+        QObject::connect(&w, &ThumbwheelSwitch::valueChanged, &context,
+                         [add](double v) { add("changed", QString::number(v)); });
+        QObject::connect(&w, &ThumbwheelSwitch::valueCommitted, &context,
+                         [add](double v) { add("committed", QString::number(v)); });
+        QObject::connect(&w, &ThumbwheelSwitch::operatorActiveChanged, &context,
                          [add](bool a) { add("active", a ? QStringLiteral("true") : QStringLiteral("false")); });
     }
     QString take() { return std::exchange(lines, {}).join(QStringLiteral("; ")); }
@@ -853,11 +859,12 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds_data()
 {
     QTest::addColumn<int>("end");
     QTest::newRow("loss of focus") << 0;
-    QTest::newRow("hide") << 1;
+    // A key sent to the switch itself (as QTest and automation tools do) while it has no focus: only the hide ends it.
+    // Hidden with the focus, the switch would lose it first and the focus out would end the action (#241: this row
+    // replaces a "hide" row that hid the focused switch, and so tested the loss of focus)
+    QTest::newRow("hide, key sent without focus") << 1;
     QTest::newRow("read-only") << 2;
     QTest::newRow("a press") << 3;
-    // A key sent to the switch itself (as QTest and automation tools do) while it has no focus: only the hide ends it
-    QTest::newRow("hide, key sent without focus") << 4;
 }
 
 // #182: a key held down when the switch loses the focus, is hidden or becomes read-only commits there, once
@@ -868,7 +875,7 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds()
     QVERIFY(rig.show());
     const internal::ThumbwheelLayout l = rig.layout();
     rig.key(Qt::Key_Right);
-    if (end == 4) {
+    if (end == 1) {
         rig.other->setFocus(Qt::TabFocusReason);
         QVERIFY(QTest::qWaitFor([&] { return rig.other->hasFocus(); }));
     }
@@ -880,10 +887,9 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds()
         rig.other->setFocus(Qt::TabFocusReason);
         QVERIFY(QTest::qWaitFor([&] { return rig.other->hasFocus(); }));
         break;
-    case 1: rig.wheel->hide(); break;
+    case 1: QVERIFY(ActionTest::hideWithoutFocus(*rig.wheel)); break;
     case 2: rig.wheel->setReadOnly(true); break;
-    case 3: rig.press(l.drums.at(0)); break;
-    default: rig.wheel->hide(); break;
+    default: rig.press(l.drums.at(0)); break;
     }
     QCOMPARE(spies.committed.count(), 1);
     QCOMPARE(spies.committed.at(0).at(0).toDouble(), 225.0);
@@ -1547,6 +1553,12 @@ void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction()
     QFETCH(bool, changed);
     Rig rig(Mode::Immediate);
     QVERIFY(rig.show());
+    if (ending == 2) {
+        // Hidden with the focus, the switch would lose it first and the focus out would end the action: the hide is
+        // checked on a switch without focus (the keys are sent to it directly)
+        rig.other->setFocus(Qt::TabFocusReason);
+        QVERIFY(QTest::qWaitFor([&] { return rig.other->hasFocus(); }));
+    }
     sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false); // 1125.0
     int key = Qt::Key_Up;
     if (!changed) {
@@ -1564,7 +1576,7 @@ void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction()
         QCoreApplication::sendEvent(rig.wheel, &focusOut);
         break;
     }
-    case 2: rig.wheel->hide(); break;
+    case 2: QVERIFY(ActionTest::hideWithoutFocus(*rig.wheel)); break;
     default: rig.wheel->setReadOnly(true); break;
     }
     if (changed) {

@@ -13,6 +13,7 @@
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/IndustrialSliderTestAccess.h"
 #include "AccessibleEventLog.h"
+#include "ActionTestUtils.h"
 #include "internal/RadialGaugeLayout.h"
 #include "internal/ValueStateDrawing.h"
 
@@ -212,16 +213,20 @@ using A11yLog = AccessibleEventLog<internal::IndustrialSliderTestAccess, Industr
 // isOperatorActive() as read in the slot
 struct ActionLog {
     QStringList lines;
+    // The context of the connections: destroyed with the log, it disconnects them, so a signal emitted after the log
+    // (by the widget's destructor, which ends an action still running) reaches no dangling lambda
+    QObject context;
     explicit ActionLog(IndustrialSlider &s)
     {
         auto add = [this, &s](const char *what, const QString &arg) {
             lines << QStringLiteral("%1 %2 (%3)").arg(QLatin1String(what), arg,
                                                      s.isOperatorActive() ? QStringLiteral("on") : QStringLiteral("off"));
         };
-        QObject::connect(&s, &IndustrialSlider::setpointChanged, [add](double v) { add("changed", QString::number(v)); });
-        QObject::connect(&s, &IndustrialSlider::setpointCommitted,
+        QObject::connect(&s, &IndustrialSlider::setpointChanged, &context,
+                         [add](double v) { add("changed", QString::number(v)); });
+        QObject::connect(&s, &IndustrialSlider::setpointCommitted, &context,
                          [add](double v) { add("committed", QString::number(v)); });
-        QObject::connect(&s, &IndustrialSlider::operatorActiveChanged,
+        QObject::connect(&s, &IndustrialSlider::operatorActiveChanged, &context,
                          [add](bool a) { add("active", a ? QStringLiteral("true") : QStringLiteral("false")); });
     }
     QString take() { return std::exchange(lines, {}).join(QStringLiteral("; ")); }
@@ -568,8 +573,7 @@ void tst_IndustrialSliderInput::focusOutAndHideEndTheAction()
     QVERIFY(reached > 50.0);
     QCOMPARE(committed.count(), 0);
     if (hide) {
-        QVERIFY(!s->hasFocus());
-        s->hide();
+        QVERIFY(ActionTest::hideWithoutFocus(*s));
     } else {
         QVERIFY(focusOn(*other));
     }
@@ -1709,7 +1713,7 @@ void tst_IndustrialSliderInput::heldSetpointAtTheEndOfTheAction()
         QCoreApplication::sendEvent(&a.s, &focusOut);
         break;
     }
-    case 2: a.s.hide(); break;
+    case 2: QVERIFY(ActionTest::hideWithoutFocus(a.s)); break;
     default: a.s.setReadOnly(true); break;
     }
     if (changed) {
