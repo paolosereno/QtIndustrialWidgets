@@ -39,6 +39,10 @@ class tst_ThumbwheelSwitchInput : public QObject
 
 private Q_SLOTS:
     void defaults();
+    void onConfirmLimitsAreCheckedWhenApplied();
+    void onConfirmStepsFollowTheCapacityOnly();
+    void onConfirmFromAValueOutsideTheLimits();
+    void onConfirmAccessibilityOfAPendingValueThatCannotBeApplied();
     void setValueDuringAHeldKeyIsHeldInImmediate();
     void heldValueAtTheEndOfTheAction_data();
     void heldValueAtTheEndOfTheAction();
@@ -1719,6 +1723,181 @@ void tst_ThumbwheelSwitchInput::buttonsWheelAndAssistiveTechnologyAreNotActions(
     QCOMPARE(log.take(), QStringLiteral("active true (on); changed 41 (on); committed 41 (off); active false (off); "
                                         "changed 60 (off); committed 60 (off)"));
 }
+
+// #242: in OnConfirm the limits are checked when the pending value is applied, not at each step. The case of the issue,
+// on 0-2500: 1999 -> 2999 (pending, above the maximum: the tag shows it, SET is empty, Enter, SET and applyPending()
+// do nothing and Enter does not reach the parent) -> 2099, 2009, 2000 (inside: SET filled; Enter applies 2000)
+void tst_ThumbwheelSwitchInput::onConfirmLimitsAreCheckedWhenApplied()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    rig.wheel->setValue(1999.0);
+    const internal::ThumbwheelLayout l = rig.layout();
+    Spies spies(rig.wheel);
+    rig.key(Qt::Key_Home);
+    rig.key(Qt::Key_Up); // The thousands
+    QVERIFY(rig.wheel->hasPendingValue());
+    QCOMPARE(rig.wheel->pendingValue(), 2999.0);
+    (void)render(*rig.wheel);
+    QCOMPARE(ThumbwheelSwitchTestAccess::lastTag(*rig.wheel), QStringLiteral("▲"));
+    QVERIFY(ThumbwheelSwitchTestAccess::lastPendingOutline(*rig.wheel));
+    QVERIFY(!ThumbwheelSwitchTestAccess::lastSetOpen(*rig.wheel));
+
+    const int parentKeys = rig.window.keyPresses;
+    rig.key(Qt::Key_Return);
+    rig.key(Qt::Key_Enter);
+    rig.click(l.setButton);
+    rig.wheel->applyPending();
+    QCOMPARE(rig.window.keyPresses, parentKeys); // Consumed: a default button must not take a value being entered
+    QCOMPARE(rig.wheel->value(), 1999.0);
+    QCOMPARE(rig.wheel->pendingValue(), 2999.0);
+    QCOMPARE(spies.changed.count() + spies.committed.count(), 0);
+
+    rig.key(Qt::Key_Right); // The hundreds
+    rig.key(Qt::Key_0);
+    QCOMPARE(rig.wheel->pendingValue(), 2099.0);
+    (void)render(*rig.wheel);
+    QVERIFY(ThumbwheelSwitchTestAccess::lastTag(*rig.wheel).isEmpty());
+    QVERIFY(ThumbwheelSwitchTestAccess::lastSetOpen(*rig.wheel));
+    rig.key(Qt::Key_0);
+    rig.key(Qt::Key_0);
+    QCOMPARE(rig.wheel->pendingValue(), 2000.0);
+    rig.key(Qt::Key_Return);
+    QCOMPARE(rig.wheel->value(), 2000.0);
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QCOMPARE(spies.changed.count(), 1);
+    QCOMPARE(spies.committed.count(), 1);
+    QCOMPARE(spies.committed.at(0).at(0).toDouble(), 2000.0);
+
+    // Escape still discards a pending value that cannot be applied
+    rig.key(Qt::Key_Home);
+    rig.key(Qt::Key_Up);
+    QCOMPARE(rig.wheel->pendingValue(), 3000.0);
+    rig.key(Qt::Key_Escape);
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QCOMPARE(rig.window.keyPresses, parentKeys);
+}
+
+// #242: in OnConfirm the steps follow the capacity of the drums only: the arrows towards a value outside the limits are
+// filled, and a typed digit, a sign, a wheel notch and a click take the pending value outside. A digit at 9 or 0 is
+// still rejected. Immediate is unchanged: every step is checked against the limits
+void tst_ThumbwheelSwitchInput::onConfirmStepsFollowTheCapacityOnly()
+{
+    {
+        Rig rig;
+        rig.wheel->setWheelEnabled(true);
+        QVERIFY(rig.show());
+        rig.wheel->setValue(2499.9);
+        const internal::ThumbwheelLayout l = rig.layout();
+        (void)render(*rig.wheel);
+        QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(*rig.wheel)), QStringLiteral("11000"));
+        rig.click(l.plus.at(2)); // The tens at 9: rejected (capacity)
+        QVERIFY(!rig.wheel->hasPendingValue());
+        rig.click(l.plus.at(1)); // 2599.9
+        QCOMPARE(rig.wheel->pendingValue(), 2599.9);
+        QVERIFY(sendWheel(*rig.wheel, l.drums.at(0).center(), 120)); // 3599.9
+        QCOMPARE(rig.wheel->pendingValue(), 3599.9);
+        rig.key(Qt::Key_Home);
+        rig.key(Qt::Key_9); // 9599.9
+        QCOMPARE(rig.wheel->pendingValue(), 9599.9);
+        QCOMPARE(rig.wheel->value(), 2499.9);
+    }
+    {
+        Rig rig;
+        rig.wheel->setSignDrumVisible(true);
+        rig.wheel->setRange(0.0, 50.0);
+        rig.wheel->setValue(12.0);
+        rig.wheel->resize(rig.wheel->minimumSizeHint());
+        QVERIFY(rig.show());
+        rig.key(Qt::Key_Home);
+        rig.key(Qt::Key_Minus); // -12 is below the minimum: pending, not applicable
+        QCOMPARE(rig.wheel->pendingValue(), -12.0);
+        (void)render(*rig.wheel);
+        QCOMPARE(ThumbwheelSwitchTestAccess::lastTag(*rig.wheel), QStringLiteral("▼"));
+        QVERIFY(!ThumbwheelSwitchTestAccess::lastSetOpen(*rig.wheel));
+    }
+    {
+        Rig rig(Mode::Immediate);
+        QVERIFY(rig.show());
+        rig.wheel->setValue(2499.9);
+        (void)render(*rig.wheel);
+        QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(*rig.wheel)), QStringLiteral("00000"));
+        rig.key(Qt::Key_Home);
+        rig.key(Qt::Key_3);
+        QCOMPARE(rig.wheel->value(), 2499.9);
+    }
+}
+
+// #242: from a value outside the limits (read back from a device), a pending value closer to them can be applied, one
+// further out cannot: the rule of the steps, checked once between value() and the pending value
+void tst_ThumbwheelSwitchInput::onConfirmFromAValueOutsideTheLimits()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    rig.wheel->setValue(3500.0);
+    Spies spies(rig.wheel);
+    rig.key(Qt::Key_Home);
+    rig.key(Qt::Key_Right); // The hundreds
+    rig.key(Qt::Key_Up); // 3600: further out
+    QCOMPARE(rig.wheel->pendingValue(), 3600.0);
+    (void)render(*rig.wheel);
+    QVERIFY(!ThumbwheelSwitchTestAccess::lastSetOpen(*rig.wheel));
+    rig.key(Qt::Key_Return);
+    QCOMPARE(spies.committed.count(), 0);
+    rig.key(Qt::Key_Down);
+    rig.key(Qt::Key_Down); // 3400: closer, still above the maximum
+    QCOMPARE(rig.wheel->pendingValue(), 3400.0);
+    (void)render(*rig.wheel);
+    QCOMPARE(ThumbwheelSwitchTestAccess::lastTag(*rig.wheel), QStringLiteral("▲"));
+    QVERIFY(ThumbwheelSwitchTestAccess::lastSetOpen(*rig.wheel));
+    rig.key(Qt::Key_Return);
+    QCOMPARE(rig.wheel->value(), 3400.0);
+    QCOMPARE(spies.committed.count(), 1);
+}
+
+// #242: assistive technology sees a pending value that cannot be applied in the value text, with Discard but not
+// Apply; Apply does nothing. A value it sets in OnConfirm is rejected when it could not be applied, with the same rule
+void tst_ThumbwheelSwitchInput::onConfirmAccessibilityOfAPendingValueThatCannotBeApplied()
+{
+    Rig rig;
+    QVERIFY(rig.show());
+    rig.wheel->setValue(1999.0);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(rig.wheel);
+    QVERIFY(iface && iface->actionInterface() && iface->valueInterface());
+    QAccessibleActionInterface *actions = iface->actionInterface();
+    const QString apply = QStringLiteral("Apply");
+    const QString discard = QStringLiteral("Discard");
+    rig.key(Qt::Key_Home);
+    rig.key(Qt::Key_Up); // 2999.0, pending, above the maximum
+    QCOMPARE(rig.wheel->pendingValue(), 2999.0);
+    QCOMPARE(iface->text(QAccessible::Value), QStringLiteral("pending 2999.0 V, above maximum, set 1999.0 V"));
+    QVERIFY(!actions->actionNames().contains(apply));
+    QVERIFY(actions->actionNames().contains(discard));
+    Spies spies(rig.wheel);
+    actions->doAction(apply);
+    QCOMPARE(rig.wheel->pendingValue(), 2999.0);
+    QCOMPARE(spies.changed.count() + spies.committed.count(), 0);
+
+    // A value set by assistive technology is checked against value(), not against the pending value: 2800 is not
+    // applicable from 1999 (before #242 it was taken, as closer to the limits than the pending 2999)
+    iface->valueInterface()->setCurrentValue(2800.0);
+    QCOMPARE(rig.wheel->pendingValue(), 2999.0);
+    iface->valueInterface()->setCurrentValue(2400.0);
+    QCOMPARE(rig.wheel->pendingValue(), 2400.0);
+    QVERIFY(actions->actionNames().contains(apply));
+    actions->doAction(discard);
+    QVERIFY(!rig.wheel->hasPendingValue());
+
+    rig.wheel->setValue(3500.0); // Read back above the maximum
+    iface->valueInterface()->setCurrentValue(3600.0); // Further out: rejected
+    QVERIFY(!rig.wheel->hasPendingValue());
+    iface->valueInterface()->setCurrentValue(3400.0); // Closer: pending, and Apply applies it
+    QCOMPARE(rig.wheel->pendingValue(), 3400.0);
+    actions->doAction(apply);
+    QCOMPARE(rig.wheel->value(), 3400.0);
+    QCOMPARE(spies.committed.count(), 1);
+}
+
 
 QTEST_MAIN(tst_ThumbwheelSwitchInput)
 #include "tst_ThumbwheelSwitchInput.moc"
