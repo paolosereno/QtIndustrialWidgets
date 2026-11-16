@@ -85,6 +85,12 @@ A change is "done" only when: build has zero warnings, the full `ctest` run pass
    the final report as a suggestion, not into the diff.
 7. **When the spec is wrong or ambiguous, ask.** Do not improvise an alternative design.
 8. After a mutation check, restore the source (`git checkout HEAD -- <files>`), rebuild from clean with `cmake --build build --clean-first` and run the full `ctest` until green before taking any measurement or image. Touching the restored files is not enough: under WSL the clock can jump back, so make may see a mutated binary as newer than the restored sources and skip the relink.
+   Before opening a PR that changes what a widget draws, export the gallery from that clean build
+   (`./build/bin/QtIndustrialWidgetsGallery --export-gallery <dir>`) and compare it byte for byte with `docs/images`
+   (`for f in docs/images/*.png; do cmp -s "$f" "<dir>/$(basename "$f")" || echo "$f"; done`). This is the same
+   check as the CI job Linux GCC Qt 6; `ctest` does not do it. Re-export the images that changed into `docs/images`,
+   check that the comment of their showcase in `examples/gallery/Showcases.cpp` still describes them, and list them in
+   the PR, with before and after on the `pr-assets` branch (#242).
 
 ## Documentation, benchmarks and releases
 
