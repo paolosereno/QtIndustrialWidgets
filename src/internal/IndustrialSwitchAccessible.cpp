@@ -92,11 +92,13 @@ QAccessible::State IndustrialSwitchAccessible::state() const
     return s;
 }
 
-// The actions of the switch, then those of QAccessibleWidget (setFocus)
+// The actions of the switch, then those of QAccessibleWidget (setFocus); none of the switch while it is disabled (#243)
 QStringList IndustrialSwitchAccessible::actionNames() const
 {
     QStringList names;
-    if (guardClosed()) {
+    if (!control()->isEnabled()) {
+        // #243: operator input is ignored while disabled
+    } else if (guardClosed()) {
         names = QStringList{openGuardAction()};
     } else {
         names = control()->positionCount() == 2 ? QStringList{toggleAction()}
@@ -146,11 +148,12 @@ QVariant IndustrialSwitchAccessible::minimumValue() const { return 0; }
 QVariant IndustrialSwitchAccessible::maximumValue() const { return control()->positionCount() - 1; }
 QVariant IndustrialSwitchAccessible::minimumStepSize() const { return 1; }
 
-// Operator input: ignored while the guard is closed, rounded to a position and bound to the positions
+// Operator input: ignored while the guard is closed or the switch is disabled (#243), rounded to a position and bound
+// to the positions
 void IndustrialSwitchAccessible::setCurrentValue(const QVariant &value)
 {
     IndustrialSwitch *sw = control();
-    if (guardClosed() || sw->positionCount() != 3) {
+    if (guardClosed() || !sw->isEnabled() || sw->positionCount() != 3) {
         return;
     }
     bool ok = false;

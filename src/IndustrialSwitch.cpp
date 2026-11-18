@@ -7,6 +7,7 @@
 
 #include "internal/IndustrialSwitchAccessible.h"
 #include "internal/IndustrialSwitchLayout.h"
+#include "internal/ValueStateDrawing.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QVariantAnimation>
@@ -385,6 +386,13 @@ void IndustrialSwitch::resizeEvent(QResizeEvent *event)
 
 void IndustrialSwitch::changeEvent(QEvent *event)
 {
+    // #243: disabled (the switch or a parent): a drag stops there; the positions it took stay, each one already signalled
+    if (event->type() == QEvent::EnabledChange) {
+        if (!isEnabled()) {
+            d_ptr->m_isDragging = false;
+        }
+        update(); // The ⊘
+    }
     // #51: the cached background draws text with the widget font, and the size hints depend on it
     if (event->type() == QEvent::FontChange) {
         d_ptr->m_cacheValid = false;
@@ -949,6 +957,19 @@ void IndustrialSwitch::paintEvent(QPaintEvent * /*event*/)
     // Draw Safety Guard over the switch if enabled
     if (d_ptr->m_hasSafetyGuard) {
         drawSafetyGuard(painter, switchRect);
+    }
+
+    // #243: disabled. A ⊘ in textColor at the centre of the body, over the lever, the rocker or the guard, on a disc of
+    // the plate colour, so that its contrast does not depend on what is under it
+    if (!isEnabled()) {
+        const double disc = IndustrialSwitchPrivate::disabledDiscRadius(switchRect);
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(d_ptr->m_plateColor);
+        painter.drawEllipse(switchRect.center(), disc, disc);
+        painter.restore();
+        internal::drawDisabledMark(painter, IndustrialSwitchPrivate::disabledMarkRect(switchRect), d_ptr->m_textColor);
     }
 
     // Focus ring (#183): solid, 2 px, in textColor (the colour of the labels on the plate), along the inside of the
