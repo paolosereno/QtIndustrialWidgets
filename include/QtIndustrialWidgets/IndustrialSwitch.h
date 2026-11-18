@@ -41,6 +41,9 @@ class IndustrialSwitchTestAccess;
  *   guard". Every change of position sends a state change (2 positions) or a value change (3 positions); opening,
  *   closing or fitting the guard sends a read-only state change. The role follows positionCount(): set it before
  *   the switch is shown.
+ * - Disabled (setEnabled(false) on the switch or a parent, #243): mouse, keys, wheel and assistive technology move
+ *   nothing and leave the guard as it is; the calls from the application still work. A ⊘ in textColor() is drawn at
+ *   the centre of the body on a disc of plateColor(). A drag stops at the disable; the positions it took stay.
  *
  * \code
  * auto *sw = new IndustrialSwitch(parent);

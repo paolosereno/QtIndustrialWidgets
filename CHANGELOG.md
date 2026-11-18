@@ -27,8 +27,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ThumbwheelSwitch` in `OnConfirm`: the limits are checked when the pending value is applied, not at each step**
   (#242), so the operator can pass through values outside them (1999, 2999, 2000). Until it can be applied, SET is
   empty and Enter is consumed without effect. See [ThumbwheelSwitch](docs/widgets.md#thumbwheelswitch).
+- **Disabled controls show a ⊘ and ignore assistive technology** (#243): `IndustrialKnob`, `IndustrialSlider`,
+  `ThumbwheelSwitch` and `IndustrialSwitch` draw a ⊘ (in place of the padlock, which it wins over) and no longer take
+  a value or an action from assistive technology while disabled. See [Controls](docs/widgets.md#controls).
+- **A disable or `setReadOnly(true)` ends a running action without a commit** (#243): the value goes back to where the
+  action started, or to the value read back during it, with `valueChanged()` and no `valueCommitted()`. A focus out,
+  a hide and a release still commit. See [Controls](docs/widgets.md#controls).
+- **`IndustrialKnob`: the padlock is larger, on a disc that covers the inner end of the pointer** (#243): 45 % of the
+  cap, at least 12 px, instead of a small mark inside the pointer (#182). See
+  [IndustrialKnob](docs/widgets.md#industrialknob).
 
 ### Fixed
+- **A drag that a disable interrupts no longer stays running** (#243): on a control without focus, a disable left the
+  drag going, and a later move changed the value of the re-enabled control. See [Controls](docs/widgets.md#controls).
+- **`ThumbwheelSwitch`: a disable clears the pending value and an armed button** (#243), so a release after the
+  switch is enabled again no longer makes a step. See [ThumbwheelSwitch](docs/widgets.md#thumbwheelswitch).
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.1` tag archive (the hash exists only after the tag).
 
 ---

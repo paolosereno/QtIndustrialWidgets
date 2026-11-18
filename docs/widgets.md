@@ -33,7 +33,7 @@ light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) a
 ## Controls {#controls}
 
 Rules shared by the widgets that set a value (#182). They apply to `IndustrialKnob`, `IndustrialSlider` and
-`ThumbwheelSwitch` (`IndustrialSwitch` follows the focus and accessibility items, with the details in
+`ThumbwheelSwitch` (`IndustrialSwitch` follows the disabled, focus and accessibility items, with the details in
 [its section](#industrialswitch)).
 - **Names.** The rules use the names of `IndustrialKnob`. `IndustrialSlider` names the same things after its setpoint,
   with the same meaning: `setpoint` and `setSetpoint()` for the value, `setpointChanged()` and `setpointCommitted()`
@@ -69,6 +69,9 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
     comes once, at the release that is not an auto-repeat;
   - a drag or a held key that loses the focus, or whose widget is hidden, ends there and is committed.
 
+  An action ended by the application, by disabling the control or turning read-only on, is not committed (#243): see
+  *Disabled* below.
+
   A programmatic `setValue()` emits `valueChanged()`, never `valueCommitted()`. An application can therefore write
   the committed value to a PLC and show the value read back with `setValue()` without a write loop.
 - **A value set during an operator action is held** (#241). An action is a drag, from the press to its end, or a
@@ -76,7 +79,8 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
   is emitted at its start and at its end. A wheel notch, a button of `ThumbwheelSwitch` and a value set by assistive
   technology are not actions. During an action, `setValue()` (`setSetpoint()` on `IndustrialSlider`) does not move
   the control under the operator: the value is checked (NaN and ±Inf are rejected as always) and held, with no
-  `valueChanged()` and no accessibility event, and a later call replaces it. When the action ends, however it ends:
+  `valueChanged()` and no accessibility event, and a later call replaces it. When the operator's action ends (a
+  release, a focus out, a hide):
   - if it changed the value, `valueCommitted()` is emitted and the held value is dropped: the application writes the
     committed value, and the read-back that follows the write shows the device;
   - if it did not, the held value is applied as `setValue()` would apply it, clamped to the range in force then,
@@ -98,8 +102,21 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
 - **Read-only** (`readOnly`, `readOnlyChanged()`). Mouse, keyboard and wheel input are ignored and go to the parent.
   The control can still take focus, and `setValue()` still works. It is not greyed out: a padlock, drawn as a path
   in `textColor` (at least 3:1 against the control in both gallery themes), shows the state without relying on
-  colour. Turning read-only on during a drag or a held key ends that action, with `valueCommitted()` if it changed the
-  value.
+  colour. Turning read-only on during a drag or a held key ends that action without a commit, as a disable does (#243).
+- **Disabled** (#243; `setEnabled(false)` on the control or on a parent). Disabling is a decision of the application,
+  often an interlock, so:
+  - the control takes no operator input: mouse, keys, wheel and assistive technology (its value and its actions).
+    `setValue()` still works;
+  - it is not greyed out: a ⊘ (a ring crossed by a bar) drawn as a path in `textColor`, at least 3:1 against what is
+    under it in both gallery themes, shows the state without relying on colour. It is drawn where the padlock of
+    read-only is, and it wins over it: a control both disabled and read-only shows only the ⊘, and the padlock comes
+    back when it is enabled again;
+  - a drag or a held key running ends **without a commit**: the value goes back to the value at the start of the
+    action, or to the value held during it (a read-back, see above), with `valueChanged()` and no `valueCommitted()`;
+    `operatorActiveChanged(false)` comes last. Qt takes the focus away from a control being disabled: that focus out is
+    part of the disable, not a loss of focus that commits. A wheel remainder is dropped; `ThumbwheelSwitch` also
+    discards a pending value and clears an armed button;
+  - assistive technology reads the disabled state (Qt's `disabled` state), and the read-only state on its own.
 - **Value limits** (`setValueLimits()`, `clearValueLimits()`, `valueLimitLow()`, `valueLimitHigh()`,
   `valueLimitsChanged()`). They bind the operator's input only:
   - a drag, the keys and the wheel never take the value outside the limits, and Home/End go to them; a step that
@@ -121,7 +138,7 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
   the read-only state. Every change of the value sends a value-change event to assistive technology (a screen
   reader), whatever its source; a change of the range sends one too, and a change of read-only sends a state-change
   event. A value set by assistive technology is operator input: it is bound by the value limits, ignored in
-  read-only, and emits `valueCommitted()` when it changes the value.
+  read-only and while disabled, and emits `valueCommitted()` when it changes the value.
 
   **The control has no accessible name of its own**: the unit or the readout is not a name. Set one, as for any Qt
   widget, or give the control a label with `QLabel::setBuddy()`:
@@ -240,8 +257,10 @@ Rotary knob (`qiw::IndustrialKnob`).
   - During a drag the value stops at the end it reaches and never jumps to the other one: it moves again when the
     pointer is back on that end (#175).
   - `valueCommitted()` at the release of a drag or of a key, as in the rules.
-  - Read-only (`readOnly`): the padlock is drawn at the centre of the cap, inside the inner end of the pointer, so the
-    pointer is never covered at any angle.
+  - Read-only (`readOnly`) and disabled (#243): the padlock, or the ⊘, is drawn at the centre of the cap, on a flat
+    disc of `knobColor`: 45 % of the diameter of the cap, never under 12 px nor over 80 % of the cap. The disc covers
+    the inner end of the pointer, which stays visible from 53 % to 92 % of the radius of the cap at every angle. Below
+    `minimumSizeHint()` the mark keeps its 12 px (or 80 % of the cap) and its disc can cover most of the pointer.
   - Value limits (`setValueLimits()`): the band of the ticks is hatched outside them, and each limit inside the range
     has a radial stop mark longer and thicker than a tick. Past a limit a drag holds the value there until the pointer
     comes back, as at an end of the scale. In Discrete mode the operator reaches only the steps inside the limits:
@@ -283,7 +302,8 @@ damper, a speed reference) and the position the actuator reports, on one scale.
   scale does nothing); Left/Down and Right/Up by `step`, PageDown/PageUp by `pageStep`. Home/End go to the limits;
   from outside the limits, a key that would move the setpoint further out is ignored. The mouse wheel when it is
   enabled (`wheelEnabled`, off by default; only with focus).
-  - Read-only (`readOnly`): the padlock is drawn before `SP` in the setpoint readout.
+  - Read-only (`readOnly`): the padlock is drawn before `SP` in the setpoint readout. Disabled (#243): a ⊘ in its
+    place, in the same colour; `minimumSizeHint()` keeps room for it as for the padlock.
   - Setpoint limits (`setSetpointLimits()`): the band of the ticks is hatched outside them, and each limit inside the
     range has a stop mark across the zone band and the ticks.
 - **Focus and accessibility** (the [rules for controls](#controls), #183): a solid 2 px focus ring in `textColor`
@@ -335,6 +355,9 @@ setpoint panels: one digit drum per decade, each with a + button above it and a 
     `hasPendingValue`, `pendingValue` and `pendingValueChanged()` follow it.
   - `applyMode` `Immediate`: each step is applied at once, and `valueCommitted()` comes at the end of the action.
   - Read-only (`readOnly`): the input is ignored and a padlock is drawn under the drums; a pending value is discarded.
+  - Disabled (#243): a ⊘ in place of the padlock, on the status line under the drums (shown in `Immediate` too), the
+    + and − buttons drawn as outlines; a pending value is discarded and an armed button cleared, so a release after
+    the switch is enabled again makes no step.
   - Overflow: every operator input that would change the value is rejected, and turning the mark on discards a
     pending value; the current decade can still be moved.
 - **Focus and accessibility** (the [rules for controls](#controls), #183): a solid 2 px focus ring in `textColor`
@@ -343,8 +366,8 @@ setpoint panels: one digit drum per decade, each with a + button above it and a 
   the unit, and tells in words what the marks show: `0125.0 V`; `3000.0 V, above maximum` or `below minimum`;
   `pending 0130.0 V, set 0125.0 V` while a value is pending; `overflow`. A value set by assistive technology is
   operator input, rounded to the resolution and rejected when it could not be applied (outside the limits, further out
-  from a value outside them), when the drums cannot show it, in read-only and in overflow; in `OnConfirm` it becomes
-  the pending value, and the actions `Apply` and `Discard` do what Enter and Escape do. `Apply` is offered only while
+  from a value outside them), when the drums cannot show it, in read-only, while disabled and in overflow; in
+  `OnConfirm` it becomes the pending value, and the actions `Apply` and `Discard` do what Enter and Escape do. `Apply` is offered only while
   the pending value can be applied (#242). Value-change events follow the value, the pending value, the overflow mark
   and the limits. Known limitation: the current decade is not exposed to assistive technology.
 - **Size**: the drums keep the size of their digit font (never below 7 pt) and the group is centred in the widget;
@@ -382,6 +405,11 @@ Toggle or rocker switch (`qiw::IndustrialSwitch`).
 - **Orientation**: `Qt::Vertical` or `Qt::Horizontal`.
 - **Details**: optional status LED (`hasLed`), animated movement (`animated`), mouse click and drag, and the keys
   Space, Return and the arrows.
+- **Disabled** (#243, the [rules for controls](#controls)): the switch takes no operator input, and a ⊘ in
+  `textColor` is drawn at the centre of its body, over the lever, the rocker or the guard, on a disc of `plateColor`:
+  the ⊘ is 30 % of the smaller side of the body, never under 12 px nor over 80 % of it. The switch has no action to
+  commit: a drag stops at the disable, and the positions it already took stay, each one already signalled with
+  `positionChanged()`.
 - **Focus** (#183): the switch takes focus with Tab, Shift+Tab and a click, also with the guard closed. While it has
   focus it draws a solid 2 px ring in `textColor`, the colour of the labels on the plate, along the inside of the
   plate (2.25 to 4.25 px in from its edge, between the bevel and the corner screws): at least 3:1 against the plate in
@@ -405,6 +433,8 @@ Toggle or rocker switch (`qiw::IndustrialSwitch`).
     "Open guard"; open, it also has "Close guard". The actions and a value set by assistive technology follow the
     guard like the keys: they move nothing while it is closed. A state-change event (read-only) is sent when the guard
     opens, closes or is fitted.
+  - **Disabled** (#243): the actions are not offered, and they and a value set by assistive technology move nothing,
+    nor open or close the guard.
   - The role follows `positionCount`, and Qt has no event for a change of role: set `positionCount` before the switch
     is shown, or a screen reader may keep the old role until the focus moves.
 

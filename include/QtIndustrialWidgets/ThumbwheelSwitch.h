@@ -75,9 +75,14 @@ class ThumbwheelSwitchAccessible;
  *   outline, Enter is consumed without effect (it does not reach the parent), and SET and applyPending() do nothing.
  * - applyMode() Immediate: each step is applied at once (valueChanged()), and valueCommitted() is emitted once at the
  *   end of each operator action that changed the value: the release of a button, the release of a key (once for a key
- *   held down), each notch of the wheel, or a loss of focus, a hide or setReadOnly(true) during a key action.
+ *   held down), each notch of the wheel, or a loss of focus or a hide during a key action. setReadOnly(true) or a
+ *   disable during a key action ends it without a commit (#243): the value goes back to the value at its start, or to
+ *   the value held during it, with valueChanged(), then operatorActiveChanged(false).
  * - readOnly: mouse, keys and wheel input are ignored and reach the parent; a padlock is drawn under the drums. A
  *   pending value is discarded, and a key action running ends.
+ * - Disabled (setEnabled(false) on the switch or a parent, #243): the operator's input, assistive technology
+ *   included, is ignored; setValue() still works. A ⊘ is drawn in place of the padlock (it wins over it) and the
+ *   buttons as outlines; a pending value is discarded, an armed button cleared, and a key action running ends.
  * - Overflow: while the overflow mark is shown, every operator input that would change the value is rejected (the
  *   steps, the digits, the sign, the wheel, Enter), until setValue() gives a value the drums can show. Turning the
  *   mark on discards a pending value. Moving the current decade is still possible.
@@ -98,7 +103,7 @@ class ThumbwheelSwitchAccessible;
  * limits it adds "above maximum" or "below minimum" (the triangle of the tag column); while a value is pending it is
  * "pending 0130.0 V, set 0125.0 V"; in overflow it is "overflow". A value set by assistive technology is operator
  * input: rounded to the resolution and rejected when it could not be applied (outside the limits, further out from a
- * value() outside them), when the drums cannot show it, in read-only and in overflow; ApplyMode::Immediate applies it
+ * value() outside them), when the drums cannot show it, in read-only, while disabled and in overflow; ApplyMode::Immediate applies it
  * and emits valueCommitted(), ApplyMode::OnConfirm makes it the pending value. While a value is pending, the actions "Apply" (only while it
  * can be applied, #242) and "Discard" do what Enter and Escape do. Every change of value(), of the pending value, of the overflow mark or of the
  * limits sends one QAccessibleValueChangeEvent with value(); setReadOnly() sends a QAccessibleStateChangeEvent. Known
@@ -257,8 +262,8 @@ public Q_SLOTS:
     /** \brief Discards the pending value, as Escape does. Does nothing when no value is pending. */
     void discardPending();
     /**
-     * \brief Ignores the operator's input (true) or accepts it. Turning it on ends a key action running (with a commit
-     * if it changed the value) and discards a pending value. setValue() still works.
+     * \brief Ignores the operator's input (true) or accepts it. Turning it on ends a key action running without a
+     * commit (#243) and discards a pending value. setValue() still works.
      */
     void setReadOnly(bool readOnly);
     /** \brief Turns the mouse wheel on or off (see the class description). */

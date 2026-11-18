@@ -73,7 +73,9 @@ class IndustrialSliderAccessible;
  * - setpointChanged() is emitted at every change of the setpoint: during a drag, at each key step (auto-repeat
  *   too), from setSetpoint() and when setRange() clamps it. setpointCommitted() is emitted once at the end of an
  *   operator action that changed the setpoint: the release of a drag, or the release of a key that is not an
- *   auto-repeat; a drag or a held key also ends when the slider loses focus, is hidden or is made read-only.
+ *   auto-repeat; a drag or a held key also ends when the slider loses focus or is hidden. Made read-only or disabled,
+ *   the slider ends it without a commit (#243): the setpoint goes back to its value at the start of the action, or to
+ *   the value held during it, with setpointChanged(), then operatorActiveChanged(false).
  *   setSetpoint() never emits setpointCommitted(), so an application that writes committed setpoints to a device
  *   gets no write loop. During an action (isOperatorActive(), operatorActiveChanged()) setSetpoint() is held, so a
  *   value read back meanwhile does not move the handle under the operator: dropped if the action commits, applied at
@@ -85,6 +87,8 @@ class IndustrialSliderAccessible;
  * - Read-only (setReadOnly()): mouse, keyboard and wheel input are ignored and reach the parent; the slider can
  *   still take focus and setSetpoint() still works. The slider is not greyed out: a padlock is drawn in the setpoint
  *   readout, before "SP", in readoutColor(), and it is never left out for lack of room.
+ * - Disabled (setEnabled(false) on the slider or a parent, #243): the operator's input, assistive technology
+ *   included, is ignored; setSetpoint() still works. A ⊘ is drawn in place of the padlock, and wins over it.
  * - Setpoint limits (setSetpointLimits()): they bind the operator's input only. A drag, the keys and the wheel never
  *   take the setpoint outside [setpointLimitLow(), setpointLimitHigh()], and Home/End go to the limits; from a
  *   setpoint outside the limits, input towards them is applied and input that would take it further out is
@@ -104,7 +108,7 @@ class IndustrialSliderAccessible;
  * QAccessibleStateChangeEvent. A change of deviationState() or of feedbackState(), or a feedback that appears or
  * goes, also sends a QAccessibleValueChangeEvent with the setpoint (QAccessible::State has no flag for them; the value
  * text changed), one only when several of them, or the setpoint, change together (#240); a new feedback that leaves
- * both states as they are sends none, so a position updated at a high rate does not flood assistive technology. A setpoint set by assistive technology is operator input: bound by the setpoint limits, ignored in read-only, committed with setpointCommitted(). The slider
+ * both states as they are sends none, so a position updated at a high rate does not flood assistive technology. A setpoint set by assistive technology is operator input: bound by the setpoint limits, ignored in read-only and while disabled, committed with setpointCommitted(). The slider
  * has no accessible name of its own: set one with setAccessibleName() (or a QLabel buddy).
  *
  * Text size: the sizes of the labels and of the readouts follow the size of the widget font against the
@@ -353,8 +357,7 @@ public Q_SLOTS:
     void resetPageStep();
     /**
      * \brief Turns read-only on or off (see the class description). A drag or a held key running when read-only is
-     * turned on ends, with setpointCommitted() if it changed the setpoint. Emits readOnlyChanged() if the state
-     * changes.
+     * turned on ends without a commit (#243). Emits readOnlyChanged() if the state changes.
      */
     void setReadOnly(bool readOnly);
     /** \brief Turns the mouse wheel on or off (see the class description). */

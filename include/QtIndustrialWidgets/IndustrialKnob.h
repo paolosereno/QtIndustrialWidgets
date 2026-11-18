@@ -51,8 +51,14 @@ class IndustrialKnobAccessible;
  *   dropped when the knob loses focus.
  * - Read-only (setReadOnly()): mouse, keyboard and wheel input are ignored and reach the parent; the knob can still
  *   take focus and setValue() still works. The knob is not greyed out: a padlock is drawn at the centre of the cap,
- *   in textColor(), inside the inner end of the pointer, so it never covers it. Turning read-only on during a drag or
- *   a held key ends that action, with valueCommitted() if it changed the value.
+ *   in textColor(), on a flat disc of knobColor() that covers the inner end of the pointer (the mark is 45 % of the
+ *   cap, at least 12 px). Turning read-only on during a drag or a held key ends that action without a commit (#243),
+ *   as a disable does.
+ * - Disabled (setEnabled(false) on the knob or a parent, #243): the operator's input, assistive technology included,
+ *   is ignored; setValue() still works. A ⊘ is drawn in place of the padlock, and wins over it. A drag or a held key
+ *   running ends without a commit: the value goes back to the value at the start of the action, or to the value held
+ *   during it, with valueChanged(), then operatorActiveChanged(false). The focus out that Qt sends to a knob being
+ *   disabled is part of the disable.
  * - Value limits (setValueLimits()): they bind the operator's input only. A drag, the keys and the wheel never take
  *   the value outside [valueLimitLow(), valueLimitHigh()], and Home/End go to the limits; from a value outside the
  *   limits, input towards them is applied and input that would take the value further out is ignored. setValue()
@@ -66,7 +72,7 @@ class IndustrialKnobAccessible;
  * value, minimum(), maximum(), the step (step() in Continuous mode, the size of a detent in Discrete mode) and the
  * read-only state. Every change of the value sends a QAccessibleValueChangeEvent, and so does every change of the
  * range; setReadOnly() sends a QAccessibleStateChangeEvent. A value set by assistive technology is operator input:
- * bound by the value limits, ignored in read-only, committed with valueCommitted(). The knob has no accessible name
+ * bound by the value limits, ignored in read-only and while disabled, committed with valueCommitted(). The knob has no accessible name
  * of its own: set one with setAccessibleName() (or a QLabel buddy). With value limits set, assistive technology sees
  * the minimum and maximum of the scale, not the limits.
  *
@@ -279,8 +285,8 @@ public Q_SLOTS:
      * \brief Ignores the operator's input while \a readOnly is true (#182).
      *
      * Mouse, keyboard and wheel events are ignored and reach the parent; focus and setValue() still work. A drag or a
-     * held key running when read-only is turned on ends, with valueCommitted() if it changed the value. Emits
-     * readOnlyChanged() if the state changes.
+     * held key running when read-only is turned on ends without a commit (#243): the value goes back to the value at
+     * the start of the action, or to the value held during it. Emits readOnlyChanged() if the state changes.
      */
     void setReadOnly(bool readOnly);
     /** \brief Lets the mouse wheel step the value while the knob has focus (#182); off by default. */
