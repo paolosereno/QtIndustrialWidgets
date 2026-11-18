@@ -185,7 +185,23 @@ public:
         Q_EMIT knob->operatorActiveChanged(false);
     }
 
-    // #243 (test scaffolding, the geometry of the mark of the state; drawn by the fix)
+    // #243: the application ends the action (disabled, setReadOnly(true)): no commit. The value goes back to where the
+    // action started, or to the value held during it (#241), with valueChanged() if it changes; then
+    // operatorActiveChanged(false). isOperatorActive() is already false in the slots of these signals
+    void cancelAction(IndustrialKnob *knob)
+    {
+        if (!operatorActive()) return;
+        m_isDragging = false;
+        m_keyAction = false;
+        m_actionKey = 0;
+        const bool held = std::exchange(m_heldSet, false);
+        applyValue(knob, held ? m_held : m_actionStartValue);
+        Q_EMIT knob->operatorActiveChanged(false);
+    }
+
+    // #243: the mark of the state (the ⊘ of disabled, the padlock of read-only) at the centre of the cap, the inner
+    // face of the knob: 45 % of its diameter, never under kMinimumStateMark logical px, never over 80 % of the cap.
+    // It stands on a disc of knobColor(), stateMarkDiscRadius(), which covers the inner end of the pointer
     static constexpr double kMinimumStateMark = 12.0;
     static double capRadius(const internal::KnobScaleGeometry &g)
     {
@@ -197,29 +213,17 @@ public:
         return std::min(std::max(0.45 * cap, kMinimumStateMark), 0.80 * cap);
     }
     static double stateMarkDiscRadius(const internal::KnobScaleGeometry &g) { return stateMarkSide(g) * 0.59; }
+    // The ⊘ of disabled: a square of stateMarkSide()
     static QRectF disabledMarkRect(const internal::KnobScaleGeometry &g)
     {
         const double s = stateMarkSide(g);
         return QRectF(g.centerX - s * 0.5, g.centerY - s * 0.5, s, s);
     }
+    // The padlock of read-only: as high as stateMarkSide(), with the proportions of drawPadlock() in the other controls
     static QRectF stateMarkPadlockRect(const internal::KnobScaleGeometry &g)
     {
         const double h = stateMarkSide(g);
         const double w = h * 0.714;
-        return QRectF(g.centerX - w * 0.5, g.centerY - h * 0.5, w, h);
-    }
-
-    // #182: inner end of the pointer, as paintEvent() draws it: no angle of the pointer reaches inside this radius
-    static double pointerInnerRadius(const internal::KnobScaleGeometry &g)
-    {
-        return g.radius * 0.65 * 0.84 * 0.90 * 0.32; // knob, face, inner face, inner end of the pointer
-    }
-    // #182: the padlock of read-only, centred on the cap: its corners stay at 0.82 of pointerInnerRadius()
-    static QRectF padlockRect(const internal::KnobScaleGeometry &g)
-    {
-        const double r = pointerInnerRadius(g);
-        const double w = 0.95 * r;
-        const double h = 1.33 * r;
         return QRectF(g.centerX - w * 0.5, g.centerY - h * 0.5, w, h);
     }
 

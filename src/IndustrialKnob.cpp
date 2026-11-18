@@ -510,7 +510,7 @@ void IndustrialKnob::setReadOnly(bool readOnly)
 {
     if (d_ptr->m_readOnly == readOnly) return;
     if (readOnly) {
-        d_ptr->endAction(this); // #182: a drag or a held key running now ends, and commits if it changed the value
+        d_ptr->cancelAction(this); // #243: a drag or a held key running now ends without a commit
     }
     d_ptr->m_readOnly = readOnly;
     d_ptr->m_wheelRemainder = 0;
@@ -569,6 +569,13 @@ void IndustrialKnob::resizeEvent(QResizeEvent *event)
 
 void IndustrialKnob::changeEvent(QEvent *event)
 {
+    // #243: disabled (the knob or a parent), a decision of the application: an action running ends without a commit
+    if (event->type() == QEvent::EnabledChange) {
+        if (!isEnabled()) {
+            d_ptr->cancelAction(this); // A drag without focus; with focus, the focus out has ended it already
+        }
+        update(); // The ⊘
+    }
     // #51: the cached text uses the widget font, so a font change invalidates it too
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::FontChange) {
         invalidateCache();
@@ -778,7 +785,13 @@ void IndustrialKnob::keyReleaseEvent(QKeyEvent *event)
 
 void IndustrialKnob::focusOutEvent(QFocusEvent *event)
 {
-    d_ptr->endAction(this); // #182: the release will not reach the knob
+    // #182: the release will not reach the knob. #243: Qt takes the focus away from a knob being disabled before the
+    // EnabledChange, when it is already disabled: that focus out is the disable, which does not commit
+    if (isEnabled()) {
+        d_ptr->endAction(this);
+    } else {
+        d_ptr->cancelAction(this);
+    }
     d_ptr->m_wheelRemainder = 0;
     QWidget::focusOutEvent(event);
 }
@@ -1057,8 +1070,8 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     painter.setBrush(d_ptr->m_pointerColor);
     painter.drawPolygon(ptrPoly);
 
-    // Specular center dot; in read-only the padlock is there instead
-    if (!d_ptr->m_readOnly) {
+    // Specular center dot; in read-only and disabled the mark of the state is there instead
+    if (!d_ptr->m_readOnly && isEnabled()) {
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(255, 255, 255, 140));
         painter.drawEllipse(QPointF(-1.0, -1.0), 2.5, 2.5);
@@ -1066,10 +1079,22 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
 
     painter.restore();
 
-    // #182: read-only. A padlock at the centre of the cap, inside the inner end of the pointer, so the pointer is
-    // never covered; a path, so it needs no font
-    if (d_ptr->m_readOnly) {
-        internal::drawPadlock(painter, IndustrialKnobPrivate::padlockRect(scale), d_ptr->m_textColor);
+    // #182, #243: the mark of the state at the centre of the cap: the ⊘ of disabled, which wins over read-only, or the
+    // padlock of read-only. 45 % of the cap, on a disc of knobColor that covers the inner end of the pointer, so the
+    // contrast does not depend on the pointer; paths, so they need no font
+    if (!isEnabled() || d_ptr->m_readOnly) {
+        const double disc = IndustrialKnobPrivate::stateMarkDiscRadius(scale);
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(d_ptr->m_knobColor);
+        painter.drawEllipse(QPointF(scale.centerX, scale.centerY), disc, disc);
+        painter.restore();
+        if (!isEnabled()) {
+            internal::drawDisabledMark(painter, IndustrialKnobPrivate::disabledMarkRect(scale), d_ptr->m_textColor);
+        } else {
+            internal::drawPadlock(painter, IndustrialKnobPrivate::stateMarkPadlockRect(scale), d_ptr->m_textColor);
+        }
     }
 
     // 7. Dynamic Digital Value Readout (Bottom Pod)

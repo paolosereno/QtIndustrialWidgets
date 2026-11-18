@@ -80,11 +80,12 @@ QVariant IndustrialKnobAccessible::minimumStepSize() const
     return k->step();
 }
 
-// Operator input: ignored in read-only, bound by the value limits like a key or the wheel, and committed
+// Operator input: ignored in read-only and disabled (#243), bound by the value limits like a key or the wheel, and
+// committed
 void IndustrialKnobAccessible::setCurrentValue(const QVariant &value)
 {
     IndustrialKnob *k = knob();
-    if (k->isReadOnly()) {
+    if (k->isReadOnly() || !k->isEnabled()) {
         return;
     }
     bool ok = false;
