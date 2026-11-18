@@ -35,6 +35,8 @@ public:
     /// The text of the status line ("SET?  now …"), empty without one or when it held the padlock
     static QString lastStatus(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastStatus; }
     static bool lastPadlock(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastPadlock; }
+    // #243: the ⊘ of disabled was drawn
+    static bool lastDisabledMark(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastDisabledMark; }
     /// The SET button was drawn, and drawn filled (a value was pending)
     static bool lastSetDrawn(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastSetDrawn; }
     static bool lastSetOpen(const ThumbwheelSwitch &w) { return w.d_ptr->m_lastSetOpen; }

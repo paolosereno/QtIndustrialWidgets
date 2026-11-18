@@ -35,9 +35,18 @@ public:
         return knob.d_ptr->m_lastMinimumMeasures;
     }
 
-    // #182: where the padlock of read-only is drawn, in logical px, at the scale of the last paint
+    // #182, #243: where the padlock of read-only is drawn, in logical px, at the scale of the last paint
     static QRectF padlockRect(const IndustrialKnob &knob) {
-        return IndustrialKnobPrivate::padlockRect(knob.d_ptr->m_scale.geometry);
+        return IndustrialKnobPrivate::stateMarkPadlockRect(knob.d_ptr->m_scale.geometry);
+    }
+    // #243: where the ⊘ of disabled is drawn, in logical px, at the scale of the last paint
+    static QRectF disabledMarkRect(const IndustrialKnob &knob) {
+        return IndustrialKnobPrivate::disabledMarkRect(knob.d_ptr->m_scale.geometry);
+    }
+    // #243: the disc of knobColor() under the mark of the state: its centre and radius, in logical px
+    static std::pair<QPointF, double> stateMarkDisc(const IndustrialKnob &knob) {
+        const internal::KnobScaleGeometry &g = knob.d_ptr->m_scale.geometry;
+        return {QPointF(g.centerX, g.centerY), IndustrialKnobPrivate::stateMarkDiscRadius(g)};
     }
 
     // #183: \a observer sees every accessibility event the knob sends, before QAccessible::updateAccessibility();

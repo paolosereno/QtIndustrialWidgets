@@ -41,4 +41,46 @@ namespace ActionTest {
     return watch.hidden && !watch.focusOut;
 }
 
+// #243: disables \a target (the control itself or one of its parents) and returns true when the control received
+// what the case means. With \a focused, the control had the focus, and Qt took it away while the control was already
+// disabled, before the EnabledChange: that focus out is part of the disable, not an ordinary loss of focus. Without
+// \a focused, the control had no focus and got the EnabledChange only. Returns false, without disabling anything, when
+// the control is not visible, already disabled, or has the focus when it should not (or the other way round). Use it
+// as QVERIFY(disable(control, target, focused)).
+[[nodiscard]] inline bool disable(QWidget &control, QWidget &target, bool focused)
+{
+    if (!control.isVisible() || !control.isEnabled() || control.hasFocus() != focused) {
+        return false;
+    }
+    struct Watch : QObject {
+        QWidget *control{nullptr};
+        bool enabledChange{false};
+        int focusOuts{0};
+        bool focusOutWhileEnabled{false};
+        bool focusOutAfterEnabledChange{false};
+        bool eventFilter(QObject *, QEvent *event) override
+        {
+            if (event->type() == QEvent::EnabledChange) {
+                enabledChange = true;
+            } else if (event->type() == QEvent::FocusOut) {
+                ++focusOuts;
+                focusOutWhileEnabled = focusOutWhileEnabled || control->isEnabled();
+                focusOutAfterEnabledChange = focusOutAfterEnabledChange || enabledChange;
+            }
+            return false;
+        }
+    } watch;
+    watch.control = &control;
+    control.installEventFilter(&watch);
+    target.setEnabled(false);
+    control.removeEventFilter(&watch);
+    if (control.isEnabled() || !watch.enabledChange) {
+        return false;
+    }
+    if (!focused) {
+        return watch.focusOuts == 0;
+    }
+    return watch.focusOuts == 1 && !watch.focusOutWhileEnabled && !watch.focusOutAfterEnabledChange;
+}
+
 } // namespace ActionTest

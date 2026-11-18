@@ -11,6 +11,7 @@
 
 #include <QtIndustrialWidgets/IndustrialSwitch.h>
 
+#include <QtCore/QRectF>
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtCore/QVariantAnimation>
@@ -18,12 +19,31 @@
 #include <QtGui/QColor>
 #include <QtGui/QPixmap>
 
+#include <algorithm>
 #include <functional>
 
 namespace QtIndustrialWidgets {
 
 class IndustrialSwitchPrivate {
 public:
+    // #243: the ⊘ of disabled at the centre of the body of the switch (the pivot of the lever, the centre of the rocker,
+    // of the closed guard): 0.30 of the smaller side of the body, never under kMinimumDisabledMark logical px (as the
+    // mark of IndustrialKnob) nor over 80 % of that side. It stands on a disc of plateColor(), the mark being 0.72 of
+    // its diameter, so that its contrast does not depend on the lever, the rocker or the guard under it
+    static constexpr double kMinimumDisabledMark = 12.0;
+    static double disabledMarkSide(const QRectF &switchRect)
+    {
+        const double body = std::min(switchRect.width(), switchRect.height());
+        return std::min(std::max(0.3024 * body, kMinimumDisabledMark), 0.80 * body);
+    }
+    static double disabledDiscRadius(const QRectF &switchRect) { return disabledMarkSide(switchRect) / 0.72 * 0.5; }
+    static QRectF disabledMarkRect(const QRectF &switchRect)
+    {
+        const double side = disabledMarkSide(switchRect);
+        const QPointF c = switchRect.center();
+        return QRectF(c.x() - side * 0.5, c.y() - side * 0.5, side, side);
+    }
+
     // #44: size hints computed from the font metrics, cached for the inputs they depend on
     mutable QString m_hintKey;
     mutable QSize m_minimumHint;

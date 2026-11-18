@@ -460,8 +460,13 @@ private Q_SLOTS:
     void readOnlyIgnoresTheOperatorInput();
     void readOnlyEndsTheRunningAction_data();
     void readOnlyEndsTheRunningAction();
-    void readOnlyDrawsThePadlockInsideThePointer_data();
-    void readOnlyDrawsThePadlockInsideThePointer();
+    void stateMarkStandsOnADiscAtTheCentreOfTheCap_data();
+    void stateMarkStandsOnADiscAtTheCentreOfTheCap();
+    // #243: disabled
+    void disabledIgnoresTheOperatorInput();
+    void applicationEndsTheActionWithoutACommit_data();
+    void applicationEndsTheActionWithoutACommit();
+    void disabledStateForAssistiveTechnology();
     void valueLimitsReadWithinTheRange();
     void setValueOutsideTheLimitsIsKept();
     void operatorInputStaysInsideTheLimits();
@@ -1975,7 +1980,8 @@ void tst_IndustrialKnob::readOnlyEndsTheRunningAction_data()
     QTest::newRow("held key") << false;
 }
 
-// #182: read-only turned on during a drag or a held key ends it there and commits once; what follows does nothing
+// #182, #243: read-only turned on during a drag or a held key ends it there, without a commit (a decision of the
+// application): the value goes back to where the action started. What follows does nothing
 void tst_IndustrialKnob::readOnlyEndsTheRunningAction()
 {
     QFETCH(bool, drag);
@@ -2003,8 +2009,8 @@ void tst_IndustrialKnob::readOnlyEndsTheRunningAction()
     QCOMPARE(committed.count(), 0);
 
     knob.setReadOnly(true);
-    QCOMPARE(committed.count(), 1);
-    QCOMPARE(committed.at(0).at(0).toDouble(), moved);
+    QCOMPARE(committed.count(), 0);
+    QCOMPARE(knob.value(), 50.0);
 
     if (drag) {
         sendMouse(knob, QEvent::MouseMove, dialPoint(dial, 90.0));
@@ -2013,37 +2019,46 @@ void tst_IndustrialKnob::readOnlyEndsTheRunningAction()
         sendKey(knob, QEvent::KeyPress, Qt::Key_PageUp, true);
         sendKey(knob, QEvent::KeyRelease, Qt::Key_PageUp, false);
     }
-    QCOMPARE(knob.value(), moved);
-    QCOMPARE(committed.count(), 1);
+    QCOMPARE(knob.value(), 50.0);
+    QCOMPARE(committed.count(), 0);
 }
 
-void tst_IndustrialKnob::readOnlyDrawsThePadlockInsideThePointer_data()
+void tst_IndustrialKnob::stateMarkStandsOnADiscAtTheCentreOfTheCap_data()
 {
-    QTest::addColumn<int>("width");
-    QTest::addColumn<int>("height");
+    QTest::addColumn<QSize>("size"); // QSize(): minimumSizeHint()
     QTest::addColumn<double>("value");
-    struct Size { int w; int h; };
-    for (const Size size : {Size{220, 240}, Size{160, 180}}) {
-        // 63.15: the pointer towards an upper corner of the padlock (35.5 degrees)
-        for (const double value : {0.0, 33.0, 50.0, 63.15, 100.0}) {
-            QTest::addRow("%dx%d, value %g", size.w, size.h, value) << size.w << size.h << value;
+    QTest::addColumn<bool>("disabled"); // false: the padlock of read-only
+    // Under the minimum size: 64x72 has a cap of 27 px (45 % = 12.2 px), 48x54 of 20 px, where 45 % is under the
+    // 12 px of the minimum mark, and 32x36 of 14 px, where 12 px is over 80 % of the cap
+    for (const QSize size : {QSize(220, 240), QSize(160, 180), QSize(), QSize(64, 72), QSize(48, 54), QSize(32, 36)}) {
+        const QString name = size.isValid() ? QStringLiteral("%1x%2").arg(size.width()).arg(size.height()) : QStringLiteral("minimum");
+        // 63.15: the pointer towards an upper corner of the padlock
+        for (const double value : {0.0, 50.0, 63.15, 100.0}) {
+            for (const bool disabled : {false, true}) {
+                QTest::addRow("%s, value %g, %s", qPrintable(name), value, disabled ? "disabled" : "read-only")
+                    << size << value << disabled;
+            }
         }
     }
 }
 
-// #182: read-only draws a padlock: a shape in textColor() that changes the lightness of the cap (not a tint), inside
-// the inner end of the pointer as it is drawn, so no pixel of the pointer changes, at every angle of the pointer. The
-// knob is not greyed out: nothing else changes, and turning read-only off gives the same pixels as before
-void tst_IndustrialKnob::readOnlyDrawsThePadlockInsideThePointer()
+// #182, #243: read-only draws a padlock, disabled a ⊘, at the centre of the cap (the inner face): as high as 45 % of
+// the cap, at least 12 px and at most 80 % of the cap, on a disc of knobColor() that covers the inner end of the
+// pointer, so the contrast does not depend on the pointer under it. The pointer stays visible outside the disc. The
+// knob is not greyed out: nothing outside the disc changes. Disabled and read-only together draw the ⊘ only, and
+// turning the state off gives the same pixels as before
+void tst_IndustrialKnob::stateMarkStandsOnADiscAtTheCentreOfTheCap()
 {
-    QFETCH(int, width);
-    QFETCH(int, height);
+    QFETCH(QSize, size);
     QFETCH(double, value);
+    QFETCH(bool, disabled);
 
     IndustrialKnob knob;
     knob.setRange(0.0, 100.0);
     knob.setValueDisplayVisible(false);
-    knob.resize(width, height);
+    // No focus: a disable takes the focus away, and with it the focus ring, which is not what is checked here
+    knob.setFocusPolicy(Qt::NoFocus);
+    knob.resize(size.isValid() ? size : knob.minimumSizeHint());
     knob.show();
     QVERIFY(QTest::qWaitForWindowExposed(&knob));
     const QColor knobColor = knob.knobColor();
@@ -2051,46 +2066,307 @@ void tst_IndustrialKnob::readOnlyDrawsThePadlockInsideThePointer()
     const DrawnDial dial = drawnDialOf(knob);
     knob.setKnobColor(knobColor);
     knob.setScaleColor(scaleColor);
-    QVERIFY(dial.radius > 20.0);
+    QVERIFY(dial.grip > 5.0);
     const qreal dpr = knob.devicePixelRatioF();
 
     knob.setValue(value);
     const QVector<QPoint> pointer = pointerPixels(knob);
     QVERIFY(!pointer.isEmpty());
-    double pointerInner = std::numeric_limits<double>::max();
-    for (const QPoint &p : pointer) {
-        pointerInner = std::min(pointerInner, distanceOf(p, dial.center, dpr));
-    }
-
     const QImage normal = renderKnob(knob);
-    knob.setReadOnly(true);
-    const QImage locked = renderKnob(knob);
-    const QVector<QPoint> changed = differingPixels(normal, locked);
+    const auto setState = [&](bool on) {
+        if (disabled) {
+            knob.setEnabled(!on);
+        } else {
+            knob.setReadOnly(on);
+        }
+    };
+    setState(true);
+    const QImage marked = renderKnob(knob);
+    // The ink of the mark: the pixels that change with textColor()
+    const QColor text = knob.textColor();
+    knob.setTextColor(QColor(255 - text.red(), 255 - text.green(), 255 - text.blue()));
+    const QImage inverted = renderKnob(knob);
+    knob.setTextColor(text);
 
-    int shape = 0;
-    int ink = 0;
-    const QRectF rect = internal::IndustrialKnobTestAccess::padlockRect(knob);
-    const QRectF deviceRect(rect.x() * dpr - 1.0, rect.y() * dpr - 1.0, rect.width() * dpr + 2.0, rect.height() * dpr + 2.0);
-    for (const QPoint &p : changed) {
-        const double distance = distanceOf(p, dial.center, dpr);
-        QVERIFY2(distance < pointerInner,
-                 qPrintable(QStringLiteral("read-only changes pixel (%1, %2) at %3 px from the centre; the pointer starts at %4 px")
-                                .arg(p.x()).arg(p.y()).arg(distance).arg(pointerInner)));
-        QVERIFY2(deviceRect.contains(QPointF(p) + QPointF(0.5, 0.5)),
-                 qPrintable(QStringLiteral("read-only changes pixel (%1, %2), outside the padlock").arg(p.x()).arg(p.y())));
-        shape += std::abs(lightness(locked.pixel(p)) - lightness(normal.pixel(p))) >= 0.25 ? 1 : 0;
-        ink += colourDistance(locked.pixel(p), knob.textColor()) <= 24 ? 1 : 0;
+    // The cap as drawn: the inner face, 0.84 x 0.90 of the grip (the proportions of paintEvent()). The grip is measured
+    // on the pixels, outline included, so the side expected from it is good to 1 px
+    const double cap = 2.0 * dial.grip * 0.84 * 0.90;
+    const double side = std::min(std::max(0.45 * cap, 12.0), 0.80 * cap);
+    const std::pair<QPointF, double> disc = internal::IndustrialKnobTestAccess::stateMarkDisc(knob);
+    const QPointF centre = disc.first;
+    const double discRadius = disc.second;
+    QVERIFY2(std::hypot(centre.x() - dial.center.x(), centre.y() - dial.center.y()) < 1.0, "the disc is not at the centre");
+    QVERIFY2(discRadius > side * 0.5 && discRadius < side * 0.65, qPrintable(QStringLiteral("disc radius %1, mark %2").arg(discRadius).arg(side)));
+
+    const auto isInk = [&](const QPointF &logical) {
+        const QPoint p(static_cast<int>(std::floor(logical.x() * dpr)), static_cast<int>(std::floor(logical.y() * dpr)));
+        return marked.pixel(p) != inverted.pixel(p);
+    };
+    QRect inkBox;
+    int changed = 0;
+    int contrasting = 0; // Ink that differs from the disc in lightness, not only in hue (#182: never a tint)
+    for (int y = 0; y < marked.height(); ++y) {
+        for (int x = 0; x < marked.width(); ++x) {
+            const QPoint p(x, y);
+            const double distance = distanceOf(p, centre, dpr);
+            if (marked.pixel(p) != normal.pixel(p)) {
+                ++changed;
+                QVERIFY2(distance <= discRadius + 1.0,
+                         qPrintable(QStringLiteral("pixel (%1, %2) changes at %3 px from the centre, outside the disc of %4 px")
+                                        .arg(x).arg(y).arg(distance).arg(discRadius)));
+            }
+            if (distance > discRadius + 1.0) {
+                continue;
+            }
+            if (marked.pixel(p) != inverted.pixel(p)) {
+                inkBox |= QRect(p, QSize(1, 1));
+                contrasting += std::abs(lightness(marked.pixel(p)) - lightness(knobColor.rgb())) >= 0.25 ? 1 : 0;
+            } else if (distance <= discRadius - 1.0) {
+                QVERIFY2(marked.pixel(p) == knobColor.rgb(),
+                         qPrintable(QStringLiteral("pixel (%1, %2) inside the disc is neither the mark nor knobColor").arg(x).arg(y)));
+            }
+        }
     }
-    for (const QPoint &p : pointer) {
-        QVERIFY2(locked.pixel(p) == normal.pixel(p),
-                 qPrintable(QStringLiteral("the padlock covers the pointer at (%1, %2)").arg(p.x()).arg(p.y())));
-    }
+    QVERIFY(changed > 0);
+    QVERIFY(!inkBox.isEmpty());
     const int area = static_cast<int>(std::round(dpr * dpr));
-    QVERIFY2(shape >= 25 * area, qPrintable(QStringLiteral("%1 pixels change lightness by 0.25 or more").arg(shape)));
-    QVERIFY2(ink >= 12 * area, qPrintable(QStringLiteral("%1 pixels in textColor").arg(ink)));
+    QVERIFY2(contrasting >= 12 * area, qPrintable(QStringLiteral("%1 pixels of the mark differ in lightness by 0.25 or more").arg(contrasting)));
+    const double inkHeight = inkBox.height() / dpr;
+    const double inkWidth = inkBox.width() / dpr;
+    QVERIFY2(std::abs(inkHeight - side) <= 1.5,
+             qPrintable(QStringLiteral("the mark is %1 px high; expected %2 px (cap %3 px)").arg(inkHeight).arg(side).arg(cap)));
+    QVERIFY2(std::abs(inkWidth - (disabled ? side : side * 0.714)) <= 1.5,
+             qPrintable(QStringLiteral("the mark is %1 px wide; expected %2 px").arg(inkWidth).arg(disabled ? side : side * 0.714)));
 
-    knob.setReadOnly(false);
+    // The shape, not only a blot: the ⊘ has its ring, its bar and two empty halves; the padlock its body and the hole of
+    // its shackle. The empty halves and the hole, and the pointer visible outside the disc, are guaranteed from
+    // minimumSizeHint() up (as the rule of #44 for the labels): below it the mark keeps its 12 px, or 80 % of the cap,
+    // and its disc may cover the pointer
+    const bool fullCriterion = knob.width() >= knob.minimumSizeHint().width() && knob.height() >= knob.minimumSizeHint().height();
+    const QRectF box = disabled ? internal::IndustrialKnobTestAccess::disabledMarkRect(knob)
+                                : internal::IndustrialKnobTestAccess::padlockRect(knob);
+    const double s = box.height();
+    if (disabled) {
+        const double ring = s * 0.42; // The centre line of the ring
+        for (const QPointF &d : {QPointF(0.0, -ring), QPointF(0.0, ring), QPointF(-ring, 0.0), QPointF(ring, 0.0), QPointF(0.0, 0.0)}) {
+            QVERIFY2(isInk(centre + d), qPrintable(QStringLiteral("no ink at (%1, %2) from the centre").arg(d.x()).arg(d.y())));
+        }
+        for (const QPointF &d : {QPointF(s * 0.156, -s * 0.156), QPointF(-s * 0.156, s * 0.156)}) {
+            QVERIFY2(!fullCriterion || !isInk(centre + d), qPrintable(QStringLiteral("ink at (%1, %2) from the centre, in a half of the ⊘").arg(d.x()).arg(d.y())));
+        }
+    } else {
+        QVERIFY2(isInk(QPointF(box.center().x(), box.top() + s * 0.71)), "no ink in the body of the padlock");
+        QVERIFY2(!fullCriterion || !isInk(QPointF(box.center().x(), box.top() + s * 0.25)), "ink in the hole of the shackle");
+    }
+
+    // The pointer: covered inside the disc (checked above: knobColor or the mark there), unchanged and visible outside
+    int outside = 0;
+    for (const QPoint &p : pointer) {
+        if (distanceOf(p, centre, dpr) > discRadius + 1.0) {
+            ++outside;
+            QVERIFY2(marked.pixel(p) == normal.pixel(p), qPrintable(QStringLiteral("the pointer changes at (%1, %2)").arg(p.x()).arg(p.y())));
+        }
+    }
+    QVERIFY2(!fullCriterion || outside * 3 >= pointer.size(), qPrintable(QStringLiteral("%1 of %2 pointer pixels outside the disc").arg(outside).arg(pointer.size())));
+
+    // Both states: the ⊘ only
+    if (disabled) {
+        knob.setReadOnly(true);
+        QCOMPARE(renderKnob(knob), marked);
+        knob.setReadOnly(false);
+    } else {
+        knob.setEnabled(false);
+        const QImage both = renderKnob(knob);
+        knob.setReadOnly(false);
+        QCOMPARE(renderKnob(knob), both);
+        knob.setReadOnly(true);
+        knob.setEnabled(true);
+        QCOMPARE(renderKnob(knob), marked); // The padlock again
+    }
+    setState(false);
     QCOMPARE(renderKnob(knob), normal);
+}
+
+// #243: a disabled knob takes no operator input, from the mouse, the keys, the wheel or assistive technology, and emits
+// nothing; setValue() from the application still applies. Enabled again, the same input acts
+void tst_IndustrialKnob::disabledIgnoresTheOperatorInput()
+{
+    RecordingParent parent;
+    parent.resize(300, 300);
+    auto *knob = new IndustrialKnob(&parent);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->setWheelEnabled(true);
+    knob->resize(220, 240);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    const DrawnDial dial = drawnDialOf(*knob);
+    QVERIFY(dial.radius > 20.0);
+    QVERIFY(focusOn(*knob));
+    knob->setValue(50.0);
+    QAccessibleValueInterface *access = QAccessible::queryAccessibleInterface(knob)->valueInterface();
+    QVERIFY(access);
+
+    knob->setEnabled(false);
+    QSignalSpy changed(knob, &IndustrialKnob::valueChanged);
+    QSignalSpy committed(knob, &IndustrialKnob::valueCommitted);
+    QSignalSpy active(knob, &IndustrialKnob::operatorActiveChanged);
+    for (const Qt::Key key : {Qt::Key_Up, Qt::Key_Down, Qt::Key_PageUp, Qt::Key_Home, Qt::Key_End}) {
+        sendKey(*knob, QEvent::KeyPress, key, false);
+        sendKey(*knob, QEvent::KeyRelease, key, false);
+    }
+    sendMouse(*knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+    sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 90.0));
+    sendMouse(*knob, QEvent::MouseButtonRelease, dialPoint(dial, 90.0));
+    sendWheel(*knob, 120);
+    access->setCurrentValue(70.0);
+    QCOMPARE(knob->value(), 50.0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(committed.count(), 0);
+    QCOMPARE(active.count(), 0);
+    QVERIFY(!knob->isOperatorActive());
+
+    knob->setValue(60.0);
+    QCOMPARE(knob->value(), 60.0);
+    QCOMPARE(changed.count(), 1);
+
+    // Control: enabled again, assistive technology and the keys act
+    knob->setEnabled(true);
+    access->setCurrentValue(70.0);
+    QCOMPARE(knob->value(), 70.0);
+    QCOMPARE(committed.count(), 1);
+    sendKey(*knob, QEvent::KeyPress, Qt::Key_Up, false);
+    sendKey(*knob, QEvent::KeyRelease, Qt::Key_Up, false);
+    QCOMPARE(knob->value(), 71.0);
+}
+
+void tst_IndustrialKnob::applicationEndsTheActionWithoutACommit_data()
+{
+    QTest::addColumn<int>("ending"); // 0 the knob disabled, 1 its parent disabled, 2 setReadOnly(true)
+    QTest::addColumn<int>("input");  // 0 a drag with the focus, 1 a drag without the focus, 2 a held key (focus)
+    QTest::addColumn<bool>("moved"); // The action left the value elsewhere than where it started
+    QTest::addColumn<bool>("readBack"); // setValue(20) during the action
+    const char *endings[] = {"disabled", "parent disabled", "read-only"};
+    const char *inputs[] = {"drag with focus", "drag without focus", "held key"};
+    for (int ending = 0; ending < 3; ++ending) {
+        for (int input = 0; input < 3; ++input) {
+            for (const bool moved : {true, false}) {
+                if (input == 2 && !moved) {
+                    continue; // A held key moves the value
+                }
+                for (const bool readBack : {false, true}) {
+                    QTest::addRow("%s, %s, %s%s", endings[ending], inputs[input], moved ? "moved" : "back to the start",
+                                  readBack ? ", read back" : "")
+                        << ending << input << moved << readBack;
+                }
+            }
+        }
+    }
+}
+
+// #243: disabling the knob (or a parent) and setReadOnly(true) are decisions of the application: an action running
+// ends without a commit. The value goes back to where the action started, or to the value read back during it (#241),
+// with valueChanged() if the value shown changes; operatorActiveChanged(false) comes last, and isOperatorActive() is
+// already false in the slots. With the focus, Qt takes the focus away before the EnabledChange: that focus out is
+// the disable, not an ordinary loss of focus (which commits). Without the focus, the action no longer stays running.
+// Afterwards nothing of the old action acts, and setValue() applies at once
+void tst_IndustrialKnob::applicationEndsTheActionWithoutACommit()
+{
+    QFETCH(int, ending);
+    QFETCH(int, input);
+    QFETCH(bool, moved);
+    QFETCH(bool, readBack);
+    const bool focused = input != 1;
+
+    QWidget parent;
+    parent.resize(300, 300);
+    auto *knob = new IndustrialKnob(&parent);
+    auto *other = new QLineEdit(&parent);
+    other->move(0, 260);
+    knob->setRange(0.0, 100.0);
+    knob->setStep(1.0);
+    knob->resize(220, 240);
+    if (!focused) {
+        knob->setFocusPolicy(Qt::NoFocus);
+    }
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    const DrawnDial dial = drawnDialOf(*knob);
+    QVERIFY(dial.radius > 20.0);
+    QVERIFY(focusOn(focused ? static_cast<QWidget &>(*knob) : static_cast<QWidget &>(*other)));
+    knob->setValue(50.0);
+
+    ActionLog log(*knob);
+    if (input == 2) {
+        sendKey(*knob, QEvent::KeyPress, Qt::Key_Up, false);
+        sendKey(*knob, QEvent::KeyPress, Qt::Key_Up, true);
+    } else {
+        sendMouse(*knob, QEvent::MouseButtonPress, dialPoint(dial, 0.0));
+        sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 30.0));
+        if (!moved) {
+            sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 0.0));
+        }
+    }
+    QVERIFY(knob->isOperatorActive());
+    QCOMPARE(knob->value() != 50.0, moved);
+    const double operatorValue = knob->value();
+    if (readBack) {
+        knob->setValue(20.0);
+        QCOMPARE(knob->value(), operatorValue); // Held (#241)
+    }
+    log.take();
+
+    switch (ending) {
+    case 0: QVERIFY(ActionTest::disable(*knob, *knob, focused)); break;
+    case 1: QVERIFY(ActionTest::disable(*knob, parent, focused)); break;
+    default: knob->setReadOnly(true); break;
+    }
+    const double expected = readBack ? 20.0 : 50.0;
+    QCOMPARE(knob->value(), expected);
+    QVERIFY(!knob->isOperatorActive());
+    const QString back = expected != operatorValue ? QStringLiteral("changed %1 (off); ").arg(expected) : QString();
+    QCOMPARE(log.take(), back + QStringLiteral("active false (off)"));
+
+    // What is left of the old action does nothing
+    if (input == 2) {
+        sendKey(*knob, QEvent::KeyPress, Qt::Key_Up, true);
+        sendKey(*knob, QEvent::KeyRelease, Qt::Key_Up, false);
+    } else {
+        sendMouse(*knob, QEvent::MouseMove, dialPoint(dial, 60.0));
+        sendMouse(*knob, QEvent::MouseButtonRelease, dialPoint(dial, 60.0));
+    }
+    QCOMPARE(knob->value(), expected);
+    QCOMPARE(log.take(), QString());
+
+    // Enabled (or writable) again: no action is left, and a value read back applies at once
+    if (ending == 2) {
+        knob->setReadOnly(false);
+    } else {
+        parent.setEnabled(true);
+        knob->setEnabled(true);
+    }
+    QVERIFY(!knob->isOperatorActive());
+    knob->setValue(70.0);
+    QCOMPARE(knob->value(), 70.0);
+    QCOMPARE(log.take(), QStringLiteral("changed 70 (off)"));
+}
+
+// #243: assistive technology reads the disabled state (Qt sets it from isEnabled()), and read-only too when both
+void tst_IndustrialKnob::disabledStateForAssistiveTechnology()
+{
+    IndustrialKnob knob;
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&knob);
+    QVERIFY(iface);
+    QVERIFY(!iface->state().disabled);
+    knob.setEnabled(false);
+    QVERIFY(iface->state().disabled);
+    QVERIFY(!iface->state().readOnly);
+    knob.setReadOnly(true);
+    QVERIFY(iface->state().disabled);
+    QVERIFY(iface->state().readOnly);
+    knob.setEnabled(true);
+    QVERIFY(!iface->state().disabled);
+    QVERIFY(iface->state().readOnly);
 }
 
 // #182: the limits read are those set, within the range; without limits, the range. valueLimitsChanged() follows
@@ -3004,7 +3280,8 @@ void tst_IndustrialKnob::heldValueAtTheEndOfTheAction_data()
 }
 
 // #241: however the action ends, the held value is dropped when the action commits, and applied (valueChanged(), no
-// commit) when the action left the value where it started: then the read-back is news from the device
+// commit) when the action left the value where it started: then the read-back is news from the device. #243:
+// setReadOnly(true) never commits, so the held value is applied in both cases
 void tst_IndustrialKnob::heldValueAtTheEndOfTheAction()
 {
     QFETCH(int, ending);
@@ -3034,7 +3311,7 @@ void tst_IndustrialKnob::heldValueAtTheEndOfTheAction()
     case 2: QVERIFY(ActionTest::hideWithoutFocus(k.knob)); break;
     default: k.knob.setReadOnly(true); break;
     }
-    if (changed) {
+    if (changed && ending != 3) {
         QCOMPARE(committed.count(), 1);
         QCOMPARE(committed.at(0).at(0).toDouble(), operatorValue);
         QCOMPARE(valueSpy.count(), 0);

@@ -84,6 +84,14 @@ private Q_SLOTS:
     void readOnlyIgnoresTheOperatorInput();
     void readOnlyDrawsThePadlock_data();
     void readOnlyDrawsThePadlock();
+    // #243: disabled
+    void disabledDrawsTheMark_data();
+    void disabledDrawsTheMark();
+    void disabledIgnoresTheOperatorInput_data();
+    void disabledIgnoresTheOperatorInput();
+    void applicationEndsTheActionWithoutACommit_data();
+    void applicationEndsTheActionWithoutACommit();
+    void disabledStateForAssistiveTechnology();
     void wheelIsOffByDefault();
     void wheelStepsTheDecadeUnderThePointerWithFocus_data();
     void wheelStepsTheDecadeUnderThePointerWithFocus();
@@ -876,7 +884,8 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds_data()
     QTest::newRow("a press") << 3;
 }
 
-// #182: a key held down when the switch loses the focus, is hidden or becomes read-only commits there, once
+// #182: a key held down when the switch loses the focus or is hidden commits there, once. #243: made read-only (a
+// decision of the application), it ends without a commit, and the value goes back to where the action started
 void tst_ThumbwheelSwitchInput::immediateActionEnds()
 {
     QFETCH(int, end);
@@ -899,6 +908,13 @@ void tst_ThumbwheelSwitchInput::immediateActionEnds()
     case 1: QVERIFY(ActionTest::hideWithoutFocus(*rig.wheel)); break;
     case 2: rig.wheel->setReadOnly(true); break;
     default: rig.press(l.drums.at(0)); break;
+    }
+    if (end == 2) {
+        QCOMPARE(spies.committed.count(), 0);
+        QCOMPARE(rig.wheel->value(), 125.0);
+        sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Up, false); // The release: already ended
+        QCOMPARE(spies.committed.count(), 0);
+        return;
     }
     QCOMPARE(spies.committed.count(), 1);
     QCOMPARE(spies.committed.at(0).at(0).toDouble(), 225.0);
@@ -989,6 +1005,258 @@ void tst_ThumbwheelSwitchInput::readOnlyDrawsThePadlock()
     const QImage editableImg = render(w);
     QVERIFY(!ThumbwheelSwitchTestAccess::lastPadlock(w));
     QCOMPARE(countNear(editableImg, l.padlock, kText, 60), 0);
+}
+
+void tst_ThumbwheelSwitchInput::disabledDrawsTheMark_data()
+{
+    clickMakesOneStepAtTheRelease_data();
+}
+
+// #243: disabled draws a ⊘ where read-only draws the padlock, at the start of the status line, in textColor(); in
+// Immediate the line is there only in read-only and disabled, with the same room. Every arrow is outlined. Nothing else
+// changes from read-only; disabled and read-only together draw the ⊘ only, and the padlock comes back when enabled
+void tst_ThumbwheelSwitchInput::disabledDrawsTheMark()
+{
+    QFETCH(bool, immediate);
+    ThumbwheelSwitch w;
+    w.setApplyMode(immediate ? Mode::Immediate : Mode::OnConfirm);
+    colour(w);
+    w.setReadOnly(true);
+    const QSize locked = w.minimumSizeHint();
+    w.setReadOnly(false);
+    w.setEnabled(false);
+    QCOMPARE(w.minimumSizeHint(), locked);
+    w.resize(locked);
+    const QImage img = render(w);
+    const internal::ThumbwheelLayout l = ThumbwheelSwitchTestAccess::lastLayout(w);
+    QVERIFY(ThumbwheelSwitchTestAccess::lastDisabledMark(w));
+    QVERIFY(!ThumbwheelSwitchTestAccess::lastPadlock(w));
+    QVERIFY(QRectF(0.0, 0.0, locked.width(), locked.height()).contains(l.padlock));
+    const QString closed(w.digitCount(), QLatin1Char('0'));
+    QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastPlusOpen(w)), closed);
+    QCOMPARE(flags(ThumbwheelSwitchTestAccess::lastMinusOpen(w)), closed);
+
+    // The ⊘: inscribed in the square of the width of the padlock box, centred in it. Ink on the ring and the bar, none
+    // in the two halves
+    const double side = std::min(l.padlock.width(), l.padlock.height());
+    const QPointF c = l.padlock.center();
+    QVERIFY2(side * img.devicePixelRatio() >= 10.0, qPrintable(QStringLiteral("a mark of %1 px").arg(side)));
+    const double ring = side * 0.42;
+    for (const QPointF &d : {QPointF(0.0, -ring), QPointF(0.0, ring), QPointF(-ring, 0.0), QPointF(ring, 0.0), QPointF(0.0, 0.0)}) {
+        QVERIFY2(near(at(img, c + d), kText, 110), qPrintable(QStringLiteral("no ink at (%1, %2) from the centre").arg(d.x()).arg(d.y())));
+    }
+    for (const QPointF &d : {QPointF(side * 0.156, -side * 0.156), QPointF(-side * 0.156, side * 0.156)}) {
+        QVERIFY2(!near(at(img, c + d), kText, 110), qPrintable(QStringLiteral("ink at (%1, %2), a half of the ⊘").arg(d.x()).arg(d.y())));
+    }
+
+    // From read-only, only the mark changes
+    w.setEnabled(true);
+    w.setReadOnly(true);
+    const QImage locked2 = render(w);
+    QVERIFY(ThumbwheelSwitchTestAccess::lastPadlock(w));
+    const double dpr = img.devicePixelRatio();
+    const QRect box = QRectF(l.padlock.x() * dpr, l.padlock.y() * dpr, l.padlock.width() * dpr, l.padlock.height() * dpr)
+                          .toAlignedRect();
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (img.pixel(x, y) != locked2.pixel(x, y)) {
+                QVERIFY2(box.contains(x, y), qPrintable(QStringLiteral("pixel (%1, %2) differs from read-only outside the mark").arg(x).arg(y)));
+            }
+        }
+    }
+    // Both: the ⊘ only
+    w.setEnabled(false);
+    QCOMPARE(render(w), img);
+    QVERIFY(ThumbwheelSwitchTestAccess::lastDisabledMark(w));
+    QVERIFY(!ThumbwheelSwitchTestAccess::lastPadlock(w));
+    w.setEnabled(true);
+    QCOMPARE(render(w), locked2);
+    QVERIFY(!ThumbwheelSwitchTestAccess::lastDisabledMark(w));
+}
+
+void tst_ThumbwheelSwitchInput::disabledIgnoresTheOperatorInput_data()
+{
+    clickMakesOneStepAtTheRelease_data();
+}
+
+// #243: disabling discards a pending value (as read-only does), so that a value made before an interlock is not
+// ready for Enter when the switch comes back. A disabled switch takes no operator input, from the mouse, the keys,
+// the wheel or assistive technology (value and actions), and emits nothing; setValue() still applies
+void tst_ThumbwheelSwitchInput::disabledIgnoresTheOperatorInput()
+{
+    QFETCH(bool, immediate);
+    Rig rig(immediate ? Mode::Immediate : Mode::OnConfirm);
+    rig.wheel->setWheelEnabled(true);
+    QVERIFY(rig.show());
+    const internal::ThumbwheelLayout l = rig.layout();
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(rig.wheel);
+    QVERIFY(iface && iface->valueInterface() && iface->actionInterface());
+    if (!immediate) {
+        rig.key(Qt::Key_Up);
+        QCOMPARE(rig.wheel->pendingValue(), 1125.0);
+    }
+    Spies spies(rig.wheel);
+    rig.wheel->setEnabled(false);
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QCOMPARE(rig.wheel->value(), 125.0);
+    QCOMPARE(spies.pending.count(), immediate ? 0 : 1);
+    QCOMPARE(spies.changed.count() + spies.committed.count(), 0);
+    spies.pending.clear();
+
+    QSignalSpy active(rig.wheel, &ThumbwheelSwitch::operatorActiveChanged);
+    for (const Qt::Key k : {Qt::Key_Up, Qt::Key_Down, Qt::Key_5, Qt::Key_Plus, Qt::Key_Return}) {
+        sendKey(*rig.wheel, QEvent::KeyPress, k, false);
+        sendKey(*rig.wheel, QEvent::KeyRelease, k, false);
+    }
+    rig.click(l.plus.at(2));
+    rig.click(l.minus.at(3));
+    if (!immediate) {
+        rig.click(l.setButton);
+    }
+    sendWheel(*rig.wheel, l.drums.at(2).center(), 120);
+    iface->valueInterface()->setCurrentValue(300.0);
+    QVERIFY(!iface->actionInterface()->actionNames().contains(QStringLiteral("Apply")));
+    iface->actionInterface()->doAction(QStringLiteral("Apply"));
+    QCOMPARE(rig.wheel->value(), 125.0);
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QCOMPARE(spies.changed.count() + spies.committed.count() + spies.pending.count() + active.count(), 0);
+
+    rig.wheel->setValue(200.0);
+    QCOMPARE(rig.wheel->value(), 200.0);
+
+    // Control: enabled again, assistive technology acts
+    rig.wheel->setEnabled(true);
+    iface->valueInterface()->setCurrentValue(300.0);
+    if (immediate) {
+        QCOMPARE(rig.wheel->value(), 300.0);
+    } else {
+        QCOMPARE(rig.wheel->pendingValue(), 300.0);
+    }
+}
+
+void tst_ThumbwheelSwitchInput::applicationEndsTheActionWithoutACommit_data()
+{
+    QTest::addColumn<int>("ending"); // 0 the switch disabled, 1 its parent disabled, 2 setReadOnly(true)
+    QTest::addColumn<int>("input");  // 0 a held key in Immediate, 1 a held key in OnConfirm, 2 a + button pressed without focus
+    QTest::addColumn<bool>("readBack"); // setValue(500) during the action
+    const char *endings[] = {"disabled", "parent disabled", "read-only"};
+    const char *inputs[] = {"held key, Immediate", "held key, OnConfirm", "armed button"};
+    for (int ending = 0; ending < 3; ++ending) {
+        for (int input = 0; input < 3; ++input) {
+            for (const bool readBack : {false, true}) {
+                if (input != 0 && readBack) {
+                    continue; // A value is held only during an action in Immediate (#241)
+                }
+                QTest::addRow("%s, %s%s", endings[ending], inputs[input], readBack ? ", read back" : "")
+                    << ending << input << readBack;
+            }
+        }
+    }
+}
+
+// #243: disabling the switch (or a parent) and setReadOnly(true) are decisions of the application. A held key ends
+// without a commit: in Immediate the value goes back to where the action started, or to the value read back during
+// it (#241), with valueChanged(); in OnConfirm the pending value is discarded. operatorActiveChanged(false) comes
+// last. With the focus, Qt takes it away before the EnabledChange: that focus out is the disable. A + or − button
+// pressed (armed) is cleared: its release, after the switch is enabled again, makes no step
+void tst_ThumbwheelSwitchInput::applicationEndsTheActionWithoutACommit()
+{
+    QFETCH(int, ending);
+    QFETCH(int, input);
+    QFETCH(bool, readBack);
+    const bool focused = input != 2;
+    Rig rig(input == 1 ? Mode::OnConfirm : Mode::Immediate);
+    if (!focused) {
+        rig.wheel->setFocusPolicy(Qt::NoFocus);
+        rig.window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&rig.window));
+        rig.window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&rig.window));
+        rig.other->setFocus(Qt::TabFocusReason);
+        QVERIFY(QTest::qWaitFor([&] { return rig.other->hasFocus(); }));
+    } else {
+        QVERIFY(rig.show());
+    }
+    const internal::ThumbwheelLayout l = rig.layout();
+    ActionLog log(*rig.wheel);
+    Spies spies(rig.wheel);
+    if (input == 2) {
+        rig.press(l.plus.at(2)); // Armed; the step comes at the release
+        QCOMPARE(rig.wheel->value(), 125.0);
+    } else {
+        sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, false);
+        sendKey(*rig.wheel, QEvent::KeyPress, Qt::Key_Up, true);
+        QVERIFY(rig.wheel->isOperatorActive());
+        if (input == 0) {
+            QCOMPARE(rig.wheel->value(), 2125.0);
+        } else {
+            QCOMPARE(rig.wheel->pendingValue(), 2125.0);
+        }
+    }
+    if (readBack) {
+        rig.wheel->setValue(500.0);
+        QCOMPARE(rig.wheel->value(), 2125.0); // Held (#241)
+    }
+    log.take();
+    spies.pending.clear();
+
+    switch (ending) {
+    case 0: QVERIFY(ActionTest::disable(*rig.wheel, *rig.wheel, focused)); break;
+    case 1: QVERIFY(ActionTest::disable(*rig.wheel, rig.window, focused)); break;
+    default: rig.wheel->setReadOnly(true); break;
+    }
+    const double expected = readBack ? 500.0 : 125.0;
+    QCOMPARE(rig.wheel->value(), expected);
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QVERIFY(!rig.wheel->isOperatorActive());
+    QCOMPARE(spies.committed.count(), 0);
+    if (input == 0) {
+        QCOMPARE(log.take(), QStringLiteral("changed %1 (off); active false (off)").arg(expected));
+    } else if (input == 1) {
+        QCOMPARE(log.take(), QStringLiteral("active false (off)"));
+        QCOMPARE(spies.pending.count(), 1); // Discarded
+    } else {
+        QCOMPARE(log.take(), QString());
+    }
+
+    // Enabled (or writable) again: nothing of the old action acts, and a value read back applies at once
+    if (ending == 2) {
+        rig.wheel->setReadOnly(false);
+    } else {
+        rig.window.setEnabled(true);
+        rig.wheel->setEnabled(true);
+    }
+    if (input == 2) {
+        rig.release(l.plus.at(2).center());
+    } else {
+        sendKey(*rig.wheel, QEvent::KeyRelease, Qt::Key_Up, false);
+    }
+    QCOMPARE(rig.wheel->value(), expected);
+    QVERIFY(!rig.wheel->hasPendingValue());
+    QCOMPARE(spies.committed.count(), 0);
+    QVERIFY(!rig.wheel->isOperatorActive());
+    QCOMPARE(log.take(), QString());
+    rig.wheel->setValue(700.0);
+    QCOMPARE(rig.wheel->value(), 700.0);
+    QCOMPARE(log.take(), QStringLiteral("changed 700 (off)"));
+}
+
+// #243: assistive technology reads the disabled state (Qt sets it from isEnabled()), and read-only too when both
+void tst_ThumbwheelSwitchInput::disabledStateForAssistiveTechnology()
+{
+    ThumbwheelSwitch w;
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&w);
+    QVERIFY(iface);
+    QVERIFY(!iface->state().disabled);
+    w.setEnabled(false);
+    QVERIFY(iface->state().disabled);
+    QVERIFY(!iface->state().readOnly);
+    w.setReadOnly(true);
+    QVERIFY(iface->state().disabled);
+    QVERIFY(iface->state().readOnly);
+    w.setEnabled(true);
+    QVERIFY(!iface->state().disabled);
+    QVERIFY(iface->state().readOnly);
 }
 
 void tst_ThumbwheelSwitchInput::wheelIsOffByDefault()
@@ -1555,7 +1823,8 @@ void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction_data()
 }
 
 // #241, Immediate: however the action ends, the held value is dropped when the action commits, and applied
-// (valueChanged(), no commit) when the action left the value where it started
+// (valueChanged(), no commit) when the action left the value where it started. #243: setReadOnly(true) never
+// commits, so the held value is applied in both cases
 void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction()
 {
     QFETCH(int, ending);
@@ -1588,7 +1857,7 @@ void tst_ThumbwheelSwitchInput::heldValueAtTheEndOfTheAction()
     case 2: QVERIFY(ActionTest::hideWithoutFocus(*rig.wheel)); break;
     default: rig.wheel->setReadOnly(true); break;
     }
-    if (changed) {
+    if (changed && ending != 3) {
         QCOMPARE(spies.committed.count(), 1);
         QCOMPARE(spies.committed.at(0).at(0).toDouble(), operatorValue);
         QCOMPARE(spies.changed.count(), 0);

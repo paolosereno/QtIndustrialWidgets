@@ -46,5 +46,13 @@ void drawInvalidHatch(QPainter &painter, const QPainterPath &area, double thickn
  */
 void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color);
 
+/**
+ * \brief Draws a ⊘ in \a color, #243: the disabled mark of the controls ("not available now"), where they draw the
+ * padlock of read-only. A circle with a diagonal stroke from the top left to the bottom right, inscribed in the square
+ * of side min(width, height) centred in \a box; the stroke is 0.16 of that side. A path, so it needs no font. The
+ * pen, the brush and the render hints of \a painter are restored.
+ */
+void drawDisabledMark(QPainter &painter, const QRectF &box, const QColor &color);
+
 } // namespace internal
 } // namespace QtIndustrialWidgets

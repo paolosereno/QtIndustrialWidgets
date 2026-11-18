@@ -8,6 +8,7 @@
 #include "FontTestUtils.h"
 #include "internal/IndustrialSwitchLayout.h"
 #include "internal/IndustrialSwitchTestAccess.h"
+#include "ActionTestUtils.h"
 #include <QtGui/QAccessible>
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
@@ -382,6 +383,12 @@ private Q_SLOTS:
     void accessibleClosedGuard();
     void accessibleEventsFollowThePosition_data();
     void accessibleEventsFollowThePosition();
+    // #243: disabled
+    void disabledDrawsTheMarkOnADisc_data();
+    void disabledDrawsTheMarkOnADisc();
+    void disabledIgnoresTheOperatorInput();
+    void disableStopsTheDrag_data();
+    void disableStopsTheDrag();
 };
 
 void tst_IndustrialSwitch::defaultValues()
@@ -1345,6 +1352,225 @@ void tst_IndustrialSwitch::accessibleEventsFollowThePosition()
     QCOMPARE(events.take(), QStringList{QStringLiteral("readOnly")});
     sw->setHasSafetyGuard(false); // No guard: not read-only
     QCOMPARE(events.take(), QStringList{QStringLiteral("readOnly")});
+}
+
+void tst_IndustrialSwitch::disabledDrawsTheMarkOnADisc_data()
+{
+    QTest::addColumn<int>("type");
+    QTest::addColumn<int>("orientation");
+    QTest::addColumn<QSize>("size");
+    QTest::addColumn<int>("positions");
+    QTest::addColumn<int>("sizeMode");
+    QTest::addColumn<int>("guard"); // 0 none, 1 closed, 2 open
+    using T = IndustrialSwitch::SwitchType;
+    for (T type : {T::ToggleLever, T::Rocker}) {
+        for (Qt::Orientation o : {Qt::Vertical, Qt::Horizontal}) {
+            for (int positions : {2, 3}) {
+                for (int guard : {0, 1, 2}) {
+                    const char *g[] = {"no guard", "guard closed", "guard open"};
+                    QTest::addRow("%s %s %d-pos, %s", type == T::Rocker ? "rocker" : "toggle", o == Qt::Vertical ? "V" : "H",
+                                  positions, g[guard])
+                        << static_cast<int>(type) << static_cast<int>(o)
+                        << (o == Qt::Vertical ? QSize(180, 220) : QSize(220, 120)) << positions << 0 << guard;
+                }
+                QTest::addRow("%s %s %d-pos, minimumSizeHint, guard closed", type == T::Rocker ? "rocker" : "toggle",
+                              o == Qt::Vertical ? "V" : "H", positions)
+                    << static_cast<int>(type) << static_cast<int>(o) << QSize() << positions << 2 << 1;
+            }
+        }
+    }
+}
+
+// #243: disabled draws a ⊘ in textColor() at the centre of the body of the switch: 0.30 of the smaller side of the
+// body, at least 12 px and at most 80 % of that side, on a disc of plateColor(), so the lever, the rocker or the guard
+// under it do not decide its contrast (at least 3:1). Nothing outside the disc changes:
+// the switch is not greyed out, and the labels, the LED and the guard read as before. Enabled again, the same pixels
+void tst_IndustrialSwitch::disabledDrawsTheMarkOnADisc()
+{
+    const SwitchConfig c = fetchConfig();
+    QFETCH(int, guard);
+    auto sw = makeSwitch(c, guard != 0, guard == 2);
+    sw->setFocusPolicy(Qt::NoFocus);
+    const QImage plain = grabImage(*sw);
+    sw->setEnabled(false);
+    const QImage marked = grabImage(*sw);
+    const QColor text = sw->textColor();
+    sw->setTextColor(QColor(255 - text.red(), 255 - text.green(), 255 - text.blue()));
+    const QImage inverted = grabImage(*sw);
+    sw->setTextColor(text);
+
+    const qreal dpr = marked.devicePixelRatio();
+    const std::pair<QPointF, double> disc = internal::IndustrialSwitchTestAccess::disabledMarkDisc(*sw);
+    const QPointF centre = disc.first;
+    const double radius = disc.second;
+    const QRectF body = layoutOf(*sw).switchRect;
+    QVERIFY2(std::hypot(centre.x() - body.center().x(), centre.y() - body.center().y()) < 0.01, "the disc is not at the centre of the body");
+    const double smaller = std::min(body.width(), body.height());
+    const double side = std::min(std::max(0.3024 * smaller, 12.0), 0.80 * smaller);
+    QVERIFY2(radius >= side * 0.5 && radius * 2.0 <= smaller, qPrintable(QStringLiteral("disc of %1 px for a mark of %2 px").arg(radius).arg(side)));
+    const auto distance = [&](int x, int y) { return std::hypot((x + 0.5) / dpr - centre.x(), (y + 0.5) / dpr - centre.y()); };
+    QRgb solid = 0;
+    int ink = 0;
+    QRect inkBox;
+    for (int y = 0; y < marked.height(); ++y) {
+        for (int x = 0; x < marked.width(); ++x) {
+            const double d = distance(x, y);
+            if (marked.pixel(x, y) != plain.pixel(x, y)) {
+                QVERIFY2(d <= radius + 1.0, qPrintable(QStringLiteral("pixel (%1, %2) changes outside the disc").arg(x).arg(y)));
+            }
+            if (d > radius - 1.0) {
+                continue;
+            }
+            if (marked.pixel(x, y) != inverted.pixel(x, y)) {
+                ++ink;
+                inkBox |= QRect(x, y, 1, 1);
+                if (marked.pixel(x, y) == text.rgb()) {
+                    solid = marked.pixel(x, y);
+                }
+            } else {
+                QVERIFY2(marked.pixel(x, y) == sw->plateColor().rgb(),
+                         qPrintable(QStringLiteral("pixel (%1, %2) inside the disc is neither the mark nor plateColor").arg(x).arg(y)));
+            }
+        }
+    }
+    QVERIFY2(ink > 0 && solid != 0, qPrintable(QStringLiteral("%1 pixels of the mark, none of them in textColor").arg(ink)));
+    const double lighter = std::max(luminance(solid), luminance(sw->plateColor().rgb()));
+    const double darker = std::min(luminance(solid), luminance(sw->plateColor().rgb()));
+    QVERIFY2((lighter + 0.05) / (darker + 0.05) >= 3.0, "the mark against the disc: under 3:1");
+    // The box of the ink: the side, plus at most one partly covered device pixel on each side
+    const auto fits = [&](int extent) { return extent >= side * dpr - 1.0 && extent <= side * dpr + 2.0; };
+    QVERIFY2(fits(inkBox.width()) && fits(inkBox.height()),
+             qPrintable(QStringLiteral("the mark is %1 x %2 px; expected %3 px").arg(inkBox.width() / dpr).arg(inkBox.height() / dpr).arg(side)));
+
+    // The shape: ring, bar, and the two halves clear
+    const QRectF box = internal::IndustrialSwitchTestAccess::disabledMarkRect(*sw);
+    const double s = box.width();
+    const auto isInk = [&](const QPointF &p) {
+        const int x = static_cast<int>(std::floor(p.x() * dpr));
+        const int y = static_cast<int>(std::floor(p.y() * dpr));
+        return marked.pixel(x, y) != inverted.pixel(x, y);
+    };
+    for (const QPointF &d : {QPointF(0.0, -0.42 * s), QPointF(0.0, 0.42 * s), QPointF(-0.42 * s, 0.0), QPointF(0.42 * s, 0.0), QPointF(0.0, 0.0)}) {
+        QVERIFY2(isInk(centre + d), qPrintable(QStringLiteral("no ink at (%1, %2) from the centre").arg(d.x()).arg(d.y())));
+    }
+    for (const QPointF &d : {QPointF(0.156 * s, -0.156 * s), QPointF(-0.156 * s, 0.156 * s)}) {
+        QVERIFY2(!isInk(centre + d), qPrintable(QStringLiteral("ink at (%1, %2) from the centre, in a half of the ⊘").arg(d.x()).arg(d.y())));
+    }
+
+    sw->setEnabled(true);
+    QCOMPARE(grabImage(*sw), plain);
+}
+
+// #243: a disabled switch takes no operator input, from the mouse, the keys, the wheel or assistive technology (its
+// actions and its value), so its guard is not opened or closed and it does not move; setPosition() and setGuardOpen()
+// from the application still apply. Enabled again, assistive technology acts
+void tst_IndustrialSwitch::disabledIgnoresTheOperatorInput()
+{
+    for (const int positions : {2, 3}) {
+        IndustrialSwitch sw;
+        sw.setAnimated(false);
+        sw.setPositionCount(positions);
+        sw.setHasSafetyGuard(true);
+        sw.resize(180, 220);
+        QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&sw);
+        QVERIFY(iface && iface->actionInterface());
+        QVERIFY(iface->valueInterface() || positions == 2); // The value interface: 3 positions only
+        sw.setEnabled(false);
+        QSignalSpy position(&sw, &IndustrialSwitch::positionChanged);
+        QSignalSpy guardSpy(&sw, &IndustrialSwitch::guardToggled);
+        const QRect r = sw.rect();
+        QTest::mouseClick(&sw, Qt::LeftButton, Qt::NoModifier, r.center());
+        for (const Qt::Key key : {Qt::Key_Space, Qt::Key_Return, Qt::Key_Up, Qt::Key_Down}) {
+            QTest::keyClick(&sw, key);
+        }
+        sendWheel(sw, 120);
+        const QStringList names = iface->actionInterface()->actionNames();
+        for (const QString &name : {QStringLiteral("Open guard"), QStringLiteral("Close guard"),
+                                    QAccessibleActionInterface::toggleAction(), QAccessibleActionInterface::increaseAction(),
+                                    QAccessibleActionInterface::decreaseAction()}) {
+            QVERIFY2(!names.contains(name), qPrintable(QStringLiteral("%1 offered while disabled").arg(name)));
+            iface->actionInterface()->doAction(name);
+        }
+        sw.setGuardOpen(true); // The application may
+        QCOMPARE(guardSpy.count(), 1);
+        for (const QString &name : {QAccessibleActionInterface::toggleAction(), QAccessibleActionInterface::increaseAction(),
+                                    QStringLiteral("Close guard")}) {
+            QVERIFY2(!iface->actionInterface()->actionNames().contains(name), qPrintable(QStringLiteral("%1 offered while disabled").arg(name)));
+            iface->actionInterface()->doAction(name);
+        }
+        if (iface->valueInterface()) {
+            iface->valueInterface()->setCurrentValue(positions - 1);
+        }
+        QCOMPARE(sw.position(), 0);
+        QCOMPARE(position.count(), 0);
+        QVERIFY(sw.isGuardOpen());
+        QCOMPARE(guardSpy.count(), 1);
+        sw.setPosition(1);
+        QCOMPARE(sw.position(), 1);
+
+        // Control: enabled again, the action acts
+        sw.setEnabled(true);
+        iface->actionInterface()->doAction(QStringLiteral("Close guard"));
+        QVERIFY(!sw.isGuardOpen());
+    }
+}
+
+void tst_IndustrialSwitch::disableStopsTheDrag_data()
+{
+    QTest::addColumn<bool>("parentDisabled");
+    QTest::addColumn<bool>("focused");
+    for (const bool parentDisabled : {false, true}) {
+        for (const bool focused : {true, false}) {
+            QTest::addRow("%s, %s", parentDisabled ? "parent disabled" : "disabled", focused ? "with focus" : "without focus")
+                << parentDisabled << focused;
+        }
+    }
+}
+
+// #243: the switch has no action to commit: a drag sets the position as the pointer moves. A disable stops the drag;
+// the positions already taken stay, and a move after the switch is enabled again moves nothing until a new press
+void tst_IndustrialSwitch::disableStopsTheDrag()
+{
+    QFETCH(bool, parentDisabled);
+    QFETCH(bool, focused);
+    QWidget parent;
+    parent.resize(220, 300);
+    auto *sw = new IndustrialSwitch(&parent);
+    auto *other = new QLineEdit(&parent);
+    sw->setAnimated(false);
+    sw->resize(180, 220);
+    other->move(0, 240);
+    if (!focused) {
+        sw->setFocusPolicy(Qt::NoFocus);
+    }
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    QVERIFY(focusOn(focused ? static_cast<QWidget &>(*sw) : static_cast<QWidget &>(*other)));
+    const QRectF body = layoutOf(*sw).switchRect;
+    const QPointF bottom(body.center().x(), body.bottom() - 4.0);
+    const QPointF top(body.center().x(), body.top() + 4.0);
+    const auto send = [&](QEvent::Type type, const QPointF &p) {
+        const Qt::MouseButton button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+        const Qt::MouseButtons buttons = type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton;
+        QMouseEvent event(type, p, sw->mapToGlobal(p), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(sw, &event);
+    };
+    send(QEvent::MouseButtonPress, bottom);
+    send(QEvent::MouseMove, top);
+    const int taken = sw->position();
+    QCOMPARE(taken, 1);
+    QSignalSpy position(sw, &IndustrialSwitch::positionChanged);
+    QVERIFY(ActionTest::disable(*sw, parentDisabled ? static_cast<QWidget &>(parent) : static_cast<QWidget &>(*sw), focused));
+    QCOMPARE(sw->position(), taken);
+    parent.setEnabled(true);
+    sw->setEnabled(true);
+    send(QEvent::MouseMove, bottom);
+    QCOMPARE(sw->position(), taken);
+    QCOMPARE(position.count(), 0);
+    // Control: a new press and drag moves it
+    send(QEvent::MouseButtonPress, top);
+    send(QEvent::MouseMove, bottom);
+    QCOMPARE(sw->position(), 0);
 }
 
 QTEST_MAIN(tst_IndustrialSwitch)

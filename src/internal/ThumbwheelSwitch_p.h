@@ -72,6 +72,7 @@ public:
     bool m_lastPendingOutline{false}; // The drums had the dashed outline of a pending value
     QString m_lastStatus;             // The text of the status line (empty without one, or for the padlock)
     bool m_lastPadlock{false};        // The padlock was drawn
+    bool m_lastDisabledMark{false};   // #243: the ⊘ was drawn
     bool m_lastSetOpen{false};        // The SET button was drawn filled (a value is pending)
     bool m_lastSetDrawn{false};
     int m_lastCursor{-1};             // The drum whose bar of the current decade was drawn (-1: none)

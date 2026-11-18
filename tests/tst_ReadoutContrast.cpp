@@ -359,8 +359,8 @@ private Q_SLOTS:
     void compass();
     void industrialKnob_data();
     void industrialKnob();
-    void industrialKnobPadlock_data();
-    void industrialKnobPadlock();
+    void industrialKnobStateMark_data();
+    void industrialKnobStateMark();
     void industrialKnobFocusRing_data();
     void industrialKnobFocusRing();
     void industrialSwitchFocusRing_data();
@@ -1024,7 +1024,8 @@ void tst_ReadoutContrast::thumbwheelInputMarks_data() { addThemeRows(); }
 
 // #154, part 2, with the gallery styling: the dashed outline of a pending value on the drum face (a graphical object,
 // 3:1), the SET button filled (text on the button face, 4.5:1) and outlined (text on the background, 4.5:1), the status
-// line (text on the background, 4.5:1) and the padlock of read-only (a graphical object on the background, 3:1)
+// line (text on the background, 4.5:1), the padlock of read-only and the ⊘ of disabled (#243) (graphical objects on
+// the background, 3:1)
 void tst_ReadoutContrast::thumbwheelInputMarks()
 {
     QFETCH(bool, dark);
@@ -1061,6 +1062,11 @@ void tst_ReadoutContrast::thumbwheelInputMarks()
     img = renderShowcase(t, dark);
     QVERIFY(internal::ThumbwheelSwitchTestAccess::lastPadlock(t));
     checkGraphics("padlock", strongestIn(img, deviceBox(l.padlock, img), background), background);
+
+    t.setEnabled(false);
+    img = renderShowcase(t, dark);
+    QVERIFY(internal::ThumbwheelSwitchTestAccess::lastDisabledMark(t));
+    checkGraphics("disabled mark", strongestIn(img, deviceBox(l.padlock, img), background), background);
 }
 
 void tst_ReadoutContrast::thumbwheelFocusRing_data() { addThemeRows(); }
@@ -1281,32 +1287,41 @@ void tst_ReadoutContrast::industrialKnobFocusRing()
     checkFocusRingContrast(window, *k, *other, dark);
 }
 
-void tst_ReadoutContrast::industrialKnobPadlock_data()
+void tst_ReadoutContrast::industrialKnobStateMark_data()
 {
     QTest::addColumn<bool>("dark");
     QTest::addColumn<double>("value");
+    QTest::addColumn<bool>("disabled"); // false: the padlock of read-only
     for (const bool dark : {true, false}) {
         const char *theme = dark ? "dark" : "light";
         for (const double value : {0.0, 2400.0, 8000.0}) {
-            QTest::addRow("%s, value %g", theme, value) << dark << value;
+            for (const bool disabled : {false, true}) {
+                QTest::addRow("%s, value %g, %s", theme, value, disabled ? "disabled" : "read-only") << dark << value << disabled;
+            }
         }
     }
 }
 
-// #182: the padlock of read-only is a graphical object that carries the state: textColor() against every pixel of
-// the cap around it, inside its rectangle, at 3:1 (WCAG 1.4.11) in both gallery themes. Its pixels are those that change
-// with textColor() inside its rectangle; the others there are the cap
-void tst_ReadoutContrast::industrialKnobPadlock()
+// #182, #243: the mark of the state (the padlock of read-only, the ⊘ of disabled) is a graphical object that carries
+// the state: textColor() against every pixel of the disc it stands on, at 3:1 (WCAG 1.4.11) in both gallery themes.
+// Its pixels are those that change with textColor() inside the disc; the others there are the disc, whatever the
+// pointer under it
+void tst_ReadoutContrast::industrialKnobStateMark()
 {
     QFETCH(bool, dark);
     QFETCH(double, value);
+    QFETCH(bool, disabled);
     constexpr double kGraphicsRatio = 3.0;
     IndustrialKnob k;
     k.setRange(0.0, 8000.0);
     k.setValue(value);
     style(k, dark);
     k.resize(220, 240);
-    k.setReadOnly(true);
+    if (disabled) {
+        k.setEnabled(false);
+    } else {
+        k.setReadOnly(true);
+    }
     const QColor text = k.textColor();
     const QImage img = renderOn(k, dark);
     k.setTextColor(QColor(255 - text.red(), 255 - text.green(), 255 - text.blue()));
@@ -1314,35 +1329,41 @@ void tst_ReadoutContrast::industrialKnobPadlock()
     k.setTextColor(text);
 
     const qreal dpr = img.devicePixelRatio();
-    const QRectF logical = internal::IndustrialKnobTestAccess::padlockRect(k);
-    QVERIFY(!logical.isEmpty());
-    const QRect box = QRectF(logical.topLeft() * dpr, logical.size() * dpr).toAlignedRect();
+    const std::pair<QPointF, double> disc = internal::IndustrialKnobTestAccess::stateMarkDisc(k);
+    QVERIFY(disc.second > 0.0);
+    // Inside the disc, one device pixel clear of its antialiased edge
+    const double inner = disc.second * dpr - 1.0;
+    const QPointF centre = disc.first * dpr;
+    const QRect box = QRectF(centre.x() - inner, centre.y() - inner, 2.0 * inner, 2.0 * inner).toAlignedRect();
     int ink = 0;
     int solid = 0;
-    int cap = 0;
+    int ground = 0;
     double worst = std::numeric_limits<double>::max();
-    QRgb worstCap = 0;
+    QRgb worstGround = 0;
     for (int y = box.top(); y <= box.bottom(); ++y) {
         for (int x = box.left(); x <= box.right(); ++x) {
+            if (std::hypot(x + 0.5 - centre.x(), y + 0.5 - centre.y()) > inner) {
+                continue;
+            }
             const QRgb p = img.pixel(x, y);
             if (p != other.pixel(x, y)) {
                 ++ink;
                 solid += channelDistance(p, text.rgb()) <= 2 ? 1 : 0;
                 continue;
             }
-            ++cap;
+            ++ground;
             if (contrast(text.rgb(), p) < worst) {
                 worst = contrast(text.rgb(), p);
-                worstCap = p;
+                worstGround = p;
             }
         }
     }
-    QVERIFY2(ink > 0 && solid > 0, qPrintable(QStringLiteral("%1 padlock pixels, %2 of them in textColor").arg(ink).arg(solid)));
-    QVERIFY2(cap > 0, "no cap pixel around the padlock");
+    QVERIFY2(ink > 0 && solid > 0, qPrintable(QStringLiteral("%1 pixels of the mark, %2 of them in textColor").arg(ink).arg(solid)));
+    QVERIFY2(ground > 0, "no pixel of the disc around the mark");
     QVERIFY2(worst >= kGraphicsRatio,
-             qPrintable(QStringLiteral("padlock rgb(%1, %2, %3) against the cap rgb(%4, %5, %6): %7:1 (target %8:1)")
+             qPrintable(QStringLiteral("mark rgb(%1, %2, %3) against the disc rgb(%4, %5, %6): %7:1 (target %8:1)")
                             .arg(text.red()).arg(text.green()).arg(text.blue())
-                            .arg(qRed(worstCap)).arg(qGreen(worstCap)).arg(qBlue(worstCap))
+                            .arg(qRed(worstGround)).arg(qGreen(worstGround)).arg(qBlue(worstGround))
                             .arg(worst, 0, 'f', 2).arg(kGraphicsRatio, 0, 'f', 1)));
 }
 

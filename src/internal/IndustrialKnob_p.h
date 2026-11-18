@@ -185,6 +185,30 @@ public:
         Q_EMIT knob->operatorActiveChanged(false);
     }
 
+    // #243 (test scaffolding, the geometry of the mark of the state; drawn by the fix)
+    static constexpr double kMinimumStateMark = 12.0;
+    static double capRadius(const internal::KnobScaleGeometry &g)
+    {
+        return g.radius * 0.65 * 0.84 * 0.90; // knob, face, inner face (as paintEvent() draws them)
+    }
+    static double stateMarkSide(const internal::KnobScaleGeometry &g)
+    {
+        const double cap = 2.0 * capRadius(g);
+        return std::min(std::max(0.45 * cap, kMinimumStateMark), 0.80 * cap);
+    }
+    static double stateMarkDiscRadius(const internal::KnobScaleGeometry &g) { return stateMarkSide(g) * 0.59; }
+    static QRectF disabledMarkRect(const internal::KnobScaleGeometry &g)
+    {
+        const double s = stateMarkSide(g);
+        return QRectF(g.centerX - s * 0.5, g.centerY - s * 0.5, s, s);
+    }
+    static QRectF stateMarkPadlockRect(const internal::KnobScaleGeometry &g)
+    {
+        const double h = stateMarkSide(g);
+        const double w = h * 0.714;
+        return QRectF(g.centerX - w * 0.5, g.centerY - h * 0.5, w, h);
+    }
+
     // #182: inner end of the pointer, as paintEvent() draws it: no angle of the pointer reaches inside this radius
     static double pointerInnerRadius(const internal::KnobScaleGeometry &g)
     {

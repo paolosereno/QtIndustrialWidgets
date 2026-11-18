@@ -62,6 +62,14 @@ private Q_SLOTS:
     void readOnlyDrawsThePadlockBeforeTheTag_data();
     void readOnlyDrawsThePadlockBeforeTheTag();
     void padlockHelperDrawsBodyAndShackle();
+    // #243: disabled
+    void disabledMarkHelperDrawsRingAndBar();
+    void disabledDrawsTheMarkBeforeTheTag_data();
+    void disabledDrawsTheMarkBeforeTheTag();
+    void disabledIgnoresTheOperatorInput();
+    void applicationEndsTheActionWithoutACommit_data();
+    void applicationEndsTheActionWithoutACommit();
+    void disabledStateForAssistiveTechnology();
     void padlockCountsInThePanelMinimum();
     void wheelIsOffByDefault();
     void wheelStepsOnlyWithFocus();
@@ -680,9 +688,10 @@ void tst_IndustrialSliderInput::readOnlyEndsTheRunningAction()
     }
     const double reached = s.setpoint();
     QVERIFY(reached > 50.0);
+    // #243: a decision of the application, no commit: back to where the action started
     s.setReadOnly(true);
-    QCOMPARE(committed.count(), 1);
-    QCOMPARE(committed.at(0).at(0).toDouble(), reached);
+    QCOMPARE(committed.count(), 0);
+    QCOMPARE(s.setpoint(), 50.0);
     if (drag) {
         sendMouse(s, QEvent::MouseMove, moved(l, h, length * 0.3));
         sendMouse(s, QEvent::MouseButtonRelease, moved(l, h, length * 0.3));
@@ -690,8 +699,8 @@ void tst_IndustrialSliderInput::readOnlyEndsTheRunningAction()
         sendKey(s, QEvent::KeyPress, Qt::Key_PageUp, true);
         sendKey(s, QEvent::KeyRelease, Qt::Key_PageUp, false);
     }
-    QCOMPARE(s.setpoint(), reached);
-    QCOMPARE(committed.count(), 1);
+    QCOMPARE(s.setpoint(), 50.0);
+    QCOMPARE(committed.count(), 0);
 }
 
 void tst_IndustrialSliderInput::readOnlyDrawsThePadlockBeforeTheTag_data()
@@ -855,6 +864,351 @@ void tst_IndustrialSliderInput::padlockHelperDrawsBodyAndShackle()
                             QPoint(90, 145)}) {
         QVERIFY2(clear(p.x(), p.y()), qPrintable(QStringLiteral("ink at (%1, %2)").arg(p.x()).arg(p.y())));
     }
+}
+
+// #243: internal::drawDisabledMark(), shared by the controls, drawn large in a box wider than high: a ring and a bar
+// from the top left to the bottom right, inscribed in the square of the height, centred in the box; the two halves
+// clear, nothing outside the ring; the pen, the brush and the antialiasing of the painter are as they were
+void tst_IndustrialSliderInput::disabledMarkHelperDrawsRingAndBar()
+{
+    QImage img(220, 200, QImage::Format_ARGB32);
+    img.fill(kBackground);
+    QPainter painter(&img);
+    const QPen pen(QColor(255, 0, 0), 3.0);
+    const QBrush brush(QColor(0, 0, 255));
+    painter.setPen(pen);
+    painter.setBrush(brush);
+    // Box 120 x 100 at (50, 40): a square of 100 centred on (110, 90), stroke 16, ring of centre line 42
+    internal::drawDisabledMark(painter, QRectF(50.0, 40.0, 120.0, 100.0), kReadout);
+    QCOMPARE(painter.pen(), pen);
+    QCOMPARE(painter.brush(), brush);
+    QVERIFY(!painter.testRenderHint(QPainter::Antialiasing));
+    painter.end();
+    const auto ink = [&](int x, int y) { return near(img.pixel(x, y), kReadout, 8); };
+    const auto clear = [&](int x, int y) { return near(img.pixel(x, y), kBackground, 8); };
+    for (const QPoint &p : {QPoint(110, 48), QPoint(110, 132), QPoint(68, 90), QPoint(152, 90), QPoint(80, 61), QPoint(140, 119)}) {
+        QVERIFY2(ink(p.x(), p.y()), qPrintable(QStringLiteral("no ring at (%1, %2)").arg(p.x()).arg(p.y())));
+    }
+    for (const QPoint &p : {QPoint(110, 90), QPoint(90, 70), QPoint(130, 110)}) {
+        QVERIFY2(ink(p.x(), p.y()), qPrintable(QStringLiteral("no bar at (%1, %2)").arg(p.x()).arg(p.y())));
+    }
+    for (const QPoint &p : {QPoint(132, 68), QPoint(88, 112), QPoint(55, 90), QPoint(165, 90), QPoint(110, 35), QPoint(110, 145),
+                            QPoint(62, 52), QPoint(158, 128)}) {
+        QVERIFY2(clear(p.x(), p.y()), qPrintable(QStringLiteral("ink at (%1, %2)").arg(p.x()).arg(p.y())));
+    }
+}
+
+void tst_IndustrialSliderInput::disabledDrawsTheMarkBeforeTheTag_data()
+{
+    QTest::addColumn<bool>("vertical");
+    QTest::addColumn<bool>("atMinimum");
+    for (bool vertical : {false, true}) {
+        for (bool atMinimum : {false, true}) {
+            QTest::newRow(qPrintable(QStringLiteral("%1, %2").arg(vertical ? "vertical" : "horizontal",
+                                                                  atMinimum ? "minimum size" : "test size")))
+                << vertical << atMinimum;
+        }
+    }
+}
+
+// #243: disabled draws a ⊘ in the setpoint panel, where read-only draws the padlock: before "SP", in readoutColor(),
+// as wide as the padlock (0.8 of the capitals), with no solid body. It is never left out, and needs the same room as
+// the padlock. Nothing outside the setpoint panel changes (the slider is not greyed out); disabled and read-only
+// together draw the ⊘ only; enabled again, the pixels are those of before
+void tst_IndustrialSliderInput::disabledDrawsTheMarkBeforeTheTag()
+{
+    QFETCH(bool, vertical);
+    QFETCH(bool, atMinimum);
+    IndustrialSlider s;
+    setVertical(s, vertical);
+    s.setRange(-100000.0, 100000.0);
+    s.setUnit(QStringLiteral("m³ (15 °C)"));
+    s.setReadOnly(true);
+    const QSize lockedMin = s.minimumSizeHint();
+    s.setReadOnly(false);
+    s.setEnabled(false);
+    QCOMPARE(s.minimumSizeHint(), lockedMin);
+    QCOMPARE(internal::IndustrialSliderTestAccess::minimumPodWidth(s), [&] {
+        s.setEnabled(true);
+        s.setReadOnly(true);
+        const double w = internal::IndustrialSliderTestAccess::minimumPodWidth(s);
+        s.setReadOnly(false);
+        s.setEnabled(false);
+        return w;
+    }());
+    // Without the feedback panel, whose deviation and state marks are wider, the setpoint panel decides the minimum
+    // width of the panels: the ⊘ needs room there, as the padlock
+    {
+        IndustrialSlider bare;
+        setVertical(bare, vertical);
+        bare.setFeedbackReadoutVisible(false);
+        const double plainPod = internal::IndustrialSliderTestAccess::minimumPodWidth(bare);
+        bare.setReadOnly(true);
+        const double lockedPod = internal::IndustrialSliderTestAccess::minimumPodWidth(bare);
+        bare.setReadOnly(false);
+        bare.setEnabled(false);
+        const double disabledPod = internal::IndustrialSliderTestAccess::minimumPodWidth(bare);
+        QVERIFY2(lockedPod > plainPod, qPrintable(QStringLiteral("%1 with the padlock, %2 without").arg(lockedPod).arg(plainPod)));
+        QCOMPARE(disabledPod, lockedPod);
+    }
+    s.setEnabled(true);
+    prepare(s, atMinimum ? lockedMin : sizeFor(vertical));
+    s.setSetpoint(-99999.9);
+    const QImage plain = render(s);
+    s.setEnabled(false);
+    const QImage marked = render(s);
+    const internal::SliderLayout l = internal::IndustrialSliderTestAccess::lastLayout(s);
+    const QString text = internal::IndustrialSliderTestAccess::lastSetpointReadout(s);
+    QVERIFY2(text.startsWith(QStringLiteral("⊘ SP")), qPrintable(text));
+    QVERIFY(internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s) >= internal::minimumReadoutPixelSize(s.logicalDpiY()));
+
+    const double dpr = marked.devicePixelRatio();
+    const QRect pod = QRectF(l.setpointPod.x() * dpr, l.setpointPod.y() * dpr, l.setpointPod.width() * dpr,
+                             l.setpointPod.height() * dpr).toAlignedRect().intersected(marked.rect());
+    // Only the setpoint panel changes
+    for (int y = 0; y < marked.height(); ++y) {
+        for (int x = 0; x < marked.width(); ++x) {
+            if (marked.pixel(x, y) != plain.pixel(x, y)) {
+                QVERIFY2(pod.contains(x, y), qPrintable(QStringLiteral("pixel (%1, %2) changes outside the setpoint panel").arg(x).arg(y)));
+            }
+        }
+    }
+    // The mark: the first ink of the panel, about as wide as 0.8 of the capitals, and no solid body like the padlock's
+    QFont readoutFont = s.font();
+    readoutFont.setPixelSize(internal::IndustrialSliderTestAccess::lastReadoutPixelSize(s));
+    const double cap = QFontMetricsF(readoutFont).capHeight() * dpr;
+    int left = -1;
+    for (int x = pod.left(); x <= pod.right() && left < 0; ++x) {
+        for (int y = pod.top(); y <= pod.bottom(); ++y) {
+            if (near(marked.pixel(x, y), kReadout, 110)) {
+                left = x;
+                break;
+            }
+        }
+    }
+    QVERIFY(left >= 0);
+    QRect mark;
+    const int right = left + static_cast<int>(std::ceil(cap * 0.8));
+    for (int y = pod.top(); y <= pod.bottom(); ++y) {
+        for (int x = left; x <= right; ++x) {
+            if (near(marked.pixel(x, y), kReadout, 110)) {
+                mark |= QRect(x, y, 1, 1);
+            }
+        }
+    }
+    QVERIFY2(std::abs(mark.width() - cap * 0.8) <= 2.0 && std::abs(mark.height() - cap * 0.8) <= 2.0,
+             qPrintable(QStringLiteral("mark %1 x %2 px, 0.8 of the capitals %3 px").arg(mark.width()).arg(mark.height()).arg(cap * 0.8)));
+    // A ring has a hole: the centre of each half of the ⊘ is not ink
+    const QPointF c(mark.x() + mark.width() * 0.5, mark.y() + mark.height() * 0.5);
+    const double side = mark.width();
+    if (side >= 10.0) { // At 10 device px and more the halves are at least one pixel clear of the ring and the bar
+        for (const QPointF &d : {QPointF(side * 0.156, -side * 0.156), QPointF(-side * 0.156, side * 0.156)}) {
+            const QPoint p = (c + d).toPoint();
+            QVERIFY2(!near(marked.pixel(p), kReadout, 110), qPrintable(QStringLiteral("ink at (%1, %2), a half of the ⊘").arg(p.x()).arg(p.y())));
+        }
+    }
+    int solid = 0;
+    for (int y = mark.top(); y + 2 <= mark.bottom(); ++y) {
+        int run = 0;
+        for (int x = mark.left(); x <= mark.right(); ++x) {
+            const bool full = near(marked.pixel(x, y), kReadout, 40) && near(marked.pixel(x, y + 1), kReadout, 40)
+                              && near(marked.pixel(x, y + 2), kReadout, 40);
+            run = full ? run + 1 : 0;
+            solid = std::max(solid, run);
+        }
+    }
+    QVERIFY2(solid < std::floor(cap * 0.8) - 2, qPrintable(QStringLiteral("a solid run of %1 px: a padlock, not a ⊘").arg(solid)));
+
+    // Disabled and read-only: the ⊘ only
+    s.setReadOnly(true);
+    QCOMPARE(render(s), marked);
+    QVERIFY(internal::IndustrialSliderTestAccess::lastSetpointReadout(s).startsWith(QStringLiteral("⊘ SP")));
+    s.setReadOnly(false);
+    s.setEnabled(true);
+    QCOMPARE(render(s), plain);
+}
+
+// #243: a disabled slider takes no operator input, from the mouse, the keys, the wheel or assistive technology, and
+// emits nothing; setSetpoint() from the application still applies. Enabled again, the same input acts
+void tst_IndustrialSliderInput::disabledIgnoresTheOperatorInput()
+{
+    QWidget parent;
+    parent.resize(340, 120);
+    auto *s = new IndustrialSlider(&parent);
+    s->setRange(0.0, 100.0);
+    s->setWheelEnabled(true);
+    s->resize(300, 92);
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    QVERIFY(focusOn(*s));
+    s->setSetpoint(50.0);
+    const internal::SliderLayout l = layoutOf(*s);
+    const double length = std::abs(l.scaleMax - l.scaleMin);
+    const QPointF h = handlePoint(*s);
+    QAccessibleValueInterface *access = QAccessible::queryAccessibleInterface(s)->valueInterface();
+    QVERIFY(access);
+
+    s->setEnabled(false);
+    QSignalSpy changed(s, &IndustrialSlider::setpointChanged);
+    QSignalSpy committed(s, &IndustrialSlider::setpointCommitted);
+    QSignalSpy active(s, &IndustrialSlider::operatorActiveChanged);
+    for (const Qt::Key key : {Qt::Key_Up, Qt::Key_Down, Qt::Key_PageUp, Qt::Key_Home, Qt::Key_End}) {
+        sendKey(*s, QEvent::KeyPress, key, false);
+        sendKey(*s, QEvent::KeyRelease, key, false);
+    }
+    sendMouse(*s, QEvent::MouseButtonPress, h);
+    sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.2));
+    sendMouse(*s, QEvent::MouseButtonRelease, moved(l, h, length * 0.2));
+    sendWheel(*s, 120);
+    access->setCurrentValue(70.0);
+    QCOMPARE(s->setpoint(), 50.0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(committed.count(), 0);
+    QCOMPARE(active.count(), 0);
+    QVERIFY(!s->isOperatorActive());
+
+    s->setSetpoint(60.0);
+    QCOMPARE(s->setpoint(), 60.0);
+    QCOMPARE(changed.count(), 1);
+
+    // Control: enabled again, assistive technology and the keys act
+    s->setEnabled(true);
+    access->setCurrentValue(70.0);
+    QCOMPARE(s->setpoint(), 70.0);
+    QCOMPARE(committed.count(), 1);
+    sendKey(*s, QEvent::KeyPress, Qt::Key_Up, false);
+    sendKey(*s, QEvent::KeyRelease, Qt::Key_Up, false);
+    QCOMPARE(s->setpoint(), 71.0);
+}
+
+void tst_IndustrialSliderInput::applicationEndsTheActionWithoutACommit_data()
+{
+    QTest::addColumn<int>("ending"); // 0 the slider disabled, 1 its parent disabled, 2 setReadOnly(true)
+    QTest::addColumn<int>("input");  // 0 a drag with the focus, 1 a drag without the focus, 2 a held key (focus)
+    QTest::addColumn<bool>("away"); // The action left the setpoint elsewhere than where it started
+    QTest::addColumn<bool>("readBack"); // setSetpoint(20) during the action
+    const char *endings[] = {"disabled", "parent disabled", "read-only"};
+    const char *inputs[] = {"drag with focus", "drag without focus", "held key"};
+    for (int ending = 0; ending < 3; ++ending) {
+        for (int input = 0; input < 3; ++input) {
+            for (const bool away : {true, false}) {
+                if (input == 2 && !away) {
+                    continue; // A held key moves the setpoint
+                }
+                for (const bool readBack : {false, true}) {
+                    QTest::addRow("%s, %s, %s%s", endings[ending], inputs[input], away ? "moved" : "back to the start",
+                                  readBack ? ", read back" : "")
+                        << ending << input << away << readBack;
+                }
+            }
+        }
+    }
+}
+
+// #243: disabling the slider (or a parent) and setReadOnly(true) are decisions of the application: an action running
+// ends without a commit. The setpoint goes back to where the action started, or to the setpoint read back during it
+// (#241), with setpointChanged() if it changes; operatorActiveChanged(false) comes last, and isOperatorActive() is
+// already false in the slots. With the focus, Qt takes the focus away before the EnabledChange: that focus out is
+// the disable, not an ordinary loss of focus (which commits). Without the focus, the action no longer stays running.
+// Afterwards nothing of the old action acts, and setSetpoint() applies at once
+void tst_IndustrialSliderInput::applicationEndsTheActionWithoutACommit()
+{
+    QFETCH(int, ending);
+    QFETCH(int, input);
+    QFETCH(bool, away);
+    QFETCH(bool, readBack);
+    const bool focused = input != 1;
+
+    QWidget parent;
+    parent.resize(340, 160);
+    auto *s = new IndustrialSlider(&parent);
+    auto *other = new QLineEdit(&parent);
+    other->move(0, 120);
+    prepare(*s, sizeFor(false));
+    s->setRange(0.0, 100.0);
+    if (!focused) {
+        s->setFocusPolicy(Qt::NoFocus);
+    }
+    parent.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    QVERIFY(focusOn(focused ? static_cast<QWidget &>(*s) : static_cast<QWidget &>(*other)));
+    s->setSetpoint(50.0);
+    const internal::SliderLayout l = layoutOf(*s);
+    const double length = std::abs(l.scaleMax - l.scaleMin);
+    const QPointF h = handlePoint(*s);
+    QVERIFY(length > 0.0);
+
+    ActionLog log(*s);
+    if (input == 2) {
+        sendKey(*s, QEvent::KeyPress, Qt::Key_Up, false);
+        sendKey(*s, QEvent::KeyPress, Qt::Key_Up, true);
+    } else {
+        sendMouse(*s, QEvent::MouseButtonPress, h);
+        sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.1));
+        if (!away) {
+            sendMouse(*s, QEvent::MouseMove, h);
+        }
+    }
+    QVERIFY(s->isOperatorActive());
+    QCOMPARE(s->setpoint() != 50.0, away);
+    const double operatorSetpoint = s->setpoint();
+    if (readBack) {
+        s->setSetpoint(20.0);
+        QCOMPARE(s->setpoint(), operatorSetpoint); // Held (#241)
+    }
+    log.take();
+
+    switch (ending) {
+    case 0: QVERIFY(ActionTest::disable(*s, *s, focused)); break;
+    case 1: QVERIFY(ActionTest::disable(*s, parent, focused)); break;
+    default: s->setReadOnly(true); break;
+    }
+    const double expected = readBack ? 20.0 : 50.0;
+    QCOMPARE(s->setpoint(), expected);
+    QVERIFY(!s->isOperatorActive());
+    const QString back = expected != operatorSetpoint ? QStringLiteral("changed %1 (off); ").arg(expected) : QString();
+    QCOMPARE(log.take(), back + QStringLiteral("active false (off)"));
+
+    // What is left of the old action does nothing
+    if (input == 2) {
+        sendKey(*s, QEvent::KeyPress, Qt::Key_Up, true);
+        sendKey(*s, QEvent::KeyRelease, Qt::Key_Up, false);
+    } else {
+        sendMouse(*s, QEvent::MouseMove, moved(l, h, length * 0.3));
+        sendMouse(*s, QEvent::MouseButtonRelease, moved(l, h, length * 0.3));
+    }
+    QCOMPARE(s->setpoint(), expected);
+    QCOMPARE(log.take(), QString());
+
+    // Enabled (or writable) again: no action is left, and a setpoint read back applies at once
+    if (ending == 2) {
+        s->setReadOnly(false);
+    } else {
+        parent.setEnabled(true);
+        s->setEnabled(true);
+    }
+    QVERIFY(!s->isOperatorActive());
+    s->setSetpoint(70.0);
+    QCOMPARE(s->setpoint(), 70.0);
+    QCOMPARE(log.take(), QStringLiteral("changed 70 (off)"));
+}
+
+// #243: assistive technology reads the disabled state (Qt sets it from isEnabled()), and read-only too when both
+void tst_IndustrialSliderInput::disabledStateForAssistiveTechnology()
+{
+    IndustrialSlider s;
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&s);
+    QVERIFY(iface);
+    QVERIFY(!iface->state().disabled);
+    s.setEnabled(false);
+    QVERIFY(iface->state().disabled);
+    QVERIFY(!iface->state().readOnly);
+    s.setReadOnly(true);
+    QVERIFY(iface->state().disabled);
+    QVERIFY(iface->state().readOnly);
+    s.setEnabled(true);
+    QVERIFY(!iface->state().disabled);
+    QVERIFY(iface->state().readOnly);
 }
 
 void tst_IndustrialSliderInput::wheelIsOffByDefault()
@@ -1686,7 +2040,8 @@ void tst_IndustrialSliderInput::heldSetpointAtTheEndOfTheAction_data()
 }
 
 // #241: however the action ends, the held setpoint is dropped when the action commits, and applied (setpointChanged(),
-// no commit) when the action left the setpoint where it started: then the read-back is news from the device
+// no commit) when the action left the setpoint where it started: then the read-back is news from the device. #243:
+// setReadOnly(true) never commits, so the held setpoint is applied in both cases
 void tst_IndustrialSliderInput::heldSetpointAtTheEndOfTheAction()
 {
     QFETCH(int, ending);
@@ -1716,7 +2071,7 @@ void tst_IndustrialSliderInput::heldSetpointAtTheEndOfTheAction()
     case 2: QVERIFY(ActionTest::hideWithoutFocus(a.s)); break;
     default: a.s.setReadOnly(true); break;
     }
-    if (changed) {
+    if (changed && ending != 3) {
         QCOMPARE(committed.count(), 1);
         QCOMPARE(committed.at(0).at(0).toDouble(), operatorSetpoint);
         QCOMPARE(setpointSpy.count(), 0);

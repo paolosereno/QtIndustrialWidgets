@@ -87,6 +87,22 @@ void drawInvalidHatch(QPainter &painter, const QPainterPath &area, double thickn
     painter.restore();
 }
 
+void drawDisabledMark(QPainter &painter, const QRectF &box, const QColor &color)
+{
+    const double side = std::min(box.width(), box.height());
+    const double stroke = side * 0.16;
+    const double radius = (side - stroke) * 0.5; // The centre line of the ring: its ink reaches side / 2
+    const QPointF centre = box.center();
+    const double diagonal = radius * 0.7071067811865476; // The bar ends on the centre line of the ring, at 45 degrees
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(color, stroke, Qt::SolidLine, Qt::FlatCap));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(centre, radius, radius);
+    painter.drawLine(QPointF(centre.x() - diagonal, centre.y() - diagonal), QPointF(centre.x() + diagonal, centre.y() + diagonal));
+    painter.restore();
+}
+
 void drawPadlock(QPainter &painter, const QRectF &box, const QColor &color)
 {
     const double w = box.width();
