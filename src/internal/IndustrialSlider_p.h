@@ -124,6 +124,10 @@ public:
     // Ends the drag or the key action that is running, if any, and emits setpointCommitted() if the setpoint is not
     // the one it started from
     void endAction(IndustrialSlider *q);
+    // #243: the application ends the action (disabled, setReadOnly(true)): no commit. The setpoint goes back to where
+    // the action started, or to the setpoint held during it (#241), with setpointChanged() if it changes; then
+    // operatorActiveChanged(false). isOperatorActive() is already false in the slots of these signals
+    void cancelAction(IndustrialSlider *q);
     // #241: a drag or a held key is running
     [[nodiscard]] bool operatorActive() const { return m_dragging || m_keyAction; }
     // #182, #241: an action starts; the caller has set m_dragging or m_keyAction
@@ -173,7 +177,8 @@ public:
 
     static Fonts fontsFor(const QFont &widgetFont, double logicalDpi);
 
-    [[nodiscard]] internal::SliderLayoutInput layoutInput(double w, double h, const Fonts &fonts) const;
+    // \a disabled: the slider is disabled (#243), so the setpoint panel holds the ⊘
+    [[nodiscard]] internal::SliderLayoutInput layoutInput(double w, double h, const Fonts &fonts, bool disabled) const;
 };
 
 } // namespace QtIndustrialWidgets

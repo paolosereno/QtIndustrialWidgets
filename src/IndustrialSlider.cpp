@@ -61,7 +61,7 @@ double podSideMargin(double podHeight)
 
 // The parts of one readout panel, left to right
 struct Readout {
-    enum class Mark { None, Deviation, Unknown, Padlock };
+    enum class Mark { None, Deviation, Unknown, Padlock, Disabled };
     Mark mark{Mark::None};      // Never left out
     QString tag;                // Never left out
     int triangle{0};            // 1 up (over range), -1 down (under range), 0 none; never left out
@@ -90,6 +90,7 @@ double markWidth(const QFontMetricsF &fm, Readout::Mark mark)
     case Readout::Mark::Unknown:
         return fm.horizontalAdvance(QLatin1Char('?'));
     case Readout::Mark::Padlock:
+    case Readout::Mark::Disabled: // #243: as wide as the padlock, in its place
         return fm.capHeight() * 0.8;
     case Readout::Mark::None:
         break;
@@ -193,6 +194,13 @@ QString drawReadout(QPainter &painter, const QRectF &pod, const Readout &r, QFon
         internal::drawPadlock(painter, QRectF(x, baseline - h, h * 0.8, h), color);
         x += h * 0.8;
         drawn << QStringLiteral("🔒");
+    } else if (r.mark == Readout::Mark::Disabled) {
+        advance(space);
+        // #243: disabled. A ⊘ in the box of the padlock, centred on the capitals
+        const double h = fm.capHeight();
+        internal::drawDisabledMark(painter, QRectF(x, baseline - h, h * 0.8, h), color);
+        x += h * 0.8;
+        drawn << QStringLiteral("⊘");
     } else if (r.mark == Readout::Mark::Unknown) {
         advance(space);
         painter.drawText(QPointF(x, baseline), QStringLiteral("?"));
@@ -321,7 +329,7 @@ IndustrialSliderPrivate::Fonts IndustrialSliderPrivate::fontsFor(const QFont &wi
     return internal::panelFonts(widgetFont, logicalDpi, kLabelPx, kReadoutPx);
 }
 
-internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, double h, const Fonts &fonts) const
+internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, double h, const Fonts &fonts, bool disabled) const
 {
     internal::SliderLayoutInput in;
     in.width = w;
@@ -355,8 +363,8 @@ internal::SliderLayoutInput IndustrialSliderPrivate::layoutInput(double w, doubl
         const QFontMetricsF sm(smallest);
         Readout setpoint;
         setpoint.tag = kSetpointTag;
-        if (m_readOnly) {
-            setpoint.mark = Readout::Mark::Padlock; // Never left out
+        if (m_readOnly || disabled) {
+            setpoint.mark = Readout::Mark::Padlock; // Never left out; the ⊘ of disabled is as wide (#243)
         }
         double needed = readoutWidth(setpoint, sm, false, false);
         if (m_feedbackReadoutVisible) {
@@ -400,6 +408,17 @@ void IndustrialSliderPrivate::endAction(IndustrialSlider *q)
     } else if (held) {
         applySetpoint(q, m_held);
     }
+    Q_EMIT q->operatorActiveChanged(false);
+}
+
+void IndustrialSliderPrivate::cancelAction(IndustrialSlider *q)
+{
+    if (!operatorActive()) return;
+    m_dragging = false;
+    m_keyAction = false;
+    m_actionKey = 0;
+    const bool held = std::exchange(m_heldSet, false);
+    applySetpoint(q, held ? m_held : m_actionStartSetpoint);
     Q_EMIT q->operatorActiveChanged(false);
 }
 
@@ -468,7 +487,7 @@ QSize IndustrialSlider::sizeHint() const
     // and the unit; the feedback as the widest text it can show at those values and at ±Inf (">max", "<min"), with
     // either deviation mark and a range triangle
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
-    const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts);
+    const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts, !isEnabled());
     double pod = 0.0;
     if (d_ptr->m_readoutVisible) {
         const QFontMetricsF fm(fonts.readout);
@@ -478,8 +497,8 @@ QSize IndustrialSlider::sizeHint() const
         for (double v : {lo, hi}) {
             Readout r;
             r.tag = kSetpointTag;
-            if (d_ptr->m_readOnly) {
-                r.mark = Readout::Mark::Padlock;
+            if (d_ptr->m_readOnly || !isEnabled()) {
+                r.mark = Readout::Mark::Padlock; // The ⊘ of disabled is as wide (#243)
             }
             r.number = internal::formatFixed(v, precision);
             r.unit = d_ptr->m_unit;
@@ -521,7 +540,7 @@ QSize IndustrialSlider::minimumSizeHint() const
     const double dpi = logicalDpiY();
     d_ptr->m_minimumDpi = dpi;
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), dpi);
-    const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts);
+    const internal::SliderLayoutInput in = d_ptr->layoutInput(0.0, 0.0, fonts, !isEnabled());
     d_ptr->m_minimumPodWidth = in.text.podMinWidth;
     const QSizeF s = internal::minimumSliderSize(in);
     return QSize(static_cast<int>(s.width()), static_cast<int>(s.height()));
@@ -725,7 +744,7 @@ void IndustrialSlider::setReadOnly(bool readOnly)
 {
     if (d_ptr->m_readOnly == readOnly) return;
     if (readOnly) {
-        d_ptr->endAction(this); // #182: a drag or a held key running now ends, and commits if it changed the setpoint
+        d_ptr->cancelAction(this); // #243: a drag or a held key running now ends without a commit
     }
     d_ptr->m_readOnly = readOnly;
     d_ptr->m_wheelRemainder = 0;
@@ -792,6 +811,14 @@ QIW_SLIDER_COLOR_SETTER(setErrorColor, m_errorColor)
 
 void IndustrialSlider::changeEvent(QEvent *event)
 {
+    // #243: disabled (the slider or a parent), a decision of the application: an action running ends without a commit
+    if (event->type() == QEvent::EnabledChange) {
+        if (!isEnabled()) {
+            d_ptr->cancelAction(this); // A drag without focus; with focus, the focus out has ended it already
+        }
+        updateGeometry(); // The ⊘ is part of the minimum, as the padlock
+        update();
+    }
     if (event->type() == QEvent::FontChange) {
         updateGeometry();
         update();
@@ -835,7 +862,7 @@ void IndustrialSlider::mousePressEvent(QMouseEvent *event)
     if (event->button() == Qt::LeftButton) {
         // #182: a press never changes the setpoint. It starts a relative drag only on the handle as it is drawn
         const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
-        internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+        internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts, !isEnabled());
         in.devicePixelRatio = devicePixelRatioF();
         const internal::SliderLayout layout = internal::layoutSlider(in);
         const double fraction = (d_ptr->m_setpoint - d_ptr->m_minimum) / (d_ptr->m_maximum - d_ptr->m_minimum);
@@ -986,7 +1013,13 @@ void IndustrialSlider::focusInEvent(QFocusEvent *event)
 
 void IndustrialSlider::focusOutEvent(QFocusEvent *event)
 {
-    d_ptr->endAction(this); // #182: the release will not reach the slider
+    // #182: the release will not reach the slider. #243: Qt takes the focus away from a slider being disabled before the
+    // EnabledChange, when it is already disabled: that focus out is the disable, which does not commit
+    if (isEnabled()) {
+        d_ptr->endAction(this);
+    } else {
+        d_ptr->cancelAction(this);
+    }
     d_ptr->m_wheelRemainder = 0;
     QWidget::focusOutEvent(event);
     update();
@@ -1007,7 +1040,7 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
     }
 
     const IndustrialSliderPrivate::Fonts fonts = IndustrialSliderPrivate::fontsFor(font(), logicalDpiY());
-    internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+    internal::SliderLayoutInput in = d_ptr->layoutInput(width(), height(), fonts, !isEnabled());
     in.devicePixelRatio = devicePixelRatioF();
     const internal::SliderLayout layout = internal::layoutSlider(in);
     d_ptr->m_lastLayout = layout;
@@ -1195,7 +1228,9 @@ void IndustrialSlider::paintEvent(QPaintEvent *)
             panel(layout.setpointPod);
             Readout r;
             r.tag = kSetpointTag;
-            if (d_ptr->m_readOnly) {
+            if (!isEnabled()) {
+                r.mark = Readout::Mark::Disabled; // #243: it wins over read-only
+            } else if (d_ptr->m_readOnly) {
                 r.mark = Readout::Mark::Padlock;
             }
             r.number = internal::formatFixed(d_ptr->m_setpoint, d_ptr->m_precision);

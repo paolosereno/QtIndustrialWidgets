@@ -116,11 +116,11 @@ QVariant IndustrialSliderAccessible::maximumValue() const { return slider()->max
 QVariant IndustrialSliderAccessible::minimumValue() const { return slider()->minimum(); }
 QVariant IndustrialSliderAccessible::minimumStepSize() const { return slider()->step(); }
 
-// Operator input, as a key: ignored in read-only, bound by the setpoint limits, and committed
+// Operator input, as a key: ignored in read-only and disabled (#243), bound by the setpoint limits, and committed
 void IndustrialSliderAccessible::setCurrentValue(const QVariant &value)
 {
     IndustrialSlider *s = slider();
-    if (s->isReadOnly()) {
+    if (s->isReadOnly() || !s->isEnabled()) { // #243: disabled too
         return;
     }
     bool ok = false;
