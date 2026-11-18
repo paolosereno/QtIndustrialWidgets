@@ -302,6 +302,36 @@ void ThumbwheelSwitchPrivate::endAction(ThumbwheelSwitch *q)
     Q_EMIT q->operatorActiveChanged(false);
 }
 
+void ThumbwheelSwitchPrivate::cancelAction(ThumbwheelSwitch *q)
+{
+    if (!m_keyAction) return;
+    m_keyAction = false;
+    m_actionKey = 0;
+    const bool held = std::exchange(m_heldSet, false);
+    if (m_applyMode == ThumbwheelSwitch::ApplyMode::Immediate) {
+        ChangeScope scope(q, this);
+        m_count = m_actionStartCount;
+        if (held) {
+            takeValue(m_held);
+        }
+        scope.emitChanges();
+    }
+    Q_EMIT q->operatorActiveChanged(false);
+}
+
+void ThumbwheelSwitchPrivate::takeValue(double value)
+{
+    const std::optional<qint64> count = m_format.countOf(value);
+    if (!count || !m_format.canShow(*count)) {
+        qWarning("ThumbwheelSwitch::setValue: %s cannot be shown on the drums, ignored",
+                 qPrintable(QString::number(value, 'g', 17)));
+        m_rejectedOverflow = true;
+        return;
+    }
+    m_count = *count;
+    m_rejectedOverflow = false;
+}
+
 ThumbwheelSwitchPrivate::Fonts ThumbwheelSwitchPrivate::fontsFor(const QFont &widgetFont, double logicalDpi)
 {
     return internal::panelFonts(widgetFont, logicalDpi, kLabelPx, kDigitPx);
@@ -316,14 +346,14 @@ QString ThumbwheelSwitchPrivate::statusText(QChar digitChar) const
     return s;
 }
 
-internal::ThumbwheelLayoutInput ThumbwheelSwitchPrivate::layoutInput(double w, double h, const Fonts &fonts) const
+internal::ThumbwheelLayoutInput ThumbwheelSwitchPrivate::layoutInput(double w, double h, const Fonts &fonts, bool disabled) const
 {
     internal::ThumbwheelLayoutInput in;
     in.width = w;
     in.height = h;
     in.format = m_format;
     in.setButton = m_applyMode == ThumbwheelSwitch::ApplyMode::OnConfirm;
-    in.statusLine = in.setButton || m_readOnly;
+    in.statusLine = in.setButton || m_readOnly || disabled;
     const QFontMetricsF dm(fonts.readout);
     in.text.digitPx = fonts.readout.pixelSize();
     in.text.digitHeight = dm.height();
@@ -343,7 +373,7 @@ internal::ThumbwheelLayoutInput ThumbwheelSwitchPrivate::layoutInput(double w, d
 internal::ThumbwheelLayout ThumbwheelSwitchPrivate::currentLayout(const ThumbwheelSwitch *q) const
 {
     const Fonts fonts = fontsFor(q->font(), q->logicalDpiY());
-    return internal::layoutThumbwheel(layoutInput(q->width(), q->height(), fonts));
+    return internal::layoutThumbwheel(layoutInput(q->width(), q->height(), fonts, !q->isEnabled()));
 }
 
 ThumbwheelSwitch::ThumbwheelSwitch(QWidget *parent)
@@ -387,7 +417,7 @@ QSize ThumbwheelSwitch::minimumSizeHint() const
     const double dpi = logicalDpiY();
     d_ptr->m_minimumDpi = dpi;
     const ThumbwheelSwitchPrivate::Fonts fonts = ThumbwheelSwitchPrivate::fontsFor(font(), dpi);
-    const QSizeF s = internal::minimumThumbwheelSize(d_ptr->layoutInput(0.0, 0.0, fonts));
+    const QSizeF s = internal::minimumThumbwheelSize(d_ptr->layoutInput(0.0, 0.0, fonts, !isEnabled()));
     return QSize(static_cast<int>(std::ceil(s.width())), static_cast<int>(std::ceil(s.height())));
 }
 
@@ -403,17 +433,9 @@ void ThumbwheelSwitch::setValue(double value)
         d_ptr->m_heldSet = true;
         return;
     }
-    const std::optional<qint64> count = d_ptr->m_format.countOf(value);
-    if (!count || !d_ptr->m_format.canShow(*count)) {
-        qWarning("ThumbwheelSwitch::setValue: %s cannot be shown on the drums, ignored",
-                 qPrintable(QString::number(value, 'g', 17)));
-        d_ptr->m_rejectedOverflow = true;
-        scope.emitChanges(); // The overflow mark: a pending value is discarded
-        return;
-    }
-    d_ptr->m_count = *count;
-    d_ptr->m_rejectedOverflow = false;
-    scope.emitChanges(); // A pending value stays, unless it is now equal to the value
+    d_ptr->takeValue(value);
+    // A pending value stays, unless it is now equal to the value; with the overflow mark it is discarded
+    scope.emitChanges();
 }
 
 void ThumbwheelSwitch::setDigitCount(int count)
@@ -539,7 +561,7 @@ void ThumbwheelSwitch::setReadOnly(bool readOnly)
 {
     if (d_ptr->m_readOnly == readOnly) return;
     if (readOnly) {
-        d_ptr->endAction(this); // #182: a key action running ends, and commits if it changed the value
+        d_ptr->cancelAction(this); // #243: a key action running ends without a commit
         d_ptr->m_armed = Part::None;
     }
     ChangeScope scope(this, d_ptr.get());
@@ -562,6 +584,18 @@ void ThumbwheelSwitch::setWheelEnabled(bool enabled)
 
 void ThumbwheelSwitch::changeEvent(QEvent *event)
 {
+    // #243: disabled (the switch or a parent), a decision of the application: an armed button is cleared and a pending
+    // value is discarded, as in read-only. A key action, which needs the focus, has already ended without a commit in
+    // the focus out that Qt sends first (focusOutEvent()), which also drops a wheel remainder
+    if (event->type() == QEvent::EnabledChange) {
+        if (!isEnabled()) {
+            d_ptr->m_armed = Part::None;
+            d_ptr->m_armedDrum = -1;
+            discardPending();
+        }
+        updateGeometry(); // In Immediate, the status line holds the ⊘
+        update();
+    }
     if (event->type() == QEvent::FontChange) {
         updateGeometry();
         update();
@@ -746,7 +780,14 @@ void ThumbwheelSwitch::focusInEvent(QFocusEvent *event)
 
 void ThumbwheelSwitch::focusOutEvent(QFocusEvent *event)
 {
-    d_ptr->endAction(this); // #182: the release will not reach the switch; a pending value stays pending
+    // #182: the release will not reach the switch; a pending value stays pending. #243: Qt takes the focus away from a
+    // switch being disabled before the EnabledChange, when it is already disabled: that focus out is the disable, which
+    // does not commit
+    if (isEnabled()) {
+        d_ptr->endAction(this);
+    } else {
+        d_ptr->cancelAction(this);
+    }
     d_ptr->m_armed = Part::None;
     d_ptr->m_wheelRemainder = 0;
     QWidget::focusOutEvent(event);
@@ -769,7 +810,7 @@ void ThumbwheelSwitch::paintEvent(QPaintEvent *)
     }
 
     const ThumbwheelSwitchPrivate::Fonts fonts = ThumbwheelSwitchPrivate::fontsFor(font(), logicalDpiY());
-    const internal::ThumbwheelLayoutInput in = d_ptr->layoutInput(width(), height(), fonts);
+    const internal::ThumbwheelLayoutInput in = d_ptr->layoutInput(width(), height(), fonts, !isEnabled());
     const internal::ThumbwheelLayout layout = internal::layoutThumbwheel(in);
     const internal::ThumbwheelFormat &format = d_ptr->m_format;
     const bool overflow = d_ptr->overflow();
@@ -786,6 +827,7 @@ void ThumbwheelSwitch::paintEvent(QPaintEvent *)
     d_ptr->m_lastPendingOutline = pending;
     d_ptr->m_lastStatus.clear();
     d_ptr->m_lastPadlock = false;
+    d_ptr->m_lastDisabledMark = false;
     d_ptr->m_lastSetOpen = false;
     d_ptr->m_lastSetDrawn = false;
     d_ptr->m_lastCursor = -1;
@@ -797,8 +839,9 @@ void ThumbwheelSwitch::paintEvent(QPaintEvent *)
 
     // 1. The buttons, with their arrows
     for (int i = 0; i < layout.drums.size(); ++i) {
-        const bool plusOpen = d_ptr->stepOf(i, +1).has_value();
-        const bool minusOpen = d_ptr->stepOf(i, -1).has_value();
+        // #243: no step is open while disabled, as in read-only
+        const bool plusOpen = isEnabled() && d_ptr->stepOf(i, +1).has_value();
+        const bool minusOpen = isEnabled() && d_ptr->stepOf(i, -1).has_value();
         for (const QRectF &button : {layout.plus.at(i), layout.minus.at(i)}) {
             painter.setPen(Qt::NoPen);
             painter.setBrush(d_ptr->m_buttonColor);
@@ -905,9 +948,13 @@ void ThumbwheelSwitch::paintEvent(QPaintEvent *)
         d_ptr->m_lastSetOpen = applicable;
     }
 
-    // 6. The status line: the padlock of read-only, or the applied value while a value is pending
+    // 6. The status line: the ⊘ of disabled (#243, it wins over read-only), the padlock of read-only, or the applied
+    // value while a value is pending
     if (!layout.status.isEmpty()) {
-        if (d_ptr->m_readOnly) {
+        if (!isEnabled()) {
+            internal::drawDisabledMark(painter, layout.padlock, d_ptr->m_textColor);
+            d_ptr->m_lastDisabledMark = true;
+        } else if (d_ptr->m_readOnly) {
             internal::drawPadlock(painter, layout.padlock, d_ptr->m_textColor);
             d_ptr->m_lastPadlock = true;
         } else if (pending) {

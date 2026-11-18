@@ -109,13 +109,21 @@ public:
     bool apply(ThumbwheelSwitch *q);
     /// Ends a key action running; in Immediate, commits if it changed the value
     void endAction(ThumbwheelSwitch *q);
+    /// #243: the application ends the key action running (disabled, setReadOnly(true)): no commit. In Immediate the
+    /// value goes back to where the action started, or to the value held during it (#241), with valueChanged(); the
+    /// pending value of OnConfirm is left to the caller. Then operatorActiveChanged(false)
+    void cancelAction(ThumbwheelSwitch *q);
+    /// Takes the finite \a value as the value, or turns the overflow mark on, with its warning, when the drums cannot
+    /// show it. No signal: the caller's ChangeScope emits them
+    void takeValue(double value);
     /// The layout at the size and fonts of \a q now
     [[nodiscard]] internal::ThumbwheelLayout currentLayout(const ThumbwheelSwitch *q) const;
 
     // Fonts of a widget font at a logical DPI: label = the unit and the tags, readout = the digits
     using Fonts = internal::PanelFonts;
     static Fonts fontsFor(const QFont &widgetFont, double logicalDpi);
-    [[nodiscard]] internal::ThumbwheelLayoutInput layoutInput(double w, double h, const Fonts &fonts) const;
+    /// \a disabled: the switch is disabled (#243), so the status line holds the ⊘, as it holds the padlock in read-only
+    [[nodiscard]] internal::ThumbwheelLayoutInput layoutInput(double w, double h, const Fonts &fonts, bool disabled) const;
     /// The text of the status line while a value is pending: "SET?  now " and the applied value with its unit
     [[nodiscard]] QString statusText(QChar digitChar = QChar()) const;
 

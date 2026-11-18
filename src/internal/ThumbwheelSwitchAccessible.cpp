@@ -106,8 +106,9 @@ QAccessible::State ThumbwheelSwitchAccessible::state() const
     return s;
 }
 
-// Apply and Discard while a value is pending (never in read-only or in overflow, where none is); Apply only while it
-// can be applied (#242); then those of QAccessibleWidget (setFocus)
+// Apply and Discard while a value is pending (never in read-only, disabled or in overflow, where none is: #243, a
+// disable discards it and no operator input makes one); Apply only while it can be applied (#242); then those of
+// QAccessibleWidget (setFocus)
 QStringList ThumbwheelSwitchAccessible::actionNames() const
 {
     QStringList names;
@@ -154,11 +155,14 @@ QVariant ThumbwheelSwitchAccessible::minimumStepSize() const
 }
 
 // Operator input, as the drums take it: rounded to the resolution, rejected (never bound to a limit) when the drums
-// cannot show it or when it could not be applied (outside the limits or further out from a value() outside them), ignored in read-only and
-// in overflow. Immediate applies and commits it; OnConfirm makes it the pending value
+// cannot show it or when it could not be applied (outside the limits or further out from a value() outside them), ignored in read-only,
+// disabled (#243) and in overflow. Immediate applies and commits it; OnConfirm makes it the pending value
 void ThumbwheelSwitchAccessible::setCurrentValue(const QVariant &value)
 {
     ThumbwheelSwitch *w = wheel();
+    if (!w->isEnabled()) {
+        return;
+    }
     ThumbwheelSwitchPrivate &priv = *w->d_ptr; // Not "d": QAccessibleWidget has a member d (MSVC C4458)
     bool ok = false;
     const double proposed = value.toDouble(&ok);
