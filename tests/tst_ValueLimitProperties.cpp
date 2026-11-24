@@ -220,8 +220,8 @@ void tst_ValueLimitProperties::existingSettersUnchanged()
     QCOMPARE(read(w, w.high), 200.0);
 }
 
-// #204 item 4: a bound written past the other moves the other by the previous span. The bounds as set are read after
-// the range is widened to ±1000, where a bound that is not set reads ±1000
+// #204 item 4: a bound written past the other, when the other is set, moves it by the previous span; a bound not set
+// stays not set. The bounds as set are read after the range is widened to ±1000, where a bound not set reads ±1000
 void tst_ValueLimitProperties::theSpanIsKept_data()
 {
     QTest::addColumn<QString>("kind");
@@ -245,15 +245,23 @@ void tst_ValueLimitProperties::theSpanIsKept_data()
         *row("high below low: low - span") << k << 20.0 << 40.0 << -100.0 << 100.0 << false << 10.0 << -10.0 << 10.0 << 1;
         *row("high on low: low - span") << k << 20.0 << 40.0 << -100.0 << 100.0 << false << 20.0 << 0.0 << 20.0 << 1;
         *row("high above low: low kept") << k << 20.0 << 40.0 << -100.0 << 100.0 << false << 21.0 << 20.0 << 21.0 << 1;
-        // The other bound not set: the span is up to the end of the range, and the other bound becomes set
-        *row("high below low not set") << k << none << none << -100.0 << 100.0 << false << -150.0 << -350.0 << -150.0 << 1;
+        // The other bound not set stays not set and follows the range
+        *row("high below low not set") << k << none << none << -100.0 << 100.0 << false << -150.0 << -1000.0 << -150.0 << 1;
+        *row("low above high not set") << k << none << none << -100.0 << 100.0 << true << 100.0 << 100.0 << 1000.0 << 1;
+        // The other bound set, the one written not set: the span from the end of the range
         *row("high below low set alone") << k << 20.0 << none << -100.0 << 100.0 << false << 10.0 << -70.0 << 10.0 << 1;
         *row("low above high set alone") << k << none << 40.0 << -100.0 << 100.0 << true << 50.0 << 50.0 << 190.0 << 1;
-        *row("low above high not set") << k << none << none << -100.0 << 100.0 << true << 100.0 << 100.0 << 300.0 << 1;
-        // The span is not positive (the bound set lies past the end of the narrowed range): only that bound is set
+        // ... and that span not positive (the other bound kept past the end of the narrowed range): it goes to the
+        // value written, so the limits are never inverted
+        *row("low above high set past the minimum") << k << none << 20.0 << 50.0 << 100.0 << true << 60.0 << 60.0 << 60.0 << 1;
+        *row("high below low set past the maximum") << k << 80.0 << none << -100.0 << 50.0 << false << 40.0 << 40.0 << 40.0 << 1;
+        // #246 review: the other bound not set stays not set and follows the range, whatever the span (scale 0-100)
+        *row("low past the end, high not set") << k << 20.0 << none << 0.0 << 100.0 << true << 150.0 << 150.0 << 1000.0 << 1;
+        *row("high past the end, low not set") << k << none << 80.0 << 0.0 << 100.0 << false << -50.0 << -1000.0 << -50.0 << 1;
+        // The bound written set past the end of the narrowed range, the other not set: only that bound is set
         *row("low past the narrowed end") << k << 80.0 << none << -100.0 << 50.0 << true << 60.0 << 60.0 << 1000.0 << 0;
         *row("high past the narrowed end") << k << none << 20.0 << 50.0 << 100.0 << false << 40.0 << -1000.0 << 40.0 << 0;
-        // The span is 0 (the bound set is on the end of the narrowed range): only that bound is set, too
+        // The same with the bound on the end of the narrowed range
         *row("low on the narrowed end") << k << 50.0 << none << -100.0 << 50.0 << true << 60.0 << 60.0 << 1000.0 << 0;
         *row("high on the narrowed end") << k << none << 50.0 << 50.0 << 100.0 << false << 40.0 << -1000.0 << 40.0 << 0;
     }
