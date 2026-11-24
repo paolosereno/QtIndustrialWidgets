@@ -34,7 +34,10 @@ class IndustrialKnobAccessible;
  *   geometry), on the scale, starts a drag; a press in the gap between the ends of the scale or outside the dial
  *   starts none (#175). The drag is relative: the value moves by the angle the pointer moves around the centre of
  *   the dial from the press. Past an end the value stays there until the pointer comes back on that end, the way
- *   it came or after a full turn (#175).
+ *   it came or after a full turn (#175). In Continuous mode the drag goes to the step (#244): the nearest of
+ *   minimum() + k·step() inside the limits, or of the two ends of that interval; from a value off the step, the
+ *   value stays until that point lies on the side the pointer moves to. A readout with fewer digits than step() is a
+ *   configuration to avoid.
  * - Keys: the arrows move by step(), PageUp/PageDown by pageStep(), Home/End go to minimum() / maximum().
  * - valueChanged() is emitted at every change of the value: during a drag, at each key step (auto-repeat too),
  *   from setValue() and when setRange() clamps the value. valueCommitted() is emitted once at the end of an

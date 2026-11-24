@@ -67,7 +67,10 @@ class IndustrialSliderAccessible;
  * - A press never changes the setpoint. A left press on the handle as it is drawn starts a drag; a press anywhere
  *   else (the track, the scale, the readouts) starts none. The drag is relative: the setpoint moves by the distance
  *   the pointer moves along the scale from the press, so the handle never jumps to the pointer. Past an end (or a
- *   setpoint limit) the setpoint stays there until the pointer comes back.
+ *   setpoint limit) the setpoint stays there until the pointer comes back. The drag goes to the step (#244): the
+ *   nearest of minimum() + k·step() inside the limits, or of the two ends of that interval; from a setpoint off the
+ *   step, it stays until that point lies on the side the pointer moves to. A readout with fewer digits than step() is
+ *   a configuration to avoid.
  * - Keys, with focus: Left/Down lower the setpoint by step(), Right/Up raise it; PageDown/PageUp by pageStep();
  *   Home/End go to setpointLimitLow() / setpointLimitHigh().
  * - setpointChanged() is emitted at every change of the setpoint: during a drag, at each key step (auto-repeat

@@ -60,6 +60,16 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
 - **A press never changes the value.** The value changes only by dragging or with the keyboard. `IndustrialKnob`
   starts a drag only on its dial as it is drawn, and the drag is relative: the value moves by the angle the pointer
   moves, never jumps to the point pressed.
+- **A drag goes to the step** (#244). The value a drag gives is the nearest of the points `minimum + k·step` inside
+  the interval the operator may reach (the limits, or the ends of the scale) and the two ends of that interval, which
+  a drag reaches even when they are not on the step, as the keys and Home/End do. So the value committed is on the
+  step, as with the keys. From a value off the step (one read back from a device, say 57.31 with step 1), the value
+  stays until the nearest point lies on the side the pointer moves to, then follows the step (58, 59, … or 57,
+  56, …): it never moves against the pointer. `IndustrialKnob` in Discrete mode keeps its positions.
+
+  The drag rounds to `step` only. A `step` finer than the readout shows (step 0.01 with `precision` 1) gives values
+  with more digits than the readout: a configuration to avoid, since the operator would commit a value they cannot
+  read.
 - **Keyboard:** the arrows move by a small step, PageUp/PageDown by a large step, Home/End go to the ends. Both steps
   are properties (`step`, `pageStep`).
 - **Two signals.** `valueChanged()` is emitted at every change of the value, from the operator or from the

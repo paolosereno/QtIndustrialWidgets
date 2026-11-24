@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`IndustrialKnob`: the padlock is larger, on a disc that covers the inner end of the pointer** (#243): 45 % of the
   cap, at least 12 px, instead of a small mark inside the pointer (#182). See
   [IndustrialKnob](docs/widgets.md#industrialknob).
+- **A drag of `IndustrialKnob` and `IndustrialSlider` gives values on the step** (#244): the nearest of
+  `minimum + k·step` or an end of the interval allowed, as the keys do, instead of the unrounded pointer position
+  (63.829… committed while the readout showed 64). See [Controls](docs/widgets.md#controls).
 
 ### Fixed
 - **A drag that a disable interrupts no longer stays running** (#243): on a control without focus, a disable left the
