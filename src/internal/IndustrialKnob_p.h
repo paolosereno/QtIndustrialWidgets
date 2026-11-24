@@ -12,6 +12,7 @@
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 
 #include "FontScale.h"
+#include "LimitBounds.h"
 #include "NumberFormat.h"
 #include "RadialGaugeLayout.h"
 #include "TextMetricsTable.h"
@@ -88,9 +89,7 @@ public:
     bool m_readOnly{false};
     bool m_wheelEnabled{false};
     int m_wheelRemainder{0};      // angleDelta() summed towards the next notch (120); dropped at focus out
-    bool m_limitsSet{false};
-    double m_limitLow{0.0};       // As given to setValueLimits(); read within the range
-    double m_limitHigh{0.0};
+    internal::LimitBounds m_limits; // Each bound as set (#246); read within the range
     int m_minimumWidth{0};   // minimumSizeHint().width(), computed when asked for; 0: to compute
     double m_minimumWidthDpr{0.0};
     // #170: ink of each label text at each font size, measured on a raster. Kept across resizes and changes of the
@@ -227,9 +226,18 @@ public:
         return QRectF(g.centerX - w * 0.5, g.centerY - h * 0.5, w, h);
     }
 
-    // #182: the value limits as read: those set, within the range; without limits, the range
-    double limitLow() const { return m_limitsSet ? std::clamp(m_limitLow, m_minimum, m_maximum) : m_minimum; }
-    double limitHigh() const { return m_limitsSet ? std::clamp(m_limitHigh, m_minimum, m_maximum) : m_maximum; }
+    // #182: the value limits as read: those set, within the range; a bound not set, the end of the range (#246)
+    double limitLow() const { return m_limits.readLow(m_minimum, m_maximum); }
+    double limitHigh() const { return m_limits.readHigh(m_minimum, m_maximum); }
+    // #246: applies \a change to the limits; true if the limits as read change (then the caller emits the signal)
+    template <typename Change>
+    bool changeLimits(Change &&change)
+    {
+        const double lowBefore = limitLow();
+        const double highBefore = limitHigh();
+        change(m_limits);
+        return limitLow() != lowBefore || limitHigh() != highBefore;
+    }
 
     // #182: where the operator's input that asks for \a proposed takes the value. Inside the limits; from a value
     // outside them (set with setValue()), only towards them: the interval allowed is the limits widened to the value,

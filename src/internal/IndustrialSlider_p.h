@@ -12,6 +12,7 @@
 
 #include "internal/PanelFonts.h"
 #include "internal/IndustrialSliderLayout.h"
+#include "internal/LimitBounds.h"
 
 #include <QtCore/QRectF>
 #include <QtCore/QString>
@@ -68,9 +69,7 @@ public:
     bool m_readOnly{false};
     bool m_wheelEnabled{false};
     int m_wheelRemainder{0}; // angleDelta() summed towards the next notch (120); dropped at focus out
-    bool m_limitsSet{false};
-    double m_limitLow{0.0}; // As given to setSetpointLimits(); read within the range
-    double m_limitHigh{0.0};
+    internal::LimitBounds m_limits; // Each bound as set (#246); read within the range
     // An operator action (a drag or a key) runs from its start to its end, where setpointCommitted() is emitted
     bool m_dragging{false};
     double m_dragStartAlong{0.0}; // Along coordinate of the anchor of the drag: the press, or the last move (#241)
@@ -106,11 +105,17 @@ public:
 
     [[nodiscard]] IndustrialSlider::DeviationState evaluateDeviation() const;
 
-    // The setpoint limits as read: those set, within the range; without limits, the range
-    [[nodiscard]] double limitLow() const { return m_limitsSet ? std::clamp(m_limitLow, m_minimum, m_maximum) : m_minimum; }
-    [[nodiscard]] double limitHigh() const
+    // The setpoint limits as read: those set, within the range; a bound not set, the end of the range (#246)
+    [[nodiscard]] double limitLow() const { return m_limits.readLow(m_minimum, m_maximum); }
+    [[nodiscard]] double limitHigh() const { return m_limits.readHigh(m_minimum, m_maximum); }
+    // #246: applies \a change to the limits; true if the limits as read change (then the caller emits the signal)
+    template <typename Change>
+    bool changeLimits(Change &&change)
     {
-        return m_limitsSet ? std::clamp(m_limitHigh, m_minimum, m_maximum) : m_maximum;
+        const double lowBefore = limitLow();
+        const double highBefore = limitHigh();
+        change(m_limits);
+        return limitLow() != lowBefore || limitHigh() != highBefore;
     }
     // Where operator input that asks for \a proposed takes the setpoint (#182): inside the limits; from a setpoint
     // outside them (set with setSetpoint()), only towards them: the interval allowed is the limits widened to the

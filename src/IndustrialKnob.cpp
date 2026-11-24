@@ -527,32 +527,55 @@ void IndustrialKnob::setWheelEnabled(bool enabled)
     Q_EMIT appearanceChanged();
 }
 
+namespace {
+
+// #246: after a change of the limits that moves them as read
+void notifyLimits(IndustrialKnob *q, IndustrialKnobPrivate *d, bool changed)
+{
+    if (!changed) return;
+    d->m_cacheDirty = true; // The hatching and the stop marks are in the static scale
+    d->m_scaleValid = false;
+    Q_EMIT q->valueLimitsChanged(d->limitLow(), d->limitHigh());
+    q->update();
+}
+
+} // namespace
+
 void IndustrialKnob::setValueLimits(double low, double high)
 {
     if (!std::isfinite(low) || !std::isfinite(high) || low >= high) return;
-    const double lowBefore = d_ptr->limitLow();
-    const double highBefore = d_ptr->limitHigh();
-    d_ptr->m_limitsSet = true;
-    d_ptr->m_limitLow = low;
-    d_ptr->m_limitHigh = high;
-    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
-        invalidateCache(); // The hatching and the stop marks are in the static scale
-        Q_EMIT valueLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
-        update();
-    }
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([&](internal::LimitBounds &l) { l.setBoth(low, high); }));
 }
 
 void IndustrialKnob::clearValueLimits()
 {
-    if (!d_ptr->m_limitsSet) return;
-    const double lowBefore = d_ptr->limitLow();
-    const double highBefore = d_ptr->limitHigh();
-    d_ptr->m_limitsSet = false;
-    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
-        invalidateCache();
-        Q_EMIT valueLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
-        update();
-    }
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([](internal::LimitBounds &l) { l.clear(); }));
+}
+
+void IndustrialKnob::setValueLimitLow(double low)
+{
+    if (!std::isfinite(low)) return;
+    const double minimum = d_ptr->m_minimum;
+    const double maximum = d_ptr->m_maximum;
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([&](internal::LimitBounds &l) { l.setLow(low, minimum, maximum); }));
+}
+
+void IndustrialKnob::setValueLimitHigh(double high)
+{
+    if (!std::isfinite(high)) return;
+    const double minimum = d_ptr->m_minimum;
+    const double maximum = d_ptr->m_maximum;
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([&](internal::LimitBounds &l) { l.setHigh(high, minimum, maximum); }));
+}
+
+void IndustrialKnob::resetValueLimitLow()
+{
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([](internal::LimitBounds &l) { l.lowSet = false; }));
+}
+
+void IndustrialKnob::resetValueLimitHigh()
+{
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([](internal::LimitBounds &l) { l.highSet = false; }));
 }
 
 void IndustrialKnob::invalidateCache()

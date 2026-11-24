@@ -762,30 +762,55 @@ void IndustrialSlider::setWheelEnabled(bool enabled)
     Q_EMIT appearanceChanged();
 }
 
+namespace {
+
+// #246: after a change of the limits that moves them as read
+void notifyLimits(IndustrialSlider *q, IndustrialSliderPrivate *d, bool changed)
+{
+    if (!changed) return;
+    Q_EMIT q->setpointLimitsChanged(d->limitLow(), d->limitHigh());
+    q->update();
+}
+
+} // namespace
+
 void IndustrialSlider::setSetpointLimits(double low, double high)
 {
     if (!std::isfinite(low) || !std::isfinite(high) || low >= high) return;
-    const double lowBefore = d_ptr->limitLow();
-    const double highBefore = d_ptr->limitHigh();
-    d_ptr->m_limitsSet = true;
-    d_ptr->m_limitLow = low;
-    d_ptr->m_limitHigh = high;
-    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
-        Q_EMIT setpointLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
-        update();
-    }
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([&](internal::LimitBounds &l) { l.setBoth(low, high); }));
 }
 
 void IndustrialSlider::clearSetpointLimits()
 {
-    if (!d_ptr->m_limitsSet) return;
-    const double lowBefore = d_ptr->limitLow();
-    const double highBefore = d_ptr->limitHigh();
-    d_ptr->m_limitsSet = false;
-    if (d_ptr->limitLow() != lowBefore || d_ptr->limitHigh() != highBefore) {
-        Q_EMIT setpointLimitsChanged(d_ptr->limitLow(), d_ptr->limitHigh());
-        update();
-    }
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([](internal::LimitBounds &l) { l.clear(); }));
+}
+
+void IndustrialSlider::setSetpointLimitLow(double low)
+{
+    if (!std::isfinite(low)) return;
+    const double minimum = d_ptr->m_minimum;
+    const double maximum = d_ptr->m_maximum;
+    notifyLimits(this, d_ptr.get(),
+                 d_ptr->changeLimits([&](internal::LimitBounds &l) { l.setLow(low, minimum, maximum); }));
+}
+
+void IndustrialSlider::setSetpointLimitHigh(double high)
+{
+    if (!std::isfinite(high)) return;
+    const double minimum = d_ptr->m_minimum;
+    const double maximum = d_ptr->m_maximum;
+    notifyLimits(this, d_ptr.get(),
+                 d_ptr->changeLimits([&](internal::LimitBounds &l) { l.setHigh(high, minimum, maximum); }));
+}
+
+void IndustrialSlider::resetSetpointLimitLow()
+{
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([](internal::LimitBounds &l) { l.lowSet = false; }));
+}
+
+void IndustrialSlider::resetSetpointLimitHigh()
+{
+    notifyLimits(this, d_ptr.get(), d_ptr->changeLimits([](internal::LimitBounds &l) { l.highSet = false; }));
 }
 
 #define QIW_SLIDER_COLOR_SETTER(Setter, member)                                                                        \
