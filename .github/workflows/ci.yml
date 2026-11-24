@@ -273,11 +273,13 @@ jobs:
           arch: 'gcc_64'
           cache: false
 
+      # Warnings are errors (#215, #245): see the configure step of the Linux (Qt 6) job.
       - name: Configure CMake with the install prefix of Qt
         run: |
           set -o pipefail
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             -DCMAKE_INSTALL_PREFIX="$QT_ROOT_DIR" \
             -DBUILD_DOCS=OFF \
@@ -335,16 +337,21 @@ jobs:
           version: '6.6.3'
           arch: 'win64_msvc2019_64'
 
-      # Warnings are errors (#215): see the configure step of the Linux (Qt 6) job.
+      # Warnings are errors (#215): see the configure step of the Linux (Qt 6) job. The Designer plugin is built
+      # with MSVC too (#245): CMakeLists.txt turns it off with only a message when Qt Designer is not found, so the
+      # step fails unless the configure output says it is built
       - name: Configure CMake
+        shell: bash
         run: |
-          cmake -B build `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON `
-            -DBUILD_DOCS=OFF `
-            -DBUILD_TESTS=ON `
-            -DBUILD_EXAMPLES=ON `
-            -DBUILD_DESIGNER_PLUGIN=OFF
+          set -o pipefail
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_TESTS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_DESIGNER_PLUGIN=ON | tee configure.log
+          grep -qF "QtIndustrialWidgets: Qt Designer found, building designer plugin" configure.log
 
       - name: Build all targets
         run: cmake --build build --config Release
@@ -353,6 +360,9 @@ jobs:
         shell: bash
         run: |
           export QT_QPA_PLATFORM=offscreen
+          # #245: the plugin tests are part of the run (installed_designer_plugin is not: it checks the run path of
+          # the installed plugin, which Windows does not have; see tests/CMakeLists.txt)
+          ctest --test-dir build -C Release -N | grep -E 'tst_DesignerPlugin' || { echo "::error::tst_DesignerPlugin is not a test of this build"; exit 1; }
           ctest --test-dir build -C Release --output-on-failure
 
   # ============================================================
