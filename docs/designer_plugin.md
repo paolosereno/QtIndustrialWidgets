@@ -107,4 +107,7 @@ The plugin adds the category **Industrial Widgets** to the Widget Box, with thes
 15. `QtIndustrialWidgets::IndustrialSlider`
 16. `QtIndustrialWidgets::ThumbwheelSwitch`
 
-The Property Editor shows each widget's `Q_PROPERTY`s (ranges, thresholds, colours, orientation, …).
+The Property Editor shows each widget's `Q_PROPERTY`s (ranges, thresholds, colours, orientation, …), including the
+value limits of `IndustrialKnob` (`valueLimitLow`, `valueLimitHigh`) and the setpoint limits of `IndustrialSlider`
+(`setpointLimitLow`, `setpointLimitHigh`), each with a reset arrow (#246; see
+[Controls](widgets.md#controls)).

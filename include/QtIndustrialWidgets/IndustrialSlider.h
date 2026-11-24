@@ -93,7 +93,9 @@ class IndustrialSliderAccessible;
  *   take the setpoint outside [setpointLimitLow(), setpointLimitHigh()], and Home/End go to the limits; from a
  *   setpoint outside the limits, input towards them is applied and input that would take it further out is
  *   ignored. setSetpoint() is bound by the range only. On the scale the band of the ticks is hatched outside the
- *   limits, and each limit inside the range has a stop mark across the zone band and the ticks.
+ *   limits, and each limit inside the range has a stop mark across the zone band and the ticks. The limits are also
+ *   the properties setpointLimitLow and setpointLimitHigh (#246), for Qt Designer and .ui files, each bound with its
+ *   own setter and reset (setSetpointLimitLow(), resetSetpointLimitLow(), ...); a bound not set follows the range.
  *
  * Focus: the slider takes focus with Tab, Shift+Tab and a click (Qt::StrongFocus), also in read-only, and while it
  * has focus draws a solid 2 px ring in textColor() along the edge of the widget, in the margin kept free of the
@@ -271,9 +273,9 @@ public:
      * actions. While it is true, setSetpoint() is held (see setSetpoint()).
      */
     [[nodiscard]] bool isOperatorActive() const;
-    /** \brief Returns the low setpoint limit as read: the one set, within the range; without limits, minimum(). */
+    /** \brief Returns the low setpoint limit as read: the one set, within the range; not set, minimum(). */
     [[nodiscard]] double setpointLimitLow() const;
-    /** \brief Returns the high setpoint limit as read: the one set, within the range; without limits, maximum(). */
+    /** \brief Returns the high setpoint limit as read: the one set, within the range; not set, maximum(). */
     [[nodiscard]] double setpointLimitHigh() const;
 
     [[nodiscard]] QSize sizeHint() const override;

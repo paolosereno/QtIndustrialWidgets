@@ -38,7 +38,8 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
 - **Names.** The rules use the names of `IndustrialKnob`. `IndustrialSlider` names the same things after its setpoint,
   with the same meaning: `setpoint` and `setSetpoint()` for the value, `setpointChanged()` and `setpointCommitted()`
   for `valueChanged()` and `valueCommitted()`, and `setSetpointLimits()`, `clearSetpointLimits()`,
-  `setpointLimitLow()`, `setpointLimitHigh()`, `setpointLimitsChanged()` for the value limits.
+  `setpointLimitLow()`, `setpointLimitHigh()`, `setSetpointLimitLow()`, `setSetpointLimitHigh()`,
+  `resetSetpointLimitLow()`, `resetSetpointLimitHigh()`, `setpointLimitsChanged()` for the value limits.
 - **ThumbwheelSwitch** (#154) follows the rules with these differences, since a decade selector changes one digit at a
   time (see [its section](#thumbwheelswitch)):
   - the value limits are `minimum` and `maximum` (`setRange()`, `rangeChanged()`), with the meaning of the value
@@ -130,6 +131,20 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
     they are the range;
   - on the scale, the parts outside the limits are hatched and each limit has a radial stop mark, so the limits do not
     rely on colour.
+- **Value limits as properties** (#246): `valueLimitLow` and `valueLimitHigh` (`setValueLimitLow()`,
+  `setValueLimitHigh()`, with a reset each), so they can be set in Qt Designer, in a `.ui` file and with
+  `setProperty()`. They are declared after `minimum` and `maximum`, the order in which Designer writes them and a
+  `.ui` file applies them, so the range is in place before the limits:
+  - each bound is set or not. A bound not set reads the end of the range on its side and follows it when the range
+    changes; the reset of a property (Designer's reset arrow, `resetValueLimitLow()`) clears that bound only.
+    `setValueLimits()` sets both bounds and `clearValueLimits()` clears both;
+  - a bound written at or past the other moves the other by the previous span (the end of the range counts for a
+    bound not set), so the two can be written in either order: limits 20–40, then `valueLimitLow` 60, give 60–80;
+    `valueLimitHigh` 10 gives −10–10. When that span is not positive (the other bound not set, and the bound written
+    kept past an end of the range that moved), only the bound written is set. Non-finite values are ignored;
+  - a property reads the limit within the range, as the getters do: `setProperty()` then `property()` gives back the
+    value written when it is inside the range. A value outside the range is kept and reads the end of the range
+    until the range grows back to it.
 - **Focus** (#183). The control takes focus with Tab and Shift+Tab and with a click, also in read-only. While it has
   focus it draws a solid ring in `textColor`, which contrasts with the background like the labels: at least 3:1
   against the background in both gallery themes (`tests/tst_ReadoutContrast.cpp`).

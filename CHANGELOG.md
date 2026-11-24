@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`operatorActive` on `IndustrialKnob`, `IndustrialSlider` and `ThumbwheelSwitch`** (#241): `isOperatorActive()` and
   `operatorActiveChanged()` tell the application when a drag or a held key is running. See
   [Controls](docs/widgets.md#controls).
+- **The value limits as properties** (#246): `valueLimitLow` / `valueLimitHigh` on `IndustrialKnob` and
+  `setpointLimitLow` / `setpointLimitHigh` on `IndustrialSlider`, with a setter and a reset for each bound, for Qt
+  Designer, `.ui` files and `setProperty()`. See [Controls](docs/widgets.md#controls).
 
 ### Changed
 - **`setValue()` / `setSetpoint()` during an operator action is held** (#241), so a value read back from the device no

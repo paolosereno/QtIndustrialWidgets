@@ -64,7 +64,9 @@ class IndustrialKnobAccessible;
  *   limits, input towards them is applied and input that would take the value further out is ignored. setValue()
  *   is bound by the range only, so a value read back from a device outside the limits is shown as it is. On the
  *   scale the parts outside the limits are hatched and each limit has a radial stop mark. In Discrete mode the
- *   operator reaches only the steps inside the limits.
+ *   operator reaches only the steps inside the limits. The limits are also the properties valueLimitLow and
+ *   valueLimitHigh (#246), for Qt Designer and .ui files, each bound with its own setter and reset
+ *   (setValueLimitLow(), resetValueLimitLow(), ...); a bound not set follows the range.
  *
  * Focus and accessibility (#183): the knob takes focus with Tab, Shift+Tab and a click, also in read-only, and
  * draws a solid ring in textColor() just outside the grip while it has focus. Its accessible interface has the role
@@ -200,15 +202,15 @@ public:
     /**
      * \brief Returns the low value limit of the operator's input (#182).
      *
-     * The limit set with setValueLimits(), within the range: a limit below minimum() reads minimum(). Without limits,
-     * minimum().
+     * The limit set with setValueLimits() or setValueLimitLow(), within the range: a limit below minimum() reads
+     * minimum(). Not set, minimum().
      */
     [[nodiscard]] double valueLimitLow() const;
     /**
      * \brief Returns the high value limit of the operator's input (#182).
      *
-     * The limit set with setValueLimits(), within the range: a limit above maximum() reads maximum(). Without limits,
-     * maximum().
+     * The limit set with setValueLimits() or setValueLimitHigh(), within the range: a limit above maximum() reads
+     * maximum(). Not set, maximum().
      */
     [[nodiscard]] double valueLimitHigh() const;
 
@@ -347,7 +349,7 @@ Q_SIGNALS:
     void operatorActiveChanged(bool active);
     /**
      * \brief Emitted when valueLimitLow() or valueLimitHigh() change (#182): from setValueLimits(),
-     * clearValueLimits(), or a range change that moves the limits read.
+     * clearValueLimits(), the setter or reset of one bound (#246), or a range change that moves the limits read.
      */
     void valueLimitsChanged(double low, double high);
     /** \brief Emitted when the knob mode changes. */
