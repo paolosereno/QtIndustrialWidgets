@@ -134,6 +134,8 @@ set_target_properties(tst_RadialGaugeLayout PROPERTIES
 add_dpr_tests(tst_RadialGaugeLayout)
 add_industrial_widget_test(tst_SevenSegmentDisplay)
 add_industrial_widget_test(tst_LedIndicator)
+# #246: the limits of IndustrialKnob and IndustrialSlider as properties, through the meta-object
+add_industrial_widget_test(tst_ValueLimitProperties)
 add_executable(tst_IndustrialKnob
     tst_IndustrialKnob.cpp
     $<TARGET_OBJECTS:FontScale>
@@ -491,6 +493,8 @@ endif()
 
 # The Designer plugin of the build tree: every entry, in the order of the widget box (#154)
 if(BUILD_DESIGNER_PLUGIN)
+    # #246: a .ui file loaded with QUiLoader (Qt UiTools comes with Qt Designer, in Qt's tools)
+    find_package(Qt6 REQUIRED COMPONENTS UiTools)
     add_executable(tst_DesignerPlugin tst_DesignerPlugin.cpp)
     target_link_libraries(tst_DesignerPlugin
         PRIVATE
@@ -499,6 +503,7 @@ if(BUILD_DESIGNER_PLUGIN)
             Qt6::Gui
             Qt6::Widgets
             Qt6::Designer
+            Qt6::UiTools
             Qt6::Test
     )
     target_compile_definitions(tst_DesignerPlugin PRIVATE QIW_DESIGNER_PLUGIN="$<TARGET_FILE:QtIndustrialWidgetsPlugin>")

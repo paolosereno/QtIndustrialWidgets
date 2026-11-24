@@ -11,8 +11,12 @@
 #include <QtTest/QtTest>
 #include <QtCore/QPluginLoader>
 #include <QtCore/QSet>
+#include <QtCore/QBuffer>
 #include <QtGui/QImage>
+#include <QtIndustrialWidgets/IndustrialKnob.h>
+#include <QtIndustrialWidgets/IndustrialSlider.h>
 #include <QtUiPlugin/QDesignerCustomWidgetInterface>
+#include <QtUiTools/QUiLoader>
 #include <QtWidgets/QWidget>
 
 #include <algorithm>
@@ -29,6 +33,10 @@ private Q_SLOTS:
     void entriesAreDistinct();
     void operatorActiveIsNotDesignable_data();
     void operatorActiveIsNotDesignable();
+    void limitPropertiesAfterTheRange_data();
+    void limitPropertiesAfterTheRange();
+    void uiFileSetsTheLimits_data();
+    void uiFileSetsTheLimits();
 
 private:
     QList<QDesignerCustomWidgetInterface *> m_widgets;
@@ -191,6 +199,144 @@ void tst_DesignerPlugin::operatorActiveIsNotDesignable()
     QVERIFY(p.hasNotifySignal());
     QCOMPARE(p.notifySignal().name(), QByteArray("operatorActiveChanged"));
     QCOMPARE(p.read(created.get()).toBool(), false);
+}
+
+void tst_DesignerPlugin::limitPropertiesAfterTheRange_data()
+{
+    QTest::addColumn<QString>("widgetClass");
+    QTest::addColumn<QString>("low");
+    QTest::addColumn<QString>("high");
+    QTest::newRow("IndustrialKnob") << QStringLiteral("IndustrialKnob") << QStringLiteral("valueLimitLow")
+                                    << QStringLiteral("valueLimitHigh");
+    QTest::newRow("IndustrialSlider") << QStringLiteral("IndustrialSlider") << QStringLiteral("setpointLimitLow")
+                                      << QStringLiteral("setpointLimitHigh");
+}
+
+// #246: Designer shows the limits as properties, with a reset arrow, and writes them (and a .ui file applies them) in
+// the order of declaration: after minimum and maximum, so that the range is in place before the limits
+void tst_DesignerPlugin::limitPropertiesAfterTheRange()
+{
+    QFETCH(QString, widgetClass);
+    QFETCH(QString, low);
+    QFETCH(QString, high);
+    const QString qualified = QStringLiteral("QtIndustrialWidgets::") + widgetClass;
+    const auto it = std::find_if(m_widgets.cbegin(), m_widgets.cend(),
+                                 [&](QDesignerCustomWidgetInterface *w) { return w->name() == qualified; });
+    QVERIFY(it != m_widgets.cend());
+    QWidget parent;
+    const std::unique_ptr<QWidget> created((*it)->createWidget(&parent));
+    QVERIFY(created);
+    const QMetaObject *mo = created->metaObject();
+    const int minimum = mo->indexOfProperty("minimum");
+    const int maximum = mo->indexOfProperty("maximum");
+    QVERIFY(minimum >= 0 && maximum >= 0);
+    for (const QString &name : {low, high}) {
+        const int index = mo->indexOfProperty(name.toLatin1().constData());
+        QVERIFY2(index >= 0, qPrintable(name));
+        QVERIFY2(index > minimum && index > maximum, qPrintable(name));
+        const QMetaProperty p = mo->property(index);
+        QVERIFY(p.isWritable());
+        QVERIFY(p.isResettable());
+        QVERIFY(p.isDesignable());
+        QVERIFY(p.hasNotifySignal());
+    }
+}
+
+namespace {
+
+// QUiLoader with the widgets of the plugin entries, as Designer's preview and an application with the plugin have
+class PluginUiLoader : public QUiLoader
+{
+public:
+    explicit PluginUiLoader(const QList<QDesignerCustomWidgetInterface *> &entries) : m_entries(entries) {}
+    QWidget *createWidget(const QString &className, QWidget *parent, const QString &name) override
+    {
+        for (QDesignerCustomWidgetInterface *e : m_entries) {
+            if (e->name() == className) {
+                QWidget *w = e->createWidget(parent);
+                w->setObjectName(name);
+                return w;
+            }
+        }
+        return QUiLoader::createWidget(className, parent, name);
+    }
+
+private:
+    QList<QDesignerCustomWidgetInterface *> m_entries;
+};
+
+QString doubleProperty(const QString &name, double v)
+{
+    return QStringLiteral("<property name=\"%1\"><double>%2</double></property>").arg(name).arg(v);
+}
+
+} // namespace
+
+void tst_DesignerPlugin::uiFileSetsTheLimits_data()
+{
+    QTest::addColumn<QString>("widgetClass");
+    QTest::addColumn<QString>("low");
+    QTest::addColumn<QString>("high");
+    QTest::addColumn<bool>("lowFirst");
+    for (const bool lowFirst : {true, false}) {
+        const char *order = lowFirst ? "low first" : "high first";
+        QTest::addRow("IndustrialKnob, %s", order) << QStringLiteral("IndustrialKnob") << QStringLiteral("valueLimitLow")
+                                                  << QStringLiteral("valueLimitHigh") << lowFirst;
+        QTest::addRow("IndustrialSlider, %s", order) << QStringLiteral("IndustrialSlider")
+                                                    << QStringLiteral("setpointLimitLow")
+                                                    << QStringLiteral("setpointLimitHigh") << lowFirst;
+    }
+}
+
+// #246: a .ui file with a range other than the default one (0-100) and limits that would be outside the default
+// range: the limits are those of the file, with the two limits written in either order. The range is -300 to -200,
+// which both setMinimum() and setMaximum() accept in the order Designer writes them (#204 item 4 is not part of this)
+void tst_DesignerPlugin::uiFileSetsTheLimits()
+{
+    QFETCH(QString, widgetClass);
+    QFETCH(QString, low);
+    QFETCH(QString, high);
+    QFETCH(bool, lowFirst);
+    const QString qualified = QStringLiteral("QtIndustrialWidgets::") + widgetClass;
+    const QString lowProperty = doubleProperty(low, -280);
+    const QString highProperty = doubleProperty(high, -220);
+    const QString ui = QStringLiteral(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ui version=\"4.0\"><class>Form</class>"
+        "<widget class=\"QWidget\" name=\"Form\"><widget class=\"%1\" name=\"control\">%2%3%4%5</widget></widget>"
+        "<customwidgets><customwidget><class>%1</class><extends>QWidget</extends>"
+        "<header>QtIndustrialWidgets/%6.h</header></customwidget></customwidgets></ui>")
+        .arg(qualified, doubleProperty(QStringLiteral("minimum"), -300), doubleProperty(QStringLiteral("maximum"), -200),
+             lowFirst ? lowProperty : highProperty, lowFirst ? highProperty : lowProperty, widgetClass);
+    QByteArray bytes = ui.toUtf8();
+    QBuffer buffer(&bytes);
+    QVERIFY(buffer.open(QIODevice::ReadOnly));
+    PluginUiLoader loader(m_widgets);
+    const std::unique_ptr<QWidget> form(loader.load(&buffer));
+    QVERIFY2(form, qPrintable(loader.errorString()));
+    QWidget *control = form->findChild<QWidget *>(QStringLiteral("control"));
+    QVERIFY(control);
+    double readLow = 0;
+    double readHigh = 0;
+    if (auto *knob = qobject_cast<QtIndustrialWidgets::IndustrialKnob *>(control)) {
+        QCOMPARE(knob->minimum(), -300.0);
+        QCOMPARE(knob->maximum(), -200.0);
+        readLow = knob->valueLimitLow();
+        readHigh = knob->valueLimitHigh();
+    } else {
+        auto *slider = qobject_cast<QtIndustrialWidgets::IndustrialSlider *>(control);
+        QVERIFY(slider);
+        QCOMPARE(slider->minimum(), -300.0);
+        QCOMPARE(slider->maximum(), -200.0);
+        readLow = slider->setpointLimitLow();
+        readHigh = slider->setpointLimitHigh();
+    }
+    QCOMPARE(readLow, -280.0);
+    QCOMPARE(readHigh, -220.0);
+    // Both bounds are set: a wider range does not move them
+    QVERIFY(control->setProperty("minimum", -1000.0));
+    QVERIFY(control->setProperty("maximum", 1000.0));
+    QCOMPARE(control->property(low.toLatin1().constData()).toDouble(), -280.0);
+    QCOMPARE(control->property(high.toLatin1().constData()).toDouble(), -220.0);
 }
 
 #include "tst_DesignerPlugin.moc"
