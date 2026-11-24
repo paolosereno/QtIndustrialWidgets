@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switch is enabled again no longer makes a step. See [ThumbwheelSwitch](docs/widgets.md#thumbwheelswitch).
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.1` tag archive (the hash exists only after the tag).
 
+### Tests
+- **The Designer plugin in CI: warnings as errors and Windows** (#245): the job that installs the plugin into Qt's
+  prefix configures with `CMAKE_COMPILE_WARNING_AS_ERROR=ON`, and the Windows job builds the plugin with MSVC and runs
+  `tst_DesignerPlugin`; it fails if the plugin is not built. See [ci.yml](.github/workflows/ci.yml).
+
 ---
 
 ## [2.8.1] - 2026-11-14
