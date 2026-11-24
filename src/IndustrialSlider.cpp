@@ -12,6 +12,7 @@
 #include "internal/NumberFormat.h"
 #include "internal/PanelFonts.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/StepGrid.h"
 #include "internal/TankDisplayLayout.h"
 #include "internal/ValueClassification.h"
 #include "internal/ValueStateDrawing.h"
@@ -898,7 +899,11 @@ void IndustrialSlider::mouseMoveEvent(QMouseEvent *event)
             const double moved = d_ptr->m_dragLastAlong - d_ptr->m_dragStartAlong;
             const double proposed =
                 d_ptr->m_dragStartSetpoint + moved / length * (d_ptr->m_maximum - d_ptr->m_minimum);
-            d_ptr->applySetpoint(this, d_ptr->operatorTarget(proposed));
+            // #244: on the step grid, from the setpoint at the anchor of the drag
+            d_ptr->applySetpoint(this, internal::dragValueOnTheStep(
+                                           d_ptr->operatorTarget(proposed), d_ptr->m_dragStartSetpoint, d_ptr->m_minimum,
+                                           d_ptr->m_step, std::min(d_ptr->limitLow(), d_ptr->m_setpoint),
+                                           std::max(d_ptr->limitHigh(), d_ptr->m_setpoint)));
         }
         event->accept();
         return;

@@ -14,6 +14,7 @@
 #include "FontScale.h"
 #include "NumberFormat.h"
 #include "RadialGaugeLayout.h"
+#include "StepGrid.h"
 #include "TextMetricsTable.h"
 
 #include <QtCore/QPointF>
@@ -252,6 +253,18 @@ public:
             target = m_minimum + std::clamp(nearest, first, last) * stepSize;
         }
         return target;
+    }
+
+    // #244: where a drag that asks for \a proposed takes the value: operatorTarget(), then, in Continuous mode, the step
+    // grid (internal::dragValueOnTheStep()) from the value at the start of the drag
+    double dragTarget(double proposed) const
+    {
+        const double target = operatorTarget(proposed);
+        if (m_mode == IndustrialKnob::KnobMode::Discrete && m_discreteSteps > 1) {
+            return target;
+        }
+        return internal::dragValueOnTheStep(target, m_actionStartValue, m_minimum, m_step, std::min(limitLow(), m_value),
+                                            std::max(limitHigh(), m_value));
     }
 
     // The text of the readout, as paintEvent() draws it; also the value text of the accessible interface (#183)

@@ -621,7 +621,7 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
     }
     d_ptr->m_dragAngle = dragAngle;
     // #182: within the value limits; past one, the value stays there until the pointer comes back, as at an end
-    d_ptr->applyValue(this, d_ptr->operatorTarget(d_ptr->valueAtScaleAngle(dragAngle)));
+    d_ptr->applyValue(this, d_ptr->dragTarget(d_ptr->valueAtScaleAngle(dragAngle))); // #244: on the step
 }
 
 void IndustrialKnob::mousePressEvent(QMouseEvent *event)
