@@ -49,6 +49,8 @@ private Q_SLOTS:
     void dragCommitsOnceAtTheRelease();
     void dragPastAnEndStaysThere_data();
     void dragPastAnEndStaysThere();
+    void dragGoesToTheStep_data();
+    void dragGoesToTheStep();
     void keysStepAndCommitAtTheRelease();
     void heldKeyCommitsOnceAtTheRelease_data();
     void heldKeyCommitsOnceAtTheRelease();
@@ -2105,6 +2107,7 @@ void tst_IndustrialSliderInput::setRangeDuringADragClampsAndTheDragGoesOn()
 {
     ActionSlider a;
     QVERIFY(a.show());
+    a.s.setStep(0.5); // #244: the drag goes to the step; 60, 55 and 49.5 are on its grid, the 50 of before is not 49.5
     a.press();
     a.move(0.10);
     QCOMPARE(a.s.setpoint(), 60.0);
@@ -2210,6 +2213,127 @@ void tst_IndustrialSliderInput::wheelAndAssistiveTechnologyAreNotActions()
     QVERIFY(!a.s.isOperatorActive());
     QCOMPARE(log.take(), QStringLiteral("active true (on); changed 41 (on); committed 41 (off); active false (off); "
                                         "changed 60 (off); committed 60 (off)"));
+}
+
+void tst_IndustrialSliderInput::dragGoesToTheStep_data()
+{
+    QTest::addColumn<bool>("vertical");
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<double>("step");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<double>("limitLow"); // NaN: no limits
+    QTest::addColumn<double>("limitHigh");
+    QTest::addColumn<double>("start");
+    QTest::addColumn<double>("via"); // NaN: one move; otherwise a first move there
+    QTest::addColumn<double>("proposed"); // Where the pointer asks the setpoint to go, without rounding
+    QTest::addColumn<double>("expected");
+    struct Row {
+        const char *name;
+        double minimum, maximum, step;
+        int precision;
+        double limitLow, limitHigh, start, proposed, expected;
+        double via = kNaN;
+    };
+    const Row rows[] = {
+        // The measurement of #244: 57.31 with step 1
+        {"0-100 step 1, 57.31", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 50.0, 57.31, 57.0},
+        {"0-100 step 1, 57.71", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 50.0, 57.71, 58.0},
+        // The grid starts at the minimum, not at 0
+        {"-7-13 step 2, 1.6", -7.0, 13.0, 2.0, 0, kNaN, kNaN, -1.0, 1.6, 1.0},
+        {"-7-13 step 2, 2.2", -7.0, 13.0, 2.0, 0, kNaN, kNaN, -1.0, 2.2, 3.0},
+        // An end off the grid: it is a value of its own, as for the keys
+        {"0-10 step 3, 7.3", 0.0, 10.0, 3.0, 0, kNaN, kNaN, 3.0, 7.3, 6.0},
+        {"0-10 step 3, 9.2", 0.0, 10.0, 3.0, 0, kNaN, kNaN, 3.0, 9.2, 9.0},
+        {"0-10 step 3, 9.4, the grid point nearer", 0.0, 10.0, 3.0, 0, kNaN, kNaN, 3.0, 9.4, 9.0},
+        {"0-10 step 3, 9.7, the end nearer", 0.0, 10.0, 3.0, 0, kNaN, kNaN, 3.0, 9.7, 10.0},
+        {"0-10 step 3, past the end", 0.0, 10.0, 3.0, 0, kNaN, kNaN, 3.0, 23.0, 10.0},
+        {"0-10 step 3, past the start", 0.0, 10.0, 3.0, 0, kNaN, kNaN, 3.0, -13.0, 0.0},
+        // Limits off the grid: the same
+        {"limits 2.5-7.5, 6.8", 0.0, 10.0, 1.0, 1, 2.5, 7.5, 5.0, 6.8, 7.0},
+        {"limits 2.5-7.5, 7.3, the limit nearer", 0.0, 10.0, 1.0, 1, 2.5, 7.5, 5.0, 7.3, 7.5},
+        {"limits 2.5-7.5, past the high limit", 0.0, 10.0, 1.0, 1, 2.5, 7.5, 5.0, 15.0, 7.5},
+        {"limits 2.5-7.5, 2.7, the limit nearer", 0.0, 10.0, 1.0, 1, 2.5, 7.5, 5.0, 2.7, 2.5},
+        {"limits 2.5-7.5, 3.2", 0.0, 10.0, 1.0, 1, 2.5, 7.5, 5.0, 3.2, 3.0},
+        // A step finer than the precision: the step only
+        {"step 0.01, precision 1", 0.0, 100.0, 0.01, 1, kNaN, kNaN, 50.0, 57.3137, 57.31},
+        // A start off the grid (a value read back): the setpoint stays until the nearest grid point is on the side the
+        // pointer moved to, then follows the grid. Upwards...
+        {"from 57.31, up 0.1: stays", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.31, 57.41, 57.31},
+        {"from 57.31, up 0.3", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.31, 57.61, 58.0},
+        {"from 57.31, down 0.1", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.31, 57.21, 57.0},
+        // ... and downwards
+        {"from 57.71, down 0.1: stays", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.71, 57.61, 57.71},
+        {"from 57.71, down 0.3", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.71, 57.41, 57.0},
+        {"from 57.71, up 0.1", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.71, 57.81, 58.0},
+        {"from 57.31, no move", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.31, 57.31, 57.31},
+        // The side is the one from the start of the drag: back near the start, the setpoint is the start again
+        {"from 57.31, up to 58, back up 0.1", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.31, 57.41, 57.31, 57.61},
+        {"from 57.71, down to 57, back down 0.1", 0.0, 100.0, 1.0, 1, kNaN, kNaN, 57.71, 57.61, 57.71, 57.41},
+    };
+    for (const bool vertical : {false, true}) {
+        for (const Row &r : rows) {
+            QTest::addRow("%s, %s", vertical ? "vertical" : "horizontal", r.name)
+                << vertical << r.minimum << r.maximum << r.step << r.precision << r.limitLow << r.limitHigh << r.start
+                << r.via << r.proposed << r.expected;
+        }
+    }
+}
+
+// #244: a drag takes the setpoint to the nearest of the grid points minimum + k·step inside the interval allowed and
+// the two ends of that interval (the ends of the scale, or the limits), so that what is committed is on the step as
+// with the keys. From a setpoint off the grid, it stays until the nearest grid point lies on the side the pointer
+// moved to. The setpoint is exactly minimum + k·step, never a sum of steps
+void tst_IndustrialSliderInput::dragGoesToTheStep()
+{
+    QFETCH(bool, vertical);
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(double, step);
+    QFETCH(int, precision);
+    QFETCH(double, limitLow);
+    QFETCH(double, limitHigh);
+    QFETCH(double, start);
+    QFETCH(double, via);
+    QFETCH(double, proposed);
+    QFETCH(double, expected);
+
+    IndustrialSlider s;
+    setVertical(s, vertical);
+    prepare(s, sizeFor(vertical));
+    s.setRange(minimum, maximum);
+    s.setStep(step);
+    s.setPrecision(precision);
+    if (!std::isnan(limitLow)) {
+        s.setSetpointLimits(limitLow, limitHigh);
+    }
+    s.setSetpoint(start);
+    QCOMPARE(s.setpoint(), start);
+    const internal::SliderLayout l = layoutOf(s);
+    const double length = std::abs(l.scaleMax - l.scaleMin);
+    QVERIFY(length > 0.0);
+    const QPointF h = handlePoint(s);
+    QSignalSpy committed(&s, &IndustrialSlider::setpointCommitted);
+    sendMouse(s, QEvent::MouseButtonPress, h);
+    if (!std::isnan(via)) {
+        sendMouse(s, QEvent::MouseMove, moved(l, h, (via - start) / (maximum - minimum) * length));
+        QVERIFY(s.setpoint() != start);
+    }
+    const QPointF to = moved(l, h, (proposed - start) / (maximum - minimum) * length);
+    sendMouse(s, QEvent::MouseMove, to);
+    const double v = s.setpoint();
+    QVERIFY2(std::abs(v - expected) < 1e-9, qPrintable(QStringLiteral("setpoint %1, expected %2").arg(v, 0, 'g', 17).arg(expected)));
+    // On the grid exactly, unless it is an end, a limit or the start off the grid
+    const double k = std::round((v - minimum) / step);
+    const bool atAnEnd = v == minimum || v == maximum || v == limitLow || v == limitHigh || v == start;
+    QVERIFY2(atAnEnd || v == minimum + k * step,
+             qPrintable(QStringLiteral("setpoint %1 is not minimum + %2 x step = %3").arg(v, 0, 'g', 17).arg(k).arg(minimum + k * step, 0, 'g', 17)));
+    sendMouse(s, QEvent::MouseButtonRelease, to);
+    QCOMPARE(s.setpoint(), v);
+    QCOMPARE(committed.count(), v == start ? 0 : 1);
+    if (!committed.isEmpty()) {
+        QCOMPARE(committed.at(0).at(0).toDouble(), v);
+    }
 }
 
 QTEST_MAIN(tst_IndustrialSliderInput)

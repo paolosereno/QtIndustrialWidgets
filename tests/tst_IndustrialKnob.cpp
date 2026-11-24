@@ -435,6 +435,8 @@ private Q_SLOTS:
     void clickInTheGapChangesNothing();
     void dragIntoTheGapStopsAtTheNearestEnd();
     void dragPastTheMaximumDoesNotReachZero();
+    void dragGoesToTheStep_data();
+    void dragGoesToTheStep();
     void minimumSizeHintLimits();
     void minimumSizeKeepsTheEnds_data();
     void minimumSizeKeepsTheEnds();
@@ -1790,6 +1792,127 @@ void tst_IndustrialKnob::repaintDoesNotMeasureTheLabelsAgain()
     QVERIFY2(afterDpr > afterFont, "a new DPR did not measure the labels");
     knob.repaint();
     QCOMPARE(Access::labelInkMeasureCount(knob), afterDpr);
+}
+
+void tst_IndustrialKnob::dragGoesToTheStep_data()
+{
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<double>("step");
+    QTest::addColumn<int>("precision");
+    QTest::addColumn<double>("limitLow"); // NaN: no limits
+    QTest::addColumn<double>("limitHigh");
+    QTest::addColumn<int>("discreteSteps"); // 0: Continuous
+    QTest::addColumn<double>("start");
+    QTest::addColumn<double>("via"); // NaN: one move; otherwise a first move there
+    QTest::addColumn<double>("proposed"); // Where the pointer asks the value to go, without rounding
+    QTest::addColumn<double>("expected");
+    const double none = std::numeric_limits<double>::quiet_NaN();
+    struct Row {
+        const char *name;
+        double maximum, step;
+        int precision;
+        double limitLow, limitHigh;
+        int discreteSteps;
+        double start, proposed, expected;
+        double via = std::numeric_limits<double>::quiet_NaN();
+    };
+    // The pointer is measured on the pixels of the dial, to about 0.4 of a unit of 0-100 at 220 x 240: every proposed
+    // value is at least 1 unit away from a midpoint between two candidates
+    const Row rows[] = {
+        // The measurement of #244: 63.83 with step 1 and precision 0
+        {"0-100 step 1, 63.95", 100.0, 1.0, 0, none, none, 0, 50.0, 63.95, 64.0},
+        {"0-100 step 10, 57.4", 100.0, 10.0, 0, none, none, 0, 50.0, 57.4, 60.0},
+        {"0-100 step 10, 53: stays on 50", 100.0, 10.0, 0, none, none, 0, 50.0, 53.0, 50.0},
+        // An end off the grid: a value of its own
+        {"0-100 step 30, 93", 100.0, 30.0, 0, none, none, 0, 60.0, 93.0, 90.0},
+        {"0-100 step 30, 94, the grid point nearer", 100.0, 30.0, 0, none, none, 0, 60.0, 94.0, 90.0},
+        {"0-100 step 30, 97, the end nearer", 100.0, 30.0, 0, none, none, 0, 60.0, 97.0, 100.0},
+        // Limits off the grid: the same
+        {"limits 25-75 step 10, past the high limit", 100.0, 10.0, 0, 25.0, 75.0, 0, 50.0, 85.0, 75.0},
+        {"limits 25-75 step 10, 73.5, the limit nearer", 100.0, 10.0, 0, 25.0, 75.0, 0, 50.0, 73.5, 75.0},
+        {"limits 25-75 step 10, 26.5, the limit nearer", 100.0, 10.0, 0, 25.0, 75.0, 0, 50.0, 26.5, 25.0},
+        {"limits 25-75 step 10, 28.5", 100.0, 10.0, 0, 25.0, 75.0, 0, 50.0, 28.5, 30.0},
+        // A step finer than the precision: the step only
+        {"step 2.5, precision 0", 100.0, 2.5, 0, none, none, 0, 50.0, 61.8, 62.5},
+        // A start off the grid: the value stays until the nearest grid point is on the side the pointer moved to
+        {"from 53, up 1: stays", 100.0, 10.0, 0, none, none, 0, 53.0, 54.0, 53.0},
+        {"from 53, up 3", 100.0, 10.0, 0, none, none, 0, 53.0, 56.0, 60.0},
+        {"from 53, down 1", 100.0, 10.0, 0, none, none, 0, 53.0, 52.0, 50.0},
+        {"from 57, down 1.5: stays", 100.0, 10.0, 0, none, none, 0, 57.0, 55.5, 57.0},
+        {"from 57, down 3", 100.0, 10.0, 0, none, none, 0, 57.0, 54.0, 50.0},
+        {"from 57, up 2", 100.0, 10.0, 0, none, none, 0, 57.0, 59.0, 60.0},
+        // The side is the one from the start of the drag: back near the start, the value is the start again
+        {"from 53, up to 60, back up 1", 100.0, 10.0, 0, none, none, 0, 53.0, 54.0, 53.0, 56.0},
+        {"from 57, down to 50, back down 1.5", 100.0, 10.0, 0, none, none, 0, 57.0, 55.5, 57.0, 54.0},
+        // Discrete mode: its positions (0, 25, 50, 75, 100), not the step
+        {"Discrete 5, step 10, 60", 100.0, 10.0, 0, none, none, 5, 50.0, 60.0, 50.0},
+        {"Discrete 5, step 10, 66", 100.0, 10.0, 0, none, none, 5, 50.0, 66.0, 75.0},
+        // A step coarser than the positions: still the positions
+        {"Discrete 5, step 30, 72", 100.0, 30.0, 0, none, none, 5, 50.0, 72.0, 75.0},
+    };
+    for (const Row &r : rows) {
+        QTest::addRow("%s", r.name) << r.maximum << r.step << r.precision << r.limitLow << r.limitHigh << r.discreteSteps
+                                    << r.start << r.via << r.proposed << r.expected;
+    }
+}
+
+// #244: in Continuous mode a drag takes the value to the nearest of the grid points minimum + k·step inside the
+// interval allowed and the two ends of that interval (the ends of the scale, or the limits), so that what is committed
+// is on the step as with the keys. From a value off the grid, it stays until the nearest grid point lies on the side
+// the pointer moved to. Discrete mode keeps its positions
+void tst_IndustrialKnob::dragGoesToTheStep()
+{
+    QFETCH(double, maximum);
+    QFETCH(double, step);
+    QFETCH(int, precision);
+    QFETCH(double, limitLow);
+    QFETCH(double, limitHigh);
+    QFETCH(int, discreteSteps);
+    QFETCH(double, start);
+    QFETCH(double, via);
+    QFETCH(double, proposed);
+    QFETCH(double, expected);
+
+    IndustrialKnob knob;
+    knob.setRange(0.0, maximum);
+    knob.setStep(step);
+    knob.setPrecision(precision);
+    if (discreteSteps > 0) {
+        knob.setMode(IndustrialKnob::KnobMode::Discrete);
+        knob.setDiscreteSteps(discreteSteps);
+    }
+    if (!std::isnan(limitLow)) {
+        knob.setValueLimits(limitLow, limitHigh);
+    }
+    knob.resize(220, 240);
+    knob.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&knob));
+    const DrawnDial dial = drawnDialOf(knob);
+    QVERIFY(dial.radius > 20.0);
+    knob.setValue(start);
+    QCOMPARE(knob.value(), start);
+    QSignalSpy committed(&knob, &IndustrialKnob::valueCommitted);
+    const double press = -90.0; // Away from the angle of the value: the drag is relative
+    const double to = press + (proposed - start) / maximum * knob.spanAngle();
+    sendMouse(knob, QEvent::MouseButtonPress, dialPoint(dial, press));
+    if (!std::isnan(via)) {
+        sendMouse(knob, QEvent::MouseMove, dialPoint(dial, press + (via - start) / maximum * knob.spanAngle()));
+        QVERIFY(knob.value() != start);
+    }
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, (press + to) * 0.5));
+    sendMouse(knob, QEvent::MouseMove, dialPoint(dial, to));
+    const double v = knob.value();
+    QVERIFY2(std::abs(v - expected) < 1e-9, qPrintable(QStringLiteral("value %1, expected %2").arg(v, 0, 'g', 17).arg(expected)));
+    if (discreteSteps == 0) {
+        // On the grid exactly, unless it is an end, a limit or the start off the grid
+        const double k = std::round(v / step);
+        const bool atAnEnd = v == 0.0 || v == maximum || v == limitLow || v == limitHigh || v == start;
+        QVERIFY2(atAnEnd || v == k * step,
+                 qPrintable(QStringLiteral("value %1 is not minimum + %2 x step").arg(v, 0, 'g', 17).arg(k)));
+    }
+    sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, to));
+    QCOMPARE(knob.value(), v);
+    QCOMPARE(committed.count(), v == start ? 0 : 1);
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
