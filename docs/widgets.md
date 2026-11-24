@@ -138,10 +138,14 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
   - each bound is set or not. A bound not set reads the end of the range on its side and follows it when the range
     changes; the reset of a property (Designer's reset arrow, `resetValueLimitLow()`) clears that bound only.
     `setValueLimits()` sets both bounds and `clearValueLimits()` clears both;
-  - a bound written at or past the other moves the other by the previous span (the end of the range counts for a
-    bound not set), so the two can be written in either order: limits 20–40, then `valueLimitLow` 60, give 60–80;
-    `valueLimitHigh` 10 gives −10–10. When that span is not positive (the other bound not set, and the bound written
-    kept past an end of the range that moved), only the bound written is set. Non-finite values are ignored;
+  - an other bound that is not set stays not set and keeps following the range, whatever the value written: on
+    0–100 with only the low limit set, `valueLimitLow` 150 gives a low limit of 150 (read 100) and a high limit that
+    still reads the maximum;
+  - an other bound that is set, at or past the value written, moves by the previous span (with the end of the range
+    for the bound written, if it was not set), so the two can be written in either order: limits 20–40, then
+    `valueLimitLow` 60, give 60–80, and `valueLimitHigh` 10 gives −10–10. When that span is not positive (the other
+    bound kept past an end of the range that moved), the other bound goes to the value written, so the limits are
+    never inverted. Non-finite values are ignored;
   - a property reads the limit within the range, as the getters do: `setProperty()` then `property()` gives back the
     value written when it is inside the range. A value outside the range is kept and reads the end of the range
     until the range grows back to it.

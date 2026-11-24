@@ -380,13 +380,13 @@ public Q_SLOTS:
     /**
      * \brief Sets the low setpoint limit alone (#246), as the property setpointLimitLow does.
      *
-     * The high limit keeps its state: set, or not set (then it reads maximum() and follows the range). At or above
-     * the high limit (maximum() when it is not set), the high limit moves to \a low plus the previous span, so that
-     * the order of the two calls does not matter: limits 20–40, then setSetpointLimitLow(60), give 60–80. When that
-     * span is not positive (the high limit not set and the low limit kept past a maximum that went down), only the
-     * low limit is set. Non-finite values are ignored. The limit is kept as given and read within the range, so
-     * setpointLimitLow() gives back \a low when it is inside the range. Emits setpointLimitsChanged() if the limits
-     * read change.
+     * A high limit not set stays not set: it reads maximum() and follows the range, whatever \a low. A high limit
+     * set, at or below \a low, moves to \a low plus the previous span (with minimum() for a low limit not set), so
+     * that the order of the two calls does not matter: limits 20–40, then setSetpointLimitLow(60), give 60–80.
+     * When that span is not positive (the high limit kept below a minimum that went up), the high limit goes to
+     * \a low, so the limits are never inverted. Non-finite values are ignored. The limit is kept as given and read
+     * within the range, so setpointLimitLow() gives back \a low when it is inside the range.
+     * Emits setpointLimitsChanged() if the limits read change.
      */
     void setSetpointLimitLow(double low);
     /** \brief Sets the high setpoint limit alone (#246): the rule of setSetpointLimitLow() the other way round. */
