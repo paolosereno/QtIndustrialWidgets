@@ -22,13 +22,13 @@ the complete API is in the class documentation.
   and, when the pod is too small, leaves out the unit, then the number, never `---` or the triangle (see its
   section).
 
-**Readout colours** (#159): the readout pods of `RadialGauge`, `LinearGauge`, `Compass` and `IndustrialKnob` are
-opaque and dark in every theme. Their readout is drawn in `readoutColor` (`RadialGauge`: normal zone and `---`;
-`LinearGauge`: `---`; `Compass`: always), or in the colour of its zone, never in `textColor`, which colours the scale
-labels and is dark in a light theme. `IndustrialKnob` draws its readout in `pointerColor`; the `CircularBargraph` pod
-follows `dialColor` and its readout `textColor`. With the default readout and zone colours, in the gallery's dark and
-light styling, every readout state has a contrast of at least 4.5:1 (WCAG 2.x) against its pod
-(`tests/tst_ReadoutContrast.cpp`).
+**Readout colours** (#159): the readout pods of `RadialGauge`, `LinearGauge`, `Compass`, `IndustrialKnob` and
+`IndustrialSlider` are opaque and dark in every theme. Their readout is drawn in `readoutColor` (`RadialGauge`: normal
+zone and `---`; `LinearGauge`: `---`; `Compass` and `IndustrialSlider`: always), or in the colour of its zone, never
+in `textColor`, which colours the scale labels and is dark in a light theme. `IndustrialKnob` draws its readout in
+`pointerColor`; the `CircularBargraph` pod follows `dialColor` and its readout `textColor`. With the default readout
+and zone colours, in the gallery's dark and light styling, every readout state has a contrast of at least 4.5:1
+(WCAG 2.x) against its pod (`tests/tst_ReadoutContrast.cpp`).
 
 ## Controls {#controls}
 
@@ -162,12 +162,16 @@ Rules shared by the widgets that set a value (#182). They apply to `IndustrialKn
 - **Focus** (#183). The control takes focus with Tab and Shift+Tab and with a click, also in read-only. While it has
   focus it draws a solid ring in `textColor`, which contrasts with the background like the labels: at least 3:1
   against the background in both gallery themes (`tests/tst_ReadoutContrast.cpp`).
-- **Accessibility** (#183). The control has an accessible interface (`QAccessibleInterface`) with a role, the value
-  text as the readout draws it (also when the readout is hidden), the value, the minimum and maximum, the step and
-  the read-only state. Every change of the value sends a value-change event to assistive technology (a screen
-  reader), whatever its source; a change of the range sends one too, and a change of read-only sends a state-change
-  event. A value set by assistive technology is operator input: it is bound by the value limits, ignored in
-  read-only and while disabled, and emits `valueCommitted()` when it changes the value.
+- **Accessibility** (#183). The control has an accessible interface (`QAccessibleInterface`) with a role, a value
+  text, the value, the minimum and maximum, the step and the read-only state. The value text tells, in words, what
+  the control shows, also when a readout is hidden; each control's section says what it contains (the slider adds
+  the position and the deviation, `ThumbwheelSwitch` the pending value, the limits and the overflow). A change of what
+  it reports (the value, the range, and the states listed in each control's section) sends a value-change event to
+  assistive technology (a screen reader), whatever its source. A change of configuration alone that changes the text
+  (the unit, the precision or the decimals, the number of drums, the sign drum, the labels of the positions of
+  `IndustrialSwitch`) does not (#231). A change of read-only sends a state-change event. A value set by assistive
+  technology is operator input: it is bound by the value limits, ignored in read-only and while disabled, and emits
+  `valueCommitted()` when it changes the value.
 
   **The control has no accessible name of its own**: the unit or the readout is not a name. Set one, as for any Qt
   widget, or give the control a label with `QLabel::setBuddy()`:

@@ -53,6 +53,25 @@ page quotes them.
 - `textColor`: labels.
 - `guardColor`: safety guard cover (default `#dc3545`).
 
+### Slider (`qiw::IndustrialSlider`)
+- `trackColor`: the track (default `#1e242d`); the hatching outside the setpoint limits takes a colour derived from it.
+- `normalColor`, `warningColor`, `errorColor`: the zone band along the track, below the first threshold and in the
+  warning and error zones.
+- `feedbackColor`: the feedback bar (default `#ff9f43`).
+- `handleColor`: the setpoint handle (default `#00bcd4`).
+- `scaleColor`: the ticks, the outline of the track and the stop marks of the setpoint limits.
+- `textColor`: the scale labels and the focus ring.
+- `readoutColor`: the setpoint and feedback readouts, drawn on a pod that is dark in every theme (default `#f0f4f8`).
+
+### Thumbwheel switch (`qiw::ThumbwheelSwitch`)
+- `drumColor`: the drum faces (default `#14181e`).
+- `digitColor`: the digits, the sign and the arrows of the buttons, and the text of the SET button while a value can
+  be applied.
+- `buttonColor`: the faces of the buttons, and the outline of the drums when no value is pending (default `#343c48`).
+- `textColor`: the decimal point, the unit, the marks of the tag column, the status line (padlock, ⊘, applied value),
+  the outline of the SET button when there is nothing to apply, and the focus marks.
+- `pendingColor`: the dashed outline of the drums while a value is pending (default `#ffb000`).
+
 ### Level meter (`qiw::LevelMeter`)
 - `normalColor`: normal zone (default `#2ecc71`).
 - `warningColor`: warning zone (default `#fed330`).
@@ -87,8 +106,10 @@ page quotes them.
 `AnalysisChart` (`gridColor`, `backgroundColor`, `bezelColor`, `textColor`, `cursorColor`) have colour properties as
 well; their API pages describe them.
 
-The readout pods of `RadialGauge`, `LinearGauge`, `Compass` and `IndustrialKnob` are dark in every theme, so a light
-theme sets `textColor` dark but keeps a light `readoutColor` (#159, see [widgets.md](widgets.md)).
+The readout pods of `RadialGauge`, `LinearGauge`, `Compass`, `IndustrialKnob` and `IndustrialSlider` are dark in every
+theme, so a light theme sets `textColor` dark but keeps a light `readoutColor` (#159, see [widgets.md](widgets.md)).
+`ThumbwheelSwitch` has no fixed pod: its drums follow `drumColor`, so a theme sets `drumColor` and `digitColor`
+together.
 
 ---
 
