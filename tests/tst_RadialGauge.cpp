@@ -855,9 +855,10 @@ void tst_RadialGauge::valueReadoutHasNoNegativeZero()
 }
 
 // #46: range -0.1..0.5 with 6 major ticks: tick 1 is -1.4e-17, labelled "0.0" with the 1 decimal that writes
-// every tick exactly (#208), and tick 2 is "0.1". The labels sit at -90 and -45 degrees (45 degrees apart); the
-// label ink within +-15 degrees of each tick must be equally wide, since the digits have one width (a minus sign
-// makes tick 1 wider). 1 device px is left to the sub-pixel position of the glyphs.
+// every tick exactly (#208). Its label sits at -90 degrees; the label ink within +-15 degrees of it must be as wide
+// as "0.0" drawn alone in the label font, and "-0.0" drawn alone must be wider by more than that, so that the test
+// sees a minus sign. 1 device px is left to the sub-pixel position of the glyphs. (Not compared with another label:
+// the ink of "0.1" is narrower than that of "0.0" in some fonts, the system font of macOS among them.)
 void tst_RadialGauge::scaleLabelsHaveNoNegativeZero()
 {
     RadialGauge gauge;
@@ -884,13 +885,20 @@ void tst_RadialGauge::scaleLabelsHaveNoNegativeZero()
         }
         return box;
     };
+    QFont labelFont = gauge.font();
+    labelFont.setPixelSize(internal::radialScaleGeometry(std::min(gauge.width(), gauge.height())).labelFontPx);
+    labelFont.setBold(true);
+    const int zeroAlone = LabelInk::inkBoxAlone(QStringLiteral("0.0"), labelFont, dpr).width();
+    const int negativeZeroAlone = LabelInk::inkBoxAlone(QStringLiteral("-0.0"), labelFont, dpr).width();
+    QVERIFY2(negativeZeroAlone - zeroAlone > 1,
+             qPrintable(QStringLiteral("'-0.0' alone is %1 device px wide, '0.0' alone %2: the minus is not seen")
+                            .arg(negativeZeroAlone).arg(zeroAlone)));
+
     const QRect tick1 = inkInSector(-90.0);
-    const QRect tick2 = inkInSector(-45.0);
     QVERIFY(!tick1.isEmpty());
-    QVERIFY(!tick2.isEmpty());
-    QVERIFY2(std::abs(tick1.width() - tick2.width()) <= 1,
-             qPrintable(QStringLiteral("label at -1.4e-17 is %1 device px wide, label at 0.1 is %2 (DPR %3)")
-                            .arg(tick1.width()).arg(tick2.width()).arg(dpr)));
+    QVERIFY2(std::abs(tick1.width() - zeroAlone) <= 1,
+             qPrintable(QStringLiteral("label at -1.4e-17 is %1 device px wide, '0.0' alone %2, '-0.0' alone %3 (DPR %4)")
+                            .arg(tick1.width()).arg(zeroAlone).arg(negativeZeroAlone).arg(dpr)));
 }
 
 
