@@ -386,13 +386,19 @@ RadialGaugePrivate::MinimumMetrics RadialGaugePrivate::minimumMetrics(const QFon
     plain.setBold(false);
     MinimumMetrics metrics{internal::TextMetricsTable(bold), internal::TextMetricsTable(plain), {},
                            internal::formatFixed(m_minimum, m_precision), internal::formatFixed(m_maximum, m_precision)};
-    // The same values as the loop of scaleLayout()
+    for (const QString &text : majorLabelTexts()) metrics.labelTexts.push_back(text);
+    return metrics;
+}
+
+QStringList RadialGaugePrivate::majorLabelTexts() const
+{
+    // The same values as the loop of scaleLayout(); the decimals are those of the whole scale (#208)
+    std::vector<double> values;
     const double valueRange = m_maximum - m_minimum;
     for (int i = 0; i <= m_majorTicks; ++i) {
-        const double frac = static_cast<double>(i) / m_majorTicks;
-        metrics.labelTexts.push_back(internal::scaleLabelText(m_minimum + frac * valueRange, m_precision));
+        values.push_back(m_minimum + static_cast<double>(i) / m_majorTicks * valueRange);
     }
-    return metrics;
+    return internal::scaleLabelTexts(values, m_precision);
 }
 
 RadialGaugePrivate::ScaleLayout RadialGaugePrivate::scaleLayout(double width, double height, const QFont &widgetFont,
@@ -409,6 +415,7 @@ RadialGaugePrivate::ScaleLayout RadialGaugePrivate::scaleLayout(double width, do
 
     const QFontMetricsF fm(out.labelFont);
     const double valueRange = m_maximum - m_minimum;
+    const QStringList texts = metrics ? QStringList() : majorLabelTexts();
     std::vector<internal::LayoutRect> allLabelRects;
     for (int i = 0; i <= m_majorTicks; ++i) {
         const double frac = static_cast<double>(i) / m_majorTicks;
@@ -416,7 +423,7 @@ RadialGaugePrivate::ScaleLayout RadialGaugePrivate::scaleLayout(double width, do
         const double rad = (angleOf(val) - 90.0) * M_PI / 180.0;
 
         // Label box, centred at the label radius
-        QString labelStr = metrics ? metrics->labelTexts[static_cast<size_t>(i)] : internal::scaleLabelText(val, m_precision);
+        QString labelStr = metrics ? metrics->labelTexts[static_cast<size_t>(i)] : texts.at(i);
         const QRectF textRect = metrics ? metrics->bold.boundingRect(labelStr, geo.labelFontPx) : fm.boundingRect(labelStr);
         const QPointF labelCenter(center.x() + geo.labelRadius * std::cos(rad), center.y() + geo.labelRadius * std::sin(rad));
         out.labelTexts.push_back(labelStr);

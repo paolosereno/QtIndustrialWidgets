@@ -122,14 +122,15 @@ public:
     double angleOf(double value) const;
     double valueAtScaleAngle(double angle) const;
     int tickCount() const;
-    // Text of the label of tick \a index (0 to tickCount()); counted in m_labelFormats
-    QString labelText(int index) const;
+    // Texts of the labels of the ticks 0 to tickCount(), with the decimals of the whole scale (#208); each label
+    // counted in m_labelFormats
+    std::vector<QString> labelTexts() const;
     // What the size search of minimumSizeHint() keeps for one computation (#184): the label texts, formatted once,
     // and the table of their measures, each taken once at each font size
     struct MinimumMetrics {
         explicit MinimumMetrics(const QFont &labelFont) : table(labelFont) {}
         internal::TextMetricsTable table; // The widget font, bold, as labelsAt() draws the labels
-        std::vector<QString> labelTexts;  // labelText() of each tick
+        std::vector<QString> labelTexts;  // labelTexts(): the label of each tick
     };
     MinimumMetrics minimumMetrics(const QFont &widgetFont) const;
     // Texts, boxes and selection of the labels at a geometry. With \a metrics (minimumSizeHint(), #184) the texts
@@ -149,7 +150,7 @@ public:
     // the real measures of the table and the label texts formatted in the last computation of minimumSizeHint()
     bool m_minimumWithoutTable{false};
     mutable std::vector<internal::TextMetricsTable::Measure> m_lastMinimumMeasures;
-    mutable quint64 m_labelFormats{0}; // Calls of labelText() so far
+    mutable quint64 m_labelFormats{0}; // Labels formatted by labelTexts() so far
     mutable quint64 m_lastMinimumLabelFormats{0};
     // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
     double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr);

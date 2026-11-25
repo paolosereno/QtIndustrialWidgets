@@ -9,7 +9,7 @@
 #include <QtCore/QRegularExpression>
 
 // #46: fixed-point numbers shown by the widgets go through internal::formatFixed() (and
-// internal::scaleLabelText()), which never print a negative zero. This test reads the library
+// internal::scaleLabelTexts()), which never print a negative zero. This test reads the library
 // sources at run time and fails on any QString::number(..., 'f', ...) or .arg(..., 'f', ...)
 // outside src/internal/NumberFormat.*, so a new call site cannot bring "-0.0" back.
 class tst_FixedFormatUsage : public QObject

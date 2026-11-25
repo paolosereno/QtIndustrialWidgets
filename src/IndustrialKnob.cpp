@@ -49,14 +49,25 @@ int IndustrialKnobPrivate::tickCount() const
     return std::max(1, m_mode == IndustrialKnob::KnobMode::Discrete ? m_discreteSteps - 1 : m_majorTicks);
 }
 
-QString IndustrialKnobPrivate::labelText(int index) const
+std::vector<QString> IndustrialKnobPrivate::labelTexts() const
 {
-    ++m_labelFormats;
+    const int ticks = tickCount();
+    std::vector<QString> texts;
+    texts.reserve(static_cast<size_t>(ticks) + 1);
+    m_labelFormats += static_cast<quint64>(ticks) + 1;
     if (m_mode == IndustrialKnob::KnobMode::Discrete) {
-        return QString::number(index + 1);
+        for (int i = 0; i <= ticks; ++i) texts.push_back(QString::number(i + 1));
+        return texts;
     }
-    const double frac = static_cast<double>(index) / tickCount();
-    return internal::scaleLabelText(m_minimum + frac * (m_maximum - m_minimum), m_precision);
+    // The decimals are those of the whole scale (#208)
+    std::vector<double> values;
+    values.reserve(static_cast<size_t>(ticks) + 1);
+    for (int i = 0; i <= ticks; ++i) {
+        const double frac = static_cast<double>(i) / ticks;
+        values.push_back(m_minimum + frac * (m_maximum - m_minimum));
+    }
+    for (const QString &text : internal::scaleLabelTexts(values, m_precision)) texts.push_back(text);
+    return texts;
 }
 
 IndustrialKnobPrivate::MinimumMetrics IndustrialKnobPrivate::minimumMetrics(const QFont &widgetFont) const
@@ -64,11 +75,7 @@ IndustrialKnobPrivate::MinimumMetrics IndustrialKnobPrivate::minimumMetrics(cons
     QFont labelFont = widgetFont;
     labelFont.setBold(true); // as labelsAt() draws the labels
     MinimumMetrics metrics(labelFont);
-    const int ticks = tickCount();
-    metrics.labelTexts.reserve(static_cast<size_t>(ticks) + 1);
-    for (int i = 0; i <= ticks; ++i) {
-        metrics.labelTexts.push_back(labelText(i));
-    }
+    metrics.labelTexts = labelTexts();
     return metrics;
 }
 
@@ -90,10 +97,11 @@ IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const interna
     // #60: every tick is drawn, but only the labels that keep the minimum gap (selection of #50)
     const QFontMetricsF fm(out.font);
     const int ticks = tickCount();
+    const std::vector<QString> texts = metrics ? std::vector<QString>() : labelTexts();
     for (int i = 0; i <= ticks; ++i) {
         const double frac = static_cast<double>(i) / ticks;
         const double val = m_minimum + frac * (m_maximum - m_minimum);
-        out.texts.push_back(metrics ? metrics->labelTexts[static_cast<size_t>(i)] : labelText(i));
+        out.texts.push_back(metrics ? metrics->labelTexts[static_cast<size_t>(i)] : texts[static_cast<size_t>(i)]);
         const QString &text = out.texts.back();
         const QRectF textRect = metrics ? metrics->table.boundingRect(text, geometry.labelFontPx) : fm.boundingRect(text);
         const internal::LayoutRect box = internal::labelBoxOnDevicePixel(

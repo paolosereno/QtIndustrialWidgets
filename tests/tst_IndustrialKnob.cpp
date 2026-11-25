@@ -57,10 +57,14 @@ ScaleLabels scaleLabelsAt(const IndustrialKnob &knob, const internal::KnobScaleG
     const QFontMetricsF fm(out.font);
     const bool discrete = knob.mode() == IndustrialKnob::KnobMode::Discrete;
     const int ticks = std::max(1, discrete ? knob.discreteSteps() - 1 : knob.majorTicks());
+    std::vector<double> values;
+    for (int i = 0; i <= ticks; ++i) {
+        values.push_back(knob.minimum() + static_cast<double>(i) / ticks * (knob.maximum() - knob.minimum()));
+    }
+    const QStringList texts = internal::scaleLabelTexts(values, knob.precision()); // #208: decimals of the whole scale
     for (int i = 0; i <= ticks; ++i) {
         const double frac = static_cast<double>(i) / ticks;
-        const double value = knob.minimum() + frac * (knob.maximum() - knob.minimum());
-        const QString text = discrete ? QString::number(i + 1) : internal::scaleLabelText(value, knob.precision());
+        const QString text = discrete ? QString::number(i + 1) : texts.at(i);
         const QRectF rect = fm.boundingRect(text);
         const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
             internal::knobLabelBox(geometry, knob.startAngle() + frac * knob.spanAngle(), rect.width(), rect.height()),

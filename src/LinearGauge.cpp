@@ -65,14 +65,13 @@ public:
     // Text of every major scale label, minimum first
     QStringList majorLabelTexts() const
     {
-        QStringList texts;
+        std::vector<double> values; // The decimals are those of the whole scale (#208)
         const double valRange = m_maximum - m_minimum;
         for (int i = 0; i <= m_majorTicks; ++i) {
             const double frac = static_cast<double>(i) / m_majorTicks;
-            const double val = m_minimum + frac * valRange;
-            texts << internal::scaleLabelText(val, m_precision);
+            values.push_back(m_minimum + frac * valRange);
         }
-        return texts;
+        return internal::scaleLabelTexts(values, m_precision);
     }
 
     struct Changes {

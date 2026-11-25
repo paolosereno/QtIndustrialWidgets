@@ -187,12 +187,11 @@ bool TankDisplayPrivate::anyLimitEnabled() const
 
 QStringList TankDisplayPrivate::majorLabelTexts() const
 {
-    QStringList texts;
+    std::vector<double> values; // The decimals are those of the whole scale (#208)
     for (int i = 0; i <= m_majorTicks; ++i) {
-        const double v = m_minimum + (m_maximum - m_minimum) * static_cast<double>(i) / m_majorTicks;
-        texts << internal::scaleLabelText(v, m_precision);
+        values.push_back(m_minimum + (m_maximum - m_minimum) * static_cast<double>(i) / m_majorTicks);
     }
-    return texts;
+    return internal::scaleLabelTexts(values, m_precision);
 }
 
 TankDisplayPrivate::Fonts TankDisplayPrivate::fontsFor(const QFont &widgetFont, double logicalDpi)

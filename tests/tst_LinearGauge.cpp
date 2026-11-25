@@ -21,6 +21,7 @@
 
 #include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
+#include "internal/NumberFormat.h"
 
 #include <algorithm>
 
@@ -226,11 +227,12 @@ QVector<Run> groupIntoLabels(const QVector<Run> &runs, double maxInnerGap)
     return labels;
 }
 
-QString scaleLabelText(double value, int precision)
+// #208: the major labels of a gauge 0..maximum, as LinearGauge writes them (the decimals of the whole scale)
+QStringList majorLabelTexts(double maximum, int majorTicks, int precision)
 {
-    // Same formatting as LinearGauge::paintEvent()
-    return precision == 0 ? QString::number(static_cast<qint64>(std::round(value)))
-                          : QString::number(value, 'f', (value == std::floor(value)) ? 0 : 1);
+    std::vector<double> values;
+    for (int i = 0; i <= majorTicks; ++i) values.push_back(0.0 + static_cast<double>(i) / majorTicks * maximum);
+    return internal::scaleLabelTexts(values, precision);
 }
 
 // Offset of a label from a tick along a vertical scale, in pixels towards the top
@@ -262,10 +264,7 @@ struct VerticalLabels {
 
 VerticalLabels verticalLabels(const LinearGauge &gauge, double maximum, int precision)
 {
-    QStringList texts;
-    for (int i = 0; i <= gauge.majorTicks(); ++i) {
-        texts << scaleLabelText(maximum * i / gauge.majorTicks(), precision);
-    }
+    const QStringList texts = majorLabelTexts(maximum, gauge.majorTicks(), precision);
     auto fontAt = [&](int px) {
         QFont f = gauge.font();
         f.setPixelSize(px);
@@ -794,7 +793,7 @@ void tst_LinearGauge::scaleLabelsReadable()
     // Label font and minimum gap as decided in #31, #37 and #51, from the helpers the widget uses
     const QStringList texts = [&] {
         QStringList t;
-        for (int i = 0; i <= gauge.majorTicks(); ++i) t << scaleLabelText(maximum * i / gauge.majorTicks(), precision);
+        t = majorLabelTexts(maximum, gauge.majorTicks(), precision);
         return t;
     }();
     auto fontAt = [&](int px) {
@@ -825,7 +824,7 @@ void tst_LinearGauge::scaleLabelsReadable()
     double widest = 0.0;
     double innerGap = 0.0;
     for (int i = 0; i <= majorTicks; ++i) {
-        ink.append(referenceInk(scaleLabelText(maximum * i / majorTicks, precision), font, orientation, dpr, background));
+        ink.append(referenceInk(texts.at(i), font, orientation, dpr, background));
         widest = std::max(widest, ink.last().maxLength);
         innerGap = std::max(innerGap, ink.last().maxInnerGap);
     }
@@ -1243,7 +1242,7 @@ void tst_LinearGauge::sizeHintShowsEveryOtherLabel()
     if (QFontInfo(font).family() != QStringLiteral("DejaVu Sans")) {
         auto fontAt = [&](int px) { QFont f = font; f.setPixelSize(px); f.setBold(true); return f; };
         QStringList texts;
-        for (int i = 0; i <= gauge.majorTicks(); ++i) texts << scaleLabelText(250.0 * i / gauge.majorTicks(), 0);
+        texts = majorLabelTexts(250.0, gauge.majorTicks(), 0);
         auto extentsAt = [&](int px) {
             const QFontMetricsF m(fontAt(px));
             std::vector<double> e;

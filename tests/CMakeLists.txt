@@ -70,6 +70,7 @@ add_executable(tst_LinearGauge
     tst_LinearGauge.cpp
     $<TARGET_OBJECTS:LinearGaugeScale>
     $<TARGET_OBJECTS:FontScale>
+    $<TARGET_OBJECTS:NumberFormat>
 )
 target_link_libraries(tst_LinearGauge
     PRIVATE

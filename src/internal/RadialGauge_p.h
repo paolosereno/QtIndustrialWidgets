@@ -96,11 +96,13 @@ public:
     struct MinimumMetrics {
         internal::TextMetricsTable bold;  // Labels and value: the widget font, bold
         internal::TextMetricsTable plain; // Unit: the widget font, not bold
-        std::vector<QString> labelTexts;  // scaleLabelText() of each major tick
+        std::vector<QString> labelTexts;  // majorLabelTexts(): the label of each major tick
         QString minText;                  // formatFixed() of the range ends, for the width of the value
         QString maxText;
     };
     MinimumMetrics minimumMetrics(const QFont &widgetFont) const;
+    // #208: the texts of the major labels, from the minimum to the maximum, with the decimals of the whole scale
+    QStringList majorLabelTexts() const;
     // With \a metrics (minimumSizeHint()), the texts are measured through it; without (paint), directly
     ScaleLayout scaleLayout(double width, double height, const QFont &widgetFont, double logicalDpi,
                             MinimumMetrics *metrics = nullptr) const;

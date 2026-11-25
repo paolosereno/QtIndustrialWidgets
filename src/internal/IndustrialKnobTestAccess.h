@@ -54,7 +54,7 @@ public:
     static void setAccessibleObserver(IndustrialKnob &knob, std::function<void(QAccessibleEvent *)> observer) {
         knob.d_ptr->m_accessibleObserver = std::move(observer);
     }
-    // Label texts formatted in the last computation of minimumSizeHint() (labelText() calls)
+    // Label texts formatted in the last computation of minimumSizeHint() (by labelTexts())
     static quint64 lastMinimumLabelFormats(const IndustrialKnob &knob) {
         return knob.d_ptr->m_lastMinimumLabelFormats;
     }

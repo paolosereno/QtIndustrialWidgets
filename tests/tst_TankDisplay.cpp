@@ -1224,10 +1224,14 @@ void tst_TankDisplay::minimumSizeHintFollowsTheConfiguration()
         < internal::kTankMarkerSize * 0.5 + internal::kTankBeyondGap + internal::kTankBeyondSign;
     check("limits enabled", [&] { QVERIFY(t->setLimits(10.0, 20.0, 80.0, 90.0)); }, true, endsGrow);
     check("wider labels", [&] { t->setRange(0.0, 100000.0); }, true, false);
-    // Labels with decimals: precision 0 rounds them to whole numbers (scaleLabelText())
-    t->setRange(0.0, 1.0);
+    // Thirds of 0..100: precision 0 writes them as whole numbers (adjacent labels distinct), precision 1 with one
+    // decimal (#208)
+    const int ticks = t->majorTicks();
+    t->setRange(0.0, 100.0);
+    t->setMajorTicks(3);
     t->setPrecision(0);
     check("decimals", [&] { t->setPrecision(1); }, true, false);
+    t->setMajorTicks(ticks);
     t->setRange(0.0, 100000.0);
     check("larger font", [&] { t->setFont(FontTest::doubledFont()); }, true, true);
     check("horizontal cylinder", [&] { t->setShape(TankShape::HorizontalCylinder); }, true, false);
