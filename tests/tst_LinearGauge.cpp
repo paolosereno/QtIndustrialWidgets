@@ -6,6 +6,7 @@
 #include <QtWidgets/QApplication>
 #include <QtIndustrialWidgets/LinearGauge.h>
 
+#include "ScaleLabelCases.h"
 #include "FontTestUtils.h"
 #include "HatchTestUtils.h"
 #include "ReadoutTestUtils.h"
@@ -58,6 +59,8 @@ private Q_SLOTS:
     void scaleLabelMinGap();
     void scaleLabelsReadable_data();
     void scaleLabelsReadable();
+    void scaleLabelsFollowThePrecision_data();
+    void scaleLabelsFollowThePrecision();
     void verticalEndLabelsCentredOnTicks_data();
     void verticalEndLabelsCentredOnTicks();
     void verticalScaleRoom();
@@ -669,6 +672,82 @@ void tst_LinearGauge::scaleLabelMinGap()
     QCOMPARE(internal::scaleLabelMinGap(8.0), 4.0);
     QCOMPARE(internal::scaleLabelMinGap(6.0), 4.0);
     QCOMPARE(internal::scaleLabelMinGap(std::numeric_limits<double>::quiet_NaN()), 4.0);
+}
+
+void tst_LinearGauge::scaleLabelsFollowThePrecision_data()
+{
+    ScaleLabelCases::addRows();
+}
+
+// #208: the labels drawn are those of the precision, with more decimals only to keep adjacent labels distinct. A
+// horizontal gauge wide enough to draw every label: the length of each label run along the scale is that of its
+// expected text drawn alone (four sub-pixel phases), one device pixel either way for the anti-aliased edges
+void tst_LinearGauge::scaleLabelsFollowThePrecision()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, majorTicks);
+    QFETCH(int, precision);
+    QFETCH(QStringList, expected);
+
+    LinearGauge gauge;
+    gauge.setOrientation(Qt::Horizontal);
+    gauge.setRange(minimum, maximum);
+    gauge.setValue((minimum + maximum) * 0.5);
+    gauge.setPrecision(precision);
+    gauge.setMajorTicks(majorTicks);
+    gauge.setMinorTicks(0);
+    gauge.setDigitalDisplayVisible(false);
+    gauge.setTextColor(QColor::fromRgb(kLabelColor));
+    gauge.setScaleColor(QColor::fromRgb(kTickColor));
+    const QSize size(900, 100);
+    gauge.resize(size);
+    const QImage img = gauge.grab().toImage();
+    const qreal dpr = img.devicePixelRatio();
+
+    auto fontAt = [&](int px) {
+        QFont f = gauge.font();
+        f.setPixelSize(px);
+        f.setBold(true);
+        return f;
+    };
+    const double scale = internal::fontScale(gauge.font(), QApplication::font());
+    const int fontPx = internal::chooseLabelPixelSize(
+        internal::scalePixelSize(internal::linearGaugeBaseLabelPixelSize(false, size.height()), scale),
+        internal::scalePixelSize(8, scale),
+        internal::linearGaugeScaleLength(false, size.width(), size.height(), gauge.isThermometerMode(), gauge.digitalDisplayVisible()),
+        [&](int px) {
+            const QFontMetricsF m(fontAt(px));
+            std::vector<double> e;
+            for (const QString &text : expected) e.push_back(m.boundingRect(text).width());
+            return e;
+        },
+        [&](int px) { return internal::scaleLabelMinGap(QFontMetricsF(fontAt(px)).height()); });
+    const QFont font = fontAt(fontPx);
+    const QRgb background = labelBackground(img);
+    QVector<LabelInk> ink;
+    double innerGap = 0.0;
+    for (const QString &text : expected) {
+        ink.append(referenceInk(text, font, Qt::Horizontal, dpr, background));
+        innerGap = std::max(innerGap, ink.last().maxInnerGap);
+    }
+    // Two drawn labels are at least scaleLabelMinGap() apart. The gaps inside a label are those of the label drawn
+    // alone (the glyph boxes without fonts), or, with glyphs at another sub-pixel position, below half of it
+    const double labelGap = internal::scaleLabelMinGap(QFontMetricsF(font).height());
+    const QVector<Run> labels =
+        groupIntoLabels(runsAlong(img, Qt::Horizontal, -1.0, isLabelPixel), std::max(innerGap + 0.5, labelGap * 0.5));
+    QStringList runs;
+    for (const Run &r : labels) runs << QStringLiteral("%1").arg(r.end - r.start, 0, 'f', 2);
+    QVERIFY2(labels.size() == expected.size(), qPrintable(QStringLiteral("runs %1").arg(runs.join(QLatin1Char(' ')))));
+    // 1 device pixel, compared in whole device pixels (the run lengths are device pixels / dpr)
+    const auto device = [dpr](double logical) { return std::lround(logical * dpr); };
+    for (int i = 0; i < labels.size(); ++i) {
+        const double length = labels[i].end - labels[i].start;
+        QVERIFY2(device(length) >= device(ink[i].minLength) - 1 && device(length) <= device(ink[i].maxLength) + 1,
+                 qPrintable(QStringLiteral("label %1 '%2': run %3 px, '%2' alone %4-%5 px")
+                                .arg(i).arg(expected[i]).arg(length, 0, 'f', 2)
+                                .arg(ink[i].minLength, 0, 'f', 2).arg(ink[i].maxLength, 0, 'f', 2)));
+    }
 }
 
 void tst_LinearGauge::scaleLabelsReadable_data()

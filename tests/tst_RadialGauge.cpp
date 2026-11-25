@@ -5,6 +5,7 @@
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/RadialGauge.h>
 
+#include "ScaleLabelCases.h"
 #include "FontTestUtils.h"
 #include "ScreenChangeTestUtils.h"
 #include "LabelInkTestUtils.h"
@@ -324,6 +325,8 @@ private Q_SLOTS:
     void screenChangeOfAVisibleRadialGauge_data();
     void screenChangeOfAVisibleRadialGauge();
     void textSizeIgnoresWidgetFontSize();
+    void scaleLabelsFollowThePrecision_data();
+    void scaleLabelsFollowThePrecision();
     void fontChangeRefreshesCache();
     void labelsFollowWidgetFont();
     void initTestCase();
@@ -2022,6 +2025,35 @@ void tst_RadialGauge::screenChangeOfAVisibleRadialGauge()
     if (dpi != 96) {
         QVERIFY2(changed > 0, "the minimum is the same on both screens for every configuration");
     }
+}
+
+void tst_RadialGauge::scaleLabelsFollowThePrecision_data()
+{
+    ScaleLabelCases::addRows();
+}
+
+// #208: the scale labels have the decimals of the precision, as few as write every tick exactly, more only to keep
+// adjacent labels distinct. The texts minimumSizeHint() measures as label boxes, which paintEvent() draws (#184)
+void tst_RadialGauge::scaleLabelsFollowThePrecision()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, majorTicks);
+    QFETCH(int, precision);
+    QFETCH(QStringList, expected);
+    RadialGauge gauge;
+    gauge.setRange(minimum, maximum);
+    gauge.setMajorTicks(majorTicks);
+    gauge.setPrecision(precision);
+    (void)gauge.minimumSizeHint();
+    const auto logs = internal::RadialGaugeTestAccess::lastMinimumMeasures(gauge);
+    QVERIFY(!logs.empty());
+    std::set<QString> measured;
+    for (const auto &m : logs.at(0)) {
+        if (m.kind == internal::TextMetricsTable::Kind::BoundingRect) measured.insert(m.text);
+    }
+    const std::set<QString> labels(expected.cbegin(), expected.cend());
+    QCOMPARE(QStringList(measured.cbegin(), measured.cend()), QStringList(labels.cbegin(), labels.cend()));
 }
 
 QTEST_MAIN(tst_RadialGauge)

@@ -12,7 +12,9 @@
 #include <internal/M4Decimator.h>
 #include "StripChartTestUtils.h"
 #include "TestDateTime.h"
+#include <QtCore/QRegularExpression>
 #include <QtGui/QPixmap>
+#include <QtGui/QPainter>
 #include <QtGui/QImage>
 
 #include <cmath>
@@ -110,6 +112,12 @@ private Q_SLOTS:
     void streamingDoesNotRebuildDecimationStream();
     void yAxisLabelsHaveNoNegativeZero_data();
     void yAxisLabelsHaveNoNegativeZero();
+    void valueAxisLabelsAreRound_data();
+    void valueAxisLabelsAreRound();
+    void valueAxisFewerDivisionsWhenShort();
+    void valueAxisFrameLinesAtTheEdges();
+    void valueAxisDrawnLabelsAreTheTicks_data();
+    void valueAxisDrawnLabelsAreTheTicks();
     void legendHasNoNegativeZero_data();
     void legendHasNoNegativeZero();
     void absoluteSecondsLabelsHaveNoNegativeZero();
@@ -2951,31 +2959,234 @@ void tst_StripChart::streamingDoesNotRebuildDecimationStream()
 void tst_StripChart::yAxisLabelsHaveNoNegativeZero_data()
 {
     QTest::addColumn<int>("divisions");
-    for (int d : {5, 6, 8, 10}) {
-        QTest::addRow("%d divisions", d) << d;
+    QTest::addColumn<QStringList>("expected");
+    const QStringList fifths = {QStringLiteral("-0.10"), QStringLiteral("-0.05"), QStringLiteral("0.00"),
+                                QStringLiteral("0.05"), QStringLiteral("0.10")};
+    for (int d : {5, 6, 8}) {
+        QTest::addRow("%d divisions", d) << d << fifths; // The smallest 1-2-5 step >= 0.2 / d is 0.05
     }
+    QTest::addRow("10 divisions") << 10
+                                  << QStringList{QStringLiteral("-0.10"), QStringLiteral("-0.08"), QStringLiteral("-0.06"),
+                                                 QStringLiteral("-0.04"), QStringLiteral("-0.02"), QStringLiteral("0.00"),
+                                                 QStringLiteral("0.02"), QStringLiteral("0.04"), QStringLiteral("0.06"),
+                                                 QStringLiteral("0.08"), QStringLiteral("0.10")};
 }
 
-// #46: with the range -0.1..0.1, the ticks closest to zero (e.g. -0.0333 with 6 divisions) are
-// labelled "0.0", never "-0.0"
+// #46: with the range -0.1..0.1, the ticks closest to zero are labelled "0.00", never "-0.00". The labels are those of
+// the round value axis (#208)
 void tst_StripChart::yAxisLabelsHaveNoNegativeZero()
 {
     QFETCH(int, divisions);
+    QFETCH(QStringList, expected);
     auto chart = makeChart(800, 400, -0.1, 0.1);
     chart->setHorizontalDivisions(divisions);
     renderToImage(*chart);
     const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
 
-    QCOMPARE(static_cast<int>(frame.yTicks.size()), divisions + 1);
-    const YTickDiagnostic *closest = nullptr;
+    QStringList labels;
     for (const auto &tick : frame.yTicks) {
-        QVERIFY2(tick.label != QStringLiteral("-0.0") && tick.label != QStringLiteral("-0"),
+        QVERIFY2(!tick.label.startsWith(QStringLiteral("-0")) || tick.label.contains(QRegularExpression(QStringLiteral("[1-9]"))),
                  qPrintable(QStringLiteral("tick %1 labelled '%2'").arg(tick.value).arg(tick.label)));
-        if (!closest || std::abs(tick.value) < std::abs(closest->value)) {
-            closest = &tick;
+        labels << tick.label;
+    }
+    QCOMPARE(labels, expected);
+}
+
+void tst_StripChart::valueAxisLabelsAreRound_data()
+{
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::addColumn<int>("divisions");
+    QTest::addColumn<QStringList>("expected");
+    const auto list = [](const char *labels) { return QString::fromLatin1(labels).split(QLatin1Char(' ')); };
+    QTest::newRow("0-100, 6 (default)") << 0.0 << 100.0 << 6 << list("0 20 40 60 80 100");
+    QTest::newRow("0-1, 6") << 0.0 << 1.0 << 6 << list("0.0 0.2 0.4 0.6 0.8 1.0");
+    QTest::newRow("0-0.1, 6") << 0.0 << 0.1 << 6 << list("0.00 0.02 0.04 0.06 0.08 0.10");
+    QTest::newRow("0-1000, 6") << 0.0 << 1000.0 << 6 << list("0 200 400 600 800 1000");
+    QTest::newRow("negative -50-0, 6") << -50.0 << 0.0 << 6 << list("-50 -40 -30 -20 -10 0");
+    QTest::newRow("across zero -0.1-0.1, 6") << -0.1 << 0.1 << 6 << list("-0.10 -0.05 0.00 0.05 0.10");
+    QTest::newRow("off the step -3.7-12.1, 6") << -3.7 << 12.1 << 6 << list("0 5 10");
+    QTest::newRow("0-100, 20") << 0.0 << 100.0 << 20
+                               << list("0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100");
+    QTest::newRow("0-100, 3") << 0.0 << 100.0 << 3 << list("0 50 100");
+}
+
+// #208: the value axis has round labels, with the decimals of the step: at most horizontalDivisions divisions, on the
+// smallest 1-2-5 step >= span / horizontalDivisions; each label at the height of its value
+void tst_StripChart::valueAxisLabelsAreRound()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, divisions);
+    QFETCH(QStringList, expected);
+    auto chart = makeChart(800, 600, minimum, maximum);
+    chart->setHorizontalDivisions(divisions);
+    renderToImage(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
+    const QRectF plot = internal::StripChartTestAccess::plotArea(*chart);
+
+    QStringList labels;
+    for (const auto &tick : frame.yTicks) {
+        labels << tick.label;
+        const double y = plot.bottom() - (tick.value - minimum) / (maximum - minimum) * plot.height();
+        QVERIFY2(std::abs(tick.yPos - y) < 1e-6, qPrintable(tick.label));
+    }
+    QCOMPARE(labels, expected);
+    QCOMPARE(QSet<QString>(labels.cbegin(), labels.cend()).size(), labels.size());
+}
+
+// #208: horizontalDivisions is a hint: with a plot too short for the labels of every division, the axis has fewer
+void tst_StripChart::valueAxisFewerDivisionsWhenShort()
+{
+    auto tall = makeChart(800, 600, 0.0, 100.0);
+    tall->setHorizontalDivisions(20);
+    renderToImage(*tall);
+    QCOMPARE(static_cast<int>(internal::StripChartTestAccess::lastFrame(*tall).yTicks.size()), 21);
+
+    // Plot of 74 px, labels 1.4 x 9 px high: at most 5 divisions, so the step is 20
+    auto shortChart = makeChart(800, 120, 0.0, 100.0);
+    shortChart->setHorizontalDivisions(20);
+    renderToImage(*shortChart);
+    QCOMPARE(internal::StripChartTestAccess::plotArea(*shortChart).height(), 74.0);
+    QStringList labels;
+    for (const auto &tick : internal::StripChartTestAccess::lastFrame(*shortChart).yTicks) labels << tick.label;
+    QCOMPARE(labels, QString::fromLatin1("0 20 40 60 80 100").split(QLatin1Char(' ')));
+}
+
+namespace {
+
+// Rows of the plot (device) with a grid pixel: a pixel that differs from the same chart with the grid hidden
+std::set<int> gridRows(const QImage &withGrid, const QImage &withoutGrid, const QRect &plotDev)
+{
+    std::set<int> rows;
+    for (int y = plotDev.top(); y <= plotDev.bottom(); ++y) {
+        for (int x = plotDev.left(); x <= plotDev.right(); ++x) {
+            if (withGrid.pixel(x, y) != withoutGrid.pixel(x, y)) {
+                rows.insert(y);
+                break;
+            }
         }
     }
-    QCOMPARE(closest->label, QStringLiteral("0.0"));
+    return rows;
+}
+
+} // namespace
+
+// #208: with a range off the step, the lines at the minimum and the maximum stay as a frame, without a label
+void tst_StripChart::valueAxisFrameLinesAtTheEdges()
+{
+    auto chart = makeChart(800, 600, -3.7, 12.1);
+    chart->setVerticalDivisions(2);
+    const QImage withGrid = renderToImage(*chart);
+    const QRectF plot = internal::StripChartTestAccess::plotArea(*chart);
+    const auto &frame = internal::StripChartTestAccess::lastFrame(*chart);
+    for (const auto &tick : frame.yTicks) {
+        QVERIFY2(tick.value > -3.7 && tick.value < 12.1, qPrintable(tick.label)); // No label at an edge
+    }
+    chart->setGridVisible(false);
+    const QImage withoutGrid = renderToImage(*chart);
+    const double dpr = withGrid.devicePixelRatio();
+    // Inside the plot, away from the vertical lines at its sides and in the middle
+    const QRect plotDev(static_cast<int>(std::ceil((plot.left() + 20) * dpr)), static_cast<int>(std::floor((plot.top() - 1) * dpr)),
+                        static_cast<int>((plot.width() * 0.5 - 40) * dpr),
+                        static_cast<int>(std::ceil((plot.height() + 2) * dpr)));
+    const std::set<int> rows = gridRows(withGrid, withoutGrid, plotDev);
+    const auto near = [&](double yLogical) {
+        for (int r : rows) {
+            if (std::abs(r / dpr - yLogical) <= 1.0) return true;
+        }
+        return false;
+    };
+    QVERIFY2(near(plot.top()), "no frame line at the maximum");
+    QVERIFY2(near(plot.bottom()), "no frame line at the minimum");
+    for (const auto &tick : frame.yTicks) {
+        QVERIFY2(near(tick.yPos), qPrintable(QStringLiteral("no line at %1").arg(tick.label)));
+    }
+}
+
+void tst_StripChart::valueAxisDrawnLabelsAreTheTicks_data()
+{
+    QTest::addColumn<double>("minimum");
+    QTest::addColumn<double>("maximum");
+    QTest::newRow("0-1") << 0.0 << 1.0;
+    QTest::newRow("0-0.1") << 0.0 << 0.1;
+    QTest::newRow("off the step -3.7-12.1") << -3.7 << 12.1;
+    QTest::newRow("0-1000") << 0.0 << 1000.0;
+}
+
+// #208: the labels drawn at the left of the plot are lastFrame.yTicks, text and position: the ink of each drawn label
+// has the box of its tick label drawn alone (same font, rectangle and alignment), to the device pixel, and there is no
+// other ink in the label column
+void tst_StripChart::valueAxisDrawnLabelsAreTheTicks()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    auto chart = makeChart(800, 600, minimum, maximum);
+    const QImage withGrid = renderToImage(*chart);
+    const auto yTicks = internal::StripChartTestAccess::lastFrame(*chart).yTicks;
+    const QRectF plot = internal::StripChartTestAccess::plotArea(*chart);
+    chart->setGridVisible(false);
+    const QImage withoutGrid = renderToImage(*chart);
+    const double dpr = withGrid.devicePixelRatio();
+    QVERIFY(!yTicks.empty());
+
+    // The label column: left of the plot screen, which starts 4 px before the plot
+    const int columnRight = static_cast<int>(std::floor((plot.left() - 5.0) * dpr));
+    QImage drawn(withGrid.size(), QImage::Format_ARGB32_Premultiplied);
+    drawn.fill(Qt::transparent);
+    for (int y = 0; y < withGrid.height(); ++y) {
+        for (int x = 0; x < columnRight; ++x) {
+            if (withGrid.pixel(x, y) != withoutGrid.pixel(x, y)) drawn.setPixel(x, y, qRgba(255, 255, 255, 255));
+        }
+    }
+
+    // The same labels drawn alone, as renderStaticGrid() draws them
+    QImage alone(withGrid.size(), QImage::Format_ARGB32_Premultiplied);
+    alone.setDevicePixelRatio(dpr);
+    alone.fill(Qt::transparent);
+    QFont font = chart->font();
+    font.setPixelSize(9);
+    {
+        QPainter p(&alone);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.setFont(font);
+        p.setPen(Qt::white);
+        for (const auto &tick : yTicks) {
+            p.drawText(QRectF(0.0, tick.yPos - 9 * 0.7, plot.left() - 6.0, 9 * 1.4), Qt::AlignRight | Qt::AlignVCenter, tick.label);
+        }
+    }
+    // Compare the boxes of the ink, label by label: rows grouped into bands
+    const auto bands = [&](const QImage &img) {
+        std::vector<QRect> out;
+        QRect current;
+        for (int y = 0; y < img.height(); ++y) {
+            QRect row;
+            for (int x = 0; x < columnRight; ++x) {
+                if (qAlpha(img.pixel(x, y)) > 0) row |= QRect(x, y, 1, 1);
+            }
+            if (row.isNull()) {
+                if (!current.isNull()) out.push_back(current);
+                current = QRect();
+            } else {
+                current |= row;
+            }
+        }
+        if (!current.isNull()) out.push_back(current);
+        return out;
+    };
+    const std::vector<QRect> drawnBands = bands(drawn);
+    const std::vector<QRect> aloneBands = bands(alone);
+    QCOMPARE(static_cast<int>(aloneBands.size()), static_cast<int>(yTicks.size()));
+    QCOMPARE(drawnBands.size(), aloneBands.size());
+    for (std::size_t i = 0; i < drawnBands.size(); ++i) {
+        const QRect a = drawnBands[i];
+        const QRect b = aloneBands[i];
+        const QString what = QStringLiteral("label %1: drawn %2,%3 %4x%5, alone %6,%7 %8x%9").arg(i)
+                                 .arg(a.x()).arg(a.y()).arg(a.width()).arg(a.height())
+                                 .arg(b.x()).arg(b.y()).arg(b.width()).arg(b.height());
+        QVERIFY2(a == b, qPrintable(what));
+    }
 }
 
 void tst_StripChart::legendHasNoNegativeZero_data()

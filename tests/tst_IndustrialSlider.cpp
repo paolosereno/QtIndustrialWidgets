@@ -9,6 +9,8 @@
 #include <QtTest/QtTest>
 #include <QtIndustrialWidgets/IndustrialSlider.h>
 
+#include "ScaleLabelCases.h"
+#include "TextRecorder.h"
 #include "internal/FontScale.h"
 #include "internal/IndustrialSliderLayout.h"
 #include "internal/IndustrialSliderTestAccess.h"
@@ -38,6 +40,8 @@ class tst_IndustrialSlider : public QObject
 
 private Q_SLOTS:
     void defaults();
+    void scaleLabelsFollowThePrecision_data();
+    void scaleLabelsFollowThePrecision();
     void setpointIsClampedAndFinite();
     void rangeChangeClampsTheSetpoint();
     void feedbackStates_data();
@@ -1134,6 +1138,30 @@ void tst_IndustrialSlider::nonFiniteInputAndExtremeSizes()
     setVertical(s, false);
     (void)render(s);
     QCOMPARE(s.feedbackState(), ValueState::Overrange);
+}
+
+void tst_IndustrialSlider::scaleLabelsFollowThePrecision_data()
+{
+    ScaleLabelCases::addRows();
+}
+
+// #208: the scale labels have the decimals of the precision, as few as write every tick exactly, more only to keep
+// adjacent labels distinct: the texts drawn, read from the painter
+void tst_IndustrialSlider::scaleLabelsFollowThePrecision()
+{
+    QFETCH(double, minimum);
+    QFETCH(double, maximum);
+    QFETCH(int, majorTicks);
+    QFETCH(int, precision);
+    QFETCH(QStringList, expected);
+    IndustrialSlider w;
+    w.setRange(minimum, maximum);
+    w.setMajorTicks(majorTicks);
+    w.setPrecision(precision);
+    w.resize(500, 700); // Every label drawn: nothing thinned out
+    const QStringList drawn = TextRecorder::drawnTexts(w);
+    QVERIFY2(TextRecorder::containsRun(drawn, expected),
+             qPrintable(QStringLiteral("drawn: %1").arg(drawn.join(QStringLiteral(" | ")))));
 }
 
 QTEST_MAIN(tst_IndustrialSlider)
