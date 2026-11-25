@@ -310,6 +310,9 @@ public Q_SLOTS:
      * step not below (maximum - minimum) / \a divisions, and fewer when the plot is too short for a label per
      * division. The lines at the minimum and the maximum frame the plot, with a label only when they fall on the
      * step. The vertical divisions (setVerticalDivisions()) are not affected.
+     *
+     * For example, on -30 to 160 (a span of 190): 6 divisions give a step of 50 (190 / 6 = 31.7, labels 0, 50, 100
+     * and 150, with the frame lines at -30 and 160), and 10 divisions a step of 20 (190 / 10 = 19, labels -20 to 160).
      */
     void setHorizontalDivisions(int divisions);
     /** \brief Sets the vertical grid line divisions count. */
