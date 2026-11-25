@@ -130,7 +130,9 @@ public:
     [[nodiscard]] QColor backgroundColor() const;
     /** \brief Returns the outer chassis bezel frame color. */
     [[nodiscard]] QColor bezelColor() const;
-    /** \brief Returns the number of horizontal grid divisions. */
+    /**
+     * \brief Returns the hint for the divisions of the value axis (see setHorizontalDivisions()).
+     */
     [[nodiscard]] int horizontalDivisions() const;
     /** \brief Returns the number of vertical grid divisions. */
     [[nodiscard]] int verticalDivisions() const;
@@ -301,7 +303,14 @@ public Q_SLOTS:
     void setBackgroundColor(const QColor &color);
     /** \brief Sets the outer chassis bezel color. */
     void setBezelColor(const QColor &color);
-    /** \brief Sets the horizontal grid line divisions count. */
+    /**
+     * \brief Sets the hint for the divisions of the value axis (2 to 20, default 6).
+     *
+     * The value axis has its lines and labels on a 1-2-5 step: at most \a divisions divisions, on the smallest round
+     * step not below (maximum - minimum) / \a divisions, and fewer when the plot is too short for a label per
+     * division. The lines at the minimum and the maximum frame the plot, with a label only when they fall on the
+     * step. The vertical divisions (setVerticalDivisions()) are not affected.
+     */
     void setHorizontalDivisions(int divisions);
     /** \brief Sets the vertical grid line divisions count. */
     void setVerticalDivisions(int divisions);

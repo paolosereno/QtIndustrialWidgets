@@ -11,6 +11,17 @@ One section per widget: what it shows, its main properties and how it is driven.
 [gallery_images.md](gallery_images.md)). The colour properties of each widget are listed in [theming.md](theming.md);
 the complete API is in the class documentation.
 
+**Scale labels** (#208), the same for `RadialGauge`, `LinearGauge`, `IndustrialKnob`, `TankDisplay` and
+`IndustrialSlider`: all the labels of a scale have the same decimals, chosen from `precision`:
+- the fewest decimals, up to `precision`, that write every tick exactly (0–100 in 10 divisions: `0 10 … 100` at any
+  precision);
+- otherwise `precision` itself (0–0.5 in 4 divisions at precision 2: `0.00 0.13 0.25 0.38 0.50`);
+- when two adjacent labels would be equal at `precision`, more decimals: the fewest, up to 6, that write every tick
+  exactly (0–1 in 4 divisions at precision 0: `0.00 0.25 0.50 0.75 1.00`), or else the fewest that make the labels
+  distinct (thirds of 0–1 at precision 0: `0.0 0.3 0.7 1.0`), at most 12.
+
+No label shows a negative zero. `IndustrialKnob` in `Discrete` mode labels its positions 1…N.
+
 **Readout of the value states** (#151), the same for `RadialGauge`, `LinearGauge` and `CircularBargraph` (#167):
 - an invalid (NaN) input reads `---`;
 - an input outside the range reads the input itself, or `>max` / `<min` for ±Inf, after a triangle pointing up or
@@ -416,6 +427,10 @@ Live, scrolling multi-channel chart for acquisition data (`qiw::StripChart`). Gu
   dropout stays visible.
 - **Gaps and dropouts**: a non-finite value breaks the trace, and so does a time gap larger than `gapThreshold`
   (default: 4 × an exponential moving average of the sampling interval).
+- **Value axis** (#208): lines and labels on a 1-2-5 step, with the decimals of the step (0–1: `0.0 0.2 … 1.0`).
+  `horizontalDivisions` is a hint: at most that many divisions, on the smallest round step not below
+  span / `horizontalDivisions`, and fewer when the plot is too short for a label per division. The lines at the
+  minimum and the maximum frame the plot and have a label only when they fall on the step.
 - **Autoscale**: optional; the range grows at once to include new values and shrinks only after 30 consecutive
   recomputations in which the data spans less than half of it.
 - **Channels**: independent channels with name, colour, pen width and visibility, and a legend (`legendVisible`).

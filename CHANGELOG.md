@@ -42,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A drag of `IndustrialKnob` and `IndustrialSlider` gives values on the step** (#244): the nearest of
   `minimum + k·step` or an end of the interval allowed, as the keys do, instead of the unrounded pointer position
   (63.829… committed while the readout showed 64). See [Controls](docs/widgets.md#controls).
+- **Scale labels with the same decimals over the whole scale** (#208): `RadialGauge`, `LinearGauge`, `IndustrialKnob`,
+  `TankDisplay` and `IndustrialSlider` write them with `precision` decimals or fewer, more only to keep adjacent labels
+  distinct (0–1 at precision 2: `0.00 0.25 … 1.00`, was `0 0.3 0.5 0.8 1`). Labels and minimum sizes can be wider. See
+  [Widgets](docs/widgets.md#widgets).
+- **`StripChart` value axis on a round step** (#208): labels on a 1-2-5 step with the decimals of the step (0–100:
+  `0 20 … 100`, was `0 16.7 33.3 …`); `horizontalDivisions` is now a hint, the most divisions. See
+  [StripChart](docs/widgets.md#stripchart).
 
 ### Fixed
 - **A drag that a disable interrupts no longer stays running** (#243): on a control without focus, a disable left the
