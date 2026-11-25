@@ -178,6 +178,9 @@ public:
 
     QPixmap m_cachePixmap;
     bool m_cacheDirty{true};
+    // #208: the value axis of the static grid, the round ticks with their labels and rows, computed with the grid in
+    // renderStaticGrid() and recorded as lastFrame.yTicks
+    std::vector<YTickDiagnostic> m_valueAxisTicks;
     double m_cachedDpr{1.0};
 
     void invalidateGeometry() {

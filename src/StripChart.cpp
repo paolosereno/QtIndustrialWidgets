@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/StripChart.h>
 
+#include "internal/AnalysisChartView.h"
 #include "internal/FontScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/StripChart_p.h"
@@ -1000,13 +1001,30 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
     painter.setBrush(d_ptr->m_backgroundColor);
     painter.drawRoundedRect(screenRect, 4.0, 4.0);
 
+    // #51 rule (b): the label font follows the widget font size
+    const int fontSize = internal::scalePixelSize(9, internal::fontScale(this->font(), QApplication::font()));
+
+    // #208: the value axis on a round 1-2-5 step, at most horizontalDivisions divisions and fewer when the plot is
+    // too short for a label per division (1.4 font sizes, the height of the label box). The divisions are counted
+    // here as an integer, so that valueAxisTicks() gets them exactly
+    d_ptr->m_valueAxisTicks.clear();
+    {
+        const double labelSpacing = fontSize * 1.4;
+        const int fitting = plotRect.height() > 0.0 ? static_cast<int>(std::floor(plotRect.height() / labelSpacing)) : 0;
+        const int divisions = std::max(1, std::min(d_ptr->m_horizontalDivisions, fitting));
+        const double yMin = d_ptr->m_yMinimum;
+        const double yMax = d_ptr->m_yMaximum;
+        for (const internal::AxisTick &tick : internal::valueAxisTicks(yMin, yMax, divisions, 1.0)) {
+            const double y = plotRect.bottom() - (tick.position - yMin) / (yMax - yMin) * plotRect.height();
+            d_ptr->m_valueAxisTicks.push_back({tick.position, y, tick.label});
+        }
+    }
+
     // 3. Grid Reticle
     if (d_ptr->m_gridVisible && plotRect.width() > 10.0 && plotRect.height() > 10.0) {
         QPen fineGridPen(d_ptr->m_gridColor, 1.0, Qt::DotLine);
         QPen solidGridPen(d_ptr->m_gridColor.lighter(130), 1.0, Qt::SolidLine);
 
-        // #51 rule (b): the label font follows the widget font size
-        const int fontSize = internal::scalePixelSize(9, internal::fontScale(this->font(), QApplication::font()));
         QFont font = this->font(); // #51: the widget font, not the application font of the pixmap painter
         font.setPixelSize(fontSize);
         painter.setFont(font);
@@ -1039,21 +1057,25 @@ void StripChart::renderStaticGrid(const QSize &targetSize)
             }
         }
 
-        // Horizontal division lines & Y-axis labels
-        for (int i = 0; i <= d_ptr->m_horizontalDivisions; ++i) {
-            double frac = static_cast<double>(i) / d_ptr->m_horizontalDivisions;
-            double y = plotRect.bottom() - frac * plotRect.height();
-            double val = d_ptr->m_yMinimum + frac * (d_ptr->m_yMaximum - d_ptr->m_yMinimum);
-
-            bool isZero = qFuzzyIsNull(val);
+        // Horizontal lines: the frame at the minimum and the maximum (#208: without a label unless on the step), and
+        // a line and a label on each round tick, the zero line emphasised
+        const auto onTick = [&](double y) {
+            return std::any_of(d_ptr->m_valueAxisTicks.cbegin(), d_ptr->m_valueAxisTicks.cend(),
+                               [y](const YTickDiagnostic &tick) { return std::abs(tick.yPos - y) < 0.5; });
+        };
+        painter.setPen(fineGridPen);
+        for (const double y : {plotRect.bottom(), plotRect.top()}) {
+            if (!onTick(y)) painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
+        }
+        for (const YTickDiagnostic &tick : d_ptr->m_valueAxisTicks) {
+            const bool isZero = qFuzzyIsNull(tick.value);
             painter.setPen(isZero ? QPen(d_ptr->m_gridColor.lighter(170), 1.2) : fineGridPen);
-            painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
+            painter.drawLine(QPointF(plotRect.left(), tick.yPos), QPointF(plotRect.right(), tick.yPos));
 
             // Y label on the left
-            QString labelStr = internal::formatFixed(val, (std::abs(val) >= 100.0) ? 0 : 1);
-            QRectF labelRect(0.0, y - fontSize * 0.7, plotRect.left() - 6.0, fontSize * 1.4);
+            QRectF labelRect(0.0, tick.yPos - fontSize * 0.7, plotRect.left() - 6.0, fontSize * 1.4);
             painter.setPen(d_ptr->m_textColor);
-            painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, labelStr);
+            painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, tick.label);
         }
     }
 
@@ -1169,14 +1191,7 @@ void StripChart::paintEvent(QPaintEvent *)
             }
         }
 
-        d_ptr->lastFrame.yTicks.reserve(d_ptr->m_horizontalDivisions + 1);
-        for (int i = 0; i <= d_ptr->m_horizontalDivisions; ++i) {
-            double frac = static_cast<double>(i) / d_ptr->m_horizontalDivisions;
-            double y = plotRect.bottom() - frac * plotRect.height();
-            double val = d_ptr->m_yMinimum + frac * (d_ptr->m_yMaximum - d_ptr->m_yMinimum);
-            QString labelStr = internal::formatFixed(val, (std::abs(val) >= 100.0) ? 0 : 1);
-            d_ptr->lastFrame.yTicks.push_back({val, y, labelStr});
-        }
+        d_ptr->lastFrame.yTicks = d_ptr->m_valueAxisTicks; // #208: the ticks of the static grid
     }
 
     // Dynamic layer for Absolute Time grid lines & labels
