@@ -854,93 +854,35 @@ void tst_RadialGauge::valueReadoutHasNoNegativeZero()
                             .arg(-magnitude).arg(magnitude).arg(negative.size()).arg(positive.size()).arg(precision)));
 }
 
-// Smallest and largest device-pixel width of the ink of \a text drawn as RadialGauge draws a scale label (#208): in
-// a pixmap filled with transparent, at the device pixel ratio, with drawText() in its boundingRect(), AlignCenter |
-// TextDontClip, over the 64 x 64 sub-pixel positions of the box (the raster engine works at 1/64 px, and the glyphs
-// fall on other pixels at another position)
-static std::pair<int, int> labelInkWidthRange(const QString &text, const QFont &font, qreal dpr)
-{
-    const QRectF bounds = QFontMetricsF(font).boundingRect(text);
-    const QSize logical(static_cast<int>(std::ceil(bounds.width())) + 40, static_cast<int>(std::ceil(bounds.height())) + 40);
-    int smallest = std::numeric_limits<int>::max();
-    int largest = 0;
-    QPixmap pixmap((QSizeF(logical) * dpr).toSize());
-    pixmap.setDevicePixelRatio(dpr);
-    for (int sy = 0; sy < 64; ++sy) {
-        for (int sx = 0; sx < 64; ++sx) {
-            pixmap.fill(Qt::transparent);
-            {
-                QPainter p(&pixmap);
-                p.setRenderHint(QPainter::Antialiasing, true);
-                p.setRenderHint(QPainter::TextAntialiasing, true);
-                p.setFont(font);
-                p.setPen(Qt::white);
-                const QRectF box(20.0 + sx / (64.0 * dpr), 20.0 + sy / (64.0 * dpr), bounds.width(), bounds.height());
-                p.drawText(box, Qt::AlignCenter | Qt::TextDontClip, text);
-            }
-            const QImage img = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
-            int left = img.width();
-            int right = -1;
-            for (int y = 0; y < img.height(); ++y) {
-                const QRgb *row = reinterpret_cast<const QRgb *>(img.constScanLine(y));
-                for (int x = 0; x < img.width(); ++x) {
-                    if (qAlpha(row[x]) != 0) {
-                        left = std::min(left, x);
-                        right = std::max(right, x);
-                    }
-                }
-            }
-            if (right < left) continue;
-            smallest = std::min(smallest, right - left + 1);
-            largest = std::max(largest, right - left + 1);
-        }
-    }
-    return {smallest, largest};
-}
-
-// #46: range -0.1..0.5 with 6 major ticks: tick 1 is -1.4e-17, labelled "0.0" with the 1 decimal that writes
-// every tick exactly (#208). Its label sits at -90 degrees; the label ink within +-15 degrees of it must be as wide
-// as "0.0" drawn as the gauge draws it at some sub-pixel position (labelInkWidthRange(), no slack), and "-0.0" must
-// be wider than that at every position, so that the test sees a minus sign. (Not compared with another label: the
-// ink of "0.1" is narrower than that of "0.0" in some fonts, the system font of macOS among them.)
+// #46: no scale label that is zero starts with '-'. Range -0.1..0.5 with 6 major ticks at precision 1: tick 1 is
+// -1.4e-17, labelled "0.0" with the 1 decimal that writes every tick exactly (#208). The texts are those the gauge
+// measures as label boxes in minimumSizeHint(), the texts of its scale labels (as in scaleLabelsFollowThePrecision)
 void tst_RadialGauge::scaleLabelsHaveNoNegativeZero()
 {
     RadialGauge gauge;
-    configure(gauge, GaugeConfig{300, -0.1, 0.5, 1, -135.0, 270.0});
+    gauge.setRange(-0.1, 0.5);
     gauge.setMajorTicks(6);
-    gauge.setDigitalDisplayVisible(false);
+    gauge.setPrecision(1);
     QVERIFY(-0.1 + 1.0 / 6.0 * 0.6 < 0.0); // The tick is a negative zero
-
-    gauge.setTextColor(Qt::white);
-    const QImage white = renderGauge(gauge);
-    gauge.setTextColor(Qt::red);
-    const QImage red = renderGauge(gauge);
-    const qreal dpr = white.devicePixelRatio();
-    const QPointF centre(white.width() * 0.5, white.height() * 0.5);
-
-    const QVector<QPoint> ink = TextInk::differingPixels(white, red);
-    auto inkInSector = [&](double angleDeg) {
-        QRect box;
-        for (const QPoint &p : ink) {
-            const double a = std::atan2(p.x() + 0.5 - centre.x(), centre.y() - (p.y() + 0.5)) * 180.0 / M_PI;
-            if (std::abs(std::remainder(a - angleDeg, 360.0)) <= 15.0) {
-                box |= QRect(p, QSize(1, 1));
-            }
-        }
-        return box;
-    };
-    QFont labelFont = gauge.font();
-    labelFont.setPixelSize(internal::radialScaleGeometry(std::min(gauge.width(), gauge.height())).labelFontPx);
-    labelFont.setBold(true);
-    const auto zero = labelInkWidthRange(QStringLiteral("0.0"), labelFont, dpr);
-    const auto negativeZero = labelInkWidthRange(QStringLiteral("-0.0"), labelFont, dpr);
-    const QRect tick1 = inkInSector(-90.0);
-    const QString widths = QStringLiteral("label at -1.4e-17 %1 device px, '0.0' %2-%3, '-0.0' %4-%5 (DPR %6)")
-                               .arg(tick1.width()).arg(zero.first).arg(zero.second)
-                               .arg(negativeZero.first).arg(negativeZero.second).arg(dpr);
-    QVERIFY2(negativeZero.first > zero.second, qPrintable(QStringLiteral("the minus is not seen: ") + widths));
-    QVERIFY(!tick1.isEmpty());
-    QVERIFY2(tick1.width() >= zero.first && tick1.width() <= zero.second, qPrintable(widths));
+    (void)gauge.minimumSizeHint();
+    const auto logs = internal::RadialGaugeTestAccess::lastMinimumMeasures(gauge);
+    QVERIFY(!logs.empty());
+    QStringList labels;
+    for (const auto &m : logs.at(0)) {
+        if (m.kind == internal::TextMetricsTable::Kind::BoundingRect && !labels.contains(m.text)) labels << m.text;
+    }
+    int zeros = 0;
+    for (const QString &text : labels) {
+        bool ok = false;
+        const double value = text.toDouble(&ok);
+        QVERIFY2(ok, qPrintable(QStringLiteral("label '%1' is not a number").arg(text)));
+        if (value != 0.0) continue;
+        ++zeros;
+        QVERIFY2(!text.startsWith(QLatin1Char('-')),
+                 qPrintable(QStringLiteral("label '%1' is a negative zero (labels: %2)").arg(text, labels.join(QLatin1Char(' ')))));
+    }
+    QVERIFY2(zeros == 1, qPrintable(QStringLiteral("%1 labels are zero, 1 expected (labels: %2)")
+                                        .arg(zeros).arg(labels.join(QLatin1Char(' ')))));
 }
 
 
