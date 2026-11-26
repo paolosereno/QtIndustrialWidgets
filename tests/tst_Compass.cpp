@@ -1228,11 +1228,18 @@ void tst_Compass::readoutFitsThePodFromMinimumUp()
                                 .arg(ink.top()).arg(ink.bottom() + 1).arg(pod.left(), 0, 'f', 1)
                                 .arg(pod.right(), 0, 'f', 1).arg(pod.top(), 0, 'f', 1).arg(pod.bottom(), 0, 'f', 1)));
         // Centred to within 1 device px: the margins of the ink to the left and right of the pod differ by 2 device px
-        // at most (approved by the maintainer, #226). Qt draws the text on the widget with subpixel antialiasing and
-        // with its glyphs on whole device px; the widget measures the ink on an image, in grey levels
+        // at most (approved by the maintainer, #226). The origin is placed on a whole device px (up to 0.5 px off the
+        // centre), and the ink drawn on the widget can lie up to 0.5 px off the ink measured on an image (Qt draws the
+        // text on the widget with subpixel antialiasing, on the image in grey levels).
+        // With the test font at a fractional DPR, 3 device px (approved by the maintainer, #226): measured on Windows
+        // (Qt 6.6.3, CI probe of #226), for the same origin the widget draws the ink of the test font 1 device px to
+        // the right of the image, with the same width; the origin itself is within 0.5 px
+        const bool testFontAtFractionalDpr =
+            fontName == QLatin1String("test font") && c.devicePixelRatioF() != std::round(c.devicePixelRatioF());
+        const double maxMarginDifference = testFontAtFractionalDpr ? 3.0 : 2.0;
         const double left = ink.left() - pod.left();
         const double right = pod.right() - (ink.right() + 1);
-        QVERIFY2(std::abs(left - right) <= 2.0 + 1e-9, // 1e-9: the rounding of the fractional pod edges
+        QVERIFY2(std::abs(left - right) <= maxMarginDifference + 1e-9, // 1e-9: the rounding of the fractional pod edges
                  qPrintable(QStringLiteral("%1x%2, heading %3: readout margins %4 (left) and %5 (right) device px")
                                 .arg(c.width()).arg(c.height()).arg(heading).arg(left, 0, 'f', 2)
                                 .arg(right, 0, 'f', 2)));
