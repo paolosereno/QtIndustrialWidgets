@@ -36,7 +36,8 @@ struct CompassCardLayout {
     bool fits{false};
 
     // The geometry it was checked on, around the centre of the card, in logical px: the circle of the major ticks, the
-    // pod and the flag (without their borders), and the ink box of each label drawn, rotated to its angle
+    // pod and the flag (without their borders), and the ink box of each label drawn, rotated to its angle (as measured,
+// without the rasterization margin)
     struct Label {
         int angle{0};
         QPolygonF ink;
@@ -44,6 +45,8 @@ struct CompassCardLayout {
     double majorTickR{0.0};
     QRectF pod;
     QRectF flag;
+    // The ink of the widest readout at readoutPt, centred on (0, 0), as measured (without the rasterization margin)
+    QRectF readoutInk;
     std::vector<Label> labels;
 };
 
@@ -52,6 +55,7 @@ struct CompassFlag {
     QRectF rect;        // the flag, on the middle of its 1 px border
     QFont textFont;     // of "HDG"
     QPointF textOrigin; // the baseline origin of "HDG", centred on the flag
+    QRectF textInk;     // the ink box of "HDG" as measured (without the rasterization margin)
     int textPixelSize{0};
     QColor fill;
     QColor text;

@@ -355,6 +355,7 @@ CompassFlag headingFailureFlag(const QFont &widgetFont, const CardGeometry &geom
     flag.textFont.setBold(true);
     flag.textFont.setPixelSize(flag.textPixelSize);
     flag.textOrigin = flag.rect.center() + textOrigin(QFontMetricsF(flag.textFont, device), QStringLiteral("HDG"));
+    flag.textInk = textInk(QFontMetricsF(flag.textFont, device), QStringLiteral("HDG")).translated(flag.rect.center());
     return flag;
 }
 
@@ -454,6 +455,7 @@ CompassCardLayout CompassPrivate::cardLayout(int side, const QFont &widgetFont, 
         }
     }
     layout.fits = labelsFitting && readoutFitting && flagClearOfPod(g) && flagTextFits(g, widgetFont, device);
+    layout.readoutInk = readoutInk(widgetFont, layout.readoutPt, device, cache);
     layout.majorTickR = g.majorTickR;
     layout.pod = g.pod;
     layout.flag = g.flag;
