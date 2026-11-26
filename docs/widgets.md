@@ -529,7 +529,22 @@ Heading indicator (`qiw::Compass`).
   rotating needle).
 - **Heading bug**: target heading (`targetHeading`), optionally set with the mouse (`headingBugInteractive`); the
   difference from the heading is `courseDeviation`.
-- **Card**: cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) labels and three-digit degree numbers.
+- **Card**: cardinal (N, E, S, W) and intercardinal (NE, SE, SW, NW) labels and three-digit degree numbers. The
+  labels are drawn with the widget font at the logical DPI of the widget, 3 px from each other, clear of the readout
+  pod and of the `HDG` flag, and 4 px inside the circle of the major ticks (#226). When the card is too small for them,
+  in this order until they fit: the fonts go down to 7 pt; every other number is dropped (030, 120, 210 and 300
+  stay), then all of them; then the intercardinals. N, E, S and W are always drawn. The readout font goes down to
+  7 pt until the widest readout (any heading and `---°`) fits the pod, and the readout is centred on its ink to within
+  1 device px; `HDG` is never below 7 pt, inside its flag.
+- **Minimum size** (#226): `minimumSizeHint()` is the smallest square from which the card fits: N, E, S, W and the
+  readout at 7 pt, and the `HDG` flag 3 px from the pod. Above it the layout only gets richer: what fits at one size
+  fits at every larger one. It is computed from the widget font and follows a change of font or of logical DPI
+  (#177); `sizeHint()` is never smaller. The widget no longer sets a fixed minimum size of its own.
+- **Known limitation, synthesized italic** (#226): with an italic font whose family has no italic face installed, Qt
+  synthesizes the slant, and draws rotated text with that slant in screen space instead of along the text (observed
+  with Qt 6.4.2). The rotated ring labels then lean the wrong way and leave the space that the layout measured for
+  them (by up to about a fifth of their height), so they can come closer to each other or to the ticks than stated
+  above. A family with a real italic face, or an upright font, is not affected; the readout and `HDG` are not rotated.
 - **References**: lubber line (`lubberLineVisible`) and digital heading readout (`digitalReadoutVisible`).
 - **Value state** (#151): a heading has no range, so `valueState()` is only `Valid` or `Invalid`, with
   `valueStateChanged()`. NaN and ±Inf have no direction: `heading()` and `courseDeviation()` are NaN, a red `HDG`
