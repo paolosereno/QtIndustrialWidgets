@@ -6,6 +6,7 @@
 
 #include "internal/Compass_p.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/RasterMargin.h"
 
 #include <QtCore/QHash>
 #include <QtGui/QFontMetricsF>
@@ -58,12 +59,6 @@ constexpr double kReadoutPad = 1.0;  // between the readout and the inside of th
 constexpr double kPodBorder = 0.75;  // half of the 1.5 px pod border
 constexpr double kFlagBorder = 0.5;  // half of the 1 px flag border
 constexpr double kCirclePen = 0.5;   // half of the 1 px circle at majorTickR
-// The rasterization margin: reserved on each side of the ink box of a text measured with QFontMetricsF in the
-// containers that must hold that ink, the pod and the HDG flag (#226). The glyphs are drawn beyond the tight box that
-// Qt reports: by up to ~0.8 logical px per side with CoreText (macOS) and 0.5 px with the Windows rasterizer, measured
-// in the CI probe of #226. The gaps around the ring labels (kLabelGap, kTickGap) are measured on the metrics of Qt
-// without it
-constexpr double kRasterMargin = 1.0;
 constexpr int kPreferredSide = 260;
 constexpr int kLargestMinimum = 4096;
 
@@ -139,12 +134,6 @@ QFont labelFont(const QFont &widgetFont, LabelKind kind, const CompassCardLayout
 QPointF textOrigin(const QFontMetricsF &fm, const QString &text)
 {
     return {-fm.horizontalAdvance(text) / 2.0, -fm.height() / 2.0 + fm.ascent()};
-}
-
-// \a ink with the rasterization margin on each side; nothing drawn stays nothing
-QRectF withRasterMargin(const QRectF &ink)
-{
-    return ink.isEmpty() ? ink : ink.adjusted(-kRasterMargin, -kRasterMargin, kRasterMargin, kRasterMargin);
 }
 
 // The ink of \a text drawn centred on (0, 0): the union of the glyph ink at the advance of each glyph, which keeps the
@@ -264,7 +253,7 @@ bool readoutFits(const CardGeometry &g, const QRectF &ink)
 {
     const double inset = kPodBorder + kReadoutPad;
     // No glyphs: nothing drawn
-    return ink.isEmpty() || g.pod.adjusted(inset, inset, -inset, -inset).contains(withRasterMargin(ink));
+    return ink.isEmpty() || g.pod.adjusted(inset, inset, -inset, -inset).contains(internal::withRasterMargin(ink));
 }
 
 double segmentDistance(const QPointF &p, const QPointF &a, const QPointF &b)
@@ -348,7 +337,7 @@ bool flagTextFitsAt(const QRectF &flag, const QFont &widgetFont, int pixelSize, 
     f.setPixelSize(pixelSize);
     const QRectF ink = textInk(QFontMetricsF(f, device), QStringLiteral("HDG")).translated(flag.center());
     const double inset = kFlagBorder + kReadoutPad;
-    return ink.isEmpty() || flag.adjusted(inset, inset, -inset, -inset).contains(withRasterMargin(ink));
+    return ink.isEmpty() || flag.adjusted(inset, inset, -inset, -inset).contains(internal::withRasterMargin(ink));
 }
 
 // The flag of a widget whose centre is \a centre, measured on \a device. "HDG" at 0.6 of the flag height, or the

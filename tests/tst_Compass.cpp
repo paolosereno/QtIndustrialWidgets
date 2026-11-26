@@ -8,7 +8,9 @@
 #include "FontTestUtils.h"
 #include "ReadoutTestUtils.h"
 #include "ScreenChangeTestUtils.h"
+#include "SkipTestUtils.h"
 #include "internal/CompassTestAccess.h"
+#include "internal/RasterMargin.h"
 
 #include <memory>
 #include <QtGui/QMouseEvent>
@@ -26,14 +28,6 @@
 #include <limits>
 
 using namespace QtIndustrialWidgets;
-
-// QSKIP(message) without its variadic part: AppleClang warns about an omitted variadic argument before C++20
-// (-Wvariadic-macro-arguments-omitted, an error with warnings as errors in CI)
-#define COMPASS_SKIP(message)                                                                                          \
-    do {                                                                                                               \
-        QTest::qSkip(message, __FILE__, __LINE__);                                                                     \
-        return;                                                                                                        \
-    } while (false)
 
 namespace {
 
@@ -1201,7 +1195,7 @@ void tst_Compass::ringLabelsClearFromMinimumUp()
     QString error;
     QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
     if (!labelGlyphsDrawn(c.font())) {
-        COMPASS_SKIP("no glyphs for the labels in this font: checked on the layout by ringLabelsClearOnTheLayout (#226)");
+        QIW_SKIP("no glyphs for the labels in this font: checked on the layout by ringLabelsClearOnTheLayout (#226)");
     }
     const QString ring = ringLabelsError(c);
     QVERIFY2(ring.isEmpty(), qPrintable(QStringLiteral("%1x%2: ").arg(c.width()).arg(c.height()) + ring));
@@ -1292,7 +1286,7 @@ void tst_Compass::flagClearOfRingAndPodFromMinimumUp()
                             .arg(c.width()).arg(c.height()).arg(podOuterTop - (flagRect.bottom() + 0.5), 0, 'f', 2)));
 
     if (!labelGlyphsDrawn(c.font())) {
-        COMPASS_SKIP("no glyphs for the labels in this font: the labels against the flag are checked on the layout by "
+        QIW_SKIP("no glyphs for the labels in this font: the labels against the flag are checked on the layout by "
               "ringLabelsClearOnTheLayout (#226)");
     }
     const QRect around = flag.adjusted(-1, -1, 1, 1);
@@ -1306,11 +1300,7 @@ void tst_Compass::flagClearOfRingAndPodFromMinimumUp()
                             .arg(flag.right() + 1).arg(flag.bottom() + 1)));
 }
 
-// The rasterization margin of the widget (#226, docs/widgets.md): 1 logical px per side, reserved around the measured
-// ink of a text in the containers that hold it (the pod, the HDG flag), and allowed to the drawn ink of a ring label
-// beyond its measured box. Measured in the CI probe of #226: CoreText draws up to ~0.8 logical px beyond the tight
-// box of Qt, Windows 0.5 px
-constexpr double kRasterMargin = 1.0;
+using internal::kRasterMargin; // the rasterization margin of the widgets (#226, docs/widgets.md)
 
 // The distance between two convex polygons, 0 when they overlap
 double polygonGap(const QPolygonF &a, const QPolygonF &b)
@@ -1402,6 +1392,8 @@ void tst_Compass::textContainersReserveTheRasterMargin()
     QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
     c.setHeading(kNaN); // the flag is laid out when it is drawn
     renderCompass(c);
+    // The documented value (docs/widgets.md, approved by the maintainer): the checks below use the constant
+    QCOMPARE(kRasterMargin, 1.0);
     const QString where = QStringLiteral("%1x%2: ").arg(c.width()).arg(c.height());
     const auto margined = [](const QRectF &ink) {
         return ink.adjusted(-kRasterMargin, -kRasterMargin, kRasterMargin, kRasterMargin);
@@ -1602,7 +1594,7 @@ void tst_Compass::labelsDrawnAsLaidOut()
     QString error;
     QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
     if (!labelGlyphsDrawn(c.font())) {
-        COMPASS_SKIP("no glyphs for the labels in this font: checked on the layout by layoutThinsInOrder (#226)");
+        QIW_SKIP("no glyphs for the labels in this font: checked on the layout by layoutThinsInOrder (#226)");
     }
     checkLabelsDrawnAsLaidOut(c);
 }
@@ -1639,7 +1631,7 @@ void tst_Compass::labelsDrawnAtTheWidgetDpi()
     checkLayoutClear(c); // the layout at this DPI, in every configuration
     if (QTest::currentTestFailed()) return;
     if (!labelGlyphsDrawn(c.font())) {
-        COMPASS_SKIP("no glyphs for the labels in this font: their layout at this DPI is checked above (#226)");
+        QIW_SKIP("no glyphs for the labels in this font: their layout at this DPI is checked above (#226)");
     }
     checkLabelsDrawnAsLaidOut(c);
 }
