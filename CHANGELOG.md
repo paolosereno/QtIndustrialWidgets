@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrade notes
+Behaviour changes that can reach code using the library. The entries below give the details.
+
+- **`Compass`: the minimum size is no longer a fixed 110 × 110** (#226). It is `minimumSizeHint()`: 184 px at 96 dpi
+  with DejaVu Sans 9 pt, more with a wider font or a higher logical DPI. A `Compass` in a tight layout gets larger:
+  check the layouts that hold one. See [PR #275](https://github.com/paolosereno/QtIndustrialWidgets/pull/275).
+
 ### Added
 - **`operatorActive` on `IndustrialKnob`, `IndustrialSlider` and `ThumbwheelSwitch`** (#241): `isOperatorActive()` and
   `operatorActiveChanged()` tell the application when a drag or a held key is running. See
