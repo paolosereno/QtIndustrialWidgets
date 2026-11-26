@@ -15,6 +15,9 @@
 namespace QtIndustrialWidgets {
 
 class CompassPrivate;
+namespace internal {
+class CompassTestAccess;
+}
 
 /**
  * \class Compass
@@ -204,6 +207,7 @@ private:
 
     std::unique_ptr<CompassPrivate> d_ptr;
     Q_DECLARE_PRIVATE(Compass)
+    friend class internal::CompassTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets

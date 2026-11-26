@@ -3,11 +3,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "QtIndustrialWidgets/Compass.h"
+#include "internal/Compass_p.h"
 
+#include <QtGui/QFontMetricsF>
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QTransform>
 #include <QtCore/QtMath>
 #include <algorithm>
 #include <cmath>
@@ -15,61 +18,55 @@
 
 namespace QtIndustrialWidgets {
 
-class CompassPrivate {
-public:
-    double m_heading{0.0};
-    double m_targetHeading{0.0};
-    Compass::DisplayMode m_displayMode{Compass::DisplayMode::HeadingUp};
-    bool m_bugVisible{true};
-    bool m_bugInteractive{true};
-    bool m_lubberVisible{true};
-    bool m_digitalVisible{true};
-    bool m_isDraggingBug{false};
-
-    // Styling colors
-    QColor m_dialColor{QColor(20, 24, 32)};       // Deep naval slate
-    QColor m_bezelColor{QColor(48, 56, 70)};      // Machined metallic rim
-    QColor m_textColor{QColor(225, 231, 236)};    // Card ticks and labels
-    QColor m_readoutColor{QColor(225, 231, 236)}; // Readout on the dark pod (#159)
-    QColor m_cardinalColor{QColor(0, 229, 255)};  // Cyan / amber highlights for N/E/S/W
-    QColor m_needleColor{QColor(235, 59, 90)};    // Vivid red North arrow
-    QColor m_needleTailColor{QColor(160, 175, 195)}; // Slate South arrow
-    QColor m_bugColor{QColor(254, 130, 40)};      // High-visibility orange bug
-    QColor m_lubberColor{QColor(254, 211, 48)};   // Safety amber lubber line
-
-    // Card cache pixmap
-    QPixmap m_cardCache;
-    bool m_cacheDirty{true};
-
-    // #151: NaN and ±Inf have no direction (m_heading is then NaN)
-    ValueState m_valueState{ValueState::Valid};
-
-    [[nodiscard]] bool isInvalid() const { return m_valueState == ValueState::Invalid; }
-    // The rotation of the card: the heading, or 0° (North up) while the heading is invalid
-    [[nodiscard]] double cardRotation() const { return isInvalid() ? 0.0 : m_heading; }
-};
-
 namespace {
 
-// #151: the failure flag of an invalid heading, centred above the readout. A fixed red with white letters, as
-// on aircraft heading indicators: it means a failure whatever the theme
-void drawHeadingFailureFlag(QPainter &painter, const QFont &widgetFont, double radius)
+// The baseline origin of \a text drawn centred on (0, 0), as Qt::AlignCenter does: by its advance and its font height
+QPointF textOrigin(const QFontMetricsF &fm, const QString &text)
+{
+    return {-fm.horizontalAdvance(text) / 2.0, -fm.height() / 2.0 + fm.ascent()};
+}
+
+// The ink of \a text drawn centred on (0, 0): the union of the glyph ink at the advance of each glyph (#226, test hook)
+QRectF textInk(const QFontMetricsF &fm, const QString &text)
+{
+    const QPointF origin = textOrigin(fm, text);
+    QRectF ink;
+    for (int i = 0; i < text.size(); ++i) {
+        const QRectF glyph = fm.tightBoundingRect(text.mid(i, 1));
+        if (glyph.isEmpty()) continue;
+        ink |= glyph.translated(origin.x() + fm.horizontalAdvance(text.left(i)), origin.y());
+    }
+    return ink;
+}
+
+// #151: the failure flag of an invalid heading, centred above the readout, for a widget whose centre is \a centre.
+// A fixed red with white letters, as on aircraft heading indicators: it means a failure whatever the theme
+CompassFlag headingFailureFlag(const QFont &widgetFont, double radius, const QPointF &centre)
 {
     const double flagW = std::clamp(radius * 0.42, 34.0, 90.0);
     const double flagH = std::clamp(radius * 0.17, 14.0, 30.0);
-    const QRectF flag(-flagW / 2.0, -radius * 0.45 - flagH / 2.0, flagW, flagH);
+    CompassFlag flag;
+    flag.rect = QRectF(-flagW / 2.0, -radius * 0.45 - flagH / 2.0, flagW, flagH).translated(centre);
+    flag.textPixelSize = std::max(7, static_cast<int>(flagH * 0.6));
+    flag.fill = QColor(225, 29, 46);
+    flag.text = QColor(255, 255, 255);
+    flag.textFont = widgetFont;
+    flag.textFont.setBold(true);
+    flag.textFont.setPixelSize(flag.textPixelSize);
+    flag.textOrigin = flag.rect.center() + textOrigin(QFontMetricsF(flag.textFont), QStringLiteral("HDG"));
+    return flag;
+}
 
+void drawHeadingFailureFlag(QPainter &painter, const CompassFlag &flag)
+{
     painter.save();
     painter.setPen(QPen(QColor(20, 20, 20), 1.0));
-    painter.setBrush(QColor(225, 29, 46));
-    painter.drawRoundedRect(flag, 2.0, 2.0);
+    painter.setBrush(flag.fill);
+    painter.drawRoundedRect(flag.rect, 2.0, 2.0);
 
-    QFont f = widgetFont;
-    f.setBold(true);
-    f.setPixelSize(std::max(7, static_cast<int>(flagH * 0.6)));
-    painter.setFont(f);
-    painter.setPen(QColor(255, 255, 255));
-    painter.drawText(flag, Qt::AlignCenter, QStringLiteral("HDG"));
+    painter.setFont(flag.textFont);
+    painter.setPen(flag.text);
+    painter.drawText(flag.rect, Qt::AlignCenter, QStringLiteral("HDG"));
     painter.restore();
 }
 
@@ -399,6 +396,7 @@ void Compass::renderCompassCard(const QSize &size)
     const QPointF center(size.width() / 2.0, size.height() / 2.0);
     const double radius = (side / 2.0) - 6.0;
 
+    d_ptr->m_cardLayout = CompassCardLayout();
     if (radius <= 10.0) {
         d_ptr->m_cacheDirty = false;
         return;
@@ -482,6 +480,36 @@ void Compass::renderCompassCard(const QSize &size)
     QFont numberFont = font();
     numberFont.setBold(false);
     numberFont.setPointSizeF(std::clamp(radius * 0.07, 6.0, 12.0));
+
+    // #226, test hook: the texts drawn and their geometry. The same texts at every size: the layout claims to fit
+    {
+        CompassCardLayout &layout = d_ptr->m_cardLayout;
+        layout.cardinalPt = cardinalFont.pointSizeF();
+        layout.intercardinalPt = intercardinalFont.pointSizeF();
+        layout.numberPt = numberFont.pointSizeF();
+        const double podW = std::clamp(radius * 0.52, 48.0, 110.0);
+        const double podH = std::clamp(radius * 0.26, 24.0, 50.0);
+        layout.readoutPt = std::clamp(podH * 0.48, 8.0, 20.0);
+        layout.fits = true;
+        layout.majorTickR = majorTickR;
+        layout.pod = QRectF(-podW / 2.0, -podH / 2.0, podW, podH);
+        const double flagW = std::clamp(radius * 0.42, 34.0, 90.0);
+        const double flagH = std::clamp(radius * 0.17, 14.0, 30.0);
+        layout.flag = QRectF(-flagW / 2.0, -radius * 0.45 - flagH / 2.0, flagW, flagH);
+        for (int deg = 0; deg < 360; deg += 15) {
+            const bool cardinal = deg % 90 == 0;
+            const bool intercardinal = deg % 90 == 45;
+            if (!cardinal && !intercardinal && deg % 30 != 0) continue;
+            static const char *const names[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+            const QString text = cardinal || intercardinal ? QString::fromLatin1(names[deg / 45])
+                                                           : QStringLiteral("%1").arg(deg, 3, 10, QLatin1Char('0'));
+            const QFontMetricsF fm(cardinal ? cardinalFont : intercardinal ? intercardinalFont : numberFont,
+                                   &d_ptr->m_cardCache);
+            QTransform rotation;
+            rotation.rotate(deg);
+            layout.labels.push_back({deg, rotation.map(QPolygonF(textInk(fm, text).translated(0.0, -textR)))});
+        }
+    }
 
     // Outer track circle line
     p.setPen(QPen(QColor(d_ptr->m_textColor.red(), d_ptr->m_textColor.green(), d_ptr->m_textColor.blue(), 60), 1.0));
@@ -751,11 +779,9 @@ void Compass::paintEvent(QPaintEvent *)
     }
 
     // #151: failure flag of an invalid heading
+    d_ptr->m_flag = headingFailureFlag(font(), radius, center);
     if (d_ptr->isInvalid()) {
-        painter.save();
-        painter.translate(center);
-        drawHeadingFailureFlag(painter, font(), radius);
-        painter.restore();
+        drawHeadingFailureFlag(painter, d_ptr->m_flag);
     }
 
     // 3. Central Digital Readout Pod
