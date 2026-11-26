@@ -470,6 +470,8 @@ private Q_SLOTS:
     void flagClearOfRingAndPodFromMinimumUp();
     void ringLabelsClearOnTheLayout_data();
     void ringLabelsClearOnTheLayout();
+    void textContainersReserveTheRasterMargin_data();
+    void textContainersReserveTheRasterMargin();
     void layoutThinsInOrder_data();
     void layoutThinsInOrder();
     void labelsDrawnAsLaidOut_data();
@@ -1304,8 +1306,36 @@ void tst_Compass::flagClearOfRingAndPodFromMinimumUp()
                             .arg(flag.right() + 1).arg(flag.bottom() + 1)));
 }
 
+// The rasterization margin of the widget (#226, docs/widgets.md): 1 logical px per side, reserved around the measured
+// ink of a text in the containers that hold it (the pod, the HDG flag), and allowed to the drawn ink of a ring label
+// beyond its measured box. Measured in the CI probe of #226: CoreText draws up to ~0.8 logical px beyond the tight
+// box of Qt, Windows 0.5 px
+constexpr double kRasterMargin = 1.0;
+
+// The distance between two convex polygons, 0 when they overlap
+double polygonGap(const QPolygonF &a, const QPolygonF &b)
+{
+    if (a.intersects(b)) return 0.0;
+    const auto segment = [](const QPointF &p, const QPointF &s, const QPointF &e) {
+        const QPointF se = e - s;
+        const double length2 = QPointF::dotProduct(se, se);
+        const double k = length2 > 0.0 ? std::clamp(QPointF::dotProduct(p - s, se) / length2, 0.0, 1.0) : 0.0;
+        const QPointF q = s + se * k;
+        return std::hypot(p.x() - q.x(), p.y() - q.y());
+    };
+    double d = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < a.size(); ++i) {
+        for (int j = 0; j < b.size(); ++j) {
+            d = std::min(d, segment(a[i], b[j], b[(j + 1) % b.size()]));
+            d = std::min(d, segment(b[j], a[i], a[(i + 1) % a.size()]));
+        }
+    }
+    return d;
+}
+
 // #226: the layout of \a c, read from the test hook after a render: it fits, every label ends 4 px inside the tick
-// circle, and no label overlaps its neighbour, the flag or the pod (at any rotation of the card)
+// circle and does not overlap its neighbour (on the metrics of Qt), and is one rasterization margin away from the flag
+// and from the pod (at any rotation of the card)
 void checkLayoutClear(Compass &c)
 {
     renderCompass(c);
@@ -1329,19 +1359,23 @@ void checkLayoutClear(Compass &c)
                                         .arg(label.angle).arg(layout.majorTickR - farthest, 0, 'f', 2)));
         QVERIFY2(layout.labels.size() == 1 || label.angle == next.angle || !label.ink.intersects(next.ink),
                  qPrintable(where + QStringLiteral("the labels at %1 and %2 degrees overlap").arg(label.angle).arg(next.angle)));
-        QVERIFY2(!label.ink.intersects(flag),
-                 qPrintable(where + QStringLiteral("the label at %1 degrees overlaps the flag").arg(label.angle)));
+        // The pod and the flag hold ink with a rasterization margin, and so does a label: at least one margin between
+        // a label box and either of them
+        QVERIFY2(polygonGap(label.ink, flag) >= kRasterMargin,
+                 qPrintable(where + QStringLiteral("the label at %1 degrees is %2 px from the flag")
+                                        .arg(label.angle).arg(polygonGap(label.ink, flag), 0, 'f', 2)));
         // The corners are the nearest points only for a box seen from outside: enough here, the labels are far from
         // the centre, and a label across the pod would have a corner inside it
-        QVERIFY2(nearest > podReach,
-                 qPrintable(where + QStringLiteral("the label at %1 degrees reaches the pod at some rotation").arg(label.angle)));
+        QVERIFY2(nearest - podReach >= kRasterMargin,
+                 qPrintable(where + QStringLiteral("the label at %1 degrees comes %2 px from the pod at some rotation")
+                                        .arg(label.angle).arg(nearest - podReach, 0, 'f', 2)));
     }
 }
 
 // #226: the layout of the card is checked against the geometry it reports (CompassTestAccess), in every
 // configuration, also where no font is installed: from minimumSizeHint() up, no two neighbouring labels overlap, every
-// label ends at least 4 px inside the circle of the major ticks, and no label overlaps the flag or (at any rotation of
-// the card) the pod
+// label ends at least 4 px inside the circle of the major ticks, and every label is one rasterization margin away from
+// the flag and (at any rotation of the card) from the pod
 void tst_Compass::ringLabelsClearOnTheLayout_data() { addMinimumRows(); }
 
 void tst_Compass::ringLabelsClearOnTheLayout()
@@ -1352,6 +1386,49 @@ void tst_Compass::ringLabelsClearOnTheLayout()
     QString error;
     QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
     checkLayoutClear(c);
+}
+
+// #226: from minimumSizeHint() up, the pod and the HDG flag hold the measured ink of their text with the rasterization
+// margin on each side, read from the test hook in every configuration: inside the pod border and its 1 px padding, the
+// ink of the widest readout at the point size chosen; inside the flag border and its 1 px padding, the ink of "HDG"
+void tst_Compass::textContainersReserveTheRasterMargin_data() { addMinimumRows(); }
+
+void tst_Compass::textContainersReserveTheRasterMargin()
+{
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    c.setHeading(kNaN); // the flag is laid out when it is drawn
+    renderCompass(c);
+    const QString where = QStringLiteral("%1x%2: ").arg(c.width()).arg(c.height());
+    const auto margined = [](const QRectF &ink) {
+        return ink.adjusted(-kRasterMargin, -kRasterMargin, kRasterMargin, kRasterMargin);
+    };
+    const auto describe = [](const QRectF &r) {
+        return QStringLiteral("x %1..%2, y %3..%4").arg(r.left(), 0, 'f', 2).arg(r.right(), 0, 'f', 2)
+            .arg(r.top(), 0, 'f', 2).arg(r.bottom(), 0, 'f', 2);
+    };
+
+    const CompassCardLayout layout = internal::CompassTestAccess::cardLayout(c);
+    const double podInset = 0.75 + 1.0; // half of the 1.5 px border, and the padding
+    const QRectF podInside = layout.pod.adjusted(podInset, podInset, -podInset, -podInset);
+    if (!layout.readoutInk.isEmpty()) { // no glyphs: nothing drawn
+        QVERIFY2(podInside.contains(margined(layout.readoutInk)),
+                 qPrintable(where + QStringLiteral("readout ink %1 with the margin does not fit the pod %2")
+                                        .arg(describe(layout.readoutInk), describe(podInside))));
+    }
+
+    const CompassFlag flag = internal::CompassTestAccess::flag(c);
+    QVERIFY2(!flag.rect.isEmpty(), qPrintable(where + QStringLiteral("no flag laid out")));
+    const double flagInset = 0.5 + 1.0; // half of the 1 px border, and the padding
+    const QRectF flagInside = flag.rect.adjusted(flagInset, flagInset, -flagInset, -flagInset);
+    if (!flag.textInk.isEmpty()) {
+        QVERIFY2(flagInside.contains(margined(flag.textInk)),
+                 qPrintable(where + QStringLiteral("HDG ink %1 with the margin does not fit the flag %2")
+                                        .arg(describe(flag.textInk), describe(flagInside))));
+    }
 }
 
 // #226: the order in which the card gives up its texts, on a range of sides (also below the minimum): the fonts first
@@ -1417,8 +1494,8 @@ void tst_Compass::layoutThinsInOrder()
 
 // #226: the labels of \a c are drawn as laid out, read from their pixels (with glyphs for the labels): ink near the
 // centre of each label of the layout, none where a number or an intercardinal was dropped, and the ink of each label
-// laid out is its ink box: every pixel of it within 1 device px (antialiasing) of the box, and, in the frame of the
-// label, the box filled to within kLabelFill of each of its sides
+// laid out is its ink box: every pixel of it overlaps the box with the rasterization margin (kRasterMargin, in the
+// frame of the label), and, in the frame of the label, the box filled to within kLabelFill of each of its sides
 //
 // kLabelFill, approved by the maintainer (#226): the ink box of the layout is the union of the tight boxes of the
 // glyphs, which QFontMetricsF rounds out to whole px; measured, the drawn ink falls short of a side of it by at most
@@ -1431,20 +1508,29 @@ void checkLabelsDrawnAsLaidOut(Compass &c)
     const CompassCardLayout layout = internal::CompassTestAccess::cardLayout(c);
     const Card card = cardOf(c, c.devicePixelRatioF());
     const QString where = QStringLiteral("%1x%2 at %3 dpi: ").arg(c.width()).arg(c.height()).arg(c.logicalDpiY());
-    // The ink boxes of the labels laid out, in device px
+    // The ink boxes of the labels laid out, in device px, and the same boxes with the rasterization margin on each
+    // side (in the frame of the label)
     std::vector<QPolygonF> boxes;
     std::vector<QPainterPath> paths;
     for (const auto &l : layout.labels) {
+        QTransform rotation;
+        rotation.rotate(l.angle);
+        const QRectF frame = rotation.inverted().map(l.ink).boundingRect();
+        const QPolygonF margined = rotation.map(
+            QPolygonF(frame.adjusted(-kRasterMargin, -kRasterMargin, kRasterMargin, kRasterMargin)));
         QPolygonF device;
         for (const QPointF &q : l.ink) device << card.centre + q * card.dpr;
+        QPolygonF deviceMargined;
+        for (const QPointF &q : margined) deviceMargined << card.centre + q * card.dpr;
         QPainterPath path;
-        path.addPolygon(device);
+        path.addPolygon(deviceMargined);
         path.closeSubpath();
         boxes.push_back(device);
         paths.push_back(path);
     }
+    // A pixel of the label: it overlaps the box with the margin
     const auto near = [](const QPainterPath &box, const QPoint &p) {
-        return box.intersects(QRectF(p, QSizeF(1.0, 1.0)).adjusted(-1.0, -1.0, 1.0, 1.0));
+        return box.intersects(QRectF(p, QSizeF(1.0, 1.0)));
     };
     // The ring of the labels: inside the circle of the major ticks and the inner ends of the major ticks (textColor;
     // a 1.8 px pen with square caps reaches 0.9 px inside the circle), by 1 device px of antialiasing. The labels end
@@ -1473,7 +1559,7 @@ void checkLabelsDrawnAsLaidOut(Compass &c)
             if (laidOut) {
                 QVERIFY2(near(paths[index], p),
                          qPrintable(where + QStringLiteral("device pixel (%1, %2) of the label at %3 degrees is "
-                                                           "farther than 1 px from its ink box")
+                                                           "outside its ink box and the rasterization margin")
                                                 .arg(p.x()).arg(p.y()).arg(angle)));
             }
         }
