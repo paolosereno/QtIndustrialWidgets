@@ -7,19 +7,46 @@
 
 #include "FontTestUtils.h"
 #include "ReadoutTestUtils.h"
+#include "ScreenChangeTestUtils.h"
+#include "internal/CompassTestAccess.h"
 
 #include <memory>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QFontDatabase>
 #include <QtGui/QPixmap>
 #include <QtGui/QPainter>
+#include <QtGui/QPainterPath>
 #include <QtWidgets/QApplication>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
+#include <utility>
+#include <vector>
 #include <limits>
 
 using namespace QtIndustrialWidgets;
 
+// QSKIP(message) without its variadic part: AppleClang warns about an omitted variadic argument before C++20
+// (-Wvariadic-macro-arguments-omitted, an error with warnings as errors in CI)
+#define COMPASS_SKIP(message)                                                                                          \
+    do {                                                                                                               \
+        QTest::qSkip(message, __FILE__, __LINE__);                                                                     \
+        return;                                                                                                        \
+    } while (false)
+
 namespace {
+
+// #226: the wider font of the Compass tests: FontTest::otherFont() (another family, letter spacing 150 %) without its
+// italic. Where the family has no italic face Qt synthesizes one, and draws rotated text with the slant in device
+// space, not along the glyph (Qt 6.4.2): the rotated labels then leave the ink box that the layout measures, a known
+// limitation (docs/widgets.md). A real face keeps the tests on what the layout is meant to measure
+QFont compassOtherFont()
+{
+    QFont f = FontTest::otherFont(QApplication::font());
+    f.setItalic(false);
+    return f;
+}
 
 // Synthetic mouse event with explicit buttons, delivered synchronously. QTest::mouseMove() does not deliver a
 // MouseMove event to an offscreen widget with Qt 6.2 (#79), so drags are sent as explicit events.
@@ -122,6 +149,284 @@ QString flagError(const QImage &img, const Dial &d)
     const int needed = static_cast<int>(std::ceil(d.radius * 0.08));
     return rows >= needed ? QString() : QStringLiteral("%1 flag rows, %2 needed").arg(rows).arg(needed);
 }
+
+// #226: the geometry of the card as Compass.cpp draws it, in device px. In HeadingUp the card pixmap (centre at
+// width / 2, height / 2) is drawn at rect().center() - (width() / 2, height() / 2), integer division; the pod and the
+// flag are drawn around rect().center()
+struct Card {
+    QPointF centre;    // of the card
+    QPointF podCentre; // of the pod and the flag
+    double radius;     // side / 2 - 6
+    double textR;      // radius - 3 - 0.22 radius: the centre of the ring labels
+    double majorTickR; // radius - 3 - 0.12 radius: the inner end of the major ticks, a circle
+    double dpr;
+};
+
+Card cardOf(const Compass &c, qreal dpr)
+{
+    const double r = std::min(c.width(), c.height()) / 2.0 - 6.0;
+    const QPointF origin = QPointF(c.rect().center()) - QPointF(c.width() / 2, c.height() / 2);
+    return {(origin + QPointF(c.width() / 2.0, c.height() / 2.0)) * dpr, QPointF(c.rect().center()) * dpr,
+            r * dpr, (r - 3.0 - r * 0.22) * dpr, (r - 3.0 - r * 0.12) * dpr, dpr};
+}
+
+// The ring labels: N, NE, E, … at their angle (degrees clockwise from 12 o'clock), and the numbers 030 … 330
+const std::vector<int> &ringLabelAngles()
+{
+    static const std::vector<int> angles{0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330};
+    return angles;
+}
+
+// The ink of the card: the pixels that change when textColor, cardinalColor and needleColor (the "N") change. A
+// HeadingUp compass at heading 0 (card unrotated), with no lubber line, heading bug or readout
+QVector<QPoint> cardInk(Compass &c)
+{
+    const QSize size = c.size(); // prepareForDial() resizes to 300 x 300
+    prepareForDial(c, Compass::DisplayMode::HeadingUp, 0.0);
+    c.resize(size);
+    c.setLubberLineVisible(false);
+    const QImage green = renderCompass(c);
+    c.setTextColor(QColor(255, 0, 0));
+    c.setCardinalColor(QColor(255, 0, 0));
+    c.setNeedleColor(QColor(255, 0, 0));
+    const QImage red = renderCompass(c);
+    QVector<QPoint> ink;
+    for (int y = 0; y < green.height(); ++y) {
+        for (int x = 0; x < green.width(); ++x) {
+            if (green.pixel(x, y) != red.pixel(x, y)) ink.push_back(QPoint(x, y));
+        }
+    }
+    return ink;
+}
+
+// Nearest and farthest distance from \a centre of the device pixel \a p (a square)
+std::pair<double, double> pixelDistances(const QPoint &p, const QPointF &centre)
+{
+    const double nx = std::clamp(centre.x(), double(p.x()), p.x() + 1.0) - centre.x();
+    const double ny = std::clamp(centre.y(), double(p.y()), p.y() + 1.0) - centre.y();
+    double far = 0.0;
+    for (int dx = 0; dx <= 1; ++dx) {
+        for (int dy = 0; dy <= 1; ++dy) far = std::max(far, std::hypot(p.x() + dx - centre.x(), p.y() + dy - centre.y()));
+    }
+    return {std::hypot(nx, ny), far};
+}
+
+// Smallest and largest angle (degrees clockwise from 12 o'clock, relative to \a reference, in (-180, 180]) of the
+// corners of the device pixel \a p
+std::pair<double, double> pixelAngles(const QPoint &p, const QPointF &centre, double reference)
+{
+    // Relative to the angle of the pixel centre first, so that a pixel across +-180 is not taken for the whole circle
+    const auto angleOf = [&](double x, double y) { return std::atan2(x - centre.x(), centre.y() - y) * 180.0 / M_PI; };
+    const double middle = angleOf(p.x() + 0.5, p.y() + 0.5);
+    double lo = 1e9;
+    double hi = -1e9;
+    for (int dx = 0; dx <= 1; ++dx) {
+        for (int dy = 0; dy <= 1; ++dy) {
+            const double rel = std::remainder(angleOf(p.x() + dx, p.y() + dy) - middle, 360.0);
+            lo = std::min(lo, rel);
+            hi = std::max(hi, rel);
+        }
+    }
+    const double shift = std::remainder(middle - reference, 360.0);
+    return {shift + lo, shift + hi};
+}
+
+// The first point of (from, to) that no interval covers, or NaN
+double firstUncovered(std::vector<std::pair<double, double>> intervals, double from, double to)
+{
+    std::sort(intervals.begin(), intervals.end());
+    double reach = from;
+    for (const auto &[lo, hi] : intervals) {
+        if (hi <= reach) continue;
+        if (lo > reach && reach < to) return reach + std::min(lo - reach, to - reach) * 0.5;
+        reach = std::max(reach, hi);
+        if (reach >= to) return std::numeric_limits<double>::quiet_NaN();
+    }
+    return reach < to ? (reach + to) * 0.5 : std::numeric_limits<double>::quiet_NaN();
+}
+
+// #226: the ring labels are clear of each other and of the major tick circle, in the pixels. Empty, or the failure
+QString ringLabelsError(Compass &c)
+{
+    const QVector<QPoint> ink = cardInk(c);
+    const Card card = cardOf(c, c.devicePixelRatioF());
+    // A circle with no ink between the centre of the labels and the tick circle
+    std::vector<std::pair<double, double>> radii;
+    for (const QPoint &p : ink) radii.push_back(pixelDistances(p, card.centre));
+    const double gap = firstUncovered(radii, card.textR, card.majorTickR);
+    if (!std::isfinite(gap)) {
+        return QStringLiteral("no circle without ink between the labels (radius %1 device px) and the tick circle (%2)")
+            .arg(card.textR, 0, 'f', 1).arg(card.majorTickR, 0, 'f', 1);
+    }
+    // Between two neighbouring labels, a ray with no ink in the ring of the labels (from 0.45 radius to that circle)
+    const std::vector<int> &angles = ringLabelAngles();
+    for (size_t i = 0; i < angles.size(); ++i) {
+        const double a = angles[i];
+        const double b = i + 1 < angles.size() ? angles[i + 1] : 360.0;
+        const double mid = (a + b) * 0.5;
+        std::vector<std::pair<double, double>> spans;
+        for (const QPoint &p : ink) {
+            const auto [near, far] = pixelDistances(p, card.centre);
+            if (far < card.radius * 0.45 || near > gap) continue;
+            spans.push_back(pixelAngles(p, card.centre, mid));
+        }
+        if (!std::isfinite(firstUncovered(spans, a - mid, b - mid))) {
+            return QStringLiteral("the labels at %1 and %2 degrees touch: no ray without ink between them").arg(a).arg(b);
+        }
+    }
+    return QString();
+}
+
+// The pod as Compass.cpp draws it, in device px, inside its 1.5 px border
+QRectF podInterior(const Compass &c, const Card &card)
+{
+    const double r = card.radius / card.dpr;
+    const double podW = std::clamp(r * 0.52, 48.0, 110.0);
+    const double podH = std::clamp(r * 0.26, 24.0, 50.0);
+    const QRectF pod(card.podCentre / card.dpr - QPointF(podW / 2.0, podH / 2.0), QSizeF(podW, podH));
+    Q_UNUSED(c);
+    return QRectF(pod.topLeft() * card.dpr, pod.size() * card.dpr).adjusted(0.75 * card.dpr, 0.75 * card.dpr,
+                                                                             -0.75 * card.dpr, -0.75 * card.dpr);
+}
+
+// The heading text of the readout that is widest in the pod font, of the 360 headings
+double widestHeading(const Compass &c, const Card &card)
+{
+    const double podH = std::clamp(card.radius / card.dpr * 0.26, 24.0, 50.0);
+    QFont f = c.font();
+    f.setBold(true);
+    f.setPointSizeF(std::clamp(podH * 0.48, 8.0, 20.0));
+    const QFontMetricsF fm(f, const_cast<Compass *>(&c));
+    int widest = 0;
+    double width = -1.0;
+    for (int h = 0; h < 360; ++h) {
+        const double w = fm.horizontalAdvance(QStringLiteral("%1°").arg(h, 3, 10, QLatin1Char('0')));
+        if (w > width) {
+            width = w;
+            widest = h;
+        }
+    }
+    return widest;
+}
+
+// The readout ink (readoutColor) at \a heading: the pixels that change from white to red with readoutColor. Drawn in
+// readoutColor at any coverage, such a pixel keeps its red channel (255 in both colours) and changes green or blue;
+// a pixel of anything else that differs between the two renders changes its red channel too (where no font is
+// installed, Qt can leave a box glyph of the card out of the first render of a widget, #226)
+QRect readoutInk(Compass &c, double heading)
+{
+    const QSize size = c.size(); // prepareForDial() resizes to 300 x 300
+    prepareForDial(c, Compass::DisplayMode::HeadingUp, heading);
+    c.resize(size);
+    c.setLubberLineVisible(false);
+    c.setDigitalReadoutVisible(true);
+    c.setReadoutColor(QColor(255, 255, 255));
+    const QImage white = renderCompass(c);
+    c.setReadoutColor(QColor(255, 0, 0));
+    const QImage red = renderCompass(c);
+    QRect box;
+    for (int y = 0; y < white.height(); ++y) {
+        for (int x = 0; x < white.width(); ++x) {
+            const QRgb w = white.pixel(x, y);
+            const QRgb r = red.pixel(x, y);
+            if (w != r && qRed(w) == qRed(r)) box |= QRect(x, y, 1, 1);
+        }
+    }
+    return box;
+}
+
+// #226: the grid of sides of the minimum-size tests, as offsets from minimumSizeHint(): every side just above the
+// minimum, then wider steps up to the sizes where the card fonts stop growing
+const std::vector<int> &sideGrid()
+{
+    static const std::vector<int> offsets{0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 17, 21, 26, 34, 42, 55, 70, 89, 110, 144, 180, 233, 300};
+    return offsets;
+}
+
+// WCAG 2 contrast ratio of two opaque colours
+double contrastRatio(const QColor &a, const QColor &b)
+{
+    const auto luminance = [](const QColor &c) {
+        const auto channel = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * channel(c.redF()) + 0.7152 * channel(c.greenF()) + 0.0722 * channel(c.blueF());
+    };
+    const double la = luminance(a);
+    const double lb = luminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+// The device pixel (x, y) as a square in widget coordinates
+QRectF pixelSquare(int x, int y, double dpr)
+{
+    return QRectF(x / dpr, y / dpr, 1.0 / dpr, 1.0 / dpr);
+}
+
+// #226: "HDG" alone on the colour of the flag, painted as Compass paints it
+class FlagTextReference : public QWidget
+{
+public:
+    explicit FlagTextReference(const CompassFlag &flag) : m_flag(flag) {}
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.fillRect(rect(), m_flag.fill);
+        p.setFont(m_flag.textFont);
+        p.setPen(m_flag.text);
+        p.drawText(m_flag.textOrigin, QStringLiteral("HDG"));
+    }
+
+private:
+    CompassFlag m_flag;
+};
+
+QImage renderWidget(QWidget &w)
+{
+    return w.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+}
+
+// #226: whether the label glyphs of \a font are drawn as glyphs. Where no font is installed (or the font lacks them)
+// Qt draws each missing glyph as a box, and draws those boxes unrotated in a rotated frame: there the rotated labels
+// are checked on the layout geometry only (CompassTestAccess), not on their pixels
+bool labelGlyphsDrawn(const QFont &font)
+{
+    const QFontMetricsF fm(font);
+    const QString chars = QStringLiteral("NESW0123456789");
+    return std::all_of(chars.cbegin(), chars.cend(), [&](QChar ch) { return fm.inFont(ch); });
+}
+
+// #226: the fonts of the minimum-size tests
+void addMinimumRows()
+{
+    QTest::addColumn<QString>("fontName");
+    QTest::addColumn<int>("offset");
+    for (const char *font : {"application", "test font", "other font"}) {
+        for (int offset : sideGrid()) {
+            QTest::newRow(qPrintable(QStringLiteral("%1, minimum + %2").arg(QLatin1String(font)).arg(offset)))
+                << QString::fromLatin1(font) << offset;
+        }
+    }
+}
+
+// The compass of a minimum-size row: the font set, resized to its minimumSizeHint() + \a offset (square)
+bool setUpMinimumRow(Compass &c, const QString &fontName, int offset, QString *error)
+{
+    if (fontName == QLatin1String("test font")) {
+        const QFont f = ReadoutTest::readoutTestFont(error);
+        if (!error->isEmpty()) return false;
+        c.setFont(f);
+    } else if (fontName == QLatin1String("other font")) {
+        c.setFont(compassOtherFont());
+    }
+    const QSize minimum = c.minimumSizeHint();
+    const int side = std::max(minimum.width(), minimum.height()) + offset;
+    c.resize(side, side);
+    return true;
+}
 } // namespace
 
 class tst_Compass : public QObject
@@ -131,6 +436,7 @@ class tst_Compass : public QObject
 private Q_SLOTS:
     void textSizeIgnoresWidgetFontSize();
     void initTestCase();
+    void init();
     void defaultValues();
     void headingNormalization();
     void targetHeadingAndBug();
@@ -155,10 +461,37 @@ private Q_SLOTS:
     void headingUpInvalidDimsTheBug();
     void northUpLubberAtTwelveOClock_data();
     void northUpLubberAtTwelveOClock();
+    void minimumSizeIsNotFixed();
+    void ringLabelsClearFromMinimumUp_data();
+    void ringLabelsClearFromMinimumUp();
+    void readoutFitsThePodFromMinimumUp_data();
+    void readoutFitsThePodFromMinimumUp();
+    void flagClearOfRingAndPodFromMinimumUp_data();
+    void flagClearOfRingAndPodFromMinimumUp();
+    void ringLabelsClearOnTheLayout_data();
+    void ringLabelsClearOnTheLayout();
+    void layoutThinsInOrder_data();
+    void layoutThinsInOrder();
+    void labelsDrawnAsLaidOut_data();
+    void labelsDrawnAsLaidOut();
+    void labelsDrawnAtTheWidgetDpi_data();
+    void labelsDrawnAtTheWidgetDpi();
+    void minimumFollowsTheFont();
+    void minimumFollowsTheDpiBeforeARepaint_data();
+    void minimumFollowsTheDpiBeforeARepaint();
+    void minimumFollowsTheScreen_data();
+    void minimumFollowsTheScreen();
 };
 
 void tst_Compass::initTestCase()
 {
+}
+
+// #226: each test (and each row) starts without the application fonts of the earlier ones. Where no font is installed
+// the test font would otherwise stand for every family, and it has no letters: N, E, S, W would not be drawn
+void tst_Compass::init()
+{
+    QFontDatabase::removeAllApplicationFonts();
 }
 
 void tst_Compass::cleanupTestCase()
@@ -620,25 +953,117 @@ void tst_Compass::bugDragOnInvalidHeadingUpUsesTheCardAtNorth()
     QVERIFY2(std::abs(c.targetHeading() - 90.0) < 1.0, qPrintable(QStringLiteral("targetHeading() = %1").arg(c.targetHeading())));
 }
 
-// #151: the HDG flag stays a solid, visible flag at the minimum size
+// #151, #226: the HDG flag stays a solid, readable flag from minimumSizeHint() up, on the geometry the widget lays out
+// (test hook): (a) the flag is inside the widget and nothing is drawn over it; (b) every pixel wholly inside the flag
+// (inside its border and rounded corners) and outside the ink box of "HDG" has the colour of the flag; (c) "HDG" is
+// at least 7 pt, with a contrast of at least 4.5:1 on the flag; (d) the flag is at least 12 logical px high
 void tst_Compass::flagVisibleAtMinimumSize_data()
 {
     QTest::addColumn<Compass::DisplayMode>("mode");
-    QTest::newRow("heading-up") << Compass::DisplayMode::HeadingUp;
-    QTest::newRow("north-up") << Compass::DisplayMode::NorthUp;
+    QTest::addColumn<QString>("fontName");
+    QTest::addColumn<int>("offset");
+    for (const auto &[name, mode] : {std::pair<const char *, Compass::DisplayMode>{"heading-up", Compass::DisplayMode::HeadingUp},
+                                     std::pair<const char *, Compass::DisplayMode>{"north-up", Compass::DisplayMode::NorthUp}}) {
+        for (const char *font : {"application", "other font"}) {
+            for (int offset : sideGrid()) {
+                QTest::newRow(qPrintable(QStringLiteral("%1, %2, minimum + %3").arg(QLatin1String(name), QLatin1String(font)).arg(offset)))
+                    << mode << QString::fromLatin1(font) << offset;
+            }
+        }
+    }
 }
 
 void tst_Compass::flagVisibleAtMinimumSize()
 {
     QFETCH(Compass::DisplayMode, mode);
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
     Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    const QSize size = c.size(); // prepareForDial() resizes to 300 x 300
     prepareForDial(c, mode, 0.0);
+    c.resize(size);
     c.setDigitalReadoutVisible(true);
-    c.resize(c.minimumSizeHint());
     c.setHeading(kNaN);
     const QImage img = renderCompass(c);
-    const QString flag = flagError(img, dialOf(c, img));
-    QVERIFY2(flag.isEmpty(), qPrintable(QStringLiteral("%1x%2: ").arg(c.width()).arg(c.height()) + flag));
+    const CompassFlag flag = internal::CompassTestAccess::flag(c);
+    const double dpr = c.devicePixelRatioF();
+    const QString where = QStringLiteral("%1x%2, flag (%3, %4) %5x%6: ")
+                              .arg(c.width()).arg(c.height()).arg(flag.rect.x()).arg(flag.rect.y())
+                              .arg(flag.rect.width()).arg(flag.rect.height());
+
+    // (d)
+    QVERIFY2(flag.rect.height() >= 12.0, qPrintable(where + QStringLiteral("lower than 12 px")));
+
+    // (a) Inside the widget with its border, and the pod (the only part drawn after the flag) leaves it as it is
+    const QRectF outer = flag.rect.adjusted(-0.5, -0.5, 0.5, 0.5);
+    QVERIFY2(QRectF(c.rect()).contains(outer), qPrintable(where + QStringLiteral("not inside the widget")));
+    c.setDigitalReadoutVisible(false);
+    const QImage withoutPod = renderCompass(c);
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            if (pixelSquare(x, y, dpr).intersects(outer) && img.pixel(x, y) != withoutPod.pixel(x, y)) {
+                QFAIL(qPrintable(where + QStringLiteral("device pixel (%1, %2) is drawn over").arg(x).arg(y)));
+            }
+        }
+    }
+
+    // (b) Inside the 1 px border, away from the corners of radius 2, outside the text. The ink box of the text is
+    // that of "HDG" drawn as the widget draws it (#167): same font, origin, colours and DPR, painted by a widget and
+    // grabbed, so that the text gets the same antialiasing (subpixel at DPR 1)
+    FlagTextReference referenceWidget(flag);
+    referenceWidget.resize(c.size());
+    const QImage reference = renderWidget(referenceWidget);
+    QRect textInk;
+    for (int y = 0; y < reference.height(); ++y) {
+        for (int x = 0; x < reference.width(); ++x) {
+            if (pixelSquare(x, y, dpr).intersects(flag.rect) && QColor(reference.pixel(x, y)) != flag.fill) {
+                textInk |= QRect(x, y, 1, 1);
+            }
+        }
+    }
+    const QRectF inner = flag.rect.adjusted(0.5, 0.5, -0.5, -0.5);
+
+    // (e) The ink of "HDG" inside the flag, within its border: every pixel of the text in the reference (anywhere in
+    // the widget) inside the border of the flag
+    for (int y = 0; y < reference.height(); ++y) {
+        for (int x = 0; x < reference.width(); ++x) {
+            const QRectF px = pixelSquare(x, y, dpr);
+            if (!QRectF(c.rect()).contains(px)) continue; // edge pixels at a fractional DPR: not painted by the fill
+            if (QColor(reference.pixel(x, y)) != flag.fill && !inner.contains(px)) {
+                QFAIL(qPrintable(where + QStringLiteral("device pixel (%1, %2) of \"HDG\" is not inside the border")
+                                             .arg(x).arg(y)));
+            }
+        }
+    }
+
+    const double corner = 2.5;
+    const QRectF corners[] = {QRectF(flag.rect.topLeft(), QSizeF(corner, corner)),
+                              QRectF(flag.rect.topRight() - QPointF(corner, 0.0), QSizeF(corner, corner)),
+                              QRectF(flag.rect.bottomLeft() - QPointF(0.0, corner), QSizeF(corner, corner)),
+                              QRectF(flag.rect.bottomRight() - QPointF(corner, corner), QSizeF(corner, corner))};
+    int checked = 0;
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            const QRectF px = pixelSquare(x, y, dpr);
+            if (!inner.contains(px) || textInk.contains(x, y)) continue;
+            if (std::any_of(std::begin(corners), std::end(corners), [&](const QRectF &r) { return px.intersects(r); })) continue;
+            ++checked;
+            if (QColor(img.pixel(x, y)) != flag.fill) {
+                QFAIL(qPrintable(where + QStringLiteral("device pixel (%1, %2) is %3, not the flag colour %4")
+                                             .arg(x).arg(y).arg(QColor(img.pixel(x, y)).name(), flag.fill.name())));
+            }
+        }
+    }
+    QVERIFY2(checked > 0, qPrintable(where + QStringLiteral("no pixel of the flag colour to check")));
+
+    // (c)
+    const int sevenPt = static_cast<int>(std::ceil(7.0 * c.logicalDpiY() / 72.0));
+    QVERIFY2(flag.textPixelSize >= sevenPt,
+             qPrintable(where + QStringLiteral("\"HDG\" at %1 px, 7 pt is %2 px").arg(flag.textPixelSize).arg(sevenPt)));
+    QVERIFY2(contrastRatio(flag.text, flag.fill) >= 4.5,
+             qPrintable(where + QStringLiteral("contrast %1:1").arg(contrastRatio(flag.text, flag.fill), 0, 'f', 2)));
 }
 
 // #151: a heading has no range: every finite angle is Valid, NaN and ±Inf are Invalid; never Over/Underrange
@@ -753,6 +1178,454 @@ void tst_Compass::northUpLubberAtTwelveOClock()
 
     c.setLubberLineVisible(false);
     QCOMPARE(ringPixels(renderCompass(c), d, 0.0, 10.0, isLubber).size(), 0);
+}
+
+// #226: no fixed minimum: the constructor no longer calls setMinimumSize(), so a layout can go down to
+// minimumSizeHint(), computed from the font
+void tst_Compass::minimumSizeIsNotFixed()
+{
+    Compass c;
+    QCOMPARE(c.minimumSize(), QSize(0, 0));
+}
+
+// #226: from minimumSizeHint() up, the ring labels (N, NE, 030, …) are clear of each other and of the tick circle
+void tst_Compass::ringLabelsClearFromMinimumUp_data() { addMinimumRows(); }
+
+void tst_Compass::ringLabelsClearFromMinimumUp()
+{
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    if (!labelGlyphsDrawn(c.font())) {
+        COMPASS_SKIP("no glyphs for the labels in this font: checked on the layout by ringLabelsClearOnTheLayout (#226)");
+    }
+    const QString ring = ringLabelsError(c);
+    QVERIFY2(ring.isEmpty(), qPrintable(QStringLiteral("%1x%2: ").arg(c.width()).arg(c.height()) + ring));
+}
+
+// #226: from minimumSizeHint() up, the readout is inside its pod: the widest of the 360 headings and "---°"
+void tst_Compass::readoutFitsThePodFromMinimumUp_data() { addMinimumRows(); }
+
+void tst_Compass::readoutFitsThePodFromMinimumUp()
+{
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    const Card card = cardOf(c, c.devicePixelRatioF());
+    const QRectF pod = podInterior(c, card);
+    for (const double heading : {widestHeading(c, card), kNaN}) {
+        const QRect ink = readoutInk(c, heading);
+        QVERIFY2(!ink.isEmpty(), "no readout ink");
+        QVERIFY2(ink.left() >= pod.left() && ink.right() + 1 <= pod.right() && ink.top() >= pod.top()
+                     && ink.bottom() + 1 <= pod.bottom(),
+                 qPrintable(QStringLiteral("%1x%2, heading %3: readout ink x %4-%5, y %6-%7 device px, pod inside its "
+                                           "border x %8-%9, y %10-%11")
+                                .arg(c.width()).arg(c.height()).arg(heading).arg(ink.left()).arg(ink.right() + 1)
+                                .arg(ink.top()).arg(ink.bottom() + 1).arg(pod.left(), 0, 'f', 1)
+                                .arg(pod.right(), 0, 'f', 1).arg(pod.top(), 0, 'f', 1).arg(pod.bottom(), 0, 'f', 1)));
+        // Centred to within 1 device px: the margins of the ink to the left and right of the pod differ by 2 device px
+        // at most (approved by the maintainer, #226). Qt draws the text on the widget with subpixel antialiasing and
+        // with its glyphs on whole device px; the widget measures the ink on an image, in grey levels
+        const double left = ink.left() - pod.left();
+        const double right = pod.right() - (ink.right() + 1);
+        QVERIFY2(std::abs(left - right) <= 2.0 + 1e-9, // 1e-9: the rounding of the fractional pod edges
+                 qPrintable(QStringLiteral("%1x%2, heading %3: readout margins %4 (left) and %5 (right) device px")
+                                .arg(c.width()).arg(c.height()).arg(heading).arg(left, 0, 'f', 2)
+                                .arg(right, 0, 'f', 2)));
+    }
+}
+
+// #226: from minimumSizeHint() up, the HDG flag of an invalid heading (#151) touches neither the ring labels nor
+// the pod: no label ink within 1 device px of the flag; 1 device px at least between the flag and the pod, and 3 px
+// between their borders
+void tst_Compass::flagClearOfRingAndPodFromMinimumUp_data() { addMinimumRows(); }
+
+void tst_Compass::flagClearOfRingAndPodFromMinimumUp()
+{
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    const QVector<QPoint> ink = cardInk(c);
+    const Card card = cardOf(c, c.devicePixelRatioF());
+
+    const QSize size = c.size(); // prepareForDial() resizes to 300 x 300
+    prepareForDial(c, Compass::DisplayMode::HeadingUp, 0.0);
+    c.resize(size);
+    c.setLubberLineVisible(false);
+    c.setDigitalReadoutVisible(true);
+    c.setHeading(kNaN);
+    const QImage invalid = renderCompass(c);
+    QRect flag;
+    for (int y = 0; y < invalid.height(); ++y) {
+        for (int x = 0; x < invalid.width(); ++x) {
+            if (isFlagRed(invalid.pixel(x, y))) flag |= QRect(x, y, 1, 1);
+        }
+    }
+    QVERIFY2(!flag.isEmpty(), "no flag");
+    const QRectF pod = podInterior(c, card).adjusted(-0.75 * card.dpr, -0.75 * card.dpr, 0.75 * card.dpr,
+                                                     0.75 * card.dpr);
+    QVERIFY2(flag.bottom() + 1 + 1 <= pod.top() - 0.75 * card.dpr,
+             qPrintable(QStringLiteral("%1x%2: the flag ends at y %3 device px, the pod border starts at %4")
+                            .arg(c.width()).arg(c.height()).arg(flag.bottom() + 1)
+                            .arg(pod.top() - 0.75 * card.dpr, 0, 'f', 1)));
+    // And 3 px (docs/widgets.md) between the outer edges of their borders (the 1 px flag border and the 1.5 px pod
+    // border, each centred on its outline), on the geometry the widget drew (CompassTestAccess)
+    const QRectF flagRect = internal::CompassTestAccess::flag(c).rect;
+    const double podOuterTop = pod.top() / card.dpr - 0.75;
+    QVERIFY2(podOuterTop - (flagRect.bottom() + 0.5) >= 3.0,
+             qPrintable(QStringLiteral("%1x%2: %3 px between the borders of the flag and of the pod")
+                            .arg(c.width()).arg(c.height()).arg(podOuterTop - (flagRect.bottom() + 0.5), 0, 'f', 2)));
+
+    if (!labelGlyphsDrawn(c.font())) {
+        COMPASS_SKIP("no glyphs for the labels in this font: the labels against the flag are checked on the layout by "
+              "ringLabelsClearOnTheLayout (#226)");
+    }
+    const QRect around = flag.adjusted(-1, -1, 1, 1);
+    const auto touching = std::find_if(ink.cbegin(), ink.cend(), [&](const QPoint &p) {
+        return around.contains(p) && pixelDistances(p, card.centre).second > card.radius * 0.45;
+    });
+    QVERIFY2(touching == ink.cend(),
+             qPrintable(QStringLiteral("%1x%2: label ink at (%3, %4) within 1 device px of the flag (%5, %6)-(%7, %8)")
+                            .arg(c.width()).arg(c.height()).arg(touching == ink.cend() ? 0 : touching->x())
+                            .arg(touching == ink.cend() ? 0 : touching->y()).arg(flag.left()).arg(flag.top())
+                            .arg(flag.right() + 1).arg(flag.bottom() + 1)));
+}
+
+// #226: the layout of \a c, read from the test hook after a render: it fits, every label ends 4 px inside the tick
+// circle, and no label overlaps its neighbour, the flag or the pod (at any rotation of the card)
+void checkLayoutClear(Compass &c)
+{
+    renderCompass(c);
+    const CompassCardLayout layout = internal::CompassTestAccess::cardLayout(c);
+    const QString where = QStringLiteral("%1x%2 at %3 dpi: ").arg(c.width()).arg(c.height()).arg(c.logicalDpiY());
+    QVERIFY2(layout.fits, qPrintable(where + QStringLiteral("the layout does not fit")));
+    QVERIFY2(!layout.labels.empty(), qPrintable(where + QStringLiteral("no labels")));
+    const QPolygonF flag(layout.flag);
+    const double podReach = std::hypot(layout.pod.width() / 2.0, layout.pod.height() / 2.0);
+    for (size_t i = 0; i < layout.labels.size(); ++i) {
+        const CompassCardLayout::Label &label = layout.labels[i];
+        const CompassCardLayout::Label &next = layout.labels[(i + 1) % layout.labels.size()];
+        double farthest = 0.0;
+        double nearest = std::numeric_limits<double>::infinity();
+        for (const QPointF &p : label.ink) {
+            farthest = std::max(farthest, std::hypot(p.x(), p.y()));
+            nearest = std::min(nearest, std::hypot(p.x(), p.y()));
+        }
+        QVERIFY2(layout.majorTickR - farthest >= 4.0,
+                 qPrintable(where + QStringLiteral("the label at %1 degrees ends %2 px from the tick circle")
+                                        .arg(label.angle).arg(layout.majorTickR - farthest, 0, 'f', 2)));
+        QVERIFY2(layout.labels.size() == 1 || label.angle == next.angle || !label.ink.intersects(next.ink),
+                 qPrintable(where + QStringLiteral("the labels at %1 and %2 degrees overlap").arg(label.angle).arg(next.angle)));
+        QVERIFY2(!label.ink.intersects(flag),
+                 qPrintable(where + QStringLiteral("the label at %1 degrees overlaps the flag").arg(label.angle)));
+        // The corners are the nearest points only for a box seen from outside: enough here, the labels are far from
+        // the centre, and a label across the pod would have a corner inside it
+        QVERIFY2(nearest > podReach,
+                 qPrintable(where + QStringLiteral("the label at %1 degrees reaches the pod at some rotation").arg(label.angle)));
+    }
+}
+
+// #226: the layout of the card is checked against the geometry it reports (CompassTestAccess), in every
+// configuration, also where no font is installed: from minimumSizeHint() up, no two neighbouring labels overlap, every
+// label ends at least 4 px inside the circle of the major ticks, and no label overlaps the flag or (at any rotation of
+// the card) the pod
+void tst_Compass::ringLabelsClearOnTheLayout_data() { addMinimumRows(); }
+
+void tst_Compass::ringLabelsClearOnTheLayout()
+{
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    checkLayoutClear(c);
+}
+
+// #226: the order in which the card gives up its texts, on a range of sides (also below the minimum): the fonts first
+// (never below 7 pt), then the numbers (every other one, then none), then the intercardinals; the cardinals always.
+// From minimumSizeHint() up every layout fits
+void tst_Compass::layoutThinsInOrder_data()
+{
+    QTest::addColumn<QString>("fontName");
+    for (const char *font : {"application", "test font", "other font"}) QTest::newRow(font) << QString::fromLatin1(font);
+}
+
+void tst_Compass::layoutThinsInOrder()
+{
+    QFETCH(QString, fontName);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, 0, &error), qPrintable(error));
+    const int minimum = c.minimumSizeHint().width();
+    CompassCardLayout previous;
+    for (int side = 60; side <= 600; ++side) {
+        c.resize(side, side);
+        renderCompass(c);
+        const CompassCardLayout l = internal::CompassTestAccess::cardLayout(c);
+        const QString where = QStringLiteral("side %1 (minimum %2): ").arg(side).arg(minimum);
+        // Where the numbers come back, the fonts have just left 7 pt: the smallest is still at 7 pt. Measured (the
+        // tightest bound, approved up to 0.5 pt, #226): 7.0000 pt with the three fonts, with and without fonts, at
+        // DPR 1 and 2 (the cardinals at 10.1 to 11.6 pt: the numbers and the intercardinals bind)
+        if (side > 60 && previous.numbers != CompassCardLayout::Numbers::All
+            && l.numbers == CompassCardLayout::Numbers::All) {
+            const double smallest = std::min({l.cardinalPt, l.intercardinalPt, l.numberPt});
+            QVERIFY2(smallest <= 7.0, qPrintable(where + QStringLiteral("the numbers come back with the smallest font "
+                                                                        "at %1 pt").arg(smallest, 0, 'f', 4)));
+        }
+        previous = l;
+        QVERIFY2(l.cardinalPt >= 7.0 && l.intercardinalPt >= 7.0 && l.numberPt >= 7.0 && l.readoutPt >= 7.0,
+                 qPrintable(where + QStringLiteral("a font below 7 pt: %1 %2 %3 %4").arg(l.cardinalPt).arg(l.intercardinalPt)
+                                        .arg(l.numberPt).arg(l.readoutPt)));
+        if (l.numbers != CompassCardLayout::Numbers::All) {
+            QVERIFY2(l.cardinalPt == 7.0 && l.intercardinalPt == 7.0 && l.numberPt == 7.0,
+                     qPrintable(where + QStringLiteral("numbers thinned before the fonts reached 7 pt")));
+        }
+        if (!l.intercardinals) {
+            QVERIFY2(l.numbers == CompassCardLayout::Numbers::None,
+                     qPrintable(where + QStringLiteral("intercardinals dropped before the numbers")));
+        }
+        std::vector<int> angles;
+        for (const auto &label : l.labels) angles.push_back(label.angle);
+        for (int cardinal : {0, 90, 180, 270}) {
+            QVERIFY2(std::find(angles.begin(), angles.end(), cardinal) != angles.end(),
+                     qPrintable(where + QStringLiteral("no label at %1 degrees").arg(cardinal)));
+        }
+        std::vector<int> expected{0, 90, 180, 270};
+        if (l.intercardinals) expected.insert(expected.end(), {45, 135, 225, 315});
+        if (l.numbers == CompassCardLayout::Numbers::All) expected.insert(expected.end(), {30, 60, 120, 150, 210, 240, 300, 330});
+        if (l.numbers == CompassCardLayout::Numbers::EveryOther) expected.insert(expected.end(), {30, 120, 210, 300});
+        std::sort(expected.begin(), expected.end());
+        QVERIFY2(angles == expected, qPrintable(where + QStringLiteral("the labels drawn are not those of the layout")));
+        if (side >= minimum) {
+            QVERIFY2(l.fits, qPrintable(where + QStringLiteral("does not fit")));
+        }
+    }
+}
+
+// #226: the labels of \a c are drawn as laid out, read from their pixels (with glyphs for the labels): ink near the
+// centre of each label of the layout, none where a number or an intercardinal was dropped, and the ink of each label
+// laid out is its ink box: every pixel of it within 1 device px (antialiasing) of the box, and, in the frame of the
+// label, the box filled to within kLabelFill of each of its sides
+//
+// kLabelFill, approved by the maintainer (#226): the ink box of the layout is the union of the tight boxes of the
+// glyphs, which QFontMetricsF rounds out to whole px; measured, the drawn ink falls short of a side of it by at most
+// 1.67 logical px with the application font, at the 4 DPRs and at 96, 120 and 144 dpi
+constexpr double kLabelFill = 2.0;
+
+void checkLabelsDrawnAsLaidOut(Compass &c)
+{
+    const QVector<QPoint> ink = cardInk(c);
+    const CompassCardLayout layout = internal::CompassTestAccess::cardLayout(c);
+    const Card card = cardOf(c, c.devicePixelRatioF());
+    const QString where = QStringLiteral("%1x%2 at %3 dpi: ").arg(c.width()).arg(c.height()).arg(c.logicalDpiY());
+    // The ink boxes of the labels laid out, in device px
+    std::vector<QPolygonF> boxes;
+    std::vector<QPainterPath> paths;
+    for (const auto &l : layout.labels) {
+        QPolygonF device;
+        for (const QPointF &q : l.ink) device << card.centre + q * card.dpr;
+        QPainterPath path;
+        path.addPolygon(device);
+        path.closeSubpath();
+        boxes.push_back(device);
+        paths.push_back(path);
+    }
+    const auto near = [](const QPainterPath &box, const QPoint &p) {
+        return box.intersects(QRectF(p, QSizeF(1.0, 1.0)).adjusted(-1.0, -1.0, 1.0, 1.0));
+    };
+    // The ring of the labels: inside the circle of the major ticks and the inner ends of the major ticks (textColor;
+    // a 1.8 px pen with square caps reaches 0.9 px inside the circle), by 1 device px of antialiasing. The labels end
+    // 4 px inside
+    const auto inRing = [&](const QPoint &p) {
+        const auto [nearest, farthest] = pixelDistances(p, card.centre);
+        return farthest >= card.radius * 0.45 && farthest <= card.majorTickR - 0.9 * card.dpr - 1.0;
+    };
+    for (const int angle : ringLabelAngles()) {
+        const auto own = std::find_if(layout.labels.cbegin(), layout.labels.cend(),
+                                      [&](const CompassCardLayout::Label &l) { return l.angle == angle; });
+        const bool laidOut = own != layout.labels.cend();
+        const size_t index = static_cast<size_t>(own - layout.labels.cbegin());
+        // Within 5 degrees of the angle, the ink that no other label laid out explains
+        bool inked = false;
+        for (const QPoint &p : ink) {
+            if (!inRing(p)) continue;
+            const auto [lo, hi] = pixelAngles(p, card.centre, angle);
+            if (hi <= -5.0 || lo >= 5.0) continue;
+            bool other = false;
+            for (size_t k = 0; k < paths.size(); ++k) {
+                if ((!laidOut || k != index) && near(paths[k], p)) other = true;
+            }
+            if (other) continue;
+            inked = true;
+            if (laidOut) {
+                QVERIFY2(near(paths[index], p),
+                         qPrintable(where + QStringLiteral("device pixel (%1, %2) of the label at %3 degrees is "
+                                                           "farther than 1 px from its ink box")
+                                                .arg(p.x()).arg(p.y()).arg(angle)));
+            }
+        }
+        QVERIFY2(inked == laidOut, qPrintable(where + QStringLiteral("the label at %1 degrees is %2 but %3")
+                                                          .arg(angle)
+                                                          .arg(laidOut ? QStringLiteral("laid out") : QStringLiteral("dropped"))
+                                                          .arg(inked ? QStringLiteral("inked") : QStringLiteral("not inked"))));
+        if (!laidOut) continue;
+        // The box filled: in the frame of the label (rotated back to 0 degrees, around the centre of the card), the
+        // centres of the ink pixels near the box reach each side of the box
+        QTransform back;
+        back.translate(card.centre.x(), card.centre.y());
+        back.rotate(-angle);
+        back.translate(-card.centre.x(), -card.centre.y());
+        const QRectF box = back.map(boxes[index]).boundingRect();
+        double left = 1e9, right = -1e9, top = 1e9, bottom = -1e9;
+        for (const QPoint &p : ink) {
+            if (!inRing(p) || !near(paths[index], p)) continue;
+            const QPointF q = back.map(QPointF(p) + QPointF(0.5, 0.5));
+            left = std::min(left, q.x());
+            right = std::max(right, q.x());
+            top = std::min(top, q.y());
+            bottom = std::max(bottom, q.y());
+        }
+        const double deficit = std::max({left - box.left(), box.right() - right, top - box.top(), box.bottom() - bottom});
+        QVERIFY2(deficit <= kLabelFill * card.dpr,
+                 qPrintable(where + QStringLiteral("the label at %1 degrees falls %2 logical px short of a side of its "
+                                                   "ink box")
+                                        .arg(angle).arg(deficit / card.dpr, 0, 'f', 2)));
+    }
+}
+
+void tst_Compass::labelsDrawnAsLaidOut_data() { addMinimumRows(); }
+
+void tst_Compass::labelsDrawnAsLaidOut()
+{
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    Compass c;
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    if (!labelGlyphsDrawn(c.font())) {
+        COMPASS_SKIP("no glyphs for the labels in this font: checked on the layout by layoutThinsInOrder (#226)");
+    }
+    checkLabelsDrawnAsLaidOut(c);
+}
+
+// #226, #177: on a screen of another logical DPI the card is laid out and drawn at the DPI of the widget, not at that
+// of the card pixmap (the primary screen)
+void tst_Compass::labelsDrawnAtTheWidgetDpi_data()
+{
+    QTest::addColumn<int>("dpi");
+    QTest::addColumn<QString>("fontName");
+    QTest::addColumn<int>("offset");
+    for (int dpi : {120, 144}) {
+        for (const char *font : {"application", "other font"}) {
+            for (int offset : {0, 13, 55, 144}) {
+                QTest::newRow(qPrintable(QStringLiteral("DPI %1, %2, minimum + %3").arg(dpi).arg(QLatin1String(font))
+                                             .arg(offset)))
+                    << dpi << QString::fromLatin1(font) << offset;
+            }
+        }
+    }
+}
+
+void tst_Compass::labelsDrawnAtTheWidgetDpi()
+{
+    QFETCH(int, dpi);
+    QFETCH(QString, fontName);
+    QFETCH(int, offset);
+    ScreenChange::FakeScreen<Compass> c;
+    c.fakeDpr = qApp->devicePixelRatio(); // the DPR of the run, only the logical DPI changes
+    c.fakeDpi = dpi;
+    QCOMPARE(c.logicalDpiY(), dpi);
+    QString error;
+    QVERIFY2(setUpMinimumRow(c, fontName, offset, &error), qPrintable(error));
+    checkLayoutClear(c); // the layout at this DPI, in every configuration
+    if (QTest::currentTestFailed()) return;
+    if (!labelGlyphsDrawn(c.font())) {
+        COMPASS_SKIP("no glyphs for the labels in this font: their layout at this DPI is checked above (#226)");
+    }
+    checkLabelsDrawnAsLaidOut(c);
+}
+
+// #226: the minimum depends on the font family and style: wider glyphs need a larger compass. compassOtherFont()
+// is wider (letter spacing 150 %, also where glyphs are boxes). A font change tells the layout
+void tst_Compass::minimumFollowsTheFont()
+{
+    QWidget host;
+    auto *layout = new QVBoxLayout(&host);
+    auto *c = new Compass;
+    layout->addWidget(c);
+    ScreenChange::LayoutRequests requests;
+    host.installEventFilter(&requests);
+    host.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&host));
+    const QSize before = c->minimumSizeHint();
+    QCoreApplication::processEvents();
+    requests.count = 0;
+    c->setFont(compassOtherFont());
+    QCoreApplication::processEvents();
+    const QSize after = c->minimumSizeHint();
+    QVERIFY2(after.width() > before.width() && after.height() > before.height(),
+             qPrintable(QStringLiteral("minimum %1x%2 with the application font, %3x%4 with a wider one")
+                            .arg(before.width()).arg(before.height()).arg(after.width()).arg(after.height())));
+    QVERIFY2(requests.count > 0, "the layout was not told");
+    Compass fresh;
+    fresh.setFont(compassOtherFont());
+    QCOMPARE(after, fresh.minimumSizeHint());
+}
+
+// #226: the minimum follows the logical DPI of the screen (the fonts of the card are in points, #177); a DPR
+// alone does not change it. A move to another screen gives the minimum and the pixels of a new compass there
+// #226, #177: after a change of logical DPI, minimumSizeHint() is that of the new DPI at once, before any repaint
+// (a layout can ask for it first)
+void tst_Compass::minimumFollowsTheDpiBeforeARepaint_data()
+{
+    QTest::addColumn<int>("dpi");
+    QTest::addColumn<QString>("fontName");
+    for (int dpi : {120, 144}) {
+        for (const char *font : {"application", "other font"}) {
+            QTest::newRow(qPrintable(QStringLiteral("DPI %1, %2").arg(dpi).arg(QLatin1String(font))))
+                << dpi << QString::fromLatin1(font);
+        }
+    }
+}
+
+void tst_Compass::minimumFollowsTheDpiBeforeARepaint()
+{
+    QFETCH(int, dpi);
+    QFETCH(QString, fontName);
+    const auto setUp = [&](ScreenChange::FakeScreen<Compass> &c) {
+        c.fakeDpr = qApp->devicePixelRatio();
+        if (fontName == QLatin1String("other font")) c.setFont(compassOtherFont());
+    };
+    ScreenChange::FakeScreen<Compass> c;
+    setUp(c);
+    const QSize before = c.minimumSizeHint();
+    c.resize(before);
+    renderCompass(c);
+    c.fakeDpi = dpi;
+    const QSize after = c.minimumSizeHint(); // no repaint in between
+    ScreenChange::FakeScreen<Compass> fresh;
+    setUp(fresh);
+    fresh.fakeDpi = dpi;
+    QCOMPARE(after, fresh.minimumSizeHint());
+    QVERIFY2(after != before, qPrintable(QStringLiteral("the same minimum %1 at 96 and %2 dpi").arg(before.width()).arg(dpi)));
+}
+
+void tst_Compass::minimumFollowsTheScreen_data() { ScreenChange::addScreens(); }
+
+void tst_Compass::minimumFollowsTheScreen()
+{
+    QFETCH(double, dpr);
+    QFETCH(int, dpi);
+    bool minimumChanged = false;
+    ScreenChange::checkScreenChange<Compass>([](Compass &) {}, dpr, dpi, &minimumChanged);
+    if (QTest::currentTestFailed()) return;
+    QCOMPARE(minimumChanged, dpi != 96);
 }
 
 QTEST_MAIN(tst_Compass)
