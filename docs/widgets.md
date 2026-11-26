@@ -539,7 +539,14 @@ Heading indicator (`qiw::Compass`).
 - **Minimum size** (#226): `minimumSizeHint()` is the smallest square from which the card fits: N, E, S, W and the
   readout at 7 pt, and the `HDG` flag 3 px from the pod. Above it the layout only gets richer: what fits at one size
   fits at every larger one. It is computed from the widget font and follows a change of font or of logical DPI
-  (#177); `sizeHint()` is never smaller. The widget no longer sets a fixed minimum size of its own.
+  (#177); `sizeHint()` is never smaller. The widget no longer sets a fixed minimum size of its own. At 96 dpi it is
+  184 px with DejaVu Sans 9 pt, and 227 px with DejaVu Serif 9 pt at 150 % letter spacing.
+- **Rasterization margin** (#226): the layout measures the texts with the metrics of Qt (`QFontMetricsF`), and the
+  glyphs are drawn beyond the tight box those report: measured, by up to about 0.8 logical px per side with CoreText
+  (macOS) and 0.5 px on Windows. So the pod and the `HDG` flag hold the measured ink with 1 logical px more on each
+  side, at the minimum and at every larger size. The gaps around the ring labels (3 px between labels, 4 px to the
+  circle of the major ticks, one margin to the pod and the flag) are measured on the metrics of Qt: the drawn ink can
+  come into them by at most that margin.
 - **Known limitation, synthesized italic** (#226): with an italic font whose family has no italic face installed, Qt
   synthesizes the slant, and draws rotated text with that slant in screen space instead of along the text (observed
   with Qt 6.4.2). The rotated ring labels then lean the wrong way and leave the space that the layout measured for

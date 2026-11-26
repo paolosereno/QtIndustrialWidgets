@@ -29,9 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at the logical DPI of the widget, and grows with a wider font. The constructor no longer calls `setMinimumSize()`, so
   `minimumSize()` is no longer set by the widget. On a small card the label fonts go down to 7 pt, then every other
   number is dropped, then all of them, then the intercardinals; N, E, S and W always stay. The readout font goes down
-  to 7 pt to fit the pod, and the readout is centred on its ink; `HDG` is at least 7 pt. The card follows the logical
-  DPI of the widget, as the other gauges (#177), so it changes only on a screen whose logical DPI differs from that of
-  the primary screen. `sizeHint()` is never smaller than the minimum. See [Compass](docs/widgets.md#compass).
+  to 7 pt to fit the pod, with 1 logical px per side for the rasterizer, and the readout is centred on its ink; `HDG`
+  is at least 7 pt. At 96 dpi the minimum is 184 px with DejaVu Sans 9 pt and 227 px with a wide font (DejaVu Serif,
+  150 % letter spacing). The card follows the logical DPI of the widget, as the other gauges (#177), so it changes
+  only on a screen whose logical DPI differs from that of the primary screen. `sizeHint()` is never smaller than the
+  minimum. See [Compass](docs/widgets.md#compass).
 - **`setValue()` / `setSetpoint()` during an operator action is held** (#241), so a value read back from the device no
   longer moves the control under the operator or cancels the commit. At the end it is dropped after a commit and
   applied without one. See [Controls](docs/widgets.md#controls).
