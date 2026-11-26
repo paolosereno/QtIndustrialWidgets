@@ -41,6 +41,8 @@ reuse lint
 # no-font environment: only these tools, never scripts or loops of your own (sabotage file format:
 # tools/mutation_check.py --help). run_configs.py exits non-zero if any configuration fails, crashes, skips or
 # blacklists a test function, or cannot be set up (the one without fonts included); report its table as it is.
+# The one exception: the skips listed in tests/expected_skips.json (test, function, data-tag regex, configurations,
+# reason) pass and are counted apart; both tools read it. Add an entry only with the maintainer's approval.
 python3 tools/run_configs.py tst_TankDisplay tst_TankDisplayLayout --markdown table.md
 python3 tools/mutation_check.py sabotages.json --require-detection --markdown table.md
 (source tools/nofont-env.sh && QT_QPA_PLATFORM=offscreen ./build/bin/tst_TankDisplay)

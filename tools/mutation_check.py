@@ -28,7 +28,8 @@ The configurations and the way a test binary is run and counted come from run_co
 The repository is the one of the current directory, so the script can also run on another worktree.
 
 A baseline without edits runs first, on a build made with --clean-first: if it does not pass in all 8 configurations
-as run_configs.py requires (no FAIL!, nothing skipped, no crash), the results would mean nothing and the script stops.
+as run_configs.py requires (no FAIL!, nothing skipped but the expected skips of run_configs.py, no crash), the results
+would mean nothing and the script stops.
 The SHA-256 of every file in BUILD_DIR/bin and BUILD_DIR/lib after that build is the reference of the clean sources.
 
 For each sabotage, in order:
@@ -65,7 +66,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from run_configs import LABELS, configurations, run_all  # noqa: E402  (next to this script)
+from run_configs import EXPECTED_SKIPS, LABELS, configurations, load_expected_skips, run_all  # noqa: E402
 
 
 
@@ -148,9 +149,16 @@ def main():
     parser.add_argument("--markdown", type=Path, help="also write the result table to this file")
     parser.add_argument("--jobs", type=int, default=len(LABELS), help="configurations run in parallel")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds per test binary and configuration")
+    parser.add_argument("--expected-skips", type=Path,
+                        help=f"expected skips file, as in run_configs.py (default: {EXPECTED_SKIPS} of the "
+                             "repository, if it exists)")
     args = parser.parse_args()
 
     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip()).resolve()
+    try:
+        expected = load_expected_skips(args.expected_skips or root / EXPECTED_SKIPS)
+    except (ValueError, json.JSONDecodeError) as e:
+        fail(f"invalid expected skips file: {e}")
     build_dir = (root / args.build_dir).resolve()
     bin_dir = build_dir / "bin"
     spec = json.loads(args.sabotages.read_text(encoding="utf-8"))
@@ -203,7 +211,7 @@ def main():
                 return None
             if not contents:
                 clean.update(output_hashes(build_dir))
-            return run_all(bin_dir, tests, configs, args.jobs, args.timeout)
+            return run_all(bin_dir, tests, configs, args.jobs, args.timeout, expected)
         finally:
             if contents:
                 for path, data in originals.items():

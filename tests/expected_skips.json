@@ -1,0 +1,100 @@
+{
+  "skips": [
+    {
+      "test": "tst_Compass",
+      "function": "ringLabelsClearFromMinimumUp",
+      "data": "test font, minimum \\+ \\d+",
+      "configurations": [
+        "fonts 1",
+        "fonts 1.25",
+        "fonts 1.5",
+        "fonts 2",
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout"
+    },
+    {
+      "test": "tst_Compass",
+      "function": "ringLabelsClearFromMinimumUp",
+      "data": ".*",
+      "configurations": [
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: with no font installed Qt draws each glyph as a box, unrotated in a rotated frame: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout"
+    },
+    {
+      "test": "tst_Compass",
+      "function": "flagClearOfRingAndPodFromMinimumUp",
+      "data": "test font, minimum \\+ \\d+",
+      "configurations": [
+        "fonts 1",
+        "fonts 1.25",
+        "fonts 1.5",
+        "fonts 2",
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout"
+    },
+    {
+      "test": "tst_Compass",
+      "function": "flagClearOfRingAndPodFromMinimumUp",
+      "data": ".*",
+      "configurations": [
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: with no font installed Qt draws each glyph as a box, unrotated in a rotated frame: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout"
+    },
+    {
+      "test": "tst_Compass",
+      "function": "labelsDrawnAsLaidOut",
+      "data": "test font, minimum \\+ \\d+",
+      "configurations": [
+        "fonts 1",
+        "fonts 1.25",
+        "fonts 1.5",
+        "fonts 2",
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by layoutThinsInOrder"
+    },
+    {
+      "test": "tst_Compass",
+      "function": "labelsDrawnAsLaidOut",
+      "data": ".*",
+      "configurations": [
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: with no font installed Qt draws each glyph as a box, unrotated in a rotated frame: the rotated labels are checked on the layout by layoutThinsInOrder"
+    },
+    {
+      "test": "tst_Compass",
+      "function": "labelsDrawnAtTheWidgetDpi",
+      "data": ".*",
+      "configurations": [
+        "no fonts 1",
+        "no fonts 1.25",
+        "no fonts 1.5",
+        "no fonts 2"
+      ],
+      "reason": "#226: with no font installed Qt draws each glyph as a box, unrotated in a rotated frame: the layout at the DPI of the row is checked by the same function before the skip"
+    }
+  ]
+}

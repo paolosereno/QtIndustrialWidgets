@@ -21,7 +21,8 @@ caught; sabotage B (in b.cpp) cannot be caught. Each test runs A then B through 
   - "skip": the wrapper does nothing on the first build after a.cpp is restored, a rebuild that leaves the binary of
     sabotage A. mutation_check.py must notice that the binary differs from the clean build and stop.
 A third test starts from a build that already holds sabotage A: the baseline must be built from the clean sources.
-A fourth one has a local change in b.cpp that git's stat cache does not see (and no test catches): the script must
+Two more check the expected skips of run_configs.py: with needsFonts() skipped without fonts, the baseline passes when
+tests/expected_skips.json lists that skip and fails when it does not. A fourth one has a local change in b.cpp that git's stat cache does not see (and no test catches): the script must
 refuse to run, since the restore would overwrite it. A fifth one names a file outside the repository: refused before
 any file is read or written.
 """
@@ -53,6 +54,7 @@ SOURCES = {
     # Prints what run_configs.py reads from a QtTest binary: FAIL! lines and the Totals line
     "tst_fixture.cpp": """\
         #include <cstdio>
+        #include <cstdlib>
         int valueA();
         int valueB();
         int main()
@@ -62,7 +64,14 @@ SOURCES = {
             const bool aOk = valueA() == 1;
             std::printf(aOk ? "PASS   : tst_fixture::checkA()\\n" : "FAIL!  : tst_fixture::checkA() valueA() != 1\\n");
             std::printf("PASS   : tst_fixture::alwaysPasses()\\n");
-            std::printf("Totals: %d passed, %d failed, 0 skipped, 0 blacklisted, 0ms\\n", aOk ? 2 : 1, aOk ? 0 : 1);
+            // With the file skip.on in the repository, needsFonts() is skipped without fonts (#226)
+            std::FILE *skipOn = std::getenv("FONTCONFIG_FILE") ? std::fopen("skip.on", "r") : nullptr;
+            if (skipOn) {
+                std::fclose(skipOn);
+                std::printf("SKIP   : tst_fixture::needsFonts() no fonts\\n");
+            }
+            std::printf("Totals: %d passed, %d failed, %d skipped, 0 blacklisted, 0ms\\n", aOk ? 2 : 1, aOk ? 0 : 1,
+                        skipOn ? 1 : 0);
             return aOk ? 0 : 1;
         }
         """,
@@ -223,6 +232,27 @@ class MutationCheckTest(unittest.TestCase):
         self.assertIn('"../outside.cpp" is outside the repository', r.stderr)
         self.assertNotIn("baseline:", r.stdout)
         self.assertEqual(outside.read_text(encoding="utf-8"), "int valueC() { return 2; }\n")
+        self.assertSourcesClean()
+
+    def test_expected_skip_does_not_fail_the_baseline(self):
+        (self.repo / "skip.on").write_text("", encoding="utf-8")
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "expected_skips.json").write_text(
+            '{"skips": [{"test": "tst_fixture", "function": "needsFonts", "data": "", "configurations": '
+            '["no fonts 1", "no fonts 1.25", "no fonts 1.5", "no fonts 2"], "reason": "no fonts"}]}', encoding="utf-8")
+        r = self.mutation_check("clock back")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rows = table_rows(self.markdown.read_text(encoding="utf-8"))
+        self.assertEqual(rows.get("A valueA returns 0"), [1] * CONFIGS, r.stdout)
+        self.assertSourcesClean()
+
+    def test_unexpected_skip_fails_the_baseline(self):
+        (self.repo / "skip.on").write_text("", encoding="utf-8")
+        r = self.mutation_check("clock back")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("the baseline (no sabotage) fails", r.stderr)
+        self.assertIn("needsFonts", r.stderr)
+        self.assertNotIn("A valueA returns 0:", r.stdout)
         self.assertSourcesClean()
 
     def test_binary_left_by_a_sabotage_stops_the_run(self):

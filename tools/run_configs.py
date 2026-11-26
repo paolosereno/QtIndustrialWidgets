@@ -6,6 +6,7 @@
 """Runs test binaries in the 8 configurations; any failing or skipped configuration fails the whole run.
 
   tools/run_configs.py TEST [TEST ...] [--build-dir build] [--markdown FILE] [--jobs N] [--timeout SECONDS]
+                       [--expected-skips FILE]
 
 TEST is a binary of BUILD_DIR/bin (tst_ValveIndicator, ...); the build is used as it is, nothing is rebuilt.
 
@@ -14,17 +15,22 @@ The 8 configurations: QT_SCALE_FACTOR 1, 1.25, 1.5 and 2, each with the system f
 The repository is the one of the current directory, so the script can also run on another worktree.
 
 A configuration passes only if every binary ran to its "Totals:" line with at least one passed function, no FAIL!,
-nothing skipped (QSKIP) or blacklisted, no crash and no timeout. The configuration without fonts is never left out:
+nothing skipped (QSKIP) or blacklisted, no crash and no timeout. The one exception are the skips listed in the expected
+skips file (default tests/expected_skips.json of the repository, if it exists; approved by the maintainer, #226): each
+entry names the test binary, the test function, a regular expression that the data tag must match in full ("" for a
+function without data rows), the
+configurations (labels of LABELS) and the reason. A SKIP line that no entry matches fails the configuration as before. The configuration without fonts is never left out:
 if its environment cannot be set up, nothing runs and the exit status is 1.
 
 Exit status: 0 every binary passed in all 8 configurations; 1 setup error (a missing binary, no environment without
-fonts); 2 at least one configuration failed, crashed, timed out, skipped a test function or ran nothing.
+fonts, an invalid expected skips file); 2 at least one configuration failed, crashed, timed out, skipped a test function or ran nothing.
 
 mutation_check.py takes LABELS, configurations() and run_all() from here, so that both count a run the same way.
 """
 
 import argparse
 import concurrent.futures
+import json
 import os
 import re
 import shutil
@@ -38,6 +44,8 @@ SCALES = ("1", "1.25", "1.5", "2")
 LABELS = tuple(f"fonts {s}" for s in SCALES) + tuple(f"no fonts {s}" for s in SCALES)
 CRASH = 1000
 TOTALS = re.compile(r"^Totals: (\d+) passed, (\d+) failed, (\d+) skipped(?:, (\d+) blacklisted)?")
+SKIP = re.compile(r"^SKIP\s*: ([^:\s]+)::(\w+)\((.*?)\)(?: |$)")
+EXPECTED_SKIPS = Path("tests") / "expected_skips.json"
 
 
 def fail(message):
@@ -50,12 +58,58 @@ class Result:
     """Outcome of the test binaries in one configuration."""
     passed: int = 0
     fails: int = 0      # FAIL! lines; a crash, a timeout or a missing "Totals:" counts CRASH
-    skipped: int = 0    # skipped and blacklisted test functions
+    skipped: int = 0    # skipped and blacklisted test functions, but for the expected skips
+    expected: int = 0   # skips listed in the expected skips file
     empty: int = 0      # binaries that passed no test function
     names: set = field(default_factory=set)
 
     def ok(self):
         return self.fails == 0 and self.skipped == 0 and self.empty == 0
+
+
+def load_expected_skips(path):
+    """The entries of an expected skips file, checked; [] if \a path is None or does not exist.
+
+    Raises ValueError if the file is not a list of complete entries with known configurations."""
+    if path is None or not Path(path).is_file():
+        return []
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    entries = data.get("skips") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError(f'{path}: no "skips" list')
+    checked = []
+    for i, e in enumerate(entries):
+        where = f"{path}: entry {i + 1}"
+        if not isinstance(e, dict):
+            raise ValueError(f"{where} is not an object")
+        for key in ("test", "function", "reason"):
+            if not isinstance(e.get(key), str) or not e[key].strip():
+                raise ValueError(f'{where}: "{key}" missing or empty')
+        if not isinstance(e.get("data"), str):  # "" for a test function without data rows
+            raise ValueError(f'{where}: "data" missing')
+        configs = e.get("configurations")
+        if not isinstance(configs, list) or not configs:
+            raise ValueError(f'{where}: "configurations" missing or empty')
+        unknown = [c for c in configs if c not in LABELS]
+        if unknown:
+            raise ValueError(f'{where}: unknown configurations {unknown}; known: {list(LABELS)}')
+        try:
+            data_re = re.compile(e["data"])
+        except re.error as err:
+            raise ValueError(f'{where}: "data" is not a regular expression: {err}') from None
+        checked.append({"test": e["test"], "function": e["function"], "data": data_re,
+                        "configurations": set(configs), "reason": e["reason"]})
+    return checked
+
+
+def is_expected_skip(expected, label, line):
+    """Whether the SKIP \a line, in the configuration \a label, is one of the \a expected skips."""
+    m = SKIP.match(line)
+    if not m:
+        return False
+    test, function, data = m.groups()
+    return any(e["test"] == test and e["function"] == function and label in e["configurations"]
+               and e["data"].fullmatch(data) for e in expected)
 
 
 def no_font_config(directory):
@@ -70,7 +124,7 @@ def no_font_config(directory):
     return r.stdout
 
 
-def run_tests(bin_dir, tests, scale, fontconfig, timeout):
+def run_tests(bin_dir, tests, scale, fontconfig, timeout, label=None, expected=()):
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_SCALE_FACTOR=scale)
     env.pop("FONTCONFIG_FILE", None)
     if fontconfig:
@@ -85,10 +139,13 @@ def run_tests(bin_dir, tests, scale, fontconfig, timeout):
             result.names.add(f"{test} timed out")
             continue
         totals = None
+        expected_here = 0
         for line in out.splitlines():
             if line.startswith("FAIL!"):
                 result.fails += 1
                 result.names.add(line.split("::", 1)[1].split("(", 1)[0] if "::" in line else line)
+            elif line.startswith("SKIP") and is_expected_skip(expected, label, line):
+                expected_here += 1
             elif line.startswith(("SKIP", "BLACKLISTED", "BPASS", "BFAIL")):
                 result.names.add(f"{test} skipped: " + (line.split("::", 1)[1].split("(", 1)[0]
                                                          if "::" in line else line))
@@ -99,7 +156,8 @@ def run_tests(bin_dir, tests, scale, fontconfig, timeout):
             result.names.add(f"{test} crashed")
             continue
         result.passed += int(totals.group(1))
-        result.skipped += int(totals.group(3)) + int(totals.group(4) or 0)
+        result.expected += expected_here
+        result.skipped += int(totals.group(3)) - expected_here + int(totals.group(4) or 0)
         if int(totals.group(1)) == 0:
             result.empty += 1
             result.names.add(f"{test} ran nothing")
@@ -112,9 +170,12 @@ def configurations(nofont_dir):
     return [(scale, None) for scale in SCALES] + [(scale, nofont) for scale in SCALES]
 
 
-def run_all(bin_dir, tests, configs, jobs, timeout):
+def run_all(bin_dir, tests, configs, jobs, timeout, expected=()):
+    """Runs \a tests in each of \a configs (in the order of LABELS); \a expected: from load_expected_skips()."""
+    labelled = list(zip(LABELS, configs))
     with concurrent.futures.ThreadPoolExecutor(max(1, jobs)) as pool:
-        return list(pool.map(lambda c: run_tests(bin_dir, tests, c[0], c[1], timeout), configs))
+        return list(pool.map(lambda c: run_tests(bin_dir, tests, c[1][0], c[1][1], timeout, c[0], expected),
+                             labelled))
 
 
 def main():
@@ -124,12 +185,18 @@ def main():
     parser.add_argument("--markdown", type=Path, help="also write the result table to this file")
     parser.add_argument("--jobs", type=int, default=len(LABELS), help="configurations run in parallel")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds per test binary and configuration")
+    parser.add_argument("--expected-skips", type=Path,
+                        help=f"expected skips file (default: {EXPECTED_SKIPS} of the repository, if it exists)")
     args = parser.parse_args()
 
     top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     if top.returncode != 0:
         fail("not inside a git repository")
     bin_dir = (Path(top.stdout.strip()) / args.build_dir).resolve() / "bin"
+    try:
+        expected = load_expected_skips(args.expected_skips or Path(top.stdout.strip()) / EXPECTED_SKIPS)
+    except (ValueError, json.JSONDecodeError) as e:
+        fail(f"invalid expected skips file: {e}")
     for t in args.tests:
         if not (bin_dir / t).is_file():
             fail(f"test binary {bin_dir / t} not found (build first)")
@@ -140,17 +207,18 @@ def main():
             configs = configurations(nofont_dir)
         except RuntimeError as e:
             fail(f"no environment without fonts, nothing was run: {e}")
-        results = run_all(bin_dir, args.tests, configs, args.jobs, args.timeout)
+        results = run_all(bin_dir, args.tests, configs, args.jobs, args.timeout, expected)
     finally:
         shutil.rmtree(nofont_dir, ignore_errors=True)
 
-    lines = ["| Configuration | Passed | Failed | Skipped | Result | Problems |", "|---|---|---|---|---|---|"]
+    lines = ["| Configuration | Passed | Failed | Skipped | Expected skips | Result | Problems |",
+             "|---|---|---|---|---|---|---|"]
     for label, r in zip(LABELS, results):
         status = "PASS" if r.ok() else "FAIL"
         problems = ", ".join(sorted(r.names))
-        print(f"{label:>14}: {status}  passed {r.passed}, failed {r.fails}, skipped {r.skipped}"
-              + (f"  | {problems}" if problems else ""), flush=True)
-        lines.append(f"| {label} | {r.passed} | {r.fails} | {r.skipped} | {status} | {problems} |")
+        print(f"{label:>14}: {status}  passed {r.passed}, failed {r.fails}, skipped {r.skipped}, expected skips "
+              f"{r.expected}" + (f"  | {problems}" if problems else ""), flush=True)
+        lines.append(f"| {label} | {r.passed} | {r.fails} | {r.skipped} | {r.expected} | {status} | {problems} |")
     if args.markdown:
         args.markdown.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

@@ -561,6 +561,11 @@ if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND QIW_FC_L
         COMMAND ${Python3_EXECUTABLE} -m unittest discover
                 -s ${PROJECT_SOURCE_DIR}/tools -p test_mutation_check.py -v)
     set_tests_properties(mutation_check PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+    # The expected skips of tools/run_configs.py (#226): listed skips pass, any other skip fails
+    add_test(NAME run_configs_expected_skips
+        COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                -s ${PROJECT_SOURCE_DIR}/tools -p test_run_configs.py -v)
+    set_tests_properties(run_configs_expected_skips PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 endif()
 add_executable(tst_TankDisplayLayout
     tst_TankDisplayLayout.cpp
