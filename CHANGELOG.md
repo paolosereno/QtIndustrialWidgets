@@ -75,6 +75,16 @@ Behaviour changes that can reach code using the library. The entries below give 
 - **vcpkg port**: `portfile.cmake` carries the SHA512 of the `v2.8.1` tag archive (the hash exists only after the tag).
 
 ### Tests
+- **Fonts for the Windows job; skips checked in every CI job** (#274): the Windows job puts in `QT_QPA_FONTDIR` the 22
+  DejaVu files that the Linux job has (DejaVu 2.37, fixed URL, SHA-256 checked, cached), so the pixel checks that
+  skipped there without fonts now run, those of the `Compass` included. `tools/ci_skips.py` checks the `ctest -V` log
+  of every CI job against `tests/expected_skips.json`, which names the CI configurations. Every test with QtGui gets
+  DejaVu Sans 9 pt as application font (`tests/TestApplicationFont.cpp`): without fontconfig the generic family of the
+  offscreen platform resolved to DejaVu Math TeX Gyre. With full hinting (FreeType on Windows) two thresholds of the
+  `Compass` tests are wider, as approved: the fill of a ring label's box to within `kLabelFill + kRasterMargin` on
+  every platform, and the readout centred to within 3 device px at a fractional DPR on Windows with every font. The
+  family row of `tst_RadialGauge::minimumTableNotKeptAcrossComputations` takes a family for which the minimum
+  differs. See [ci.yml](.github/workflows/ci.yml).
 - **The Designer plugin in CI: warnings as errors and Windows** (#245): the job that installs the plugin into Qt's
   prefix configures with `CMAKE_COMPILE_WARNING_AS_ERROR=ON`, and the Windows job builds the plugin with MSVC and runs
   `tst_DesignerPlugin`; it fails if the plugin is not built. See [ci.yml](.github/workflows/ci.yml).
