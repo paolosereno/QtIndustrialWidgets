@@ -84,7 +84,9 @@ Behaviour changes that can reach code using the library. The entries below give 
   `Compass` tests are wider, as approved: the fill of a ring label's box to within `kLabelFill + kRasterMargin` on
   every platform, and the readout centred to within 3 device px at a fractional DPR on Windows with every font. The
   family row of `tst_RadialGauge::minimumTableNotKeptAcrossComputations` takes a family for which the minimum
-  differs. See [ci.yml](.github/workflows/ci.yml).
+  differs. `tst_LinearGauge::scaleLabelsReadable` groups the label ink by the labels the gauge drew (a test hook)
+  instead of the gaps of a reference image, which full hinting rasterized differently from one process to another.
+  See [ci.yml](.github/workflows/ci.yml).
 - **The Designer plugin in CI: warnings as errors and Windows** (#245): the job that installs the plugin into Qt's
   prefix configures with `CMAKE_COMPILE_WARNING_AS_ERROR=ON`, and the Windows job builds the plugin with MSVC and runs
   `tst_DesignerPlugin`; it fails if the plugin is not built. See [ci.yml](.github/workflows/ci.yml).
