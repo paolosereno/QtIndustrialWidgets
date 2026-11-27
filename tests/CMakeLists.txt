@@ -810,3 +810,8 @@ set_target_properties(tst_ThumbwheelSwitchInput PROPERTIES
     AUTOMOC ON
 )
 add_dpr_tests(tst_ThumbwheelSwitchInput)
+
+# #274, probe only
+add_executable(probe274 probe274.cpp)
+target_link_libraries(probe274 PRIVATE Qt6::Widgets)
+target_compile_definitions(probe274 PRIVATE QIW_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fonts")

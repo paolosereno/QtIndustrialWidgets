@@ -126,6 +126,22 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build --output-on-failure
 
+      - name: Probe 274 (fonts)
+        if: always()
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          mkdir -p "$RUNNER_TEMP/probe274"
+          { fc-list : family style file | sort; ./build/bin/probe274; } > "$RUNNER_TEMP/probe274/fonts-linux.txt" 2>&1 || true
+          cat "$RUNNER_TEMP/probe274/fonts-linux.txt"
+
+      - name: Upload probe 274
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe274-linux
+          path: ${{ runner.temp }}/probe274/
+          retention-days: 14
+
       # Smoke test of the documentation image export (#26); images are uploaded, never committed
       - name: Export gallery images (smoke test)
         run: |
@@ -238,6 +254,22 @@ jobs:
         run: |
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build --output-on-failure
+
+      - name: Probe 274 (fonts)
+        if: always()
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          mkdir -p "$RUNNER_TEMP/probe274"
+          { fc-list : family style file | sort; ./build/bin/probe274; } > "$RUNNER_TEMP/probe274/fonts-linux-qt62.txt" 2>&1 || true
+          cat "$RUNNER_TEMP/probe274/fonts-linux-qt62.txt"
+
+      - name: Upload probe 274
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe274-linux-qt62
+          path: ${{ runner.temp }}/probe274/
+          retention-days: 14
 
   # ============================================================
   # 1c. Designer plugin installed into Qt's own prefix (#135)
@@ -356,6 +388,14 @@ jobs:
       - name: Build all targets
         run: cmake --build build --config Release
 
+      - name: Probe 274 (fonts, no font dir)
+        if: always()
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          mkdir -p "$RUNNER_TEMP/probe274"
+          ./build/bin/Release/probe274.exe 2>&1 | tee "$RUNNER_TEMP/probe274/fonts-windows-nofontdir.txt" || true
+
       - name: Probe 274 (skips, no fonts)
         if: always()
         shell: bash
@@ -376,7 +416,9 @@ jobs:
           curl -sSLf -o "$RUNNER_TEMP/dejavu.zip" "$DEJAVU_URL"
           echo "$DEJAVU_SHA256  $RUNNER_TEMP/dejavu.zip" | sha256sum -c -
           mkdir -p "$dir"
-          unzip -q -j "$RUNNER_TEMP/dejavu.zip" 'dejavu-fonts-ttf-2.37/ttf/*.ttf' -d "$dir"
+          for f in DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSerif.ttf DejaVuSerif-Bold.ttf DejaVuSansMono.ttf DejaVuSansMono-Bold.ttf DejaVuSansMono-Oblique.ttf DejaVuSansMono-BoldOblique.ttf; do
+            unzip -q -j "$RUNNER_TEMP/dejavu.zip" "dejavu-fonts-ttf-2.37/ttf/$f" -d "$dir"
+          done
           ls "$dir"
           echo "QT_QPA_FONTDIR=$(cygpath -w "$dir")" >> "$GITHUB_ENV"
 
@@ -385,6 +427,7 @@ jobs:
         shell: bash
         run: |
           export QT_QPA_PLATFORM=offscreen
+          ./build/bin/Release/probe274.exe 2>&1 | tee "$RUNNER_TEMP/probe274/fonts-windows.txt" || true
           echo "QT_QPA_FONTDIR=$QT_QPA_FONTDIR"
           ctest --test-dir build -C Release -V > "$RUNNER_TEMP/ctest-v.txt" 2>&1 || true
           grep -E 'SKIP   :|QFontDatabase|Totals' "$RUNNER_TEMP/ctest-v.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | wc -l
@@ -398,6 +441,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ctest-before.txt
             ${{ runner.temp }}/ctest-v.txt
+            ${{ runner.temp }}/probe274/
           retention-days: 14
 
       - name: Run unit tests (QtTest)
