@@ -21,6 +21,7 @@
 
 #include "internal/FontScale.h"
 #include "internal/LinearGaugeScale.h"
+#include "internal/LinearGaugeTestAccess.h"
 #include "internal/NumberFormat.h"
 
 #include <algorithm>
@@ -222,6 +223,54 @@ QVector<Run> groupIntoLabels(const QVector<Run> &runs, double maxInnerGap)
             labels.last().end = r.end;
         } else {
             labels.append(r);
+        }
+    }
+    return labels;
+}
+
+// #274: the ink of each scale label, from the labels the gauge drew (LinearGaugeTestAccess): every run of label pixels
+// goes to the label whose laid-out box it overlaps, or else to the nearest box. A run that overlaps the boxes of two
+// labels is ink of both, merged: \a error names it. The labels come in increasing coordinate order. Grouping by the
+// gaps of a reference image was not reliable: on the Windows job (FreeType, full hinting) the same text drawn alone
+// came out 1 px different from one process to another, so that the inner gap of "100" on the widget (2 px) was
+// wider than the reference (1 px) and the label was split in two
+QVector<Run> labelsOfLayout(const QVector<Run> &runs, std::vector<internal::ScaleLabelSlot> laidOut, QString *error)
+{
+    std::sort(laidOut.begin(), laidOut.end(),
+              [](const internal::ScaleLabelSlot &a, const internal::ScaleLabelSlot &b) { return a.start < b.start; });
+    QVector<Run> labels(static_cast<int>(laidOut.size()), Run{1e9, -1e9});
+    for (const Run &r : runs) {
+        std::vector<size_t> overlapped;
+        for (size_t i = 0; i < laidOut.size(); ++i) {
+            if (r.start < laidOut[i].end && r.end > laidOut[i].start) overlapped.push_back(i);
+        }
+        if (overlapped.size() > 1) {
+            *error = QStringLiteral("ink run %1-%2 overlaps the boxes of the labels %3 and %4: labels merged")
+                         .arg(r.start, 0, 'f', 1).arg(r.end, 0, 'f', 1).arg(laidOut[overlapped[0]].index)
+                         .arg(laidOut[overlapped[1]].index);
+            return {};
+        }
+        size_t own = overlapped.empty() ? 0 : overlapped.front();
+        if (overlapped.empty()) {
+            double nearest = 1e9;
+            for (size_t i = 0; i < laidOut.size(); ++i) {
+                const double distance = std::max(laidOut[i].start - r.end, r.start - laidOut[i].end);
+                if (distance < nearest) {
+                    nearest = distance;
+                    own = i;
+                }
+            }
+        }
+        Run &label = labels[static_cast<int>(own)];
+        label.start = std::min(label.start, r.start);
+        label.end = std::max(label.end, r.end);
+    }
+    for (int i = 0; i < labels.size(); ++i) {
+        if (labels[i].end < labels[i].start) {
+            *error = QStringLiteral("label %1 laid out at %2-%3 but no ink").arg(laidOut[static_cast<size_t>(i)].index)
+                         .arg(laidOut[static_cast<size_t>(i)].start, 0, 'f', 1)
+                         .arg(laidOut[static_cast<size_t>(i)].end, 0, 'f', 1);
+            return {};
         }
     }
     return labels;
@@ -829,9 +878,12 @@ void tst_LinearGauge::scaleLabelsReadable()
         innerGap = std::max(innerGap, ink.last().maxInnerGap);
     }
 
-    // Along the scale axis: labels (pixel runs grouped with the reference inner gap + 0.5 px) and
-    // major ticks, ordered from the minimum end
-    QVector<Run> labels = groupIntoLabels(runsAlong(img, orientation, -1.0, isLabelPixel), innerGap + 0.5);
+    // Along the scale axis: labels (pixel runs grouped by the boxes of the labels the gauge drew, #274) and major
+    // ticks, ordered from the minimum end
+    QString grouping;
+    QVector<Run> labels = labelsOfLayout(runsAlong(img, orientation, -1.0, isLabelPixel),
+                                         internal::LinearGaugeTestAccess::lastScaleLabels(gauge), &grouping);
+    QVERIFY2(grouping.isEmpty(), qPrintable(grouping));
     QVector<Run> ticks = runsAlong(img, orientation, 0.0, isTickPixel);
     if (!horizontal) { // rows grow downwards, the scale grows upwards
         std::reverse(labels.begin(), labels.end());
@@ -851,7 +903,7 @@ void tst_LinearGauge::scaleLabelsReadable()
                  qPrintable(QStringLiteral("run %1-%2 longer than the widest label (%3 px): labels merged [%4]")
                                 .arg(r.start, 0, 'f', 1).arg(r.end, 0, 'f', 1).arg(widest, 0, 'f', 1).arg(describe())));
     }
-    // (b) the decided minimum gap between drawn labels (1 px for anti-aliasing)
+    // (b) the decided minimum gap between the ink of drawn labels (1 px for anti-aliasing)
     for (int i = 1; i < labels.size(); ++i) {
         const double gap = horizontal ? labels[i].start - labels[i - 1].end : labels[i - 1].start - labels[i].end;
         QVERIFY2(gap >= minGap - 1.0, qPrintable(QStringLiteral("gap %1 px < minimum %2 px [%3]")
