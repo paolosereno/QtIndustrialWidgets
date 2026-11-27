@@ -12,6 +12,8 @@
 #include <QtGui/QScreen>
 #include <QtWidgets/QApplication>
 #include <cstdio>
+#include <string>
+#include <utility>
 
 namespace {
 void print(const char *name, const QFont &f)
@@ -50,6 +52,16 @@ int main(int argc, char **argv)
     noItalic.setItalic(false);
     QString error;
     const QFont readout = ReadoutTest::readoutTestFont(&error);
+    for (const auto &[hname, pref] : {std::pair<const char *, QFont::HintingPreference>{"vertical hinting", QFont::PreferVerticalHinting},
+                                      std::pair<const char *, QFont::HintingPreference>{"no hinting", QFont::PreferNoHinting}}) {
+        for (const auto &[fname, font] : {std::pair<const char *, QFont>{"default", base}, std::pair<const char *, QFont>{"default bold", bold},
+                                          std::pair<const char *, QFont>{"otherFont without italic", FontTest::otherFont(base)}}) {
+            QFont f = font;
+            if (std::string(fname) == "otherFont without italic") f.setItalic(false);
+            f.setHintingPreference(pref);
+            print(qPrintable(QStringLiteral("%1, %2").arg(QLatin1String(fname), QLatin1String(hname))), f);
+        }
+    }
     print("default", base);
     print("default bold", bold);
     print("otherFont (DejaVu Serif italic 150%)", FontTest::otherFont(base));

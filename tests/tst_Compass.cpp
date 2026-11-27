@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
+#include <cstdio>
 #include <QtIndustrialWidgets/Compass.h>
 
 #include "FontTestUtils.h"
@@ -421,6 +422,15 @@ bool setUpMinimumRow(Compass &c, const QString &fontName, int offset, QString *e
         c.setFont(f);
     } else if (fontName == QLatin1String("other font")) {
         c.setFont(compassOtherFont());
+    }
+    { // #274 probe only
+        const QByteArray h = qgetenv("QIW_PROBE_HINTING");
+        if (!h.isEmpty()) {
+            QFont f = c.font();
+            f.setHintingPreference(h == "none" ? QFont::PreferNoHinting
+                                   : h == "vertical" ? QFont::PreferVerticalHinting : QFont::PreferFullHinting);
+            c.setFont(f);
+        }
     }
     const QSize minimum = c.minimumSizeHint();
     const int side = std::max(minimum.width(), minimum.height()) + offset;
@@ -1241,6 +1251,48 @@ void tst_Compass::readoutFitsThePodFromMinimumUp()
         const double maxMarginDifference = testFontAtFractionalDpr ? 3.0 : 2.0;
         const double left = ink.left() - pod.left();
         const double right = pod.right() - (ink.right() + 1);
+        { // #274 probe only: the ink drawn on the widget, the ink measured on an image as readoutInkCentre() does, and
+          // tightBoundingRect(), in device px
+            const CompassCardLayout layout = internal::CompassTestAccess::cardLayout(c);
+            QFont podFont = c.font();
+            podFont.setBold(true);
+            podFont.setPointSizeF(layout.readoutPt);
+            const QString text = std::isnan(heading)
+                                     ? QStringLiteral("---°")
+                                     : QStringLiteral("%1°").arg(static_cast<int>(std::round(heading)) % 360, 3, 10,
+                                                                 QLatin1Char('0'));
+            const qreal dpr = c.devicePixelRatioF();
+            const QFontMetricsF fm(podFont, &c);
+            const QRectF tight = fm.tightBoundingRect(text);
+            const int margin = static_cast<int>(std::ceil(fm.height() * dpr));
+            QImage image(QSize(static_cast<int>(std::ceil(fm.horizontalAdvance(text) * dpr)) + 2 * margin,
+                               static_cast<int>(std::ceil(fm.height() * dpr)) + 2 * margin),
+                         QImage::Format_ARGB32_Premultiplied);
+            image.setDevicePixelRatio(dpr);
+            image.fill(Qt::transparent);
+            {
+                QPainter p(&image);
+                p.setRenderHint(QPainter::Antialiasing, true);
+                p.setRenderHint(QPainter::TextAntialiasing, true);
+                QFont f = podFont;
+                f.setPointSizeF(podFont.pointSizeF() * c.logicalDpiY() / static_cast<double>(image.logicalDpiY()));
+                p.setFont(f);
+                p.setPen(Qt::black);
+                p.drawText(QPointF(margin / dpr, margin / dpr + fm.ascent()), text);
+            }
+            int il = image.width(), ir = -1;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x)
+                    if (qAlpha(image.pixel(x, y)) != 0) { il = std::min(il, x); ir = std::max(ir, x); }
+            std::printf("PROBE274 readout|dpr %.2f|%dx%d|%s|pt %.3f|text %s|pod %.2f-%.2f|widget ink %d-%d (w %d)|"
+                        "margins L %.2f R %.2f|image ink rel. origin %d-%d (w %d)|tight rel. origin %.2f-%.2f (w %.2f)|"
+                        "advance %.2f|%s\n",
+                        dpr, c.width(), c.height(), qPrintable(fontName), layout.readoutPt, qPrintable(text),
+                        pod.left(), pod.right(), ink.left(), ink.right() + 1, ink.width(), left, right, il - margin,
+                        ir + 1 - margin, ir + 1 - il, tight.left() * dpr, tight.right() * dpr, tight.width() * dpr,
+                        fm.horizontalAdvance(text) * dpr,
+                        std::abs(left - right) <= maxMarginDifference + 1e-9 ? "ok" : "FAILS");
+        }
         QVERIFY2(std::abs(left - right) <= maxMarginDifference + 1e-9, // 1e-9: the rounding of the fractional pod edges
                  qPrintable(QStringLiteral("%1x%2, heading %3: readout margins %4 (left) and %5 (right) device px")
                                 .arg(c.width()).arg(c.height()).arg(heading).arg(left, 0, 'f', 2)
@@ -1585,6 +1637,14 @@ void checkLabelsDrawnAsLaidOut(Compass &c)
             bottom = std::max(bottom, q.y());
         }
         const double deficit = std::max({left - box.left(), box.right() - right, top - box.top(), box.bottom() - bottom});
+        if (angle == 180 || deficit > kLabelFill * card.dpr) { // #274 probe only
+            const double dl = left - box.left(), dr = box.right() - right, dt = top - box.top(), db = box.bottom() - bottom;
+            std::printf("PROBE274 label|dpr %.2f|%s|angle %d|box %.2f %.2f %.2f %.2f|ink-centres %.2f %.2f %.2f %.2f|"
+                        "short device L %.2f R %.2f T %.2f B %.2f|logical L %.2f R %.2f T %.2f B %.2f|%s\n",
+                        card.dpr, qPrintable(where), angle, box.left(), box.top(), box.right(), box.bottom(), left, top,
+                        right, bottom, dl, dr, dt, db, dl / card.dpr, dr / card.dpr, dt / card.dpr, db / card.dpr,
+                        deficit > kLabelFill * card.dpr ? "FAILS" : "ok");
+        }
         QVERIFY2(deficit <= kLabelFill * card.dpr,
                  qPrintable(where + QStringLiteral("the label at %1 degrees falls %2 logical px short of a side of its "
                                                    "ink box")

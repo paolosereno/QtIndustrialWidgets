@@ -132,6 +132,9 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           mkdir -p "$RUNNER_TEMP/probe274"
           { fc-list : family style file | sort; ./build/bin/probe274; } > "$RUNNER_TEMP/probe274/fonts-linux.txt" 2>&1 || true
+          for s in 1 1.25 1.5 2; do
+            QT_SCALE_FACTOR=$s ./build/bin/tst_Compass labelsDrawnAsLaidOut readoutFitsThePodFromMinimumUp > "$RUNNER_TEMP/probe274/compass-linux-full-$s.txt" 2>&1 || true
+          done
           cat "$RUNNER_TEMP/probe274/fonts-linux.txt"
 
       - name: Upload probe 274
@@ -416,7 +419,7 @@ jobs:
           curl -sSLf -o "$RUNNER_TEMP/dejavu.zip" "$DEJAVU_URL"
           echo "$DEJAVU_SHA256  $RUNNER_TEMP/dejavu.zip" | sha256sum -c -
           mkdir -p "$dir"
-          for f in DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSerif.ttf DejaVuSerif-Bold.ttf DejaVuSansMono.ttf DejaVuSansMono-Bold.ttf DejaVuSansMono-Oblique.ttf DejaVuSansMono-BoldOblique.ttf; do
+          for f in DejaVuMathTeXGyre.ttf DejaVuSans-Bold.ttf DejaVuSans-BoldOblique.ttf DejaVuSans-ExtraLight.ttf DejaVuSans-Oblique.ttf DejaVuSans.ttf DejaVuSansCondensed-Bold.ttf DejaVuSansCondensed-BoldOblique.ttf DejaVuSansCondensed-Oblique.ttf DejaVuSansCondensed.ttf DejaVuSansMono-Bold.ttf DejaVuSansMono-BoldOblique.ttf DejaVuSansMono-Oblique.ttf DejaVuSansMono.ttf DejaVuSerif-Bold.ttf DejaVuSerif-BoldItalic.ttf DejaVuSerif-Italic.ttf DejaVuSerif.ttf DejaVuSerifCondensed-Bold.ttf DejaVuSerifCondensed-BoldItalic.ttf DejaVuSerifCondensed-Italic.ttf DejaVuSerifCondensed.ttf; do
             unzip -q -j "$RUNNER_TEMP/dejavu.zip" "dejavu-fonts-ttf-2.37/ttf/$f" -d "$dir"
           done
           ls "$dir"
@@ -432,6 +435,12 @@ jobs:
           ctest --test-dir build -C Release -V > "$RUNNER_TEMP/ctest-v.txt" 2>&1 || true
           grep -E 'SKIP   :|QFontDatabase|Totals' "$RUNNER_TEMP/ctest-v.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | wc -l
           grep -E 'tests? failed|tests passed' "$RUNNER_TEMP/ctest-v.txt"
+          for h in full vertical none; do
+            for s in 1 1.25 1.5 2; do
+              QIW_PROBE_HINTING=$h QT_SCALE_FACTOR=$s QT_FORCE_STDERR_LOGGING=1 ./build/bin/Release/tst_Compass.exe labelsDrawnAsLaidOut readoutFitsThePodFromMinimumUp > "$RUNNER_TEMP/probe274/compass-windows-$h-$s.txt" 2>&1 || true
+              grep -c FAILS "$RUNNER_TEMP/probe274/compass-windows-$h-$s.txt" || true
+            done
+          done
 
       - name: Upload probe 274
         if: always()
