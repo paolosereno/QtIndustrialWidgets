@@ -394,6 +394,48 @@ jobs:
       - name: Build all targets
         run: cmake --build build --config Release
 
+      # #274: Qt's offscreen platform does not read the fonts of Windows: it reads the folder QT_QPA_FONTDIR (by default
+      # <Qt>/lib/fonts, which aqt does not install), and with no font it draws every glyph as a box, so the pixel checks
+      # of the glyphs skip. The job gives it DejaVu 2.37, the family of the Linux jobs, from the release of the DejaVu
+      # project at a fixed URL; the archive must have the SHA-256 below (the same on the project's SourceForge mirror),
+      # else the job fails. It is cached under that SHA-256.
+      - name: Cache the fonts for the offscreen platform (#274)
+        id: dejavu-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/dejavu
+          key: dejavu-fonts-ttf-2.37-7576310b219e04159d35ff61dd4a4ec4cdba4f35c00e002a136f00e96a908b0a
+
+      - name: Fonts for the offscreen platform (#274)
+        shell: bash
+        env:
+          DEJAVU_URL: https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip
+          DEJAVU_SHA256: 7576310b219e04159d35ff61dd4a4ec4cdba4f35c00e002a136f00e96a908b0a
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dejavu/dejavu-fonts-ttf-2.37.zip"
+          if [ ! -f "$archive" ]; then
+            mkdir -p "$RUNNER_TEMP/dejavu"
+            curl -sSLf -o "$archive" "$DEJAVU_URL"
+          fi
+          # Checked also when the archive comes from the cache
+          echo "$DEJAVU_SHA256  $archive" | sha256sum -c -
+          dir="$RUNNER_TEMP/qpa-fonts"
+          mkdir -p "$dir"
+          # The 22 DejaVu files that fc-list shows on the Linux job (ubuntu-24.04), by name: with more or fewer files
+          # Qt resolves other faces than on Linux (CI probe of #274)
+          for f in DejaVuMathTeXGyre.ttf DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSans-BoldOblique.ttf \
+                   DejaVuSans-ExtraLight.ttf DejaVuSans-Oblique.ttf DejaVuSansCondensed.ttf DejaVuSansCondensed-Bold.ttf \
+                   DejaVuSansCondensed-BoldOblique.ttf DejaVuSansCondensed-Oblique.ttf DejaVuSansMono.ttf \
+                   DejaVuSansMono-Bold.ttf DejaVuSansMono-BoldOblique.ttf DejaVuSansMono-Oblique.ttf DejaVuSerif.ttf \
+                   DejaVuSerif-Bold.ttf DejaVuSerif-BoldItalic.ttf DejaVuSerif-Italic.ttf DejaVuSerifCondensed.ttf \
+                   DejaVuSerifCondensed-Bold.ttf DejaVuSerifCondensed-BoldItalic.ttf DejaVuSerifCondensed-Italic.ttf; do
+            unzip -q -o -j "$archive" "dejavu-fonts-ttf-2.37/ttf/$f" -d "$dir"
+          done
+          test "$(find "$dir" -name '*.ttf' | wc -l)" -eq 22 || { echo "::error::not the 22 DejaVu files"; exit 1; }
+          echo "22 fonts in $dir"
+          echo "QT_QPA_FONTDIR=$(cygpath -w "$dir")" >> "$GITHUB_ENV"
+
       - name: Run unit tests (QtTest)
         shell: bash
         run: |
@@ -401,6 +443,8 @@ jobs:
           # #245: the plugin tests are part of the run (installed_designer_plugin is not: it checks the run path of
           # the installed plugin, which Windows does not have; see tests/CMakeLists.txt)
           ctest --test-dir build -C Release -N | grep -E 'tst_DesignerPlugin' || { echo "::error::tst_DesignerPlugin is not a test of this build"; exit 1; }
+          # #274: the fonts of the step above
+          test -n "${QT_QPA_FONTDIR:-}" || { echo "::error::QT_QPA_FONTDIR is not set"; exit 1; }
           # #274: the whole output of the tests (ctest -V) goes to a log, so that tools/ci_skips.py checks every skip
           # against tests/expected_skips.json; the console gets the result of each test, and the output of the
           # failing ones
