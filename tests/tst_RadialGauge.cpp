@@ -1403,20 +1403,26 @@ QSize referenceMinimum(const QFont &font)
 }
 
 // #274: a font with the pixel size of \a base and another family, for which the reference gives another minimum
-// than with \a base: the test font first (tests/fonts), then the installed families. Without this choice the change
-// of family can leave the minimum unchanged and the test checks nothing: with whole-pixel advances (FreeType with
-// full hinting, the offscreen platform of the Windows job) the texts that set the minimum measure the same with the
-// test font and with DejaVu Sans at 12 px, and the minimum stayed at 97
+// than with \a base: the first of DejaVu Serif, DejaVu Sans Mono and DejaVu Sans Condensed, then of the other installed
+// families (the test font of tests/fonts among them, loaded here, so that a family is there without installed fonts),
+// that the font database resolves to itself. Without this choice the change of family can leave the minimum
+// unchanged and the test checks nothing: with whole-pixel advances (FreeType with full hinting, the offscreen platform
+// of the Windows job) the texts that set the minimum measure the same with the test font and with DejaVu Sans at
+// 12 px, and the minimum stayed at 97
 QFont familyWithAnotherMinimum(const QFont &base, QString *error)
 {
     const QSize minimum = referenceMinimum(base);
-    QFont test = readoutTestFont(error); // the application font with the family of the test font
+    readoutTestFont(error);
     if (!error->isEmpty()) return QFont();
-    if (referenceMinimum(test) != minimum) return test;
+    QStringList families = {QStringLiteral("DejaVu Serif"), QStringLiteral("DejaVu Sans Mono"),
+                            QStringLiteral("DejaVu Sans Condensed")};
     for (const QString &family : QFontDatabase::families()) {
+        if (!families.contains(family)) families << family;
+    }
+    for (const QString &family : families) {
         QFont f = base;
         f.setFamily(family);
-        if (referenceMinimum(f) != minimum) return f;
+        if (QFontInfo(f).family() == family && referenceMinimum(f) != minimum) return f;
     }
     *error = QStringLiteral("no family for which the minimum differs from %1x%2 with %3")
                  .arg(minimum.width()).arg(minimum.height()).arg(base.family());
