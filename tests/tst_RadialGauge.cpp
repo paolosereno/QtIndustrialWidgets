@@ -1392,6 +1392,38 @@ void tst_RadialGauge::minimumMeasuresTheLabelTexts()
     QVERIFY2(measured == expected, qPrintable(QStringLiteral("measured: %1\nexpected: %2").arg(list(measured), list(expected))));
 }
 
+namespace {
+// #274: the minimum of the reference (computed without the tables) with \a font
+QSize referenceMinimum(const QFont &font)
+{
+    RadialGauge reference;
+    reference.setFont(font);
+    internal::RadialGaugeTestAccess::setMinimumWithoutTable(reference, true);
+    return reference.minimumSizeHint();
+}
+
+// #274: a font with the pixel size of \a base and another family, for which the reference gives another minimum
+// than with \a base: the test font first (tests/fonts), then the installed families. Without this choice the change
+// of family can leave the minimum unchanged and the test checks nothing: with whole-pixel advances (FreeType with
+// full hinting, the offscreen platform of the Windows job) the texts that set the minimum measure the same with the
+// test font and with DejaVu Sans at 12 px, and the minimum stayed at 97
+QFont familyWithAnotherMinimum(const QFont &base, QString *error)
+{
+    const QSize minimum = referenceMinimum(base);
+    QFont test = readoutTestFont(error); // the application font with the family of the test font
+    if (!error->isEmpty()) return QFont();
+    if (referenceMinimum(test) != minimum) return test;
+    for (const QString &family : QFontDatabase::families()) {
+        QFont f = base;
+        f.setFamily(family);
+        if (referenceMinimum(f) != minimum) return f;
+    }
+    *error = QStringLiteral("no family for which the minimum differs from %1x%2 with %3")
+                 .arg(minimum.width()).arg(minimum.height()).arg(base.family());
+    return QFont();
+}
+} // namespace
+
 void tst_RadialGauge::minimumTableNotKeptAcrossComputations_data()
 {
     // The same pixel size as the application font: only what the table must not keep changes
@@ -1408,8 +1440,9 @@ void tst_RadialGauge::minimumTableNotKeptAcrossComputations()
     QFont other = TextMetricsTest::spacedFont(QApplication::font());
     if (family) {
         QString error;
-        other = readoutTestFont(&error); // the application font with the family of the test font
+        other = familyWithAnotherMinimum(QApplication::font(), &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
+        qInfo("other family: %s", qPrintable(QFontInfo(other).family()));
     }
     RadialGauge gauge;
     const QSize first = gauge.minimumSizeHint();
