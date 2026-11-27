@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <QtTest/QtTest>
+#include <cstdio>
 #include <QtWidgets/QApplication>
 #include <QtIndustrialWidgets/LinearGauge.h>
 
@@ -200,6 +201,12 @@ LabelInk referenceInk(const QString &text, const QFont &font, Qt::Orientation ax
             p.drawText(QRectF(offset, QSizeF(logical) - QSizeF(1.0, 1.0)), Qt::AlignCenter, text);
         }
         const QVector<Run> glyphs = runsAlong(img, axis, -1.0, isLabelPixel);
+        if (qEnvironmentVariableIsSet("QIW_PROBE_LG")) { // #274 probe only
+            QString s;
+            for (const Run &r : glyphs) s += QStringLiteral(" %1-%2").arg(r.start, 0, 'f', 2).arg(r.end, 0, 'f', 2);
+            std::printf("PROBE274 reference|%s|dpr %.2f|px %d|phase %d|runs%s\n", qPrintable(text), dpr,
+                        font.pixelSize(), phase, qPrintable(s));
+        }
         if (glyphs.isEmpty()) {
             continue;
         }
@@ -832,6 +839,16 @@ void tst_LinearGauge::scaleLabelsReadable()
     // Along the scale axis: labels (pixel runs grouped with the reference inner gap + 0.5 px) and
     // major ticks, ordered from the minimum end
     QVector<Run> labels = groupIntoLabels(runsAlong(img, orientation, -1.0, isLabelPixel), innerGap + 0.5);
+    if (qEnvironmentVariableIsSet("QIW_PROBE_LG")) { // #274 probe only
+        QString raw, grouped;
+        for (const Run &r : runsAlong(img, orientation, -1.0, isLabelPixel))
+            raw += QStringLiteral(" %1-%2").arg(r.start, 0, 'f', 2).arg(r.end, 0, 'f', 2);
+        for (const Run &r : labels) grouped += QStringLiteral(" %1-%2").arg(r.start, 0, 'f', 2).arg(r.end, 0, 'f', 2);
+        std::printf("PROBE274 widget|%s|dpr %.2f|px %d|texts %s|innerGap %.2f|minGap %.2f|raw%s|labels%s\n",
+                    QTest::currentDataTag(), dpr, font.pixelSize(), qPrintable(texts.join(QLatin1Char(','))), innerGap,
+                    minGap, qPrintable(raw), qPrintable(grouped));
+        std::fflush(stdout);
+    }
     QVector<Run> ticks = runsAlong(img, orientation, 0.0, isTickPixel);
     if (!horizontal) { // rows grow downwards, the scale grows upwards
         std::reverse(labels.begin(), labels.end());

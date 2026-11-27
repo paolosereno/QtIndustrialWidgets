@@ -436,6 +436,25 @@ jobs:
           echo "22 fonts in $dir"
           echo "QT_QPA_FONTDIR=$(cygpath -w "$dir")" >> "$GITHUB_ENV"
 
+      - name: Probe 274 (LinearGauge labels)
+        if: always()
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen QIW_PROBE_LG=1 QT_FORCE_STDERR_LOGGING=1
+          mkdir -p "$RUNNER_TEMP/probe274"
+          for s in 1 1.25 1.5 2; do
+            t="scaleLabelsReadable:horizontal 0-250 at 219x55"; QT_SCALE_FACTOR=$s ./build/bin/Release/tst_LinearGauge.exe "$t" "$t" "$t" "$t" "$t" > "$RUNNER_TEMP/probe274/lg-windows-$s.txt" 2>&1 || true
+            grep -E 'PROBE274 widget|FAIL|Totals' "$RUNNER_TEMP/probe274/lg-windows-$s.txt" || true
+          done
+
+      - name: Upload probe 274
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe274-lg-windows
+          path: ${{ runner.temp }}/probe274/
+          retention-days: 14
+
       - name: Run unit tests (QtTest)
         shell: bash
         run: |
