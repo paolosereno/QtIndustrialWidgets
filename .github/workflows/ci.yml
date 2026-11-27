@@ -356,6 +356,31 @@ jobs:
       - name: Build all targets
         run: cmake --build build --config Release
 
+      - name: Fonts for the offscreen platform (#274)
+        shell: bash
+        env:
+          DEJAVU_URL: https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip
+          DEJAVU_SHA256: 7576310b219e04159d35ff61dd4a4ec4cdba4f35c00e002a136f00e96a908b0a
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/qpa-fonts"
+          curl -sSLf -o "$RUNNER_TEMP/dejavu.zip" "$DEJAVU_URL"
+          echo "$DEJAVU_SHA256  $RUNNER_TEMP/dejavu.zip" | sha256sum -c -
+          mkdir -p "$dir"
+          unzip -q -j "$RUNNER_TEMP/dejavu.zip" 'dejavu-fonts-ttf-2.37/ttf/*.ttf' -d "$dir"
+          ls "$dir"
+          echo "QT_QPA_FONTDIR=$(cygpath -w "$dir")" >> "$GITHUB_ENV"
+
+      - name: Probe 274 (skips)
+        if: always()
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          echo "QT_QPA_FONTDIR=$QT_QPA_FONTDIR"
+          ctest --test-dir build -C Release -V > "$RUNNER_TEMP/ctest-v.txt" 2>&1 || true
+          grep -E 'SKIP   :|QFontDatabase|Totals' "$RUNNER_TEMP/ctest-v.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | sort | uniq -c | sort -rn | head -400
+          grep -E 'tests? failed|tests passed' "$RUNNER_TEMP/ctest-v.txt"
+
       - name: Run unit tests (QtTest)
         shell: bash
         run: |
