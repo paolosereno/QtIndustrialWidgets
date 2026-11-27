@@ -1235,10 +1235,19 @@ void tst_Compass::readoutFitsThePodFromMinimumUp()
         // text on the widget with subpixel antialiasing, on the image in grey levels).
         // With the test font at a fractional DPR, 3 device px (approved by the maintainer, #226): measured on Windows
         // (Qt 6.6.3, CI probe of #226), for the same origin the widget draws the ink of the test font 1 device px to
-        // the right of the image, with the same width; the origin itself is within 0.5 px
-        const bool testFontAtFractionalDpr =
-            fontName == QLatin1String("test font") && c.devicePixelRatioF() != std::round(c.devicePixelRatioF());
-        const double maxMarginDifference = testFontAtFractionalDpr ? 3.0 : 2.0;
+        // the right of the image, with the same width; the origin itself is within 0.5 px.
+        // On Windows at a fractional DPR, 3 device px with every font (approved by the maintainer, #274): with full
+        // hinting the widget draws the text 1 device px to the right of the image with the same width. Measured with
+        // DejaVu Sans at 241 x 241 and DPR 1.25 ("---°"): the ink measured on the image starts 0 device px right of
+        // the origin and tightBoundingRect() at 1.25, and the ink on the widget is 1.5 device px right of the centre
+        // of the pod (margins 18.27 and 15.28; CI probe of #274)
+        const bool fractionalDpr = c.devicePixelRatioF() != std::round(c.devicePixelRatioF());
+#ifdef Q_OS_WIN
+        const bool fractionalException = fractionalDpr;
+#else
+        const bool fractionalException = fractionalDpr && fontName == QLatin1String("test font");
+#endif
+        const double maxMarginDifference = fractionalException ? 3.0 : 2.0;
         const double left = ink.left() - pod.left();
         const double right = pod.right() - (ink.right() + 1);
         QVERIFY2(std::abs(left - right) <= maxMarginDifference + 1e-9, // 1e-9: the rounding of the fractional pod edges
@@ -1495,11 +1504,16 @@ void tst_Compass::layoutThinsInOrder()
 // #226: the labels of \a c are drawn as laid out, read from their pixels (with glyphs for the labels): ink near the
 // centre of each label of the layout, none where a number or an intercardinal was dropped, and the ink of each label
 // laid out is its ink box: every pixel of it overlaps the box with the rasterization margin (kRasterMargin, in the
-// frame of the label), and, in the frame of the label, the box filled to within kLabelFill of each of its sides
+// frame of the label), and, in the frame of the label, the box filled to within kLabelFill + kRasterMargin of each of
+// its sides
 //
 // kLabelFill, approved by the maintainer (#226): the ink box of the layout is the union of the tight boxes of the
 // glyphs, which QFontMetricsF rounds out to whole px; measured, the drawn ink falls short of a side of it by at most
-// 1.67 logical px with the application font, at the 4 DPRs and at 96, 120 and 144 dpi
+// 1.67 logical px with the application font, at the 4 DPRs and at 96, 120 and 144 dpi.
+// kRasterMargin on top of it, the same on every platform (approved by the maintainer, #274): full hinting (FreeType
+// without fontconfig, the offscreen platform of the Windows job) moves the glyph inside its box by up to about 1.1
+// logical px more. Measured on the label at 180 degrees of the other font at 299 x 299 and DPR 1: the centres of its
+// ink pixels fall 2.25 logical px short of the left side of the box on Windows, 1.12 px on Linux (CI probe of #274)
 constexpr double kLabelFill = 2.0;
 
 void checkLabelsDrawnAsLaidOut(Compass &c)
@@ -1585,7 +1599,7 @@ void checkLabelsDrawnAsLaidOut(Compass &c)
             bottom = std::max(bottom, q.y());
         }
         const double deficit = std::max({left - box.left(), box.right() - right, top - box.top(), box.bottom() - bottom});
-        QVERIFY2(deficit <= kLabelFill * card.dpr,
+        QVERIFY2(deficit <= (kLabelFill + kRasterMargin) * card.dpr,
                  qPrintable(where + QStringLiteral("the label at %1 degrees falls %2 logical px short of a side of its "
                                                    "ink box")
                                         .arg(angle).arg(deficit / card.dpr, 0, 'f', 2)));

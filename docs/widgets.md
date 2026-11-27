@@ -535,7 +535,9 @@ Heading indicator (`qiw::Compass`).
   in this order until they fit: the fonts go down to 7 pt; every other number is dropped (030, 120, 210 and 300
   stay), then all of them; then the intercardinals. N, E, S and W are always drawn. The readout font goes down to
   7 pt until the widest readout (any heading and `---°`) fits the pod, and the readout is centred on its ink to within
-  1 device px; `HDG` is never below 7 pt, inside its flag.
+  1 device px; `HDG` is never below 7 pt, inside its flag. On Windows with full hinting at a fractional device pixel
+  ratio the readout can be off centre by up to 1.5 device px: the text is drawn 1 device px to the right of where it
+  is measured (#274).
 - **Minimum size** (#226): `minimumSizeHint()` is the smallest square from which the card fits: N, E, S, W and the
   readout at 7 pt, and the `HDG` flag 3 px from the pod. Above it the layout only gets richer: what fits at one size
   fits at every larger one. It is computed from the widget font and follows a change of font or of logical DPI
@@ -543,7 +545,9 @@ Heading indicator (`qiw::Compass`).
   184 px with DejaVu Sans 9 pt, and 227 px with DejaVu Serif 9 pt at 150 % letter spacing.
 - **Rasterization margin** (#226): the layout measures the texts with the metrics of Qt (`QFontMetricsF`), and the
   glyphs are drawn beyond the tight box those report: measured, by up to about 0.8 logical px per side with CoreText
-  (macOS) and 0.5 px on Windows. So the pod and the `HDG` flag hold the measured ink with 1 logical px more on each
+  (macOS) and 0.5 px on Windows; with FreeType and full hinting (the offscreen platform on Windows, #274) the centres
+  of the drawn pixels of a ring label lie up to 0.99 logical px beyond its box (0.66 px on Linux with fontconfig), and
+  the glyph moves inside its box by up to about 1.1 logical px more than on Linux. So the pod and the `HDG` flag hold the measured ink with 1 logical px more on each
   side, at the minimum and at every larger size. The gaps around the ring labels (3 px between labels, 4 px to the
   circle of the major ticks, one margin to the pod and the flag) are measured on the metrics of Qt: the drawn ink can
   come into them by at most that margin.
