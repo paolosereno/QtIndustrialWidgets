@@ -15,6 +15,7 @@
 #include "internal/LinearGaugeScale.h"
 #include "internal/NumberFormat.h"
 #include "internal/RadialGaugeLayout.h"
+#include "internal/RasterMargin.h"
 
 #include <array>
 #include <memory>
@@ -22,7 +23,9 @@
 #include <QtGui/QAccessible>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmap>
+#include <QtCore/QRegularExpression>
 
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QVBoxLayout>
 
@@ -389,6 +392,175 @@ int colourDistance(QRgb a, const QColor &b)
     return std::max({std::abs(qRed(a) - b.red()), std::abs(qGreen(a) - b.green()), std::abs(qBlue(a) - b.blue())});
 }
 
+// #226: the minimum of the knob. The configurations measured in the plan of #226: the default one, a four-digit range
+// with a unit, two decimals, a long unit whose readout is wider than the 110 px of the former pod at 7 pt, and the
+// discrete mode
+struct MinimumCase {
+    const char *name;
+    double minimum;
+    double maximum;
+    int precision;
+    const char *unit;
+    int discreteSteps; // 0: continuous
+};
+const MinimumCase kMinimumCases[] = {
+    {"0-100 %", 0.0, 100.0, 0, "%", 0},
+    {"0-8000 RPM", 0.0, 8000.0, 0, "RPM", 0},
+    {"-1000-1000 bar, 2 decimals", -1000.0, 1000.0, 2, "bar", 0},
+    {"-1000-1000 kilopascal, 2 decimals", -1000.0, 1000.0, 2, "kilopascal", 0},
+    {"discrete 5", 0.0, 100.0, 0, "%", 5},
+};
+// Sizes from minimumSizeHint(): the minimum, one side only, both, and much wider or taller than the proportions of
+// the minimum
+const QSize kMinimumExtras[] = {QSize(0, 0), QSize(1, 0), QSize(0, 1), QSize(7, 8), QSize(20, 23), QSize(40, 45),
+                                QSize(80, 90), QSize(140, 158), QSize(200, 0), QSize(0, 200)};
+
+// The wider font of the #226 tests: FontTest::otherFont() (another family, letter spacing 150 %) without its italic, as
+// in the Compass tests: where the family has no italic face Qt synthesizes one, whose ink leaves the box of the metrics
+// that the readout is fitted on
+QFont knobTestFont()
+{
+    QFont f = FontTest::otherFont(QApplication::font());
+    f.setItalic(false);
+    return f;
+}
+
+void configureMinimumCase(IndustrialKnob &knob, const MinimumCase &c, const QString &fontName)
+{
+    if (fontName == QLatin1String("test font")) knob.setFont(knobTestFont());
+    knob.setRange(c.minimum, c.maximum);
+    knob.setPrecision(c.precision);
+    knob.setUnit(QString::fromLatin1(c.unit));
+    if (c.discreteSteps > 0) {
+        knob.setMode(IndustrialKnob::KnobMode::Discrete);
+        knob.setDiscreteSteps(c.discreteSteps);
+    }
+}
+
+void addMinimumRows()
+{
+    QTest::addColumn<int>("caseIndex");
+    QTest::addColumn<QString>("fontName");
+    QTest::addColumn<QSize>("extra");
+    for (int i = 0; i < static_cast<int>(std::size(kMinimumCases)); ++i) {
+        for (const QString &font : {QStringLiteral("application font"), QStringLiteral("test font")}) {
+            for (const QSize &extra : kMinimumExtras) {
+                const QByteArray name = QStringLiteral("%1, %2, minimum + %3x%4")
+                                            .arg(QLatin1String(kMinimumCases[i].name), font)
+                                            .arg(extra.width()).arg(extra.height()).toUtf8();
+                QTest::newRow(name.constData()) << i << font << extra;
+            }
+        }
+    }
+}
+
+// The knob of a row at minimumSizeHint() + extra. False, with the reason, if the minimum is out of the sizes these
+// configurations are expected to need (each is below 300 px wide with the fonts of the CI)
+bool setUpMinimumRow(IndustrialKnob &knob, int caseIndex, const QString &fontName, const QSize &extra, QString *error)
+{
+    configureMinimumCase(knob, kMinimumCases[caseIndex], fontName);
+    const QSize hint = knob.minimumSizeHint();
+    if (hint.width() >= 1024) {
+        *error = QStringLiteral("minimumSizeHint() %1 x %2").arg(hint.width()).arg(hint.height());
+        return false;
+    }
+    knob.resize(hint + extra);
+    return true;
+}
+
+// The readout texts the widest is chosen from (#226): the ends of the range with the unit, or "POS N"
+QStringList widestReadoutCandidates(const IndustrialKnob &knob)
+{
+    if (knob.mode() == IndustrialKnob::KnobMode::Discrete) {
+        return {QStringLiteral("POS %1").arg(knob.discreteSteps())};
+    }
+    QStringList texts;
+    for (const double end : {knob.minimum(), knob.maximum()}) {
+        texts << QStringLiteral("%1 %2").arg(internal::formatFixed(end, knob.precision()), knob.unit()).trimmed();
+    }
+    return texts;
+}
+
+QFont readoutFontOf(const IndustrialKnob &knob, int pixelSize)
+{
+    QFont f = knob.font();
+    f.setPixelSize(pixelSize);
+    f.setBold(true);
+    f.setStyleStrategy(QFont::StyleStrategy(f.styleStrategy() | QFont::NoSubpixelAntialias));
+    return f;
+}
+
+// Width and height of the widest readout ink (Qt metrics) at a pixel size
+QSizeF widestReadoutInk(const IndustrialKnob &knob, int pixelSize)
+{
+    const QFontMetricsF fm(readoutFontOf(knob, pixelSize));
+    QSizeF size;
+    for (const QString &text : widestReadoutCandidates(knob)) {
+        size = size.expandedTo(fm.tightBoundingRect(text).size());
+    }
+    return size;
+}
+
+constexpr double kPodPen = 1.0; // The 1 px border of the pod: the readout stays inside its inner edge
+using internal::kRasterMargin;   // the rasterization margin of the widgets (#226, docs/widgets.md)
+
+// The inside of the pod border, where the readout ink goes
+QRectF podInterior(const QRectF &pod)
+{
+    return pod.adjusted(kPodPen * 0.5, kPodPen * 0.5, -kPodPen * 0.5, -kPodPen * 0.5);
+}
+
+// The approved width of the pod (#226): 0.65 of the widget width, at least 50 px, and at most 110 px or, for a readout
+// wider than that, its ink at 7 pt with the rasterization margin on each side and the border
+double expectedPodWidth(const IndustrialKnob &knob, double width)
+{
+    const int pixelSize7pt = internal::minimumReadoutPixelSize(knob.logicalDpiY());
+    const double cap = std::max(110.0, widestReadoutInk(knob, pixelSize7pt).width() + 2.0 * kRasterMargin + kPodPen);
+    return std::clamp(width * 0.65, 50.0, cap);
+}
+
+// The widest readout at a pixel size fits a pod of that width (22 px high), with the rasterization margin
+bool readoutFitsAt(const IndustrialKnob &knob, int pixelSize, double podWidth)
+{
+    const QSizeF ink = widestReadoutInk(knob, pixelSize);
+    return ink.width() + 2.0 * kRasterMargin <= podWidth - kPodPen + 1e-9
+           && ink.height() + 2.0 * kRasterMargin <= 22.0 - kPodPen + 1e-9;
+}
+
+// The free space around the pod that no label ink enters (#226): its border, and the rasterization margin beyond it,
+// as the labels of the Compass keep from its pod
+QRectF podKeepOut(const QRectF &pod)
+{
+    const double out = kPodPen * 0.5 + kRasterMargin;
+    return pod.adjusted(-out, -out, out, out);
+}
+
+// Distance from a point to a rectangle (0 inside)
+double distanceToRect(const QPointF &p, const QRectF &r)
+{
+    const double dx = std::max({r.left() - p.x(), 0.0, p.x() - r.right()});
+    const double dy = std::max({r.top() - p.y(), 0.0, p.y() - r.bottom()});
+    return std::hypot(dx, dy);
+}
+
+constexpr double kTickGap = 4.0; // Between the end of the ticks and the box of a label (as the Compass, #226)
+constexpr double kTickCap = 0.8; // The ticks end 0.8 px past the scale radius: round cap of the 1.6 px pen
+
+// Device pixels that differ between two renders with two colours of one property
+QVector<QPoint> pixelsOf(IndustrialKnob &knob, const std::function<void(IndustrialKnob &, const QColor &)> &setColor)
+{
+    setColor(knob, QColor(255, 0, 255));
+    const QImage first = renderKnob(knob);
+    setColor(knob, QColor(255, 255, 0));
+    return differingPixels(first, renderKnob(knob));
+}
+
+QString describeRect(const QRectF &r)
+{
+    return QStringLiteral("x %1-%2, y %3-%4").arg(r.left(), 0, 'f', 2).arg(r.right(), 0, 'f', 2).arg(r.top(), 0, 'f', 2)
+        .arg(r.bottom(), 0, 'f', 2);
+}
+
 } // namespace
 
 class tst_IndustrialKnob : public QObject
@@ -464,6 +636,21 @@ private Q_SLOTS:
     void labelInkStaysInsideItsMeasure();
     void dprChangeOfAVisibleKnob_data();
     void dprChangeOfAVisibleKnob();
+    // #226: the minimum covers the pod, the readout and the gap to the ticks
+    void labelsKeepOutOfThePodOnTheLayout_data();
+    void labelsKeepOutOfThePodOnTheLayout();
+    void labelsKeepAGapFromTheTicksOnTheLayout_data();
+    void labelsKeepAGapFromTheTicksOnTheLayout();
+    void labelPixelsClearOfThePodAndTheTicks_data();
+    void labelPixelsClearOfThePodAndTheTicks();
+    void readoutFitsThePodOnTheLayout_data();
+    void readoutFitsThePodOnTheLayout();
+    void readoutPixelsInsideThePod_data();
+    void readoutPixelsInsideThePod();
+    void minimumIsTheSmallestSizeTheReadoutFits();
+    void fourDigitLabelsAtThreeAndNineOClock();
+    void sizeHintCoversTheMinimum();
+    void minimumSearchStopsAtItsLimit();
 
     // #182, PR 2: read-only, value limits, mouse wheel
     void readOnlyIgnoresTheOperatorInput();
@@ -1368,6 +1555,12 @@ void tst_IndustrialKnob::minimumSizeHintFollowsConfiguration_data()
     QTest::addRow("major ticks") << longRange << Change([](IndustrialKnob &k) { k.setMajorTicks(4); }) << false;
     QTest::addRow("discrete steps") << Change([](IndustrialKnob &k) { k.setMode(IndustrialKnob::KnobMode::Discrete); })
                                     << Change([](IndustrialKnob &k) { k.setDiscreteSteps(100); }) << false;
+    // #226: the readout is part of the minimum
+    QTest::addRow("unit") << nothing << Change([](IndustrialKnob &k) { k.setUnit(QStringLiteral("kilopascal")); }) << true;
+    QTest::addRow("value display") << Change([](IndustrialKnob &k) {
+        k.setRange(0.0, 8000.0);
+        k.setUnit(QStringLiteral("RPM"));
+    }) << Change([](IndustrialKnob &k) { k.setValueDisplayVisible(false); }) << true;
     QTest::addRow("font") << longRange << Change([](IndustrialKnob &k) {
         QFont wide = k.font();
         wide.setStretch(200);
@@ -1947,6 +2140,265 @@ void tst_IndustrialKnob::scaleLabelsFollowThePrecision()
     }
     const std::set<QString> labels(expected.cbegin(), expected.cend());
     QCOMPARE(QStringList(measured.cbegin(), measured.cend()), QStringList(labels.cbegin(), labels.cend()));
+}
+
+// #226 (a): from minimumSizeHint() up, at any proportions, the ink of every label drawn keeps out of the pod, its border
+// and the rasterization margin beyond it. On the layout, so also where the glyphs are boxes
+void tst_IndustrialKnob::labelsKeepOutOfThePodOnTheLayout_data() { addMinimumRows(); }
+
+void tst_IndustrialKnob::labelsKeepOutOfThePodOnTheLayout()
+{
+    QFETCH(int, caseIndex);
+    QFETCH(QString, fontName);
+    QFETCH(QSize, extra);
+    IndustrialKnob knob;
+    QString error;
+    QVERIFY2(setUpMinimumRow(knob, caseIndex, fontName, extra, &error), qPrintable(error));
+    const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+    QVERIFY(layout.podVisible);
+    const QRectF keepOut = podKeepOut(layout.pod);
+    for (int i : layout.drawn) {
+        const internal::LayoutRect &ink = layout.ink[static_cast<size_t>(i)];
+        const QRectF r(ink.x, ink.y, ink.w, ink.h);
+        QVERIFY2(!r.intersects(keepOut),
+                 qPrintable(QStringLiteral("%1x%2: label \"%3\" ink %4, pod with border and margin %5")
+                                .arg(knob.width()).arg(knob.height()).arg(layout.texts[static_cast<size_t>(i)],
+                                                                         describeRect(r), describeRect(keepOut))));
+    }
+}
+
+// #226 (c): from minimumSizeHint() up, the box of every label drawn is at least kTickGap from the circle where the ticks
+// end, in every direction: the label has its own radius, from the radial extent of its box. On the layout
+void tst_IndustrialKnob::labelsKeepAGapFromTheTicksOnTheLayout_data() { addMinimumRows(); }
+
+void tst_IndustrialKnob::labelsKeepAGapFromTheTicksOnTheLayout()
+{
+    QFETCH(int, caseIndex);
+    QFETCH(QString, fontName);
+    QFETCH(QSize, extra);
+    IndustrialKnob knob;
+    QString error;
+    QVERIFY2(setUpMinimumRow(knob, caseIndex, fontName, extra, &error), qPrintable(error));
+    const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+    const QPointF centre(layout.geometry.centerX, layout.geometry.centerY);
+    QVERIFY(!layout.drawn.empty());
+    for (int i : layout.drawn) {
+        const internal::LayoutRect &box = layout.boxes[static_cast<size_t>(i)];
+        const double gap = distanceToRect(centre, QRectF(box.x, box.y, box.w, box.h)) - layout.geometry.scaleRadius;
+        QVERIFY2(gap >= kTickGap - 1e-9,
+                 qPrintable(QStringLiteral("%1x%2: label \"%3\" at %4°: %5 px from the end of the ticks")
+                                .arg(knob.width()).arg(knob.height()).arg(layout.texts[static_cast<size_t>(i)])
+                                .arg(layout.angles[static_cast<size_t>(i)]).arg(gap, 0, 'f', 2)));
+    }
+}
+
+// #226 (a), (c): the pixels of the labels, from two renders that differ only in textColor, with and without fonts:
+// none in the pod, its border or the margin beyond it, and none within the rasterization margin of the drawn end of
+// the ticks (the scale radius and the round cap of their pen)
+void tst_IndustrialKnob::labelPixelsClearOfThePodAndTheTicks_data() { addMinimumRows(); }
+
+void tst_IndustrialKnob::labelPixelsClearOfThePodAndTheTicks()
+{
+    QFETCH(int, caseIndex);
+    QFETCH(QString, fontName);
+    QFETCH(QSize, extra);
+    IndustrialKnob knob;
+    QString error;
+    QVERIFY2(setUpMinimumRow(knob, caseIndex, fontName, extra, &error), qPrintable(error));
+    const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+    const double dpr = knob.devicePixelRatioF();
+    const QRectF keepOut = podKeepOut(layout.pod);
+    const QPointF centre(layout.geometry.centerX, layout.geometry.centerY);
+    const double tickEnd = layout.geometry.scaleRadius + kTickCap + kRasterMargin;
+    const QVector<QPoint> pixels = pixelsOf(knob, [](IndustrialKnob &k, const QColor &c) { k.setTextColor(c); });
+    QVERIFY2(pixels.size() > 20, "no label drawn in textColor");
+    int inPod = 0;
+    int onTicks = 0;
+    QRectF firstInPod;
+    QRectF firstOnTicks;
+    for (const QPoint &p : pixels) {
+        const QRectF square(p.x() / dpr, p.y() / dpr, 1.0 / dpr, 1.0 / dpr);
+        if (square.intersects(keepOut)) {
+            if (inPod++ == 0) firstInPod = square;
+        }
+        // The nearest point of the pixel to the centre of the dial
+        if (distanceToRect(centre, square) < tickEnd - 1e-9) {
+            if (onTicks++ == 0) firstOnTicks = square;
+        }
+    }
+    QVERIFY2(inPod == 0, qPrintable(QStringLiteral("%1x%2: %3 label pixels in the pod with border and margin %4, the first %5")
+                                        .arg(knob.width()).arg(knob.height()).arg(inPod)
+                                        .arg(describeRect(keepOut), describeRect(firstInPod))));
+    QVERIFY2(onTicks == 0, qPrintable(QStringLiteral("%1x%2: %3 label pixels within %4 px of the centre (end of the ticks "
+                                                     "and margin), the first %5")
+                                          .arg(knob.width()).arg(knob.height()).arg(onTicks).arg(tickEnd, 0, 'f', 2)
+                                          .arg(describeRect(firstOnTicks))));
+}
+
+// #226 (b): from minimumSizeHint() up the readout font is the largest pixel size from 11 px down to 7 pt at which the
+// widest readout fits the pod with the rasterization margin, and the pod has the approved width
+void tst_IndustrialKnob::readoutFitsThePodOnTheLayout_data() { addMinimumRows(); }
+
+void tst_IndustrialKnob::readoutFitsThePodOnTheLayout()
+{
+    QFETCH(int, caseIndex);
+    QFETCH(QString, fontName);
+    QFETCH(QSize, extra);
+    IndustrialKnob knob;
+    QString error;
+    QVERIFY2(setUpMinimumRow(knob, caseIndex, fontName, extra, &error), qPrintable(error));
+    const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+    const QString where = QStringLiteral("%1x%2: ").arg(knob.width()).arg(knob.height());
+    QVERIFY2(std::abs(layout.pod.width() - expectedPodWidth(knob, knob.width())) < 1e-9,
+             qPrintable(where + QStringLiteral("pod %1 px wide, expected %2")
+                                    .arg(layout.pod.width()).arg(expectedPodWidth(knob, knob.width()))));
+    const int pixelSize7pt = internal::minimumReadoutPixelSize(knob.logicalDpiY());
+    const int largest = std::max(11, pixelSize7pt);
+    const int size = layout.readoutPixelSize;
+    QVERIFY2(size >= pixelSize7pt && size <= largest,
+             qPrintable(where + QStringLiteral("readout at %1 px, outside %2-%3 px").arg(size).arg(pixelSize7pt).arg(largest)));
+    QVERIFY2(readoutFitsAt(knob, size, layout.pod.width()),
+             qPrintable(where + QStringLiteral("the widest readout at %1 px (%2 x %3) does not fit the pod (%4 x %5) with "
+                                               "the margin")
+                                    .arg(size).arg(widestReadoutInk(knob, size).width()).arg(widestReadoutInk(knob, size).height())
+                                    .arg(layout.pod.width()).arg(layout.pod.height())));
+    QVERIFY2(size == largest || !readoutFitsAt(knob, size + 1, layout.pod.width()),
+             qPrintable(where + QStringLiteral("readout at %1 px, but %2 px fits").arg(size).arg(size + 1)));
+}
+
+// #226 (b): from minimumSizeHint() up the readout, at both ends of the range, is drawn inside the pod border and
+// centred in it, with and without fonts. The readout pixels from two renders that differ only in pointerColor, near
+// the pod (the pointer is far from it)
+void tst_IndustrialKnob::readoutPixelsInsideThePod_data() { addMinimumRows(); }
+
+void tst_IndustrialKnob::readoutPixelsInsideThePod()
+{
+    QFETCH(int, caseIndex);
+    QFETCH(QString, fontName);
+    QFETCH(QSize, extra);
+    IndustrialKnob knob;
+    QString error;
+    QVERIFY2(setUpMinimumRow(knob, caseIndex, fontName, extra, &error), qPrintable(error));
+    const double dpr = knob.devicePixelRatioF();
+    for (const double value : {knob.minimum(), knob.maximum()}) {
+        knob.setValue(value);
+        const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+        const QRectF near = layout.pod.adjusted(-4.0, -4.0, 4.0, 4.0);
+        const QRectF inner = podInterior(layout.pod);
+        const QRectF innerDevice(inner.topLeft() * dpr, inner.bottomRight() * dpr);
+        QRect ink;
+        int outside = 0;
+        for (const QPoint &p : pixelsOf(knob, [](IndustrialKnob &k, const QColor &c) { k.setPointerColor(c); })) {
+            if (!near.contains(QPointF(p.x() + 0.5, p.y() + 0.5) / dpr)) continue;
+            ink |= QRect(p, QSize(1, 1));
+            const bool inside = p.x() >= innerDevice.left() - 1e-9 && p.x() + 1 <= innerDevice.right() + 1e-9
+                                && p.y() >= innerDevice.top() - 1e-9 && p.y() + 1 <= innerDevice.bottom() + 1e-9;
+            outside += inside ? 0 : 1;
+        }
+        const QString where = QStringLiteral("%1x%2, value %3: ").arg(knob.width()).arg(knob.height()).arg(value);
+        QVERIFY2(!ink.isEmpty(), qPrintable(where + QStringLiteral("no readout ink")));
+        QVERIFY2(outside == 0,
+                 qPrintable(where + QStringLiteral("%1 readout pixels outside the pod border: ink x %2-%3, y %4-%5 device "
+                                                   "px, inside of the border x %6-%7, y %8-%9")
+                                        .arg(outside).arg(ink.left()).arg(ink.right() + 1).arg(ink.top()).arg(ink.bottom() + 1)
+                                        .arg(innerDevice.left(), 0, 'f', 1).arg(innerDevice.right(), 0, 'f', 1)
+                                        .arg(innerDevice.top(), 0, 'f', 1).arg(innerDevice.bottom(), 0, 'f', 1)));
+        // Centred as the Compass readout (approved by the maintainer, #226): the margins to the left and right differ
+        // by 2 device px at most, 3 with the test font at a fractional DPR
+        const bool testFontAtFractionalDpr = fontName == QLatin1String("test font") && dpr != std::round(dpr);
+        const double maxMarginDifference = testFontAtFractionalDpr ? 3.0 : 2.0;
+        const double left = ink.left() - innerDevice.left();
+        const double right = innerDevice.right() - (ink.right() + 1);
+        QVERIFY2(std::abs(left - right) <= maxMarginDifference + 1e-9,
+                 qPrintable(where + QStringLiteral("readout margins %1 (left) and %2 (right) device px")
+                                        .arg(left, 0, 'f', 2).arg(right, 0, 'f', 2)));
+    }
+}
+
+// #226 (b): where the readout does not fit at the floor of 80 x 90, the minimum is the smallest width at which its
+// widest text fits at 7 pt, and no more; the default configuration stays at 80 x 90 (minimumSizeHintLimits)
+void tst_IndustrialKnob::minimumIsTheSmallestSizeTheReadoutFits()
+{
+    int checked = 0;
+    for (const MinimumCase &c : kMinimumCases) {
+        for (const QString &font : {QStringLiteral("application font"), QStringLiteral("test font")}) {
+            IndustrialKnob knob;
+            configureMinimumCase(knob, c, font);
+            const int pixelSize7pt = internal::minimumReadoutPixelSize(knob.logicalDpiY());
+            const int hint = knob.minimumSizeHint().width();
+            const QString where = QStringLiteral("%1, %2: minimum %3: ").arg(QLatin1String(c.name), font).arg(hint);
+            if (readoutFitsAt(knob, pixelSize7pt, expectedPodWidth(knob, 80.0))) {
+                continue;
+            }
+            ++checked;
+            QVERIFY2(readoutFitsAt(knob, pixelSize7pt, expectedPodWidth(knob, hint)),
+                     qPrintable(where + QStringLiteral("the readout does not fit at 7 pt")));
+            QVERIFY2(!readoutFitsAt(knob, pixelSize7pt, expectedPodWidth(knob, hint - 1)),
+                     qPrintable(where + QStringLiteral("the readout fits at %1").arg(hint - 1)));
+        }
+    }
+    QVERIFY2(checked > 0, "no configuration whose readout needs more than 80 px");
+}
+
+// #226 (c): the four-digit labels of 0-8000 next to 3 and 9 o'clock (7200 and 1600) are drawn, and kept clear of the
+// ticks, from the minimum up
+void tst_IndustrialKnob::fourDigitLabelsAtThreeAndNineOClock()
+{
+    IndustrialKnob knob;
+    knob.setRange(0.0, 8000.0);
+    knob.setUnit(QStringLiteral("RPM"));
+    const QSize hint = knob.minimumSizeHint();
+    for (const QSize &size : {QSize(160, 180), QSize(220, 240), QSize(300, 330), hint + QSize(200, 225)}) {
+        knob.resize(size);
+        const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+        const QPointF centre(layout.geometry.centerX, layout.geometry.centerY);
+        for (const double side : {-90.0, 90.0}) {
+            bool found = false;
+            for (int i : layout.drawn) {
+                const size_t k = static_cast<size_t>(i);
+                if (layout.texts[k].size() < 4 || std::abs(layout.angles[k] - side) > 15.0) continue;
+                found = true;
+                const internal::LayoutRect &box = layout.boxes[k];
+                const double gap = distanceToRect(centre, QRectF(box.x, box.y, box.w, box.h)) - layout.geometry.scaleRadius;
+                QVERIFY2(gap >= kTickGap - 1e-9, qPrintable(QStringLiteral("%1x%2: \"%3\" %4 px from the ticks")
+                                                                .arg(size.width()).arg(size.height())
+                                                                .arg(layout.texts[k]).arg(gap, 0, 'f', 2)));
+            }
+            QVERIFY2(found, qPrintable(QStringLiteral("%1x%2: no four-digit label drawn near %3°")
+                                           .arg(size.width()).arg(size.height()).arg(side)));
+        }
+    }
+}
+
+// #226: sizeHint() is the larger of 160 x 180 and minimumSizeHint(), in each dimension
+void tst_IndustrialKnob::sizeHintCoversTheMinimum()
+{
+    IndustrialKnob standard;
+    QCOMPARE(standard.sizeHint(), QSize(160, 180));
+    IndustrialKnob rpm;
+    rpm.setRange(0.0, 8000.0);
+    rpm.setUnit(QStringLiteral("RPM"));
+    QVERIFY(rpm.minimumSizeHint().width() < 160);
+    QCOMPARE(rpm.sizeHint(), QSize(160, 180));
+
+    IndustrialKnob wide;
+    wide.setRange(-1e8, 1e8);
+    wide.setPrecision(2);
+    wide.setUnit(QStringLiteral("bar"));
+    const QSize hint = wide.minimumSizeHint();
+    QVERIFY2(hint.width() > 160, qPrintable(QStringLiteral("minimum %1 x %2").arg(hint.width()).arg(hint.height())));
+    QCOMPARE(wide.sizeHint(), hint.expandedTo(QSize(160, 180)));
+}
+
+// #226: the search of the minimum goes past sizeHint() as far as 4096 px. A readout that does not fit even there gives
+// 4096 with a warning
+void tst_IndustrialKnob::minimumSearchStopsAtItsLimit()
+{
+    IndustrialKnob knob;
+    knob.setUnit(QString(800, QLatin1Char('M')));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("IndustrialKnob.*4096")));
+    QCOMPARE(knob.minimumSizeHint(), QSize(4096, (4096 * 9 + 7) / 8));
+    QCOMPARE(knob.sizeHint(), QSize(4096, (4096 * 9 + 7) / 8));
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
