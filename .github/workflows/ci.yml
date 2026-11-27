@@ -362,7 +362,7 @@ jobs:
         run: |
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build -C Release -V > "$RUNNER_TEMP/ctest-before.txt" 2>&1 || true
-          grep -E 'SKIP   :|Totals' "$RUNNER_TEMP/ctest-before.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | sort | uniq -c | sort -rn | head -400
+          grep -E 'SKIP   :|Totals' "$RUNNER_TEMP/ctest-before.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | wc -l
           grep -E 'tests? failed|tests passed' "$RUNNER_TEMP/ctest-before.txt"
 
       - name: Fonts for the offscreen platform (#274)
@@ -387,8 +387,18 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           echo "QT_QPA_FONTDIR=$QT_QPA_FONTDIR"
           ctest --test-dir build -C Release -V > "$RUNNER_TEMP/ctest-v.txt" 2>&1 || true
-          grep -E 'SKIP   :|QFontDatabase|Totals' "$RUNNER_TEMP/ctest-v.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | sort | uniq -c | sort -rn | head -400
+          grep -E 'SKIP   :|QFontDatabase|Totals' "$RUNNER_TEMP/ctest-v.txt" | sed -E 's/\(([^)]{0,80})[^)]*\)/(\1)/' | wc -l
           grep -E 'tests? failed|tests passed' "$RUNNER_TEMP/ctest-v.txt"
+
+      - name: Upload probe 274
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe274-windows
+          path: |
+            ${{ runner.temp }}/ctest-before.txt
+            ${{ runner.temp }}/ctest-v.txt
+          retention-days: 14
 
       - name: Run unit tests (QtTest)
         shell: bash
