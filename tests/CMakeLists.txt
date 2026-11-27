@@ -8,7 +8,15 @@
 #
 # QT_FORCE_STDERR_LOGGING=1: on Windows, without a console (as under ctest in CI), QtTest sends its
 # log to OutputDebugString instead of stdout, so ctest showed no output at all (#36).
+#
+# TestApplicationFont.cpp sets the application font of the test to DejaVu Sans 9 pt instead of the family that the
+# platform resolves (#274), in every test linked with QtGui (the tests of QtCore alone draw no text).
 function(add_dpr_tests test_name)
+    get_target_property(test_libraries ${test_name} LINK_LIBRARIES)
+    if(test_libraries MATCHES "Qt6::Gui|Qt6::Widgets|QtIndustrialWidgets::QtIndustrialWidgets")
+        target_sources(${test_name} PRIVATE ${PROJECT_SOURCE_DIR}/tests/TestApplicationFont.cpp)
+        target_link_libraries(${test_name} PRIVATE Qt6::Gui)
+    endif()
     set(log_env "QT_FORCE_STDERR_LOGGING=1")
     add_test(NAME ${test_name} COMMAND ${test_name})
     set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "QT_SCALE_FACTOR=1;${log_env}")
