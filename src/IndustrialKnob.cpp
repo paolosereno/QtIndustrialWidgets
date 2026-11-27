@@ -104,8 +104,9 @@ IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const interna
         out.texts.push_back(metrics ? metrics->labelTexts[static_cast<size_t>(i)] : texts[static_cast<size_t>(i)]);
         const QString &text = out.texts.back();
         const QRectF textRect = metrics ? metrics->table.boundingRect(text, geometry.labelFontPx) : fm.boundingRect(text);
+        out.angles.push_back(angleOf(val));
         const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
-            internal::knobLabelBox(geometry, angleOf(val), textRect.width(), textRect.height()), dpr);
+            internal::knobLabelBox(geometry, out.angles.back(), textRect.width(), textRect.height()), dpr);
         out.boxes.push_back(box);
 
         // The glyphs can leave the rectangle of the metrics (CoreText on macOS, see #31 / #35): the edge of the
@@ -147,6 +148,8 @@ const IndustrialKnobPrivate::ScaleLayout &IndustrialKnobPrivate::scaleFor(const 
 {
     if (!m_scaleValid || m_scaleSize != size || m_scaleDpr != dpr) {
         m_scale = labelsAt(fittedGeometry(size, widgetFont, dpr), widgetFont, dpr);
+        m_scale.pod = podRect(size.width(), size.height());
+        m_scale.readoutPixelSize = kReadoutPixelSize;
         m_scaleSize = size;
         m_scaleDpr = dpr;
         m_scaleValid = true;
@@ -847,8 +850,6 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    const double w = targetSize.width();
-    const double h = targetSize.height();
     const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(targetSize, font(), dpr);
     const internal::KnobScaleGeometry &scale = layout.geometry;
     const QPointF center(scale.centerX, scale.centerY);
@@ -962,13 +963,9 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
 
     // Static Digital Pod at bottom (if enabled)
     if (d_ptr->m_valueDisplayVisible) {
-        double podW = std::clamp(w * 0.65, 50.0, 110.0);
-        double podH = 22.0;
-        QRectF podRect((w - podW) * 0.5, h - podH - 2.0, podW, podH);
-
-        painter.setPen(QPen(d_ptr->m_knobColor.darker(160), 1.0));
+        painter.setPen(QPen(d_ptr->m_knobColor.darker(160), IndustrialKnobPrivate::kPodPen));
         painter.setBrush(QColor(16, 20, 26)); // opaque, as the gauge pods (#159)
-        painter.drawRoundedRect(podRect, 3.0, 3.0);
+        painter.drawRoundedRect(layout.pod, 3.0, 3.0);
     }
 
     d_ptr->m_cacheDirty = false;
@@ -995,8 +992,6 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     // 1. Fast Blit of Cached Scale & Frame
     painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
-    const double w = width();
-    const double h = height();
     const internal::KnobScaleGeometry &scale = d_ptr->scaleFor(size(), font(), devicePixelRatioF()).geometry;
     const QPointF center(scale.centerX, scale.centerY);
     const double radius = scale.radius;
@@ -1130,14 +1125,13 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
 
     // 7. Dynamic Digital Value Readout (Bottom Pod)
     if (d_ptr->m_valueDisplayVisible) {
-        double podW = std::clamp(w * 0.65, 50.0, 110.0);
-        double podH = 22.0;
-        QRectF podRect((w - podW) * 0.5, h - podH - 2.0, podW, podH);
+        const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(size(), font(), devicePixelRatioF());
+        const QRectF podRect = layout.pod;
 
         const QString valStr = d_ptr->readoutText();
 
         QFont valFont = font();
-        valFont.setPixelSize(11);
+        valFont.setPixelSize(layout.readoutPixelSize);
         valFont.setBold(true);
         // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
         valFont.setStyleStrategy(QFont::StyleStrategy(valFont.styleStrategy() | QFont::NoSubpixelAntialias));

@@ -104,9 +104,12 @@ public:
         internal::KnobScaleGeometry geometry;
         QFont font;
         std::vector<QString> texts;
+        std::vector<double> angles; // Of each label, in degrees (0 = 12 o'clock, clockwise)
         std::vector<internal::LayoutRect> boxes;
         std::vector<internal::LayoutRect> ink; // Where each label really draws, for the edge of the widget
         internal::RadialScaleLabels labels;
+        QRectF pod;          // The value pod at this size (#226), drawn when the value display is visible
+        int readoutPixelSize{0}; // Pixel size of the readout font at this size (#226)
     };
     ScaleLayout m_scale;
     QSize m_scaleSize;   // Size m_scale was computed for
@@ -114,6 +117,16 @@ public:
     bool m_scaleValid{false};
 
     static constexpr int kMinimumWidth = 80; // minimumSizeHint() never goes below 80 x 90
+    // The value pod (#159, #226): kPodHeight high, kPodBottomGap above the bottom edge, with a kPodPen border
+    static constexpr double kPodHeight = 22.0;
+    static constexpr double kPodBottomGap = 2.0;
+    static constexpr double kPodPen = 1.0;
+    static constexpr int kReadoutPixelSize = 11; // The readout font
+    static QRectF podRect(double width, double height)
+    {
+        const double podWidth = std::clamp(width * 0.65, 50.0, 110.0);
+        return QRectF((width - podWidth) * 0.5, height - kPodHeight - kPodBottomGap, podWidth, kPodHeight);
+    }
     static constexpr size_t kMaximumLabelInks = 1024; // A range that keeps changing must not grow m_labelInk for ever
 
     // Height at a width, in the proportions of the floor and of sizeHint()
