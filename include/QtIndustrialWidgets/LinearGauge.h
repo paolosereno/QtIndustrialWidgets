@@ -16,6 +16,9 @@
 namespace QtIndustrialWidgets {
 
 class LinearGaugePrivate;
+namespace internal {
+class LinearGaugeTestAccess;
+}
 
 /**
  * \class LinearGauge
@@ -251,6 +254,7 @@ private:
 
     std::unique_ptr<LinearGaugePrivate> d_ptr;
     Q_DECLARE_PRIVATE(LinearGauge)
+    friend class internal::LinearGaugeTestAccess; // test-only access; defined in src/internal/, not installed
 };
 
 } // namespace QtIndustrialWidgets
