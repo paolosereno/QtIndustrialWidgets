@@ -556,16 +556,16 @@ void tst_RadialGaugeLayout::knobScaleGeometry()
     QCOMPARE(g.centerY, 102.4);
     QCOMPARE(g.radius, 94.4);
     QCOMPARE(g.scaleRadius, 86.848);
-    QCOMPARE(g.labelRadius, 98.176);
     QCOMPARE(g.labelFontPx, 11);
     QCOMPARE(QtIndustrialWidgets::internal::knobScaleGeometry(80.0, 90.0).labelFontPx, 7);
 
-    // 0 degrees is 12 o'clock, 90 degrees is 3 o'clock
+    // 0 degrees is 12 o'clock, 90 degrees is 3 o'clock. #226: each label at its own radius, 4 px beyond the end of the
+    // ticks plus the extent of its box along the radius: half its height at 12 o'clock, half its width at 3 o'clock
     const LayoutRect top = knobLabelBox(g, 0.0, 20.0, 10.0);
     QCOMPARE(top.x + 10.0, 110.0);
-    QCOMPARE(top.y + 5.0, 102.4 - 98.176);
+    QCOMPARE(top.y + 5.0, 102.4 - (86.848 + 4.0 + 5.0));
     const LayoutRect right = knobLabelBox(g, 90.0, 20.0, 10.0);
-    QCOMPARE(right.x + 10.0, 110.0 + 98.176);
+    QCOMPARE(right.x + 10.0, 110.0 + 86.848 + 4.0 + 10.0);
     QCOMPARE(right.y + 5.0, 102.4);
 }
 
@@ -589,20 +589,22 @@ void tst_RadialGaugeLayout::knobGeometryFollowsTheDrawnLabels()
         QCOMPARE(g.radius, full.radius);
     }
 
-    // labelRadius + 30 <= 110 - 1, and labelRadius is 1.04 of the radius
+    // #226: the box 60 px wide at 3 o'clock is centred 4 + 30 px beyond the scale radius, 0.92 of the radius, so
+    // 0.92 r + 4 + 30 + 30 <= 110 - 1
     const KnobScaleGeometry shrunk = knobScaleGeometry(220.0, 240.0, boxWith(30.0));
-    const double largest = 79.0 / 1.04;
+    const double largest = (109.0 - 64.0) / 0.92;
     QVERIFY2(shrunk.radius <= largest && shrunk.radius > largest - 0.5, qPrintable(QString::number(shrunk.radius)));
     QCOMPARE(shrunk.centerX, full.centerX);
     QCOMPARE(shrunk.centerY, full.centerY);
     QCOMPARE(shrunk.scaleRadius, shrunk.radius * 0.92);
-    QCOMPARE(shrunk.labelRadius, shrunk.radius * 1.04);
-    QCOMPARE(shrunk.labelFontPx, 9);
+    QCOMPARE(QtIndustrialWidgets::internal::knobLabelRadius(shrunk, 90.0, 60.0, 10.0), shrunk.scaleRadius + 4.0 + 30.0);
+    QCOMPARE(shrunk.labelFontPx, 7);
 
-    // On multiples of 0.5 px, whatever the full radius: heights that give the same box give the same radius
+    // On multiples of 0.5 px, whatever the full radius: heights that give the same box give the same radius. #226: a
+    // box 10 px wide, which fits at 3 o'clock below the full radius (0.92 r + 4 + 10 <= 49) and above half of it
     for (double height : {110.0, 113.0, 117.0, 119.0}) {
-        const KnobScaleGeometry g = knobScaleGeometry(100.0, height, boxWith(20.0));
-        QCOMPARE(g.radius, knobScaleGeometry(100.0, 110.0, boxWith(20.0)).radius);
+        const KnobScaleGeometry g = knobScaleGeometry(100.0, height, boxWith(5.0));
+        QCOMPARE(g.radius, knobScaleGeometry(100.0, 110.0, boxWith(5.0)).radius);
         QVERIFY2(g.radius < knobScaleGeometry(100.0, height).radius, qPrintable(QString::number(g.radius)));
         QCOMPARE(std::floor(g.radius * 2.0), g.radius * 2.0);
     }

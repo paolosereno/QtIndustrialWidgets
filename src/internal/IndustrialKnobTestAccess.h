@@ -70,7 +70,8 @@ public:
     static Layout layout(IndustrialKnob &knob) {
         IndustrialKnobPrivate &d = *knob.d_ptr;
         // The layout of the last paint; a paint first where it is not that of the current size
-        if (!d.m_scaleValid || d.m_scaleSize != knob.size() || d.m_scaleDpr != knob.devicePixelRatioF()) {
+        if (!d.m_scaleValid || d.m_scaleSize != knob.size() || d.m_scaleDpr != knob.devicePixelRatioF()
+            || d.m_scaleDpi != knob.logicalDpiY()) {
             knob.grab();
         }
         const IndustrialKnobPrivate::ScaleLayout &s = d.m_scale;
@@ -85,6 +86,11 @@ public:
         out.pod = s.pod;
         out.readoutPixelSize = s.readoutPixelSize;
         return out;
+    }
+
+    // #226: raster measures of the readout ink so far (readoutInkCentre())
+    static quint64 readoutInkMeasureCount(const IndustrialKnob &knob) {
+        return knob.d_ptr->m_readoutInkMeasures;
     }
 
     // Label texts formatted in the last computation of minimumSizeHint() (by labelTexts())

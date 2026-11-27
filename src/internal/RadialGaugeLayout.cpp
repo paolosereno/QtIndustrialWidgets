@@ -38,7 +38,6 @@ KnobScaleGeometry knobGeometryOfRadius(double centerX, double centerY, double ra
     g.centerY = centerY;
     g.radius = radius;
     g.scaleRadius = g.radius * 0.92;
-    g.labelRadius = g.scaleRadius + g.radius * 0.12;
     g.labelFontPx = std::clamp(static_cast<int>(g.radius * 0.12), 7, 11);
     return g;
 }
@@ -47,25 +46,28 @@ KnobScaleGeometry knobGeometryOfRadius(double centerX, double centerY, double ra
 
 KnobScaleGeometry knobScaleGeometry(double width, double height)
 {
-    const double side = std::min(width, height * 0.82);
+    const double side = std::min(width, height * kKnobSideOfHeight);
     return knobGeometryOfRadius(width * 0.5, side * 0.5 + 4.0, side * 0.5 - 4.0);
 }
 
-bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height)
+bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height, const LayoutRect *keepOut)
 {
     return std::all_of(boxes.begin(), boxes.end(), [&](const LayoutRect &box) {
-        return box.x >= kKnobEdgeMargin && box.y >= kKnobEdgeMargin && box.right() <= width - kKnobEdgeMargin
+        const bool clear = !keepOut || box.right() <= keepOut->x || box.x >= keepOut->right()
+                           || box.bottom() <= keepOut->y || box.y >= keepOut->bottom();
+        return clear && box.x >= kKnobEdgeMargin && box.y >= kKnobEdgeMargin && box.right() <= width - kKnobEdgeMargin
                && box.bottom() <= height - kKnobEdgeMargin;
     });
 }
 
-KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels)
+KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels,
+                                    const LayoutRect *keepOut)
 {
     const KnobScaleGeometry full = knobScaleGeometry(width, height);
     if (!drawnLabels) {
         return full;
     }
-    if (knobLabelsInside(drawnLabels(full), width, height)) {
+    if (knobLabelsInside(drawnLabels(full), width, height, keepOut)) {
         return full;
     }
     // From the top: the font and the labels drawn change in steps with the radius. On multiples of 0.5 px, not on
@@ -74,19 +76,42 @@ KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawn
     const double smallest = full.radius * kKnobMinimumRadiusRatio;
     for (double radius = std::floor(full.radius * 2.0) * 0.5; radius >= smallest; radius -= 0.5) {
         const KnobScaleGeometry g = knobGeometryOfRadius(full.centerX, full.centerY, radius);
-        if (knobLabelsInside(drawnLabels(g), width, height)) {
+        if (knobLabelsInside(drawnLabels(g), width, height, keepOut)) {
             return g;
         }
     }
     return knobGeometryOfRadius(full.centerX, full.centerY, smallest);
 }
 
+double knobLabelRadius(const KnobScaleGeometry &geometry, double angle, double w, double h)
+{
+    constexpr double degrees = 3.14159265358979323846 / 180.0;
+    return geometry.scaleRadius + kKnobTickGap + std::abs(std::sin(angle * degrees)) * w * 0.5
+           + std::abs(std::cos(angle * degrees)) * h * 0.5;
+}
+
 LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h)
 {
     constexpr double degrees = 3.14159265358979323846 / 180.0;
     const double rad = (angle - 90.0) * degrees;
-    return {geometry.centerX + geometry.labelRadius * std::cos(rad) - w * 0.5,
-            geometry.centerY + geometry.labelRadius * std::sin(rad) - h * 0.5, w, h};
+    const double r = knobLabelRadius(geometry, angle, w, h);
+    return {geometry.centerX + r * std::cos(rad) - w * 0.5, geometry.centerY + r * std::sin(rad) - h * 0.5, w, h};
+}
+
+LayoutRect knobLabelBoxOnDevicePixel(const KnobScaleGeometry &geometry, double angle, double w, double h, double dpr)
+{
+    const LayoutRect box = knobLabelBox(geometry, angle, w, h);
+    // Away from the dial centre along each axis; on the axis through the centre, to the nearest pixel
+    const auto away = [dpr](double value, double from) {
+        constexpr double kOnTheAxis = 1e-9;
+        const double device = value * dpr;
+        if (value > from + kOnTheAxis) return std::ceil(device) / dpr;
+        if (value < from - kOnTheAxis) return std::floor(device) / dpr;
+        return std::round(device) / dpr;
+    };
+    const double centerX = away(box.x + w * 0.5, geometry.centerX);
+    const double centerY = away(box.y + h * 0.5, geometry.centerY);
+    return {centerX - w * 0.5, centerY - h * 0.5, w, h};
 }
 
 LayoutRect labelBoxOnDevicePixel(const LayoutRect &box, double dpr)

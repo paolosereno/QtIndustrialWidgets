@@ -4,6 +4,7 @@
 
 #include <QtIndustrialWidgets/IndustrialKnob.h>
 #include "internal/IndustrialKnob_p.h"
+#include "internal/RasterMargin.h"
 
 #include "internal/FontScale.h"
 #include "internal/IndustrialKnobAccessible.h"
@@ -13,6 +14,7 @@
 #include "internal/ValueStateDrawing.h"
 #include "internal/WheelNotches.h"
 
+#include <QtGui/QImage>
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPaintEvent>
@@ -105,8 +107,9 @@ IndustrialKnobPrivate::ScaleLayout IndustrialKnobPrivate::labelsAt(const interna
         const QString &text = out.texts.back();
         const QRectF textRect = metrics ? metrics->table.boundingRect(text, geometry.labelFontPx) : fm.boundingRect(text);
         out.angles.push_back(angleOf(val));
-        const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
-            internal::knobLabelBox(geometry, out.angles.back(), textRect.width(), textRect.height()), dpr);
+        // #226: each label at its own radius, kKnobTickGap beyond the end of the ticks
+        const internal::LayoutRect box =
+            internal::knobLabelBoxOnDevicePixel(geometry, out.angles.back(), textRect.width(), textRect.height(), dpr);
         out.boxes.push_back(box);
 
         // The glyphs can leave the rectangle of the metrics (CoreText on macOS, see #31 / #35): the edge of the
@@ -137,39 +140,177 @@ std::vector<internal::LayoutRect> IndustrialKnobPrivate::drawnInk(const ScaleLay
 }
 
 internal::KnobScaleGeometry IndustrialKnobPrivate::fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr,
-                                                                  MinimumMetrics *metrics) const
+                                                                  const QRectF *pod, MinimumMetrics *metrics) const
 {
-    return internal::knobScaleGeometry(size.width(), size.height(), [&](const internal::KnobScaleGeometry &g) {
-        return drawnInk(labelsAt(g, widgetFont, dpr, metrics));
-    });
+    const internal::LayoutRect keepOut = pod ? podKeepOut(*pod) : internal::LayoutRect();
+    return internal::knobScaleGeometry(
+        size.width(), size.height(),
+        [&](const internal::KnobScaleGeometry &g) { return drawnInk(labelsAt(g, widgetFont, dpr, metrics)); },
+        pod ? &keepOut : nullptr);
 }
 
-const IndustrialKnobPrivate::ScaleLayout &IndustrialKnobPrivate::scaleFor(const QSize &size, const QFont &widgetFont, double dpr)
+QFont IndustrialKnobPrivate::readoutFont(const QFont &widgetFont, int pixelSize)
 {
-    if (!m_scaleValid || m_scaleSize != size || m_scaleDpr != dpr) {
-        m_scale = labelsAt(fittedGeometry(size, widgetFont, dpr), widgetFont, dpr);
-        m_scale.pod = podRect(size.width(), size.height());
-        m_scale.readoutPixelSize = kReadoutPixelSize;
+    QFont font = widgetFont;
+    font.setPixelSize(pixelSize);
+    font.setBold(true);
+    // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
+    font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() | QFont::NoSubpixelAntialias));
+    return font;
+}
+
+std::vector<QString> IndustrialKnobPrivate::readoutCandidates() const
+{
+    if (m_mode == IndustrialKnob::KnobMode::Discrete) {
+        return {QStringLiteral("POS %1").arg(m_discreteSteps)};
+    }
+    std::vector<QString> texts;
+    for (const double end : {m_minimum, m_maximum}) {
+        texts.push_back(QStringLiteral("%1 %2").arg(internal::formatFixed(end, m_precision), m_unit).trimmed());
+    }
+    return texts;
+}
+
+QSizeF IndustrialKnobPrivate::widestReadoutInk(const QFont &widgetFont, int pixelSize) const
+{
+    const QFontMetricsF fm(readoutFont(widgetFont, pixelSize));
+    QSizeF size;
+    for (const QString &text : readoutCandidates()) {
+        size = size.expandedTo(fm.tightBoundingRect(text).size());
+    }
+    return size;
+}
+
+double IndustrialKnobPrivate::podCap(const QSizeF &ink7pt)
+{
+    return std::max(110.0, ink7pt.width() + 2.0 * internal::kRasterMargin + kPodPen);
+}
+
+bool IndustrialKnobPrivate::readoutFitsPod(const QSizeF &ink, double podWidth)
+{
+    return ink.width() + 2.0 * internal::kRasterMargin <= podWidth - kPodPen
+           && ink.height() + 2.0 * internal::kRasterMargin <= kPodHeight - kPodPen;
+}
+
+internal::LayoutRect IndustrialKnobPrivate::podKeepOut(const QRectF &pod)
+{
+    const double out = kPodPen * 0.5 + internal::kRasterMargin;
+    return {pod.x() - out, pod.y() - out, pod.width() + 2.0 * out, pod.height() + 2.0 * out};
+}
+
+void IndustrialKnobPrivate::podAndReadoutAt(ScaleLayout &layout, const QSize &size, const QFont &widgetFont, int dpi) const
+{
+    // #226: the largest pixel size from 11 px down to 7 pt at which the widest readout fits; 7 pt below the minimum
+    const int smallest = internal::minimumReadoutPixelSize(dpi);
+    const int largest = std::max(kReadoutPixelSize, smallest);
+    layout.pod = podRect(size.width(), size.height(), podCap(widestReadoutInk(widgetFont, smallest)));
+    layout.readoutPixelSize = smallest;
+    for (int pixelSize = largest; pixelSize > smallest; --pixelSize) {
+        if (readoutFitsPod(widestReadoutInk(widgetFont, pixelSize), layout.pod.width())) {
+            layout.readoutPixelSize = pixelSize;
+            break;
+        }
+    }
+}
+
+double IndustrialKnobPrivate::readoutInkCentre(const QString &text, const QFont &font, double dpr) const
+{
+    if (m_readoutInkFont != font || m_readoutInkDpr != dpr || m_readoutInkCentres.size() > kMaximumLabelInks) {
+        m_readoutInkCentres.clear();
+        m_readoutInkFont = font;
+        m_readoutInkDpr = dpr;
+    }
+    const auto cached = m_readoutInkCentres.find(text);
+    if (cached != m_readoutInkCentres.end()) return cached->second;
+    ++m_readoutInkMeasures;
+    const QFontMetricsF fm(font);
+    // The origin at (margin, margin + ascent), margin on a whole device pixel, in an image large enough for any
+    // glyph overhang
+    const int margin = static_cast<int>(std::ceil(fm.height() * dpr));
+    const QSize imageSize(static_cast<int>(std::ceil(fm.horizontalAdvance(text) * dpr)) + 2 * margin,
+                          static_cast<int>(std::ceil(fm.height() * dpr)) + 2 * margin);
+    QImage image(imageSize, QImage::Format_ARGB32_Premultiplied);
+    image.setDevicePixelRatio(dpr);
+    image.fill(Qt::transparent);
+    {
+        QPainter p(&image);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.setFont(font);
+        p.setPen(Qt::black);
+        p.drawText(QPointF(margin / dpr, margin / dpr + fm.ascent()), text);
+    }
+    int left = image.width();
+    int right = -1;
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            if (qAlpha(line[x]) != 0) {
+                left = std::min(left, x);
+                right = std::max(right, x);
+            }
+        }
+    }
+    // Nothing drawn: the centre of the advance
+    const double centre = right < left ? fm.horizontalAdvance(text) * 0.5 : ((left + right + 1) * 0.5 - margin) / dpr;
+    return m_readoutInkCentres.emplace(text, centre).first->second;
+}
+
+const IndustrialKnobPrivate::ScaleLayout &IndustrialKnobPrivate::scaleFor(const QSize &size, const QFont &widgetFont,
+                                                                          double dpr, int dpi)
+{
+    if (!m_scaleValid || m_scaleSize != size || m_scaleDpr != dpr || m_scaleDpi != dpi) {
+        ScaleLayout pod;
+        podAndReadoutAt(pod, size, widgetFont, dpi);
+        m_scale = labelsAt(fittedGeometry(size, widgetFont, dpr, m_valueDisplayVisible ? &pod.pod : nullptr),
+                           widgetFont, dpr);
+        m_scale.pod = pod.pod;
+        m_scale.readoutPixelSize = pod.readoutPixelSize;
         m_scaleSize = size;
         m_scaleDpr = dpr;
+        m_scaleDpi = dpi;
         m_scaleValid = true;
     }
     return m_scale;
 }
 
-bool IndustrialKnobPrivate::widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr,
-                                                MinimumMetrics *metrics) const
+bool IndustrialKnobPrivate::readoutFitsAtWidth(int width, const MinimumReadout &readout) const
 {
-    const int height = minimumHeightOf(width);
-    const ScaleLayout layout =
-        labelsAt(fittedGeometry(QSize(width, height), widgetFont, dpr, metrics), widgetFont, dpr, metrics);
-    const std::vector<int> &drawn = layout.labels.drawn;
-    auto shown = [&](int label) { return std::find(drawn.begin(), drawn.end(), label) != drawn.end(); };
-    return shown(0) && (!lastLabelRequired || shown(tickCount())) && internal::knobLabelsInside(drawnInk(layout), width, height);
+    return !m_valueDisplayVisible
+           || readoutFitsPod(readout.ink7pt, podRect(width, minimumHeightOf(width), readout.podCap).width());
 }
 
-int IndustrialKnobPrivate::computeMinimumWidth(int ceiling, const QFont &widgetFont, double dpr) const
+bool IndustrialKnobPrivate::widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr,
+                                                const MinimumReadout &readout, MinimumMetrics *metrics) const
 {
+    if (!readoutFitsAtWidth(width, readout)) return false;
+    // #226: at the height of the minimum, and at the height from which the dial no longer grows (its side is the
+    // width). In between, a taller widget gives a larger dial or the same one: if the labels do not fit at any radius
+    // down to half of the full one, they reach the sides first at the tallest height, the top first at the lowest
+    const int lowest = minimumHeightOf(width);
+    const int tallest = std::max(lowest, static_cast<int>(std::ceil(width / internal::kKnobSideOfHeight)));
+    for (const int height : {lowest, tallest}) {
+        const QRectF pod = podRect(width, height, readout.podCap);
+        const QRectF *keepOut = m_valueDisplayVisible ? &pod : nullptr;
+        const ScaleLayout layout =
+            labelsAt(fittedGeometry(QSize(width, height), widgetFont, dpr, keepOut, metrics), widgetFont, dpr, metrics);
+        const std::vector<int> &drawn = layout.labels.drawn;
+        auto shown = [&](int label) { return std::find(drawn.begin(), drawn.end(), label) != drawn.end(); };
+        const internal::LayoutRect podOut = podKeepOut(pod);
+        if (!(shown(0) && (!lastLabelRequired || shown(tickCount()))
+              && internal::knobLabelsInside(drawnInk(layout), width, height, keepOut ? &podOut : nullptr))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int IndustrialKnobPrivate::computeMinimumWidth(const QFont &widgetFont, double dpr, int dpi) const
+{
+    const int ceiling = kPreferredWidth;
+    MinimumReadout readout;
+    readout.ink7pt = widestReadoutInk(widgetFont, internal::minimumReadoutPixelSize(dpi));
+    readout.podCap = podCap(readout.ink7pt);
     // #184: each label formatted once and measured once in the whole search (widths and radii tried), not at every
     // step. The texts and the table are dropped at the end of the computation, so they never hold an earlier font
     // or configuration
@@ -179,18 +320,41 @@ int IndustrialKnobPrivate::computeMinimumWidth(int ceiling, const QFont &widgetF
     auto search = [&]() {
         // Ends that lie on each other at the preferred size never both fit (#60, part b): the first one is drawn
         const QSize preferredSize(ceiling, minimumHeightOf(ceiling));
-        const ScaleLayout preferred =
-            labelsAt(fittedGeometry(preferredSize, widgetFont, dpr, metrics), widgetFont, dpr, metrics);
+        const QRectF preferredPod = podRect(preferredSize.width(), preferredSize.height(), readout.podCap);
+        const ScaleLayout preferred = labelsAt(
+            fittedGeometry(preferredSize, widgetFont, dpr, m_valueDisplayVisible ? &preferredPod : nullptr, metrics),
+            widgetFont, dpr, metrics);
         const std::vector<int> &drawn = preferred.labels.drawn;
         const bool lastLabelRequired = std::find(drawn.begin(), drawn.end(), tickCount()) != drawn.end();
 
+        // #226: a readout too wide for the pod at the ceiling: the smallest width above it at which the readout fits
+        // (the pod only grows with the width), then the labels, up to the search limit
+        if (!readoutFitsAtWidth(ceiling, readout)) {
+            if (!readoutFitsAtWidth(kSearchLimit, readout)) {
+                qWarning("IndustrialKnob: the readout does not fit the pod below %d px; minimumSizeHint() is %d px wide",
+                         kSearchLimit, kSearchLimit);
+                return kSearchLimit;
+            }
+            int low = ceiling;      // does not fit
+            int high = kSearchLimit; // fits
+            while (high - low > 1) {
+                const int mid = low + (high - low) / 2;
+                (readoutFitsAtWidth(mid, readout) ? high : low) = mid;
+            }
+            int width = high;
+            while (width < kSearchLimit && !widthKeepsScaleEnds(width, lastLabelRequired, widgetFont, dpr, readout, metrics)) {
+                ++width;
+            }
+            return width;
+        }
         // From the top, since a larger size is not always better: the labels grow in steps. The whole
         // range from the result up keeps them, and the ceiling is returned even if it does not
-        if (!widthKeepsScaleEnds(ceiling, lastLabelRequired, widgetFont, dpr, metrics)) {
+        if (!widthKeepsScaleEnds(ceiling, lastLabelRequired, widgetFont, dpr, readout, metrics)) {
             return ceiling;
         }
         int width = ceiling;
-        while (width > kMinimumWidth && widthKeepsScaleEnds(width - 1, lastLabelRequired, widgetFont, dpr, metrics)) {
+        while (width > kMinimumWidth
+               && widthKeepsScaleEnds(width - 1, lastLabelRequired, widgetFont, dpr, readout, metrics)) {
             --width;
         }
         return width;
@@ -201,9 +365,10 @@ int IndustrialKnobPrivate::computeMinimumWidth(int ceiling, const QFont &widgetF
     return width;
 }
 
-double IndustrialKnobPrivate::scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr)
+double IndustrialKnobPrivate::scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr,
+                                           int dpi)
 {
-    const internal::KnobScaleGeometry &scale = scaleFor(size, widgetFont, dpr).geometry;
+    const internal::KnobScaleGeometry &scale = scaleFor(size, widgetFont, dpr, dpi).geometry;
     double dx = pos.x() - scale.centerX;
     double dy = pos.y() - scale.centerY;
 
@@ -251,15 +416,19 @@ QColor IndustrialKnob::textColor() const { Q_D(const IndustrialKnob); return d->
 
 QSize IndustrialKnob::sizeHint() const
 {
-    return QSize(160, 180);
+    // #226: never below minimumSizeHint(), which a wide readout can take past 160 x 180
+    return minimumSizeHint().expandedTo(QSize(IndustrialKnobPrivate::kPreferredWidth,
+                                              IndustrialKnobPrivate::minimumHeightOf(IndustrialKnobPrivate::kPreferredWidth)));
 }
 
 QSize IndustrialKnob::minimumSizeHint() const
 {
     const double dpr = devicePixelRatioF();
-    if (d_ptr->m_minimumWidth == 0 || d_ptr->m_minimumWidthDpr != dpr) {
-        d_ptr->m_minimumWidth = d_ptr->computeMinimumWidth(sizeHint().width(), font(), dpr);
+    const int dpi = logicalDpiY();
+    if (d_ptr->m_minimumWidth == 0 || d_ptr->m_minimumWidthDpr != dpr || d_ptr->m_minimumWidthDpi != dpi) {
+        d_ptr->m_minimumWidth = d_ptr->computeMinimumWidth(font(), dpr, dpi);
         d_ptr->m_minimumWidthDpr = dpr;
+        d_ptr->m_minimumWidthDpi = dpi;
     }
     return QSize(d_ptr->m_minimumWidth, IndustrialKnobPrivate::minimumHeightOf(d_ptr->m_minimumWidth));
 }
@@ -381,6 +550,7 @@ void IndustrialKnob::setUnit(const QString &unit)
     if (d_ptr->m_unit == unit) return;
     d_ptr->m_unit = unit;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this); // #226: the readout is part of the minimum
     Q_EMIT appearanceChanged();
     update();
 }
@@ -463,6 +633,7 @@ void IndustrialKnob::setValueDisplayVisible(bool visible)
     if (d_ptr->m_valueDisplayVisible == visible) return;
     d_ptr->m_valueDisplayVisible = visible;
     invalidateCache();
+    d_ptr->minimumSizeChanged(this); // #226: the readout and the pod are part of the minimum
     Q_EMIT appearanceChanged();
     update();
 }
@@ -645,7 +816,7 @@ void IndustrialKnob::updateValueFromPoint(const QPointF &pos)
     // point, so a jump over the gap between the ends is seen as one. Past an end the value stays there until the
     // pointer comes back on that end, the way it came or after a full turn
     const double span = d_ptr->m_spanAngle;
-    const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF());
+    const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF(), logicalDpiY());
     double dragAngle = d_ptr->m_dragAngle + std::remainder(angle - d_ptr->m_lastPointerAngle, 360.0);
     d_ptr->m_lastPointerAngle = angle;
     if (dragAngle >= span + 360.0) {
@@ -668,10 +839,10 @@ void IndustrialKnob::mousePressEvent(QMouseEvent *event)
         // #182: a press never changes the value. It starts a relative drag only on the dial as it is drawn, within
         // the radius of its scale geometry; #175: and not in the gap between the ends of the scale
         const internal::KnobScaleGeometry &dial =
-            d_ptr->scaleFor(size(), font(), devicePixelRatioF()).geometry;
+            d_ptr->scaleFor(size(), font(), devicePixelRatioF(), logicalDpiY()).geometry;
         const QPointF pos = event->position();
         const bool onDial = std::hypot(pos.x() - dial.centerX, pos.y() - dial.centerY) <= dial.radius;
-        const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF());
+        const double angle = d_ptr->scaleAngleAt(pos, size(), font(), devicePixelRatioF(), logicalDpiY());
         if (onDial && angle <= d_ptr->m_spanAngle) {
             d_ptr->endAction(this); // A key held while the drag starts ends here
             d_ptr->m_isDragging = true;
@@ -850,7 +1021,7 @@ void IndustrialKnob::renderStaticScale(const QSize &targetSize)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(targetSize, font(), dpr);
+    const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(targetSize, font(), dpr, logicalDpiY());
     const internal::KnobScaleGeometry &scale = layout.geometry;
     const QPointF center(scale.centerX, scale.centerY);
     const double radius = scale.radius;
@@ -976,7 +1147,8 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     // #170: a window moved to a monitor of another DPR is repainted. The scale and the ink follow by themselves, but a
     // layout keeps the old minimum until it is told. Here, since a DPR can change on the same screen and has no event
     // of its own before Qt 6.6. Once: the minimum is computed again only when asked for
-    if (d_ptr->m_minimumWidth != 0 && d_ptr->m_minimumWidthDpr != devicePixelRatioF()) {
+    if (d_ptr->m_minimumWidth != 0
+        && (d_ptr->m_minimumWidthDpr != devicePixelRatioF() || d_ptr->m_minimumWidthDpi != logicalDpiY())) {
         d_ptr->minimumSizeChanged(this);
     }
 
@@ -992,7 +1164,7 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
     // 1. Fast Blit of Cached Scale & Frame
     painter.drawPixmap(0, 0, d_ptr->m_cachePixmap);
 
-    const internal::KnobScaleGeometry &scale = d_ptr->scaleFor(size(), font(), devicePixelRatioF()).geometry;
+    const internal::KnobScaleGeometry &scale = d_ptr->scaleFor(size(), font(), devicePixelRatioF(), logicalDpiY()).geometry;
     const QPointF center(scale.centerX, scale.centerY);
     const double radius = scale.radius;
     const double knobRadius = radius * 0.65;
@@ -1125,19 +1297,21 @@ void IndustrialKnob::paintEvent(QPaintEvent *)
 
     // 7. Dynamic Digital Value Readout (Bottom Pod)
     if (d_ptr->m_valueDisplayVisible) {
-        const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(size(), font(), devicePixelRatioF());
+        const IndustrialKnobPrivate::ScaleLayout &layout = d_ptr->scaleFor(size(), font(), devicePixelRatioF(), logicalDpiY());
         const QRectF podRect = layout.pod;
 
         const QString valStr = d_ptr->readoutText();
-
-        QFont valFont = font();
-        valFont.setPixelSize(layout.readoutPixelSize);
-        valFont.setBold(true);
-        // Greyscale antialiasing, as before the pod was opaque (#159): no coloured glyph edges
-        valFont.setStyleStrategy(QFont::StyleStrategy(valFont.styleStrategy() | QFont::NoSubpixelAntialias));
+        const QFont valFont = IndustrialKnobPrivate::readoutFont(font(), layout.readoutPixelSize);
         painter.setFont(valFont);
         painter.setPen(d_ptr->m_pointerColor);
-        painter.drawText(podRect, Qt::AlignCenter, valStr);
+        // #226: the ink centred in the pod, not the advance (which holds the letter spacing after the last glyph), from
+        // the origin on a whole device pixel; the baseline as Qt::AlignVCenter places it. Not clipped: from
+        // minimumSizeHint() up the pod holds the readout
+        const double dpr = devicePixelRatioF();
+        const QFontMetricsF fm(valFont);
+        const double x = podRect.center().x() - d_ptr->readoutInkCentre(valStr, valFont, dpr);
+        const double baseline = podRect.top() + (podRect.height() - fm.height()) * 0.5 + fm.ascent();
+        painter.drawText(QPointF(std::round(x * dpr) / dpr, std::round(baseline * dpr) / dpr), valStr);
     }
 }
 

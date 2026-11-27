@@ -19,6 +19,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <QtGui/QAccessible>
 #include <QtGui/QPainter>
@@ -69,9 +70,8 @@ ScaleLabels scaleLabelsAt(const IndustrialKnob &knob, const internal::KnobScaleG
         const double frac = static_cast<double>(i) / ticks;
         const QString text = discrete ? QString::number(i + 1) : texts.at(i);
         const QRectF rect = fm.boundingRect(text);
-        const internal::LayoutRect box = internal::labelBoxOnDevicePixel(
-            internal::knobLabelBox(geometry, knob.startAngle() + frac * knob.spanAngle(), rect.width(), rect.height()),
-            knob.devicePixelRatioF());
+        const internal::LayoutRect box = internal::knobLabelBoxOnDevicePixel(
+            geometry, knob.startAngle() + frac * knob.spanAngle(), rect.width(), rect.height(), knob.devicePixelRatioF());
         const internal::TextInkBox ink = internal::measureCenteredTextInk(text, out.font, box.w, box.h, knob.devicePixelRatioF());
         out.texts.push_back(text);
         out.boxes.push_back(box);
@@ -91,11 +91,15 @@ std::vector<internal::LayoutRect> drawnInk(const ScaleLabels &labels)
     return drawn;
 }
 
+// #226: where the value display is visible, the pod with its border and the rasterization margin beyond it
+std::optional<internal::LayoutRect> podKeepOutAt(const IndustrialKnob &knob, int width, int height);
+
 internal::KnobScaleGeometry drawnGeometryOf(const IndustrialKnob &knob, int width, int height)
 {
-    return internal::knobScaleGeometry(width, height, [&](const internal::KnobScaleGeometry &g) {
-        return drawnInk(scaleLabelsAt(knob, g));
-    });
+    const std::optional<internal::LayoutRect> keepOut = podKeepOutAt(knob, width, height);
+    return internal::knobScaleGeometry(
+        width, height, [&](const internal::KnobScaleGeometry &g) { return drawnInk(scaleLabelsAt(knob, g)); },
+        keepOut ? &*keepOut : nullptr);
 }
 
 ScaleLabels scaleLabelsOf(const IndustrialKnob &knob)
@@ -109,8 +113,18 @@ bool sizeKeepsTheEnds(const IndustrialKnob &knob, int width, int height)
     const ScaleLabels labels = scaleLabelsAt(knob, drawnGeometryOf(knob, width, height));
     const std::vector<int> &drawn = labels.selection.drawn;
     const int last = static_cast<int>(labels.boxes.size()) - 1;
+    const std::optional<internal::LayoutRect> keepOut = podKeepOutAt(knob, width, height);
     return std::find(drawn.begin(), drawn.end(), 0) != drawn.end() && std::find(drawn.begin(), drawn.end(), last) != drawn.end()
-           && internal::knobLabelsInside(drawnInk(labels), width, height);
+           && internal::knobLabelsInside(drawnInk(labels), width, height, keepOut ? &*keepOut : nullptr);
+}
+
+// #226: a width keeps the ends at every height from that of the minimum up: at the height of the minimum, and at the
+// height from which the dial no longer grows (its side is the width), as the search of the minimum checks them
+bool widthKeepsTheEnds(const IndustrialKnob &knob, int width)
+{
+    const int lowest = (width * 9 + 7) / 8;
+    const int tallest = std::max(lowest, static_cast<int>(std::ceil(width / internal::kKnobSideOfHeight)));
+    return sizeKeepsTheEnds(knob, width, lowest) && sizeKeepsTheEnds(knob, width, tallest);
 }
 
 // Device pixels that differ between two renders of the same size
@@ -535,6 +549,14 @@ QRectF podKeepOut(const QRectF &pod)
     return pod.adjusted(-out, -out, out, out);
 }
 
+std::optional<internal::LayoutRect> podKeepOutAt(const IndustrialKnob &knob, int width, int height)
+{
+    if (!knob.isValueDisplayVisible()) return std::nullopt;
+    const double podWidth = expectedPodWidth(knob, width);
+    const QRectF keepOut = podKeepOut(QRectF((width - podWidth) * 0.5, height - 24.0, podWidth, 22.0));
+    return internal::LayoutRect{keepOut.x(), keepOut.y(), keepOut.width(), keepOut.height()};
+}
+
 // Distance from a point to a rectangle (0 inside)
 double distanceToRect(const QPointF &p, const QRectF &r)
 {
@@ -651,6 +673,7 @@ private Q_SLOTS:
     void fourDigitLabelsAtThreeAndNineOClock();
     void sizeHintCoversTheMinimum();
     void minimumSearchStopsAtItsLimit();
+    void repaintDoesNotMeasureTheReadoutAgain();
 
     // #182, PR 2: read-only, value limits, mouse wheel
     void readOnlyIgnoresTheOperatorInput();
@@ -1416,7 +1439,8 @@ void tst_IndustrialKnob::dragPastTheMaximumDoesNotReachZero()
     sendMouse(knob, QEvent::MouseButtonRelease, dialPoint(dial, -90.0));
 }
 
-// #170: the limits of minimumSizeHint(): not below the former fixed 80 x 90, not above sizeHint()
+// #170: the limits of minimumSizeHint(): not below the former fixed 80 x 90. #226: above the 160 x 180 of sizeHint()
+// where the readout needs it, up to the search limit of 4096 px, and sizeHint() is never smaller
 void tst_IndustrialKnob::minimumSizeHintLimits()
 {
     IndustrialKnob knob;
@@ -1430,15 +1454,18 @@ void tst_IndustrialKnob::minimumSizeHintLimits()
                 other.setPrecision(precision);
                 other.setSpanAngle(span);
                 const QSize hint = other.minimumSizeHint();
-                QVERIFY2(hint.width() >= 80 && hint.width() <= 160 && hint.height() == (hint.width() * 9 + 7) / 8,
+                QCOMPARE(other.sizeHint(), hint.expandedTo(QSize(160, 180)));
+                QVERIFY2(hint.width() >= 80 && hint.width() <= 4096 && hint.height() == (hint.width() * 9 + 7) / 8,
                          qPrintable(QStringLiteral("span %1, 0-%2, precision %3: %4 x %5")
                                         .arg(span).arg(maximum).arg(precision).arg(hint.width()).arg(hint.height())));
             }
         }
     }
-    // On a full turn the first and last labels lie on each other, at every size: the first one is enough
+    // On a full turn the first and last labels lie on each other, at every size: the first one is enough. Without the
+    // pod: with it, the labels next to 6 o'clock keep out of it (#226) and take the minimum to 82 x 93
     IndustrialKnob turn;
     turn.setSpanAngle(360.0);
+    turn.setValueDisplayVisible(false);
     QCOMPARE(turn.minimumSizeHint(), QSize(80, 90));
 }
 
@@ -1489,19 +1516,20 @@ void tst_IndustrialKnob::minimumSizeHintMakesRoomForAWideFont()
         for (int stretch : {100, 150, 200, 250, 300, 400}) {
             IndustrialKnob knob;
             knob.setRange(0.0, maximum);
+            knob.setValueDisplayVisible(false); // #226: the labels, not the readout, make the minimum here
             QFont wide = knob.font();
             wide.setStretch(stretch);
             knob.setFont(wide);
 
             const int hint = knob.minimumSizeHint().width();
             // Where the ends do not fit even at the ceiling only the first one is required
-            if (hint <= 80 || hint >= 160 || !sizeKeepsTheEnds(knob, 160, 180)) {
+            if (hint <= 80 || hint >= 160 || !widthKeepsTheEnds(knob, 160)) {
                 continue;
             }
             ++checked;
-            QVERIFY2(sizeKeepsTheEnds(knob, hint, (hint * 9 + 7) / 8),
+            QVERIFY2(widthKeepsTheEnds(knob, hint),
                      qPrintable(QStringLiteral("0-%1, stretch %2 at %3").arg(maximum).arg(stretch).arg(hint)));
-            QVERIFY2(!sizeKeepsTheEnds(knob, hint - 1, ((hint - 1) * 9 + 7) / 8),
+            QVERIFY2(!widthKeepsTheEnds(knob, hint - 1),
                      qPrintable(QStringLiteral("0-%1, stretch %2: %3 is enough, the minimum is %4").arg(maximum).arg(stretch).arg(hint - 1).arg(hint)));
         }
     }
@@ -1516,6 +1544,7 @@ void tst_IndustrialKnob::minimumSizeHintMakesRoomForALabelAtTheTop()
     for (int stretch : {100, 150, 200, 300}) {
         IndustrialKnob knob;
         knob.setRange(-9e18, 9e18);
+        knob.setValueDisplayVisible(false); // #226: the labels, not the readout, make the minimum here
         knob.setStartAngle(0.0);
         knob.setSpanAngle(360.0);
         QFont wide = knob.font();
@@ -1523,9 +1552,15 @@ void tst_IndustrialKnob::minimumSizeHintMakesRoomForALabelAtTheTop()
         knob.setFont(wide);
 
         const int hint = knob.minimumSizeHint().width();
+        // #226: at the height of the minimum and at the height from which the dial no longer grows
         const auto inside = [&](int width) {
-            const int height = (width * 9 + 7) / 8;
-            return internal::knobLabelsInside(drawnInk(scaleLabelsAt(knob, drawnGeometryOf(knob, width, height))), width, height);
+            const int lowest = (width * 9 + 7) / 8;
+            const int tallest = std::max(lowest, static_cast<int>(std::ceil(width / internal::kKnobSideOfHeight)));
+            const std::array<int, 2> heights{lowest, tallest};
+            return std::all_of(heights.begin(), heights.end(), [&](int height) {
+                return internal::knobLabelsInside(drawnInk(scaleLabelsAt(knob, drawnGeometryOf(knob, width, height))),
+                                                  width, height);
+            });
         };
         if (hint <= 80 || hint >= 160) {
             continue;
@@ -2399,6 +2434,29 @@ void tst_IndustrialKnob::minimumSearchStopsAtItsLimit()
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("IndustrialKnob.*4096")));
     QCOMPARE(knob.minimumSizeHint(), QSize(4096, (4096 * 9 + 7) / 8));
     QCOMPARE(knob.sizeHint(), QSize(4096, (4096 * 9 + 7) / 8));
+}
+
+// #226: the ink of the readout is measured on a raster once per text, font and DPR: a repaint of a text measured before
+// measures nothing, a new value measures its text once
+void tst_IndustrialKnob::repaintDoesNotMeasureTheReadoutAgain()
+{
+    using internal::IndustrialKnobTestAccess;
+    IndustrialKnob knob;
+    knob.resize(160, 180);
+    knob.setValue(25.0);
+    renderKnob(knob);
+    const quint64 first = IndustrialKnobTestAccess::readoutInkMeasureCount(knob);
+    QVERIFY(first > 0);
+    renderKnob(knob);
+    knob.update();
+    renderKnob(knob);
+    QCOMPARE(IndustrialKnobTestAccess::readoutInkMeasureCount(knob), first);
+    knob.setValue(26.0);
+    renderKnob(knob);
+    QCOMPARE(IndustrialKnobTestAccess::readoutInkMeasureCount(knob), first + 1);
+    knob.setValue(25.0);
+    renderKnob(knob);
+    QCOMPARE(IndustrialKnobTestAccess::readoutInkMeasureCount(knob), first + 1);
 }
 
 QTEST_MAIN(tst_IndustrialKnob)

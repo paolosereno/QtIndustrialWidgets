@@ -49,7 +49,6 @@ struct KnobScaleGeometry {
     double centerY{0.0};
     double radius{0.0};      ///< Dial radius: side / 2 - 4, with side = min(w, 0.82 h)
     double scaleRadius{0.0}; ///< Outer end of every tick
-    double labelRadius{0.0}; ///< Distance of the scale label centres from the dial centre
     int labelFontPx{7};      ///< Pixel size of the (bold) scale label font
 };
 
@@ -61,21 +60,37 @@ using KnobDrawnLabels = std::function<std::vector<LayoutRect>(const KnobScaleGeo
 
 inline constexpr double kKnobEdgeMargin = 1.0;         ///< Free space between the ink of a label and the widget edge
 inline constexpr double kKnobMinimumRadiusRatio = 0.5; ///< Smallest dial, as a fraction of the full radius
+/// The side of the knob dial is min(width, kKnobSideOfHeight · height)
+inline constexpr double kKnobSideOfHeight = 0.82;
+/// Free space between the end of the ticks and the box of a label (#226), as kTickGap of the Compass
+inline constexpr double kKnobTickGap = 4.0;
 
-/// True if every box keeps kKnobEdgeMargin from the edge of a widget of that size.
-bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height);
+/// True if every box keeps kKnobEdgeMargin from the edge of a widget of that size and, with \a keepOut, does not
+/// overlap it (touching it is allowed).
+bool knobLabelsInside(const std::vector<LayoutRect> &boxes, double width, double height,
+                      const LayoutRect *keepOut = nullptr);
 
 /**
- * \brief Scale geometry of a knob whose drawn labels stay inside the widget (#170).
+ * \brief Scale geometry of a knob whose drawn labels stay inside the widget (#170) and out of the pod (#226).
  *
  * The largest radius, from the full one down to half of it, at which every box of \a drawnLabels keeps
- * kKnobEdgeMargin from the widget edge. The centre does not move. At the smallest radius labels can still
- * reach the edge: minimumSizeHint() keeps the widget above that.
+ * kKnobEdgeMargin from the widget edge and, with \a keepOut (the value pod with its border and margin), does not
+ * overlap it. The centre does not move. At the smallest radius labels can still reach the edge or the pod:
+ * minimumSizeHint() keeps the widget above that.
  */
-KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels);
+KnobScaleGeometry knobScaleGeometry(double width, double height, const KnobDrawnLabels &drawnLabels,
+                                    const LayoutRect *keepOut = nullptr);
 
-/// Box of a w x h scale label of a knob, centred at the label radius, at \a angle degrees (0 = 12 o'clock, clockwise).
+/// Distance of the centre of a w x h label box from the dial centre (#226): kKnobTickGap beyond the end of the ticks,
+/// plus the extent of the box along the radius at \a angle degrees, |sin|·w/2 + |cos|·h/2.
+double knobLabelRadius(const KnobScaleGeometry &geometry, double angle, double w, double h);
+
+/// Box of a w x h scale label of a knob, centred at knobLabelRadius(), at \a angle degrees (0 = 12 o'clock, clockwise).
 LayoutRect knobLabelBox(const KnobScaleGeometry &geometry, double angle, double w, double h);
+
+/// knobLabelBox() with its centre on a device pixel, where measureCenteredTextInk() measures the ink of a label. Each
+/// coordinate of the centre is rounded away from the dial centre, so the box never comes closer to the ticks (#226).
+LayoutRect knobLabelBoxOnDevicePixel(const KnobScaleGeometry &geometry, double angle, double w, double h, double dpr);
 
 /// The same box with its centre on a device pixel, where measureCenteredTextInk() measures the ink of a label.
 LayoutRect labelBoxOnDevicePixel(const LayoutRect &box, double dpr);

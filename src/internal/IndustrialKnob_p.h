@@ -21,6 +21,7 @@
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
 #include <QtCore/QSize>
+#include <QtCore/QSizeF>
 #include <QtCore/QString>
 #include <QtCore/QtGlobal>
 #include <QtGui/QAccessible>
@@ -93,6 +94,7 @@ public:
     internal::LimitBounds m_limits; // Each bound as set (#246); read within the range
     int m_minimumWidth{0};   // minimumSizeHint().width(), computed when asked for; 0: to compute
     double m_minimumWidthDpr{0.0};
+    int m_minimumWidthDpi{0}; // #226: the readout floor of 7 pt depends on the logical DPI
     // #170: ink of each label text at each font size, measured on a raster. Kept across resizes and changes of the
     // scale and never measured by a repaint of the same scale: dropped when the font or the DPR changes
     mutable std::map<std::pair<QString, int>, internal::TextInkBox> m_labelInk;
@@ -114,6 +116,7 @@ public:
     ScaleLayout m_scale;
     QSize m_scaleSize;   // Size m_scale was computed for
     double m_scaleDpr{0.0};
+    int m_scaleDpi{0};
     bool m_scaleValid{false};
 
     static constexpr int kMinimumWidth = 80; // minimumSizeHint() never goes below 80 x 90
@@ -121,12 +124,36 @@ public:
     static constexpr double kPodHeight = 22.0;
     static constexpr double kPodBottomGap = 2.0;
     static constexpr double kPodPen = 1.0;
-    static constexpr int kReadoutPixelSize = 11; // The readout font
-    static QRectF podRect(double width, double height)
+    static constexpr int kReadoutPixelSize = 11; // The readout font, down to 7 pt where the pod is too narrow (#226)
+    static constexpr int kPreferredWidth = 160;  // sizeHint(): 160 x 180, or minimumSizeHint() where larger (#226)
+    static constexpr int kSearchLimit = 4096;    // #226: the search of the minimum goes no further
+    // #226: 0.65 of the width, at least 50 px, at most \a cap (podCap())
+    static QRectF podRect(double width, double height, double cap)
     {
-        const double podWidth = std::clamp(width * 0.65, 50.0, 110.0);
+        const double podWidth = std::clamp(width * 0.65, 50.0, cap);
         return QRectF((width - podWidth) * 0.5, height - kPodHeight - kPodBottomGap, podWidth, kPodHeight);
     }
+    // #226: the readout font at a pixel size, as paintEvent() draws it
+    static QFont readoutFont(const QFont &widgetFont, int pixelSize);
+    // #226: the texts the widest readout is chosen from: the ends of the range with the unit, or "POS N"
+    std::vector<QString> readoutCandidates() const;
+    // #226: width and height of the widest readout ink at a pixel size (Qt metrics)
+    QSizeF widestReadoutInk(const QFont &widgetFont, int pixelSize) const;
+    // #226: the widest pod: 110 px, or the widest readout at 7 pt with the rasterization margin and the border
+    static double podCap(const QSizeF &ink7pt);
+    // #226: ink of that size, with the rasterization margin on each side, inside the border of a pod that wide
+    static bool readoutFitsPod(const QSizeF &ink, double podWidth);
+    // #226: the space around the pod that no label ink enters: its border and the rasterization margin beyond it
+    static internal::LayoutRect podKeepOut(const QRectF &pod);
+    // #226: the pod and the readout size at a widget size
+    void podAndReadoutAt(ScaleLayout &layout, const QSize &size, const QFont &widgetFont, int dpi) const;
+    // #226: horizontal centre of the ink of the readout text from its origin, measured on a raster once per text,
+    // font and DPR (never by a repaint of a text measured before)
+    double readoutInkCentre(const QString &text, const QFont &font, double dpr) const;
+    mutable std::map<QString, double> m_readoutInkCentres;
+    mutable QFont m_readoutInkFont;
+    mutable double m_readoutInkDpr{0.0};
+    mutable quint64 m_readoutInkMeasures{0}; // For IndustrialKnobTestAccess
     static constexpr size_t kMaximumLabelInks = 1024; // A range that keeps changing must not grow m_labelInk for ever
 
     // Height at a width, in the proportions of the floor and of sizeHint()
@@ -151,13 +178,20 @@ public:
     ScaleLayout labelsAt(const internal::KnobScaleGeometry &geometry, const QFont &widgetFont, double dpr,
                          MinimumMetrics *metrics = nullptr) const;
     static std::vector<internal::LayoutRect> drawnInk(const ScaleLayout &layout);
-    // The geometry the labels of this configuration need at a size
+    // The geometry the labels of this configuration need at a size; with \a pod (the value display visible, #226)
+    // they also keep out of the pod
     internal::KnobScaleGeometry fittedGeometry(const QSize &size, const QFont &widgetFont, double dpr,
-                                               MinimumMetrics *metrics = nullptr) const;
-    const ScaleLayout &scaleFor(const QSize &size, const QFont &widgetFont, double dpr);
+                                               const QRectF *pod, MinimumMetrics *metrics = nullptr) const;
+    const ScaleLayout &scaleFor(const QSize &size, const QFont &widgetFont, double dpr, int dpi);
+    // #226: what the search of the minimum keeps for the readout: the widest ink at 7 pt and the widest pod
+    struct MinimumReadout {
+        QSizeF ink7pt;
+        double podCap{110.0};
+    };
     bool widthKeepsScaleEnds(int width, bool lastLabelRequired, const QFont &widgetFont, double dpr,
-                             MinimumMetrics *metrics) const;
-    int computeMinimumWidth(int ceiling, const QFont &widgetFont, double dpr) const;
+                             const MinimumReadout &readout, MinimumMetrics *metrics) const;
+    bool readoutFitsAtWidth(int width, const MinimumReadout &readout) const;
+    int computeMinimumWidth(const QFont &widgetFont, double dpr, int dpi) const;
 
     // IndustrialKnobTestAccess (#184): the reference that measures every label each time, as before the table, and
     // the real measures of the table and the label texts formatted in the last computation of minimumSizeHint()
@@ -166,7 +200,7 @@ public:
     mutable quint64 m_labelFormats{0}; // Labels formatted by labelTexts() so far
     mutable quint64 m_lastMinimumLabelFormats{0};
     // Clockwise from the start of the scale, in [0, 360), around the dial as it is drawn
-    double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr);
+    double scaleAngleAt(const QPointF &pos, const QSize &size, const QFont &widgetFont, double dpr, int dpi);
 
     // #241: a drag or a held key is running
     [[nodiscard]] bool operatorActive() const { return m_isDragging || m_keyAction; }
