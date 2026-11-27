@@ -1392,6 +1392,40 @@ void tst_RadialGauge::minimumMeasuresTheLabelTexts()
     QVERIFY2(measured == expected, qPrintable(QStringLiteral("measured: %1\nexpected: %2").arg(list(measured), list(expected))));
 }
 
+namespace {
+// #274: a font with the pixel size of \a base and another family whose digits ('0'-'9', '.', '-') measure differently,
+// in the regular or the bold weight: the test font first (tests/fonts), then the installed families. With whole-pixel
+// advances (FreeType with full hinting, as on the offscreen platform of the Windows job) every digit of the test font
+// and of DejaVu Sans at 12 px is 8 px wide, and the change of family left the minimum unchanged
+QFont familyWithOtherDigits(const QFont &base, QString *error)
+{
+    const auto digitsDiffer = [&](const QFont &font) {
+        for (const bool bold : {false, true}) {
+            QFont a = base;
+            a.setBold(bold);
+            QFont b = font;
+            b.setBold(bold);
+            const QFontMetricsF fa(a);
+            const QFontMetricsF fb(b);
+            for (const QChar ch : QStringLiteral("0123456789.-")) {
+                if (fa.horizontalAdvance(ch) != fb.horizontalAdvance(ch)) return true;
+            }
+        }
+        return false;
+    };
+    const QFont test = readoutTestFont(error); // the application font with the family of the test font
+    if (!error->isEmpty()) return QFont();
+    if (digitsDiffer(test)) return test;
+    for (const QString &family : QFontDatabase::families()) {
+        QFont f = base;
+        f.setFamily(family);
+        if (digitsDiffer(f)) return f;
+    }
+    *error = QStringLiteral("no family whose digits measure differently from those of %1").arg(base.family());
+    return QFont();
+}
+} // namespace
+
 void tst_RadialGauge::minimumTableNotKeptAcrossComputations_data()
 {
     // The same pixel size as the application font: only what the table must not keep changes
@@ -1408,7 +1442,7 @@ void tst_RadialGauge::minimumTableNotKeptAcrossComputations()
     QFont other = TextMetricsTest::spacedFont(QApplication::font());
     if (family) {
         QString error;
-        other = readoutTestFont(&error); // the application font with the family of the test font
+        other = familyWithOtherDigits(QApplication::font(), &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
     }
     RadialGauge gauge;
