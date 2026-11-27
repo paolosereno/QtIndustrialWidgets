@@ -125,6 +125,25 @@ jobs:
         run: |
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build --output-on-failure
+      # PROBE of #226 (branch issue-226-knob-probe only, never merged)
+      - name: Probe 226 (knob)
+        if: always()
+        run: |
+          export QT_QPA_PLATFORM=offscreen QIW_PROBE=1
+          exe=$(find build -type f \( -name 'tst_IndustrialKnob' -o -name 'tst_IndustrialKnob.exe' \) | head -1)
+          echo "binary: $exe"
+          mkdir -p probe226
+          for s in 1 1.25 1.5 2; do
+            QT_SCALE_FACTOR=$s "$exe" probe226 -o "probe226/probe-$s.txt,txt" || true
+            QT_SCALE_FACTOR=$s "$exe" readoutPixelsInsideThePod labelPixelsClearOfThePodAndTheTicks -o "probe226/tests-$s.txt,txt" || true
+          done
+          ls -l probe226
+      - name: Upload probe 226
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe226-linux
+          path: probe226/
 
       # Smoke test of the documentation image export (#26); images are uploaded, never committed
       - name: Export gallery images (smoke test)
@@ -365,6 +384,27 @@ jobs:
           ctest --test-dir build -C Release -N | grep -E 'tst_DesignerPlugin' || { echo "::error::tst_DesignerPlugin is not a test of this build"; exit 1; }
           ctest --test-dir build -C Release --output-on-failure
 
+      # PROBE of #226 (branch issue-226-knob-probe only, never merged)
+      - name: Probe 226 (knob)
+        if: always()
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen QIW_PROBE=1
+          exe=$(find build -type f \( -name 'tst_IndustrialKnob' -o -name 'tst_IndustrialKnob.exe' \) | head -1)
+          echo "binary: $exe"
+          mkdir -p probe226
+          for s in 1 1.25 1.5 2; do
+            QT_SCALE_FACTOR=$s "$exe" probe226 -o "probe226/probe-$s.txt,txt" || true
+            QT_SCALE_FACTOR=$s "$exe" readoutPixelsInsideThePod labelPixelsClearOfThePodAndTheTicks -o "probe226/tests-$s.txt,txt" || true
+          done
+          ls -l probe226
+      - name: Upload probe 226
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe226-windows
+          path: probe226/
+
   # ============================================================
   # 3. macOS (AppleClang & Qt 6)
   # ============================================================
@@ -405,6 +445,25 @@ jobs:
         run: |
           export QT_QPA_PLATFORM=offscreen
           ctest --test-dir build --output-on-failure
+      # PROBE of #226 (branch issue-226-knob-probe only, never merged)
+      - name: Probe 226 (knob)
+        if: always()
+        run: |
+          export QT_QPA_PLATFORM=offscreen QIW_PROBE=1
+          exe=$(find build -type f \( -name 'tst_IndustrialKnob' -o -name 'tst_IndustrialKnob.exe' \) | head -1)
+          echo "binary: $exe"
+          mkdir -p probe226
+          for s in 1 1.25 1.5 2; do
+            QT_SCALE_FACTOR=$s "$exe" probe226 -o "probe226/probe-$s.txt,txt" || true
+            QT_SCALE_FACTOR=$s "$exe" readoutPixelsInsideThePod labelPixelsClearOfThePodAndTheTicks -o "probe226/tests-$s.txt,txt" || true
+          done
+          ls -l probe226
+      - name: Upload probe 226
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe226-macos
+          path: probe226/
 
   # ============================================================
   # 4. Deploy Documentation to GitHub Pages (Main branch only)

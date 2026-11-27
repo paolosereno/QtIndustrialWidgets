@@ -674,6 +674,8 @@ private Q_SLOTS:
     void sizeHintCoversTheMinimum();
     void minimumSearchStopsAtItsLimit();
     void repaintDoesNotMeasureTheReadoutAgain();
+    void probe226_data();
+    void probe226();
 
     // #182, PR 2: read-only, value limits, mouse wheel
     void readOnlyIgnoresTheOperatorInput();
@@ -2457,6 +2459,120 @@ void tst_IndustrialKnob::repaintDoesNotMeasureTheReadoutAgain()
     knob.setValue(25.0);
     renderKnob(knob);
     QCOMPARE(IndustrialKnobTestAccess::readoutInkMeasureCount(knob), first + 1);
+}
+
+// PROBE of #226 (branch issue-226-knob-probe only, never merged): with QIW_PROBE set, prints for every drawn label and
+// for the readout at both ends of the range the positioning error (rounding of the origin to a device pixel) and the
+// rasterization error (ink drawn on the widget against the ink measured on an image at the same origin), in device px
+void tst_IndustrialKnob::probe226_data() { addMinimumRows(); }
+
+void tst_IndustrialKnob::probe226()
+{
+    if (!qEnvironmentVariableIsSet("QIW_PROBE")) return;
+    QFETCH(int, caseIndex);
+    QFETCH(QString, fontName);
+    QFETCH(QSize, extra);
+    IndustrialKnob knob;
+    QString error;
+    QVERIFY2(setUpMinimumRow(knob, caseIndex, fontName, extra, &error), qPrintable(error));
+    const double dpr = knob.devicePixelRatioF();
+    const QString row = QStringLiteral("%1|%2|%3x%4|dpr %5").arg(QLatin1String(kMinimumCases[caseIndex].name), fontName)
+                            .arg(knob.width()).arg(knob.height()).arg(dpr);
+    const internal::IndustrialKnobTestAccess::Layout layout = internal::IndustrialKnobTestAccess::layout(knob);
+
+    // Labels: the pixels of each drawn label, assigned to the nearest ink box
+    const QVector<QPoint> pixels = pixelsOf(knob, [](IndustrialKnob &k, const QColor &c) { k.setTextColor(c); });
+    std::vector<QRect> drawn(layout.drawn.size());
+    for (const QPoint &p : pixels) {
+        const QPointF centre = QPointF(p.x() + 0.5, p.y() + 0.5) / dpr;
+        size_t best = 0;
+        double bestDistance = 1e9;
+        for (size_t j = 0; j < layout.drawn.size(); ++j) {
+            const internal::LayoutRect &ink = layout.ink[static_cast<size_t>(layout.drawn[j])];
+            const double d = distanceToRect(centre, QRectF(ink.x, ink.y, ink.w, ink.h));
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = j;
+            }
+        }
+        drawn[best] |= QRect(p, QSize(1, 1));
+    }
+    for (size_t j = 0; j < layout.drawn.size(); ++j) {
+        const size_t i = static_cast<size_t>(layout.drawn[j]);
+        const internal::LayoutRect &ink = layout.ink[i];
+        const internal::LayoutRect &box = layout.boxes[i];
+        const internal::LayoutRect ideal = internal::knobLabelBox(layout.geometry, layout.angles[i], box.w, box.h);
+        const QRect &d = drawn[j];
+        if (d.isEmpty()) {
+            qInfo("PROBE label|%s|%s|empty", qPrintable(row), qPrintable(layout.texts[i]));
+            continue;
+        }
+        qInfo("PROBE label|%s|%s|angle %.1f|pos %.3f %.3f|raster %.3f %.3f %.3f %.3f|metric-over %.3f %.3f %.3f %.3f",
+              qPrintable(row), qPrintable(layout.texts[i]), layout.angles[i],
+              (box.x - ideal.x) * dpr, (box.y - ideal.y) * dpr,
+              d.left() - ink.x * dpr, (d.right() + 1) - ink.right() * dpr, d.top() - ink.y * dpr,
+              (d.bottom() + 1) - ink.bottom() * dpr,
+              box.x * dpr - d.left(), (d.right() + 1) - box.right() * dpr, box.y * dpr - d.top(),
+              (d.bottom() + 1) - box.bottom() * dpr);
+    }
+
+    // Readout, at both ends of the range
+    for (const double value : {knob.minimum(), knob.maximum()}) {
+        knob.setValue(value);
+        const internal::IndustrialKnobTestAccess::Layout l = internal::IndustrialKnobTestAccess::layout(knob);
+        const QFont font = readoutFontOf(knob, l.readoutPixelSize);
+        QString text;
+        if (knob.mode() == IndustrialKnob::KnobMode::Discrete) {
+            const int steps = knob.discreteSteps();
+            text = QStringLiteral("POS %1").arg(static_cast<int>(std::round((value - knob.minimum()) /
+                                                                           ((knob.maximum() - knob.minimum()) / (steps - 1)))) + 1);
+        } else {
+            text = QStringLiteral("%1 %2").arg(internal::formatFixed(value, knob.precision()), knob.unit()).trimmed();
+        }
+        // The ink on an image, as the widget measures it
+        const QFontMetricsF fm(font);
+        const int margin = static_cast<int>(std::ceil(fm.height() * dpr));
+        QImage image(QSize(static_cast<int>(std::ceil(fm.horizontalAdvance(text) * dpr)) + 2 * margin,
+                           static_cast<int>(std::ceil(fm.height() * dpr)) + 2 * margin),
+                     QImage::Format_ARGB32_Premultiplied);
+        image.setDevicePixelRatio(dpr);
+        image.fill(Qt::transparent);
+        {
+            QPainter p(&image);
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setRenderHint(QPainter::TextAntialiasing, true);
+            p.setFont(font);
+            p.setPen(Qt::black);
+            p.drawText(QPointF(margin / dpr, margin / dpr + fm.ascent()), text);
+        }
+        int left = image.width();
+        int right = -1;
+        for (int y = 0; y < image.height(); ++y) {
+            const auto *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+            for (int x = 0; x < image.width(); ++x) {
+                if (qAlpha(line[x]) != 0) {
+                    left = std::min(left, x);
+                    right = std::max(right, x);
+                }
+            }
+        }
+        const double centre = ((left + right + 1) * 0.5 - margin) / dpr;
+        const double idealX = l.pod.center().x() - centre;
+        const double originX = std::round(idealX * dpr) / dpr;
+        const double expectedLeft = originX * dpr + (left - margin);
+        const double expectedRight = originX * dpr + (right + 1 - margin);
+        const QRectF near = l.pod.adjusted(-4.0, -4.0, 4.0, 4.0);
+        QRect ink;
+        for (const QPoint &p : pixelsOf(knob, [](IndustrialKnob &k, const QColor &c) { k.setPointerColor(c); })) {
+            if (near.contains(QPointF(p.x() + 0.5, p.y() + 0.5) / dpr)) ink |= QRect(p, QSize(1, 1));
+        }
+        const QRectF inner = podInterior(l.pod);
+        const double metricWidth = fm.tightBoundingRect(text).width() * dpr;
+        qInfo("PROBE readout|%s|%s|px %d|pos %.3f|raster %.3f %.3f|metric-over %.3f|margins %.3f %.3f",
+              qPrintable(row), qPrintable(text), l.readoutPixelSize, (originX - idealX) * dpr, ink.left() - expectedLeft,
+              (ink.right() + 1) - expectedRight, ((ink.width()) - metricWidth) * 0.5, ink.left() - inner.left() * dpr,
+              inner.right() * dpr - (ink.right() + 1));
+    }
 }
 
 QTEST_MAIN(tst_IndustrialKnob)
