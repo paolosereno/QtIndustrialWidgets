@@ -19,7 +19,7 @@ nothing skipped (QSKIP) or blacklisted, no crash and no timeout. The one excepti
 skips file (default tests/expected_skips.json of the repository, if it exists; approved by the maintainer, #226): each
 entry names the test binary, the test function, a regular expression that the data tag must match in full ("" for a
 function without data rows), the
-configurations (labels of LABELS) and the reason. A SKIP line that no entry matches fails the configuration as before. The configuration without fonts is never left out:
+configurations (labels of LABELS, or of CI_LABELS for the CI jobs checked by tools/ci_skips.py, #274) and the reason. A SKIP line that no entry matches fails the configuration as before. The configuration without fonts is never left out:
 if its environment cannot be set up, nothing runs and the exit status is 1.
 
 Exit status: 0 every binary passed in all 8 configurations; 1 setup error (a missing binary, no environment without
@@ -42,6 +42,10 @@ from pathlib import Path
 
 SCALES = ("1", "1.25", "1.5", "2")
 LABELS = tuple(f"fonts {s}" for s in SCALES) + tuple(f"no fonts {s}" for s in SCALES)
+# The configurations of the CI jobs whose skips tools/ci_skips.py checks (#274: the jobs of ci.yml that run ctest), at the four scales of ctest: an expected
+# skips entry may list them; this script never runs them
+CI_PLATFORMS = ("linux ci", "linux qt6.2 ci", "macos ci", "windows ci")
+CI_LABELS = tuple(f"{p} {s}" for p in CI_PLATFORMS for s in SCALES)
 CRASH = 1000
 TOTALS = re.compile(r"^Totals: (\d+) passed, (\d+) failed, (\d+) skipped(?:, (\d+) blacklisted)?")
 SKIP = re.compile(r"^SKIP\s*: ([^:\s]+)::(\w+)\((.*?)\)(?: |$)")
@@ -90,9 +94,9 @@ def load_expected_skips(path):
         configs = e.get("configurations")
         if not isinstance(configs, list) or not configs:
             raise ValueError(f'{where}: "configurations" missing or empty')
-        unknown = [c for c in configs if c not in LABELS]
+        unknown = [c for c in configs if c not in LABELS + CI_LABELS]
         if unknown:
-            raise ValueError(f'{where}: unknown configurations {unknown}; known: {list(LABELS)}')
+            raise ValueError(f'{where}: unknown configurations {unknown}; known: {list(LABELS + CI_LABELS)}')
         try:
             data_re = re.compile(e["data"])
         except re.error as err:

@@ -124,7 +124,26 @@ jobs:
       - name: Run unit tests (QtTest)
         run: |
           export QT_QPA_PLATFORM=offscreen
-          ctest --test-dir build --output-on-failure
+          # #274: the whole output of the tests (ctest -V) goes to a log, so that tools/ci_skips.py checks every skip
+          # against tests/expected_skips.json; the console gets the result of each test, and the output of the
+          # failing ones
+          log="$RUNNER_TEMP/ctest.log"
+          status=0
+          ctest --test-dir build -V > "$log" 2>&1 || status=$?
+          grep -E '^ *[0-9]+/[0-9]+ Test +#|tests passed|tests failed' "$log" || true
+          if [ "$status" -ne 0 ]; then
+            ctest --test-dir build --rerun-failed --output-on-failure || true
+            exit 1
+          fi
+          python3 tools/ci_skips.py --platform "linux ci" "$log"
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-log-linux-ci
+          path: ${{ runner.temp }}/ctest.log
+          retention-days: 14
 
       # Smoke test of the documentation image export (#26); images are uploaded, never committed
       - name: Export gallery images (smoke test)
@@ -237,7 +256,26 @@ jobs:
       - name: Run unit tests (QtTest)
         run: |
           export QT_QPA_PLATFORM=offscreen
-          ctest --test-dir build --output-on-failure
+          # #274: the whole output of the tests (ctest -V) goes to a log, so that tools/ci_skips.py checks every skip
+          # against tests/expected_skips.json; the console gets the result of each test, and the output of the
+          # failing ones
+          log="$RUNNER_TEMP/ctest.log"
+          status=0
+          ctest --test-dir build -V > "$log" 2>&1 || status=$?
+          grep -E '^ *[0-9]+/[0-9]+ Test +#|tests passed|tests failed' "$log" || true
+          if [ "$status" -ne 0 ]; then
+            ctest --test-dir build --rerun-failed --output-on-failure || true
+            exit 1
+          fi
+          python3 tools/ci_skips.py --platform "linux qt6.2 ci" "$log"
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-log-linux-qt62-ci
+          path: ${{ runner.temp }}/ctest.log
+          retention-days: 14
 
   # ============================================================
   # 1c. Designer plugin installed into Qt's own prefix (#135)
@@ -363,7 +401,26 @@ jobs:
           # #245: the plugin tests are part of the run (installed_designer_plugin is not: it checks the run path of
           # the installed plugin, which Windows does not have; see tests/CMakeLists.txt)
           ctest --test-dir build -C Release -N | grep -E 'tst_DesignerPlugin' || { echo "::error::tst_DesignerPlugin is not a test of this build"; exit 1; }
-          ctest --test-dir build -C Release --output-on-failure
+          # #274: the whole output of the tests (ctest -V) goes to a log, so that tools/ci_skips.py checks every skip
+          # against tests/expected_skips.json; the console gets the result of each test, and the output of the
+          # failing ones
+          log="$RUNNER_TEMP/ctest.log"
+          status=0
+          ctest --test-dir build -C Release -V > "$log" 2>&1 || status=$?
+          grep -E '^ *[0-9]+/[0-9]+ Test +#|tests passed|tests failed' "$log" || true
+          if [ "$status" -ne 0 ]; then
+            ctest --test-dir build -C Release --rerun-failed --output-on-failure || true
+            exit 1
+          fi
+          python tools/ci_skips.py --platform "windows ci" "$log"
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-log-windows-ci
+          path: ${{ runner.temp }}/ctest.log
+          retention-days: 14
 
   # ============================================================
   # 3. macOS (AppleClang & Qt 6)
@@ -404,7 +461,26 @@ jobs:
       - name: Run unit tests (QtTest)
         run: |
           export QT_QPA_PLATFORM=offscreen
-          ctest --test-dir build --output-on-failure
+          # #274: the whole output of the tests (ctest -V) goes to a log, so that tools/ci_skips.py checks every skip
+          # against tests/expected_skips.json; the console gets the result of each test, and the output of the
+          # failing ones
+          log="$RUNNER_TEMP/ctest.log"
+          status=0
+          ctest --test-dir build -V > "$log" 2>&1 || status=$?
+          grep -E '^ *[0-9]+/[0-9]+ Test +#|tests passed|tests failed' "$log" || true
+          if [ "$status" -ne 0 ]; then
+            ctest --test-dir build --rerun-failed --output-on-failure || true
+            exit 1
+          fi
+          python3 tools/ci_skips.py --platform "macos ci" "$log"
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-log-macos-ci
+          path: ${{ runner.temp }}/ctest.log
+          retention-days: 14
 
   # ============================================================
   # 4. Deploy Documentation to GitHub Pages (Main branch only)

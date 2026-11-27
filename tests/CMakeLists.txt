@@ -551,6 +551,11 @@ if(Python3_Interpreter_FOUND)
         COMMAND ${Python3_EXECUTABLE} -m unittest discover
                 -s ${PROJECT_SOURCE_DIR}/benchmarks -p test_merge_runs.py -v)
     set_tests_properties(merge_runs PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+    # tools/ci_skips.py (#274): the skips of a CI test run against tests/expected_skips.json; standard library only
+    add_test(NAME ci_skips
+        COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                -s ${PROJECT_SOURCE_DIR}/tools -p test_ci_skips.py -v)
+    set_tests_properties(ci_skips PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
 endif()
 
 # tools/mutation_check.py (#197): its tests build a small CMake project with git, cmake and the C++ compiler, and run it

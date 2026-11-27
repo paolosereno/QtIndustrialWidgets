@@ -12,9 +12,25 @@
         "no fonts 1",
         "no fonts 1.25",
         "no fonts 1.5",
-        "no fonts 2"
+        "no fonts 2",
+        "linux ci 1",
+        "linux ci 1.25",
+        "linux ci 1.5",
+        "linux ci 2",
+        "linux qt6.2 ci 1",
+        "linux qt6.2 ci 1.25",
+        "linux qt6.2 ci 1.5",
+        "linux qt6.2 ci 2",
+        "macos ci 1",
+        "macos ci 1.25",
+        "macos ci 1.5",
+        "macos ci 2",
+        "windows ci 1",
+        "windows ci 1.25",
+        "windows ci 1.5",
+        "windows ci 2"
       ],
-      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout"
+      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout; the same in every CI job (#274: tools/ci_skips.py)"
     },
     {
       "test": "tst_Compass",
@@ -40,9 +56,25 @@
         "no fonts 1",
         "no fonts 1.25",
         "no fonts 1.5",
-        "no fonts 2"
+        "no fonts 2",
+        "linux ci 1",
+        "linux ci 1.25",
+        "linux ci 1.5",
+        "linux ci 2",
+        "linux qt6.2 ci 1",
+        "linux qt6.2 ci 1.25",
+        "linux qt6.2 ci 1.5",
+        "linux qt6.2 ci 2",
+        "macos ci 1",
+        "macos ci 1.25",
+        "macos ci 1.5",
+        "macos ci 2",
+        "windows ci 1",
+        "windows ci 1.25",
+        "windows ci 1.5",
+        "windows ci 2"
       ],
-      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout"
+      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by ringLabelsClearOnTheLayout; the same in every CI job (#274: tools/ci_skips.py)"
     },
     {
       "test": "tst_Compass",
@@ -68,9 +100,25 @@
         "no fonts 1",
         "no fonts 1.25",
         "no fonts 1.5",
-        "no fonts 2"
+        "no fonts 2",
+        "linux ci 1",
+        "linux ci 1.25",
+        "linux ci 1.5",
+        "linux ci 2",
+        "linux qt6.2 ci 1",
+        "linux qt6.2 ci 1.25",
+        "linux qt6.2 ci 1.5",
+        "linux qt6.2 ci 2",
+        "macos ci 1",
+        "macos ci 1.25",
+        "macos ci 1.5",
+        "macos ci 2",
+        "windows ci 1",
+        "windows ci 1.25",
+        "windows ci 1.5",
+        "windows ci 2"
       ],
-      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by layoutThinsInOrder"
+      "reason": "#226: the test font of tests/fonts has no letters, so N, E, S, W are not drawn: the rotated labels are checked on the layout by layoutThinsInOrder; the same in every CI job (#274: tools/ci_skips.py)"
     },
     {
       "test": "tst_Compass",
